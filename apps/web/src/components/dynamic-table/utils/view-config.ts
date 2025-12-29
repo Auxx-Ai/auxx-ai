@@ -7,7 +7,13 @@ import type {
   SortingState,
   VisibilityState,
 } from '@tanstack/react-table'
-import type { ExtendedColumnDef, TableFilter, ViewConfig, ColumnFormatting } from '../types'
+import type {
+  ExtendedColumnDef,
+  TableFilter,
+  ViewConfig,
+  ColumnFormatting,
+  KanbanViewConfig,
+} from '../types'
 
 /**
  * Snapshot of the table state that can be persisted as a view configuration.
@@ -128,6 +134,23 @@ export function normalizeViewConfig(config?: Partial<ViewConfig> | null): ViewCo
     columnPinning: config?.columnPinning ? cloneColumnPinning(config.columnPinning) : {},
     columnLabels: config?.columnLabels ? { ...config.columnLabels } : {},
     columnFormatting: config?.columnFormatting ? cloneColumnFormatting(config.columnFormatting) : {},
+    // Preserve view type (defaults to 'table' for backward compatibility)
+    viewType: config?.viewType ?? 'table',
+    // Preserve kanban configuration if present
+    kanban: config?.kanban ? cloneKanbanConfig(config.kanban) : undefined,
+  }
+}
+
+/**
+ * Clone a kanban configuration to avoid accidental mutations.
+ */
+function cloneKanbanConfig(kanban: KanbanViewConfig): KanbanViewConfig {
+  return {
+    groupByFieldId: kanban.groupByFieldId,
+    columnOrder: kanban.columnOrder ? [...kanban.columnOrder] : undefined,
+    collapsedColumns: kanban.collapsedColumns ? [...kanban.collapsedColumns] : undefined,
+    cardFields: kanban.cardFields ? [...kanban.cardFields] : undefined,
+    primaryFieldId: kanban.primaryFieldId,
   }
 }
 

@@ -4,12 +4,19 @@ import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { CustomFieldService } from '@auxx/lib/custom-fields'
-import { ModelTypes, ModelTypeValues } from '@auxx/lib/custom-fields/types'
+import { ModelTypes, ModelTypeValues, SELECT_OPTION_COLORS } from '@auxx/lib/custom-fields/types'
 import { FieldType } from '@auxx/database/enums'
 import { batchGetFieldValuesQuery } from '@auxx/services/custom-fields'
 
 // Zod schema for ModelType validation
 const modelTypeSchema = z.enum(ModelTypeValues)
+
+/** Schema for select/multi-select field options */
+const selectOptionSchema = z.object({
+  label: z.string(),
+  value: z.string(),
+  color: z.enum(SELECT_OPTION_COLORS).optional(),
+})
 
 export const customFieldRouter = createTRPCRouter({
   /**
@@ -62,7 +69,7 @@ export const customFieldRouter = createTRPCRouter({
         defaultValue: z.string().optional(),
         options: z
           .union([
-            z.array(z.object({ label: z.string(), value: z.string() })),
+            z.array(selectOptionSchema),
             z.object({ allowMultiple: z.boolean() }),
             z.object({
               currency: z.object({
@@ -116,7 +123,7 @@ export const customFieldRouter = createTRPCRouter({
         defaultValue: z.string().optional(),
         options: z
           .union([
-            z.array(z.object({ label: z.string(), value: z.string() })),
+            z.array(selectOptionSchema),
             z.object({ allowMultiple: z.boolean() }),
             z.object({
               currency: z.object({

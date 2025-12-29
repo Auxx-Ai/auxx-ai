@@ -15,6 +15,8 @@ import {
   Trash,
   RotateCcw,
   Save,
+  Table2,
+  LayoutGrid,
 } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
@@ -44,11 +46,22 @@ import {
   DialogTitle,
 } from '@auxx/ui/components/dialog'
 import { Label } from '@auxx/ui/components/label'
+import { RadioGroup, RadioGroupItemCard } from '@auxx/ui/components/radio-group'
+import { Combobox } from '@auxx/ui/components/combobox'
 import { api } from '~/trpc/react'
+// Select removed - using Combobox instead
 import { toastSuccess, toastError } from '@auxx/ui/components/toast'
-import type { TableView, ViewAction } from '../../types'
+import type { TableView, ViewAction, ViewConfig } from '../../types'
 import { cn } from '@auxx/ui/lib/utils'
 import { Tooltip } from '~/components/global/tooltip'
+import type { ModelType } from '@auxx/lib/custom-fields/types'
+
+/** Select field for kanban grouping */
+interface SelectField {
+  id: string
+  name: string
+  options?: { options?: Array<{ id: string; label: string; color?: string }> }
+}
 
 interface ViewSelectorProps {
   views: TableView[]
@@ -59,6 +72,12 @@ interface ViewSelectorProps {
   hasUnsavedChanges?: boolean
   onSave?: () => Promise<void> | void
   onReset?: () => void
+  /** SINGLE_SELECT fields available for kanban grouping */
+  selectFields?: SelectField[]
+  /** Model type for creating new fields: 'contact', 'ticket', 'entity', etc. */
+  modelType?: ModelType
+  /** Entity definition ID - required only when modelType is 'entity' */
+  entityDefinitionId?: string
 }
 
 /**
@@ -73,12 +92,20 @@ export function ViewSelector({
   hasUnsavedChanges = false,
   onSave,
   onReset,
+  selectFields,
+  modelType,
+  entityDefinitionId,
 }: ViewSelectorProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [showRenameDialog, setShowRenameDialog] = useState(false)
   const [newViewName, setNewViewName] = useState('')
   const [open, setOpen] = useState(false)
+  const [viewType, setViewType] = useState<'table' | 'kanban'>('table')
+  const [selectedFieldId, setSelectedFieldId] = useState<string>('')
+  /** State for inline field creation */
+  const [isCreatingField, setIsCreatingField] = useState(false)
+  const [newFieldName, setNewFieldName] = useState('')
 
   const utils = api.useUtils()
 
@@ -175,12 +202,47 @@ export function ViewSelector({
 
   const handleCreateView = async () => {
     if (!newViewName.trim()) return
+    // For kanban, need either a selected field or a new field name
+    if (viewType === 'kanban' && !selectedFieldId && !newFieldName.trim()) return
+
+    const config: ViewConfig = {
+      filters: [],
+      sorting: [],
+      columnVisibility: {},
+      columnOrder: [],
+      columnSizing: {},
+      viewType,
+      ...(viewType === 'kanban' && {
+        kanban: {
+          // Use empty string if creating new field - backend will populate
+          groupByFieldId: selectedFieldId || '',
+        },
+      }),
+    }
+
+    // If creating new field, pass newField config with modelType
+    const newField =
+      viewType === 'kanban' && !selectedFieldId && newFieldName.trim() && modelType
+        ? {
+            name: newFieldName.trim(),
+            modelType,
+            entityDefinitionId: modelType === 'entity' ? entityDefinitionId : null,
+          }
+        : undefined
 
     await createView.mutateAsync({
       tableId,
       name: newViewName,
-      config: { filters: [], sorting: [], columnVisibility: {}, columnOrder: [], columnSizing: {} },
+      config,
+      newField,
     })
+
+    // Reset state
+    setNewViewName('')
+    setViewType('table')
+    setSelectedFieldId('')
+    setNewFieldName('')
+    setIsCreatingField(false)
   }
 
   const handleRenameView = async () => {
@@ -266,6 +328,12 @@ export function ViewSelector({
                             onViewSelect(view.id)
                             setOpen(false)
                           }}>
+                          {/* View type icon */}
+                          {view.config.viewType === 'kanban' ? (
+                            <LayoutGrid className="size-3.5 text-muted-foreground" />
+                          ) : (
+                            <Table2 className="size-3.5 text-muted-foreground" />
+                          )}
                           <span className="flex-1">{view.name}</span>
                           {activeView?.id === view.id && (
                             <Tooltip content="Active">
@@ -366,22 +434,110 @@ export function ViewSelector({
           <DialogHeader>
             <DialogTitle>Create New View</DialogTitle>
             <DialogDescription>
-              Create a new view to save your current table configuration
+              Create a new view to save your current configuration
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-2">
-            <Input
-              id="view-name"
-              value={newViewName}
-              onChange={(e) => setNewViewName(e.target.value)}
-              placeholder="My custom view"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  handleCreateView()
-                }
-              }}
-            />
+          <div className="space-y-4">
+            {/* View name input */}
+            <div className="space-y-2">
+              <Label htmlFor="view-name">Name</Label>
+              <Input
+                id="view-name"
+                value={newViewName}
+                onChange={(e) => setNewViewName(e.target.value)}
+                placeholder="My custom view"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newViewName.trim()) {
+                    handleCreateView()
+                  }
+                }}
+              />
+            </div>
+
+            {/* View type selector */}
+            <div className="space-y-2">
+              <Label>View Type</Label>
+              <RadioGroup
+                value={viewType}
+                onValueChange={(v) => setViewType(v as 'table' | 'kanban')}>
+                <RadioGroupItemCard
+                  label="Table"
+                  value="table"
+                  icon={<Table2 />}
+                  description="Organize your records on a table"
+                />
+                <RadioGroupItemCard
+                  label="Kanban"
+                  value="kanban"
+                  icon={<LayoutGrid />}
+                  description="Organize records on a pipeline"
+                />
+              </RadioGroup>
+            </div>
+
+            {/* Field selector for kanban */}
+            {viewType === 'kanban' && (
+              <div className="space-y-2">
+                <Label>Group by field</Label>
+                {isCreatingField ? (
+                  // Inline creation mode - Input field
+                  <div className="flex gap-2">
+                    <Input
+                      value={newFieldName}
+                      onChange={(e) => setNewFieldName(e.target.value)}
+                      placeholder="Field name..."
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') {
+                          setIsCreatingField(false)
+                          setNewFieldName('')
+                        }
+                      }}
+                    />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setIsCreatingField(false)
+                        setNewFieldName('')
+                      }}>
+                      Cancel
+                    </Button>
+                  </div>
+                ) : (
+                  // Combobox selection mode
+                  <Combobox
+                    options={(selectFields ?? []).map((f) => ({ value: f.id, label: f.name }))}
+                    placeholder="Select a status field..."
+                    emptyText="No single-select fields found"
+                    value={selectedFieldId}
+                    onChangeValue={(value) => {
+                      setSelectedFieldId(value)
+                      setNewFieldName('') // Clear any pending new field name
+                    }}
+                    size="sm"
+                    addAction={
+                      modelType // Show add action if we have a modelType
+                        ? {
+                            label: 'New Status Field',
+                            onAdd: () => {
+                              setIsCreatingField(true)
+                              setSelectedFieldId('') // Clear selected field when creating new
+                            },
+                          }
+                        : undefined
+                    }
+                  />
+                )}
+                {/* Show the new field name that will be created */}
+                {isCreatingField && newFieldName.trim() && (
+                  <p className="text-xs text-muted-foreground">
+                    A new &quot;{newFieldName}&quot; field will be created when you save this view.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           <DialogFooter>
@@ -392,7 +548,13 @@ export function ViewSelector({
               onClick={handleCreateView}
               size="sm"
               variant="outline"
-              disabled={!newViewName.trim() || createView.isPending}>
+              loading={createView.isPending}
+              loadingText="Creating..."
+              disabled={
+                !newViewName.trim() ||
+                createView.isPending ||
+                (viewType === 'kanban' && !selectedFieldId && !newFieldName.trim())
+              }>
               Create View
             </Button>
           </DialogFooter>

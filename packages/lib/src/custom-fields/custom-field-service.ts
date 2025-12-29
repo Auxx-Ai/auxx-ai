@@ -24,6 +24,7 @@ import type { FieldType } from '@auxx/database/types'
 import { isBuiltInField, getBuiltInFieldHandler } from './built-in-fields'
 import { publisher } from '../events'
 import type { ContactFieldUpdatedEvent } from '../events/types'
+import type { SelectOptionColor } from './types'
 
 /**
  * Service for managing custom fields and their values across different models
@@ -79,7 +80,7 @@ export class CustomFieldService {
       required?: boolean
       defaultValue?: string
       options?:
-        | Array<{ label: string; value: string }>
+        | Array<{ label: string; value: string; color?: SelectOptionColor }>
         | { allowMultiple?: boolean }
         | {
             currency: {
@@ -123,7 +124,7 @@ export class CustomFieldService {
     required?: boolean
     defaultValue?: string
     options?:
-      | Array<{ label: string; value: string }>
+      | Array<{ label: string; value: string; color?: SelectOptionColor }>
       | { allowMultiple?: boolean }
       | {
           currency: {

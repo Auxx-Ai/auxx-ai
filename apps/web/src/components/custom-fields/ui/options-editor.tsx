@@ -66,7 +66,20 @@ interface OptionItemProps {
  * Used by both SortableOption and DragOverlay
  */
 const OptionItem = forwardRef<HTMLDivElement, OptionItemProps>(
-  ({ option, attributes, listeners, style, isDragging, isOverlay, onChange, onColorChange, onRemove }, ref) => {
+  (
+    {
+      option,
+      attributes,
+      listeners,
+      style,
+      isDragging,
+      isOverlay,
+      onChange,
+      onColorChange,
+      onRemove,
+    },
+    ref
+  ) => {
     return (
       <div
         ref={ref}
@@ -76,15 +89,18 @@ const OptionItem = forwardRef<HTMLDivElement, OptionItemProps>(
           isDragging && !isOverlay && 'bg-accent rounded-md'
         )}>
         <InputGroup className={cn(isDragging && !isOverlay && 'opacity-20')}>
-          <InputGroupAddon align="inline-start">
+          <InputGroupAddon align="inline-start" className="pl-0!">
             <div
               {...attributes}
               {...listeners}
-              className={cn('cursor-grab', isOverlay && 'cursor-grabbing')}>
+              className={cn(
+                'cursor-grab h-8 flex items-center ps-1.5 pe-2',
+                isOverlay && 'cursor-grabbing'
+              )}>
               <GripVertical className="size-3 text-muted-foreground group-hover/input-group:text-primary-600" />
             </div>
           </InputGroupAddon>
-          <InputGroupAddon align="inline-start" className="ps-0">
+          <InputGroupAddon align="inline-start" className="pl-0!">
             <OptionColorPicker
               value={option.color}
               onChange={(color) => onColorChange?.(color)}
@@ -98,11 +114,11 @@ const OptionItem = forwardRef<HTMLDivElement, OptionItemProps>(
             className="flex-1"
             readOnly={isOverlay}
           />
-          <InputGroupAddon align="inline-end" className="pe-2.5">
+          <InputGroupAddon align="inline-end">
             <InputGroupButton
               type="button"
               variant="destructive-hover"
-              className="rounded-lg"
+              className="rounded-lg me-0.5"
               aria-label="Remove item"
               title="Remove"
               size="icon-xs"
@@ -190,12 +206,15 @@ export function OptionsEditor({ options, onChange }: OptionsEditorProps) {
 
   // Function to add a new option
   const addOption = () => {
-    const newOptions = [...internalOptions, {
-      label: '',
-      value: '',
-      color: DEFAULT_SELECT_OPTION_COLOR,
-      id: crypto.randomUUID(),
-    }]
+    const newOptions = [
+      ...internalOptions,
+      {
+        label: '',
+        value: '',
+        color: DEFAULT_SELECT_OPTION_COLOR,
+        id: crypto.randomUUID(),
+      },
+    ]
     setInternalOptions(newOptions)
     onChange(newOptions.map(({ label, value, color }) => ({ label, value, color })))
   }

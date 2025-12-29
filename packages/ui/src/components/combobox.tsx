@@ -3,7 +3,7 @@
 // packages/ui/src/components/combobox.tsx
 import * as React from 'react'
 import { CommandLoading } from 'cmdk'
-import { Check, ChevronsUpDown, Loader2 } from 'lucide-react'
+import { Check, ChevronsUpDown, Loader2, Plus } from 'lucide-react'
 import { type VariantProps } from 'class-variance-authority'
 
 import { Button, buttonVariants } from './button'
@@ -23,6 +23,16 @@ type ButtonVariantProps = VariantProps<typeof buttonVariants>
 
 /** PopoverContent props that can be passed through to the popover */
 type PopoverContentProps = React.ComponentProps<typeof PopoverContent>
+
+/** Configuration for an "add new" action at the bottom of the dropdown */
+interface ComboboxAddAction {
+  /** Label to display (e.g., "New Status Attribute") */
+  label: string
+  /** Callback when the add action is clicked */
+  onAdd: () => void
+  /** Optional custom icon (defaults to Plus) */
+  icon?: React.ReactNode
+}
 
 /** Props for the Combobox component */
 interface ComboboxProps extends Omit<PopoverContentProps, 'children' | 'className'> {
@@ -44,6 +54,8 @@ interface ComboboxProps extends Omit<PopoverContentProps, 'children' | 'classNam
   size?: ButtonVariantProps['size']
   /** Additional className for the trigger button */
   className?: string
+  /** Optional action to add a new item, displayed at the bottom of the dropdown */
+  addAction?: ComboboxAddAction
 }
 
 /**
@@ -61,6 +73,7 @@ export function Combobox(props: ComboboxProps) {
     variant = 'outline',
     size,
     className,
+    addAction,
     // PopoverContent props
     align,
     alignOffset,
@@ -127,6 +140,19 @@ export function Combobox(props: ComboboxProps) {
                 ))}
               </CommandGroup>
             ) : null}
+            {addAction && (
+              <CommandGroup>
+                <CommandItem
+                  value="__combobox_add_new__"
+                  onSelect={() => {
+                    addAction.onAdd()
+                    setOpen(false)
+                  }}>
+                  {addAction.icon ?? <Plus className="text-muted-foreground" />}
+                  {addAction.label}
+                </CommandItem>
+              </CommandGroup>
+            )}
           </CommandList>
         </Command>
       </PopoverContent>

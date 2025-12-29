@@ -5,6 +5,14 @@
 import { createContext, useContext, type ReactNode } from 'react'
 import type { Table } from '@tanstack/react-table'
 import type { TableView, TableFilter, BulkAction, DragDropConfig, ColumnFormatting } from '../types'
+import type { ModelType } from '@auxx/lib/custom-fields/types'
+
+/** Select field for kanban grouping */
+interface SelectField {
+  id: string
+  name: string
+  options?: { options?: Array<{ id: string; label: string; color?: string }> }
+}
 
 interface TableContextValue<TData = any> {
   // Table instance
@@ -20,6 +28,15 @@ interface TableContextValue<TData = any> {
   showFooter?: boolean
   enableCheckbox: boolean
   showRowNumbers?: boolean
+
+  /** SINGLE_SELECT fields for kanban view grouping */
+  selectFields?: SelectField[]
+
+  /** Model type for creating new fields: 'contact', 'ticket', 'entity', etc. */
+  modelType?: ModelType
+
+  /** Entity definition ID - required only when modelType is 'entity' */
+  entityDefinitionId?: string
 
   // State
   views: TableView[]

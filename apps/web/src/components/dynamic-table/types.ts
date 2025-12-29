@@ -3,6 +3,7 @@
 import { type ColumnDef, type Table as TanstackTable } from '@tanstack/react-table'
 import { type LucideIcon } from 'lucide-react'
 import type { StoreConfig } from '~/components/contacts/drawer/property-provider'
+import type { ModelType } from '@auxx/lib/custom-fields/types'
 
 // ============================================================================
 // COLUMN FORMATTING TYPES
@@ -171,6 +172,27 @@ export interface TableView {
   updatedAt?: Date
 }
 
+// ============================================================================
+// VIEW TYPE AND KANBAN CONFIGURATION
+// ============================================================================
+
+/** View type - table or kanban */
+export type ViewType = 'table' | 'kanban'
+
+/** Kanban-specific configuration */
+export interface KanbanViewConfig {
+  /** ID of the SINGLE_SELECT custom field used for columns */
+  groupByFieldId: string
+  /** Column order (option IDs from the SINGLE_SELECT field) */
+  columnOrder?: string[]
+  /** Collapsed columns */
+  collapsedColumns?: string[]
+  /** Card display settings - field IDs to show on cards */
+  cardFields?: string[]
+  /** Primary display field ID (for card title) */
+  primaryFieldId?: string
+}
+
 /**
  * View configuration details
  */
@@ -183,6 +205,11 @@ export interface ViewConfig {
   columnPinning?: { left?: string[]; right?: string[] }
   columnLabels?: Record<string, string>
   columnFormatting?: Record<string, ColumnFormatting>
+
+  /** View type (defaults to 'table' for backward compatibility) */
+  viewType?: ViewType
+  /** Kanban config (only used when viewType === 'kanban') */
+  kanban?: KanbanViewConfig
 }
 
 /**
@@ -340,6 +367,19 @@ export interface DynamicTableProps<TData = any> {
 
   /** Cell selection configuration */
   cellSelection?: CellSelectionConfig
+
+  /** SINGLE_SELECT fields for kanban view grouping */
+  selectFields?: Array<{
+    id: string
+    name: string
+    options?: { options?: Array<{ id: string; label: string; color?: string }> }
+  }>
+
+  /** Model type for creating new fields: 'contact', 'ticket', 'entity', etc. */
+  modelType?: ModelType
+
+  /** Entity definition ID - required only when modelType is 'entity' */
+  entityDefinitionId?: string
 }
 
 /**

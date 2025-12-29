@@ -73,14 +73,22 @@ export async function buildPlatformRuntime(
     })
 
     // Generate content hash for cache busting
-    const bundleContent = readFileSync(tempOutput)
+    let bundleContent = readFileSync(tempOutput, 'utf-8')
     const hash = createHash('sha1').update(bundleContent).digest('hex').substring(0, 8)
+
+    // Update sourceMappingURL to reference the hashed filename
+    bundleContent = bundleContent.replace(
+      /\/\/# sourceMappingURL=platform\.js\.map/,
+      `//# sourceMappingURL=platform.${hash}.js.map`
+    )
 
     // Rename files with hash
     const hashedOutput = join(outputDir, `platform.${hash}.js`)
     const hashedSourceMap = join(outputDir, `platform.${hash}.js.map`)
 
-    renameSync(tempOutput, hashedOutput)
+    // Write updated content and rename source map
+    writeFileSync(hashedOutput, bundleContent)
+    unlinkSync(tempOutput)
     renameSync(`${tempOutput}.map`, hashedSourceMap)
 
     // Print bundle info

@@ -5,6 +5,22 @@ import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 import type { ViewConfig } from '~/components/dynamic-table/types'
 import { database as db, schema } from '@auxx/database'
 import { and, eq, or, desc, asc, inArray } from 'drizzle-orm'
+import { CustomFieldService } from '@auxx/lib/custom-fields'
+import { ModelTypeValues } from '@auxx/lib/custom-fields/types'
+
+/** Schema for model type validation */
+const modelTypeSchema = z.enum(ModelTypeValues)
+
+/**
+ * Zod schema for kanban configuration
+ */
+const kanbanConfigSchema = z.object({
+  groupByFieldId: z.string(),
+  columnOrder: z.array(z.string()).optional(),
+  collapsedColumns: z.array(z.string()).optional(),
+  cardFields: z.array(z.string()).optional(),
+  primaryFieldId: z.string().optional(),
+})
 
 /**
  * Zod schema for view configuration
@@ -25,6 +41,8 @@ const viewConfigSchema = z.object({
     .optional(),
   columnLabels: z.record(z.string(), z.string()).optional(),
   rowHeight: z.enum(['compact', 'normal', 'spacious']).optional(),
+  viewType: z.enum(['table', 'kanban']).optional().default('table'),
+  kanban: kanbanConfigSchema.optional(),
 })
 
 /**
@@ -91,6 +109,7 @@ export const tableViewRouter = createTRPCRouter({
 
   /**
    * Create a new view
+   * Optionally creates a new SINGLE_SELECT field for kanban grouping
    */
   create: protectedProcedure
     .input(
@@ -99,11 +118,51 @@ export const tableViewRouter = createTRPCRouter({
         name: z.string().min(1).max(50),
         config: viewConfigSchema,
         isShared: z.boolean().optional().default(false),
+        /** Optional: Create a new SINGLE_SELECT field for kanban grouping */
+        newField: z
+          .object({
+            name: z.string().min(1).max(50),
+            /** Model type: 'contact', 'ticket', 'entity', etc. */
+            modelType: modelTypeSchema,
+            /** Entity definition ID - required only when modelType is 'entity' */
+            entityDefinitionId: z.string().nullish(),
+          })
+          .optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const { userId, organizationId } = ctx.session
-      const { tableId, name, config, isShared } = input
+      const { tableId, name, config, isShared, newField } = input
+
+      let finalConfig = config
+
+      // If creating a new field for kanban, create it first
+      if (newField && config.viewType === 'kanban') {
+        const fieldService = new CustomFieldService(organizationId, userId, ctx.db)
+
+        const createdField = await fieldService.createField(
+          {
+            name: newField.name,
+            type: 'SINGLE_SELECT',
+            // Only pass entityDefinitionId for custom entities
+            entityDefinitionId:
+              newField.modelType === 'entity' ? newField.entityDefinitionId : undefined,
+            options: [], // Empty - stages added later in kanban
+            isCustom: true,
+          },
+          newField.modelType
+        )
+
+        // Update kanban config with the new field ID
+        finalConfig = {
+          ...config,
+          kanban: {
+            ...config.kanban,
+            groupByFieldId: createdField.id,
+          },
+        }
+      }
+
       // Check if user already has a view with this name for this table
       const [existingView] = await db
         .select()
@@ -126,7 +185,7 @@ export const tableViewRouter = createTRPCRouter({
         .values({
           tableId,
           name,
-          config,
+          config: finalConfig,
           isShared,
           userId,
           organizationId,

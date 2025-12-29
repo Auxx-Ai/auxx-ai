@@ -8,6 +8,8 @@ export type {
   TableFilter,
   TableView,
   ViewConfig,
+  ViewType,
+  KanbanViewConfig,
   BulkAction,
   RowSelectionFeatures,
   FilterOperator,
@@ -29,6 +31,8 @@ export type {
   NumberColumnFormatting,
   FormattableFieldType,
 } from './types'
+
+export { DynamicView } from './dynamic-view'
 
 export {
   FILTER_OPERATORS,
@@ -344,6 +348,9 @@ export function DynamicTable<TData extends object = object>(props: DynamicTableP
     emptyState = null,
     headerActions,
     cellSelection,
+    selectFields,
+    modelType,
+    entityDefinitionId,
     ...tableProps
   } = props
 
@@ -470,6 +477,9 @@ export function DynamicTable<TData extends object = object>(props: DynamicTableP
       activeDragItems,
       setActiveDragItems,
       debug: props.debug,
+      selectFields,
+      modelType,
+      entityDefinitionId,
     }),
     [
       tableInstance,
@@ -527,6 +537,9 @@ export function DynamicTable<TData extends object = object>(props: DynamicTableP
       activeDragItems,
       setActiveDragItems,
       props.debug,
+      selectFields,
+      modelType,
+      entityDefinitionId,
     ]
   )
 

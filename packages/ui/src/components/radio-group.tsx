@@ -76,5 +76,5 @@ function RadioGroupItem({
     </RadioGroupPrimitive.Item>
   )
 }
-
+export { RadioGroupItemCard } from './radio-group-item'
 export { RadioGroup, RadioGroupItem, radioGroupVariants }

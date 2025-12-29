@@ -27,8 +27,8 @@ export function AddressComponentsEditor({ components, onChange }: AddressCompone
   }
 
   return (
-    <div className="space-y-3 rounded-xl border p-3">
-      <Label className="mb-3">Address Components</Label>
+    <div className="mb-0 rounded-xl border pt-1 pb-3 px-1 bg-primary-50 relative">
+      <Label className="ps-1 mb-3 ">Address Components</Label>
       <div className="pt-2">
         <div className="grid grid-cols-2 gap-2">
           {ADDRESS_COMPONENTS.map((component) => (

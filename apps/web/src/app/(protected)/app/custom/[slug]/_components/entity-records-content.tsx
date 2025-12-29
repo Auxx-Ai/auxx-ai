@@ -19,11 +19,8 @@ import {
 } from 'lucide-react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { toastError } from '@auxx/ui/components/toast'
-import { DynamicTable, DynamicTableFooter, CustomFieldCell } from '~/components/dynamic-table'
-import type {
-  ExtendedColumnDef,
-  CellSelectionConfig,
-} from '~/components/dynamic-table'
+import { DynamicView, DynamicTableFooter, CustomFieldCell } from '~/components/dynamic-table'
+import type { ExtendedColumnDef, CellSelectionConfig } from '~/components/dynamic-table'
 import type { StoreConfig } from '~/components/contacts/drawer/property-provider'
 import { ModelTypes } from '@auxx/lib/custom-fields/types'
 import {
@@ -56,10 +53,7 @@ import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
 import { useCustomFieldValueSyncer } from '~/hooks/use-custom-field-value-syncer'
-import {
-  useCustomFieldValueStore,
-  buildValueKey,
-} from '~/stores/custom-field-value-store'
+import { useCustomFieldValueStore, buildValueKey } from '~/stores/custom-field-value-store'
 
 /**
  * Row data type for the table
@@ -233,6 +227,19 @@ export function EntityRecordsContent() {
     entityDefinitionId,
   })
 
+  // Get SINGLE_SELECT fields for kanban view
+  const selectFields = useMemo(
+    () =>
+      customFields
+        .filter((f) => f.type === 'SINGLE_SELECT' && f.active !== false)
+        .map((f) => ({
+          id: f.id,
+          name: f.name,
+          options: f.options as { options?: Array<{ id: string; label: string; color?: string }> },
+        })),
+    [customFields]
+  )
+
   // Page size for infinite query
   const PAGE_SIZE = 100
 
@@ -399,6 +406,27 @@ export function EntityRecordsContent() {
       toastError({ title: 'Failed to update field', description: error.message })
     },
   })
+
+  /**
+   * Handle kanban card move (update groupBy field value)
+   */
+  const handleKanbanCardMove = useCallback(
+    async (cardId: string, newColumnId: string) => {
+      // Find the groupByFieldId from selectFields (first available)
+      const groupByFieldId = selectFields[0]?.id
+      if (!groupByFieldId) return
+
+      const value = newColumnId === '' ? null : newColumnId
+
+      await setFieldValue.mutateAsync({
+        entityId: cardId,
+        fieldId: groupByFieldId,
+        value: value === null ? null : { data: value },
+        modelType: ModelTypes.ENTITY,
+      })
+    },
+    [selectFields, setFieldValue]
+  )
 
   /**
    * Handle archive action with confirmation
@@ -928,8 +956,8 @@ export function EntityRecordsContent() {
           onDockedPanelWidthChange={setDockedWidth}
           dockedPanelMinWidth={minWidth}
           dockedPanelMaxWidth={maxWidth}>
-          <div className="flex-1 overflow-hidden rounded-lg bg-white dark:bg-muted/10">
-            <DynamicTable
+          <div className="flex-1 overflow-hidden rounded-lg bg-white dark:bg-muted/10 flex-col flex">
+            <DynamicView
               data={instances}
               className="h-full flex-1"
               tableId={`entity-${entityDefinitionId}`}
@@ -949,7 +977,17 @@ export function EntityRecordsContent() {
               headerActions={
                 <HeaderActionsDropdown onNewField={() => setIsFieldDialogOpen(true)} />
               }
-              cellSelection={cellSelectionConfig}>
+              cellSelection={cellSelectionConfig}
+              selectFields={selectFields}
+              customFields={customFields}
+              primaryFieldId={resource?.display.primaryDisplayField?.id}
+              entityLabel={resource?.label}
+              getValue={getValue}
+              onKanbanCardMove={handleKanbanCardMove}
+              onCardClick={handleOpenDrawer}
+              onAddCard={() => setIsCreateDialogOpen(true)}
+              modelType="entity"
+              entityDefinitionId={entityDefinitionId}>
               <DynamicTableFooter>
                 <div className="flex items-center justify-between px-4 py-2 text-sm text-muted-foreground">
                   <div>
@@ -967,7 +1005,7 @@ export function EntityRecordsContent() {
                   )}
                 </div>
               </DynamicTableFooter>
-            </DynamicTable>
+            </DynamicView>
           </div>
         </MainPageContent>
       </MainPage>

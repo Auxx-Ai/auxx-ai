@@ -47,6 +47,9 @@ export function TableToolbar<TData = any>({ children, className }: TableToolbarP
     onImport,
     importHref,
     onRefresh,
+    selectFields,
+    modelType,
+    entityDefinitionId,
   } = useTableContext<TData>()
 
   // Get columns from table instance
@@ -81,6 +84,9 @@ export function TableToolbar<TData = any>({ children, className }: TableToolbarP
         hasUnsavedChanges={hasUnsavedViewChanges}
         onSave={saveCurrentView}
         onReset={resetViewChanges}
+        selectFields={selectFields}
+        modelType={modelType}
+        entityDefinitionId={entityDefinitionId}
       />
 
       {/* Filter Button */}
