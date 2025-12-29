@@ -28,6 +28,7 @@
     "./contacts": "./src/contacts/index.ts",
     "./custom-fields": "./src/custom-fields/index.ts",
     "./custom-fields/types": "./src/custom-fields/types.ts",
+    "./custom-fields/client": "./src/custom-fields/client.ts",
     "./datasets": "./src/datasets/index.ts",
     "./datasets/types": "./src/datasets/types/index.ts",
     "./dehydration": "./src/dehydration/index.ts",

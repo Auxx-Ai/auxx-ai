@@ -20,10 +20,10 @@ import {
   Link,
   DollarSign,
 } from 'lucide-react'
-import { Skeleton } from '@auxx/ui/components/skeleton'
-import { FormattedCell, CellPadding } from './components/formatted-cell'
+import { CustomFieldCell } from './components/custom-field-cell'
 import type { ExtendedColumnDef } from './types'
 import type { ResourceField } from '@auxx/lib/resources/client'
+import type { ResourceType } from '~/stores/custom-field-value-store'
 import { mapBaseTypeToFieldType } from '@auxx/lib/workflow-engine/client'
 
 // ─────────────────────────────────────────────────────────────────
@@ -108,17 +108,10 @@ export const getIconForFieldType = (fieldType: string) => {
 
 /** Options for creating custom field columns */
 export interface CustomFieldColumnOptions {
-  /**
-   * Value accessor function - reads from the syncer store.
-   * Returns undefined if not yet loaded.
-   */
-  getValue: (rowId: string, fieldId: string) => unknown | undefined
-
-  /**
-   * Loading state accessor.
-   * Returns true if the value is currently being fetched.
-   */
-  isValueLoading?: (rowId: string, fieldId: string) => boolean
+  /** Resource type for store subscription */
+  resourceType: ResourceType
+  /** Entity definition ID (required for 'entity' resourceType) */
+  entityDefId?: string
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -126,30 +119,33 @@ export interface CustomFieldColumnOptions {
 // ─────────────────────────────────────────────────────────────────
 
 /**
- * Create columns for custom fields using the value syncer.
- * Values are read from the syncer store via getValue, not from row.customFieldValues.
+ * Create columns for custom fields using cell-level store subscriptions.
+ * Each cell subscribes directly to the Zustand store for its specific value,
+ * ensuring automatic re-renders when values change.
  *
  * @param fields - Array of ResourceField definitions
- * @param options - getValue and isValueLoading callbacks from useCustomFieldValueSyncer
+ * @param options - resourceType and optional entityDefId for store subscription
  * @returns Array of ExtendedColumnDef columns
  *
  * @example
  * ```tsx
- * const { getValue, isValueLoading } = useCustomFieldValueSyncer({
+ * // Syncer still triggers batch fetches for visible columns
+ * useCustomFieldValueSyncer({
  *   resourceType: 'contact',
  *   rowIds: contacts.map(c => c.id),
  *   columnVisibility,
  *   customFieldColumnIds: fields.map(f => `customField_${f.id}`),
  * })
  *
- * const columns = createCustomFieldColumns<Contact>(fields, { getValue, isValueLoading })
+ * // Cells subscribe directly to store - no getValue/isValueLoading needed
+ * const columns = createCustomFieldColumns<Contact>(fields, { resourceType: 'contact' })
  * ```
  */
 export function createCustomFieldColumns<T extends { id: string }>(
   fields: ResourceField[],
   options: CustomFieldColumnOptions
 ): ExtendedColumnDef<T>[] {
-  const { getValue, isValueLoading } = options
+  const { resourceType, entityDefId } = options
 
   return fields
     .filter((f) => f.id) // Only fields with IDs (custom fields)
@@ -163,8 +159,8 @@ export function createCustomFieldColumns<T extends { id: string }>(
 
       return {
         id: columnId,
-        // accessorFn gets value from store via getValue
-        accessorFn: (row: T) => getValue(row.id, fieldId),
+        // accessorFn not used for display - cells read from store directly
+        accessorFn: () => undefined,
         header: field.label,
         columnType: mapFieldTypeToColumnType(fieldType),
         fieldType,
@@ -176,29 +172,17 @@ export function createCustomFieldColumns<T extends { id: string }>(
         defaultVisible: true,
         minSize: 100,
         size: 150,
-        cell: ({ row }) => {
-          const value = getValue(row.original.id, fieldId)
-          const loading = isValueLoading?.(row.original.id, fieldId)
-
-          // Show skeleton while loading
-          if (loading && value === undefined) {
-            return (
-              <CellPadding>
-                <Skeleton className="h-5 w-20" />
-              </CellPadding>
-            )
-          }
-
-          // All types use FormattedCell - renderers handle their own padding
-          return (
-            <FormattedCell
-              value={value}
-              fieldType={fieldType}
-              columnId={columnId}
-              options={enumOptions}
-            />
-          )
-        },
+        cell: ({ row }) => (
+          <CustomFieldCell
+            resourceType={resourceType}
+            entityDefId={entityDefId}
+            rowId={row.original.id}
+            fieldId={fieldId}
+            fieldType={fieldType}
+            columnId={columnId}
+            options={enumOptions}
+          />
+        ),
       } satisfies ExtendedColumnDef<T>
     })
 }

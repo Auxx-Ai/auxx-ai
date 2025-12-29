@@ -77,12 +77,38 @@ export function canFieldBeUnique(
 }
 
 /**
+ * Available colors for select options
+ * Matches ICON_COLORS from icon-picker for consistency
+ */
+export const SELECT_OPTION_COLORS = [
+  'gray',
+  'red',
+  'orange',
+  'amber',
+  'green',
+  'teal',
+  'blue',
+  'indigo',
+  'purple',
+  'pink',
+] as const
+
+export type SelectOptionColor = (typeof SELECT_OPTION_COLORS)[number]
+
+/**
+ * Default color for select options (used when no color is specified)
+ */
+export const DEFAULT_SELECT_OPTION_COLOR: SelectOptionColor = 'gray'
+
+/**
  * SelectOption interface
  * Describes an option for select/multi-select fields
  */
 export interface SelectOption {
   label: string
   value: string
+  /** Optional color for badges and kanban columns */
+  color?: SelectOptionColor
 }
 
 /**
@@ -344,7 +370,11 @@ export const checkboxFieldOptionsSchema = baseFieldOptionsSchema.extend({
   label: z.string().optional(),
 })
 export const selectFieldOptionsSchema = baseFieldOptionsSchema.extend({
-  options: z.array(z.object({ label: z.string(), value: z.string() })).optional(),
+  options: z.array(z.object({
+    label: z.string(),
+    value: z.string(),
+    color: z.enum(SELECT_OPTION_COLORS).optional(),
+  })).optional(),
 })
 export const addressFieldOptionsSchema = baseFieldOptionsSchema.extend({
   addressComponents: z.array(z.string()).optional(),

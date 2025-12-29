@@ -1,7 +1,11 @@
-// ~/components/custom-fields/ui/options-editor.tsx
+// apps/web/src/components/custom-fields/ui/options-editor.tsx
+'use client'
+
 import { useState, useEffect, forwardRef } from 'react'
 import { Button } from '@auxx/ui/components/button'
 import { PlusCircle, GripVertical, Trash2 } from 'lucide-react'
+import { DEFAULT_SELECT_OPTION_COLOR, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
+import { OptionColorPicker } from './option-color-picker'
 import {
   DndContext,
   closestCenter,
@@ -33,7 +37,8 @@ import {
 interface Option {
   label: string
   value: string
-  id: string // Adding id for stable sorting
+  color?: SelectOptionColor
+  id: string
 }
 
 interface OptionItemProps {
@@ -50,6 +55,8 @@ interface OptionItemProps {
   isOverlay?: boolean
   /** Handler for input value changes */
   onChange?: (value: string) => void
+  /** Handler for color changes */
+  onColorChange?: (color: SelectOptionColor) => void
   /** Handler for removing the option */
   onRemove?: () => void
 }
@@ -59,7 +66,7 @@ interface OptionItemProps {
  * Used by both SortableOption and DragOverlay
  */
 const OptionItem = forwardRef<HTMLDivElement, OptionItemProps>(
-  ({ option, attributes, listeners, style, isDragging, isOverlay, onChange, onRemove }, ref) => {
+  ({ option, attributes, listeners, style, isDragging, isOverlay, onChange, onColorChange, onRemove }, ref) => {
     return (
       <div
         ref={ref}
@@ -76,6 +83,13 @@ const OptionItem = forwardRef<HTMLDivElement, OptionItemProps>(
               className={cn('cursor-grab', isOverlay && 'cursor-grabbing')}>
               <GripVertical className="size-3 text-muted-foreground group-hover/input-group:text-primary-600" />
             </div>
+          </InputGroupAddon>
+          <InputGroupAddon align="inline-start" className="ps-0">
+            <OptionColorPicker
+              value={option.color}
+              onChange={(color) => onColorChange?.(color)}
+              disabled={isOverlay}
+            />
           </InputGroupAddon>
           <InputGroupInput
             value={option.label}
@@ -107,6 +121,7 @@ OptionItem.displayName = 'OptionItem'
 interface SortableOptionProps {
   option: Option
   onChange: (value: string) => void
+  onColorChange: (color: SelectOptionColor) => void
   onRemove: () => void
 }
 
@@ -114,7 +129,7 @@ interface SortableOptionProps {
  * SortableOption component for making options draggable
  * Wraps OptionItem with useSortable hook
  */
-function SortableOption({ option, onChange, onRemove }: SortableOptionProps) {
+function SortableOption({ option, onChange, onColorChange, onRemove }: SortableOptionProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: option.id,
   })
@@ -135,14 +150,15 @@ function SortableOption({ option, onChange, onRemove }: SortableOptionProps) {
       style={style}
       isDragging={isDragging}
       onChange={onChange}
+      onColorChange={onColorChange}
       onRemove={onRemove}
     />
   )
 }
 
 interface OptionsEditorProps {
-  options?: Array<{ label: string; value: string }> // Make optional to handle undefined cases
-  onChange: (options: Array<{ label: string; value: string }>) => void
+  options?: Array<{ label: string; value: string; color?: SelectOptionColor }>
+  onChange: (options: Array<{ label: string; value: string; color?: SelectOptionColor }>) => void
 }
 
 export function OptionsEditor({ options, onChange }: OptionsEditorProps) {
@@ -174,25 +190,38 @@ export function OptionsEditor({ options, onChange }: OptionsEditorProps) {
 
   // Function to add a new option
   const addOption = () => {
-    const newOptions = [...internalOptions, { label: '', value: '', id: crypto.randomUUID() }]
+    const newOptions = [...internalOptions, {
+      label: '',
+      value: '',
+      color: DEFAULT_SELECT_OPTION_COLOR,
+      id: crypto.randomUUID(),
+    }]
     setInternalOptions(newOptions)
-    onChange(newOptions.map(({ label, value }) => ({ label, value })))
+    onChange(newOptions.map(({ label, value, color }) => ({ label, value, color })))
   }
 
-  // Function to update an option (sets both label and value to same string)
+  // Function to update an option label (sets both label and value to same string)
   const updateOption = (index: number, newValue: string) => {
     const newOptions = [...internalOptions]
     newOptions[index]!.label = newValue
     newOptions[index]!.value = newValue
     setInternalOptions(newOptions)
-    onChange(newOptions.map(({ label, value }) => ({ label, value })))
+    onChange(newOptions.map(({ label, value, color }) => ({ label, value, color })))
+  }
+
+  // Function to update an option color
+  const updateOptionColor = (index: number, color: SelectOptionColor) => {
+    const newOptions = [...internalOptions]
+    newOptions[index]!.color = color
+    setInternalOptions(newOptions)
+    onChange(newOptions.map(({ label, value, color }) => ({ label, value, color })))
   }
 
   // Function to remove an option
   const removeOption = (index: number) => {
     const newOptions = internalOptions.filter((_, i) => i !== index)
     setInternalOptions(newOptions)
-    onChange(newOptions.map(({ label, value }) => ({ label, value })))
+    onChange(newOptions.map(({ label, value, color }) => ({ label, value, color })))
   }
 
   // Handle DnD events
@@ -208,7 +237,7 @@ export function OptionsEditor({ options, onChange }: OptionsEditorProps) {
       const newItems = arrayMove(internalOptions, oldIndex, newIndex)
 
       setInternalOptions(newItems)
-      onChange(newItems.map(({ label, value }) => ({ label, value })))
+      onChange(newItems.map(({ label, value, color }) => ({ label, value, color })))
     }
     setActiveOption(null)
   }
@@ -246,6 +275,7 @@ export function OptionsEditor({ options, onChange }: OptionsEditorProps) {
                     key={option.id}
                     option={option}
                     onChange={(value) => updateOption(index, value)}
+                    onColorChange={(color) => updateOptionColor(index, color)}
                     onRemove={() => removeOption(index)}
                   />
                 ))}

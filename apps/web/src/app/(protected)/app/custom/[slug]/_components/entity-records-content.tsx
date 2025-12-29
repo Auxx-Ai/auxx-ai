@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { toastError } from '@auxx/ui/components/toast'
-import { DynamicTable, DynamicTableFooter, useTableContext } from '~/components/dynamic-table'
+import { DynamicTable, DynamicTableFooter, CustomFieldCell } from '~/components/dynamic-table'
 import type {
   ExtendedColumnDef,
   CellSelectionConfig,
@@ -37,7 +37,6 @@ import {
   mapFieldTypeToColumnType,
   getIconForFieldType,
 } from '~/components/dynamic-table/custom-field-column-factory'
-import { FormattedCell } from '~/components/dynamic-table'
 import type { FieldType } from '@auxx/database/types'
 import {
   MainPage,
@@ -569,11 +568,11 @@ export function EntityRecordsContent() {
 
   /**
    * Create column for entity instance field
-   * Uses getValue from syncer for reactive updates when drawer edits values
+   * Uses CustomFieldCell for direct store subscription and reactive updates
    */
   const createEntityFieldColumn = useCallback(
     (field: (typeof customFields)[0]): ExtendedColumnDef<EntityRow> => {
-      // Use RelationshipCell for RELATIONSHIP type
+      // Use RelationshipCell for RELATIONSHIP type - needs getValue for special rendering
       if (field.type === 'RELATIONSHIP') {
         return {
           id: `field_${field.id}`,
@@ -604,12 +603,10 @@ export function EntityRecordsContent() {
       const columnId = `field_${field.id}`
       const enumOptions = field.options?.options ?? field.enumValues ?? []
 
-      // Default column for other types
-      // Cell renderers (FormattedCell) handle their own padding
-      // Uses getValue from syncer for reactive updates
+      // Default column for other types - uses CustomFieldCell for direct store subscription
       return {
         id: columnId,
-        accessorFn: (row) => getValue(row.id, field.id),
+        accessorFn: () => undefined, // Not used for display - cells read from store
         header: field.name,
         columnType: mapFieldTypeToColumnType(field.type),
         fieldType: field.type,
@@ -620,20 +617,20 @@ export function EntityRecordsContent() {
         enableResizing: true,
         minSize: 100,
         size: 150,
-        cell: ({ row }) => {
-          const value = getValue(row.original.id, field.id)
-          return (
-            <FormattedCell
-              value={value}
-              fieldType={field.type}
-              columnId={columnId}
-              options={enumOptions}
-            />
-          )
-        },
+        cell: ({ row }) => (
+          <CustomFieldCell
+            resourceType="entity"
+            entityDefId={entityDefinitionId}
+            rowId={row.original.id}
+            fieldId={field.id}
+            fieldType={field.type}
+            columnId={columnId}
+            options={enumOptions}
+          />
+        ),
       }
     },
-    [getValue]
+    [getValue, entityDefinitionId]
   )
 
   /**

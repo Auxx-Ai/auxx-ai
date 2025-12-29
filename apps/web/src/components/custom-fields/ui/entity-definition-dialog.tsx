@@ -462,7 +462,9 @@ export function EntityDefinitionDialog({
                         <SelectContent>
                           <SelectItem value="none">None</SelectItem>
                           {customFields
-                            .filter((f) => f.type === 'TEXT')
+                            .filter((f) =>
+                              ['TEXT', 'EMAIL', 'NAME', 'PHONE', 'PHONE_INTL', 'URL', 'NUMBER'].includes(f.type)
+                            )
                             .map((field) => (
                               <SelectItem key={field.id} value={field.id}>
                                 {field.name}

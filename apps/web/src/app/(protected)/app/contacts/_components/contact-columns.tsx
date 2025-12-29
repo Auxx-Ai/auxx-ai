@@ -195,9 +195,14 @@ export function createContactColumns(actions: ContactColumnActions): ExtendedCol
     {
       accessorKey: 'phone',
       header: 'Phone',
-      cell: ({ getValue }) => (
-        <FormattedCell value={getValue()} fieldType="PHONE" columnId="phone" />
-      ),
+      cell: ({ getValue }) => {
+        const value = getValue()
+        // Normalize empty object or string '{}' to null
+        const isEmpty =
+          value === '{}' ||
+          (typeof value === 'object' && value !== null && Object.keys(value).length === 0)
+        return <FormattedCell value={isEmpty ? null : value} fieldType="PHONE" columnId="phone" />
+      },
       enableSorting: true,
       enableResizing: true,
       size: 150,

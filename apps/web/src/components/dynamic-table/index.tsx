@@ -48,6 +48,7 @@ export { TableToolbar } from './components/table-toolbar'
 export { DropIndicator } from './components/drop-indicator'
 export { DragPreview } from './components/drag-preview'
 export { FormattedCell, CellPadding, type CellConfig } from './components/formatted-cell'
+export { CustomFieldCell } from './components/custom-field-cell'
 export { CopyableLinkCell } from './components/copyable-link-cell'
 
 // Cell renderers and utilities

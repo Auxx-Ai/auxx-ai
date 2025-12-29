@@ -142,8 +142,9 @@ export default function CustomerListPage() {
     [customFields]
   )
 
-  // Custom field value syncer
-  const { getValue, isValueLoading } = useCustomFieldValueSyncer({
+  // Custom field value syncer - triggers batch fetches for visible columns
+  // Cells subscribe directly to store via CustomFieldCell
+  useCustomFieldValueSyncer({
     resourceType: 'contact',
     rowIds,
     columnVisibility,
@@ -292,25 +293,24 @@ export default function CustomerListPage() {
     ],
     [handleMarkAsSpam, handleBulkDeleteContacts]
   )
-  // Define columns for DynamicTable using static factory function + syncer for custom fields
+  // Define columns for DynamicTable using static factory function + reactive cells for custom fields
   const columns = useMemo(() => {
     const standardColumns = createContactColumns(actions)
 
-    // Add custom field columns using the syncer
+    // Add custom field columns - cells subscribe directly to store
     if (customFields.length === 0) {
       return standardColumns
     }
 
     const customFieldColumns = createCustomFieldColumns<Contact>(customFields, {
-      getValue,
-      isValueLoading,
+      resourceType: 'contact',
     })
 
     // Insert custom fields before the actions column (last column)
     const actionsColumn = standardColumns[standardColumns.length - 1]!
     const otherColumns = standardColumns.slice(0, -1)
     return [...otherColumns, ...customFieldColumns, actionsColumn] as ExtendedColumnDef<Contact>[]
-  }, [actions, customFields, getValue, isValueLoading])
+  }, [actions, customFields])
 
   // Empty state component
   const EmptyStateComponent = () => (

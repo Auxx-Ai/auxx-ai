@@ -53,6 +53,7 @@ import {
   fieldTypeOptions,
   canFieldBeUnique,
   FIELD_TYPE_GROUPS,
+  type SelectOptionColor,
 } from '@auxx/lib/custom-fields/types'
 
 import { OptionsEditor } from './options-editor'
@@ -119,7 +120,7 @@ export function CustomFieldDialog({
   })
 
   // States for complex field options
-  const [options, setOptions] = useState<Array<{ label: string; value: string }>>([])
+  const [options, setOptions] = useState<Array<{ label: string; value: string; color?: SelectOptionColor }>>([])
   const [addressComponents, setAddressComponents] = useState<string[]>([
     'street1',
     'street2',
@@ -148,7 +149,7 @@ export function CustomFieldDialog({
 
   // Track initial values for extra state (not managed by react-hook-form)
   const [initialExtraState, setInitialExtraState] = useState<{
-    options: Array<{ label: string; value: string }>
+    options: Array<{ label: string; value: string; color?: SelectOptionColor }>
     addressComponents: string[]
     fileOptions: FileOptions
     relationshipOptions: RelationshipOptions
@@ -187,7 +188,7 @@ export function CustomFieldDialog({
   // Reset form when dialog opens or editing field changes
   useEffect(() => {
     if (open) {
-      let initOptions: Array<{ label: string; value: string }> = []
+      let initOptions: Array<{ label: string; value: string; color?: SelectOptionColor }> = []
       let initAddressComponents: string[] = ['street1', 'street2', 'city', 'state', 'zipCode', 'country']
       let initFileOptions: FileOptions = {
         allowMultiple: false,
