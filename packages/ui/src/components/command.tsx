@@ -75,7 +75,10 @@ function CommandList({ className, ...props }: React.ComponentProps<typeof Comman
 
 function CommandEmpty(props: React.ComponentProps<typeof CommandPrimitive.Empty>) {
   return (
-    <CommandPrimitive.Empty className="py-6 text-center text-sm text-muted-foreground" {...props} />
+    <CommandPrimitive.Empty
+      className="relative flex cursor-default select-none items-center gap-2 rounded-full px-3 py-2 text-sm outline-hidden text-primary-400"
+      {...props}
+    />
   )
 }
 

@@ -1,10 +1,9 @@
 // apps/web/src/app/(protected)/app/custom/[slug]/_components/entity-records-content.tsx
 'use client'
 
-import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import type { VisibilityState } from '@tanstack/react-table'
-import { api } from '~/trpc/react'
 import { Button } from '@auxx/ui/components/button'
 import {
   Plus,
@@ -17,8 +16,7 @@ import {
   BookPlus,
   Play,
 } from 'lucide-react'
-import { useConfirm } from '~/hooks/use-confirm'
-import { toastError } from '@auxx/ui/components/toast'
+import { useEntityInstanceOperations } from '~/hooks/use-entity-instance-operations'
 import { DynamicView, DynamicTableFooter, CustomFieldCell } from '~/components/dynamic-table'
 import type { ExtendedColumnDef, CellSelectionConfig } from '~/components/dynamic-table'
 import type { StoreConfig } from '~/components/contacts/drawer/property-provider'
@@ -47,38 +45,14 @@ import { BulkUpdateEntityInstanceDialog } from '~/components/custom-fields/ui/bu
 import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
 import { useEntityRecords } from '~/components/custom-fields/context/entity-records-context'
 import { RelationshipCell } from '~/components/custom-fields/components/relationship-cell'
-import { useCustomField } from '~/components/custom-fields/hooks/use-custom-field'
 import { EntityRecordDrawer } from './entity-record-drawer'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
 import { useCustomFieldValueSyncer } from '~/hooks/use-custom-field-value-syncer'
 import { useCustomFieldValueStore, buildValueKey } from '~/stores/custom-field-value-store'
-
-/**
- * Row data type for the table
- * Normalized to have customFieldValues for compatibility with existing column helpers
- */
-interface EntityRow {
-  id: string
-  entityDefinitionId: string
-  createdAt: string
-  updatedAt: string
-  archivedAt: string | null
-  customFieldValues: Array<{
-    fieldId: string
-    value: unknown
-  }>
-  /** Original values array from API */
-  _originalValues: Array<{
-    id: string
-    fieldId: string
-    value: unknown
-    createdAt?: Date
-    updatedAt?: Date
-    entityId?: string
-  }>
-}
+import { useSaveFieldValue } from '~/hooks/use-save-field-value'
+import type { EntityRow } from './types'
 
 /**
  * Props for PrimaryDisplayCell component
@@ -185,7 +159,6 @@ function HeaderActionsDropdown({ onNewField }: HeaderActionsDropdownProps) {
 export function EntityRecordsContent() {
   const params = useParams<{ slug: string }>()
   const slug = params.slug
-  const utils = api.useUtils()
 
   // Dock state
   const isDocked = useEffectiveDockState()
@@ -208,10 +181,6 @@ export function EntityRecordsContent() {
   const [selectedInstance, setSelectedInstance] = useState<EntityRow | null>(null)
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
 
-  // Confirm dialogs
-  const [confirmDelete, ConfirmDeleteDialog] = useConfirm()
-  const [confirmArchive, ConfirmArchiveDialog] = useConfirm()
-
   // Custom field dialog state
   const [isFieldDialogOpen, setIsFieldDialogOpen] = useState(false)
 
@@ -221,10 +190,33 @@ export function EntityRecordsContent() {
   // Workflow dialog state
   const [isWorkflowDialogOpen, setIsWorkflowDialogOpen] = useState(false)
 
-  // Custom field mutations
-  const { create: createField } = useCustomField({
-    modelType: 'entity',
+  // Entity instance operations hook (mutations, handlers, data fetching)
+  const {
+    instances,
+    rawInstances,
+    isLoading: instancesLoading,
+    isFetchingNextPage,
+    hasNextPage,
+    refetch,
+    handleScrollToBottom,
+    handleArchive,
+    handleDelete,
+    handleDrawerDelete,
+    handleBulkDelete,
+    handleBulkArchive,
+    handleSaveField,
+    isCreatingField,
+    ConfirmDeleteDialog,
+    ConfirmArchiveDialog,
+  } = useEntityInstanceOperations({
     entityDefinitionId,
+    resourceLabel: resource?.label,
+    resourcePlural: resource?.plural,
+    onDrawerClose: () => {
+      setIsDrawerOpen(false)
+      setSelectedInstance(null)
+    },
+    onClearSelection: () => setSelectedRowIds(new Set()),
   })
 
   // Get SINGLE_SELECT fields for kanban view
@@ -239,57 +231,6 @@ export function EntityRecordsContent() {
         })),
     [customFields]
   )
-
-  // Page size for infinite query
-  const PAGE_SIZE = 100
-
-  // Fetch entity instances with infinite query for pagination
-  const {
-    data,
-    isLoading: instancesLoading,
-    isFetchingNextPage,
-    hasNextPage,
-    fetchNextPage,
-    refetch,
-  } = api.entityInstance.list.useInfiniteQuery(
-    { entityDefinitionId: entityDefinitionId ?? '', includeArchived: false, limit: PAGE_SIZE },
-    {
-      enabled: !!entityDefinitionId,
-      getNextPageParam: (lastPage) => lastPage?.nextCursor ?? null,
-    }
-  )
-
-  // Flatten pages to get all instances
-  const rawInstances = useMemo(() => {
-    return data?.pages?.flatMap((page) => page.items) ?? []
-  }, [data])
-
-  // Transform instances to have customFieldValues for column compatibility
-  const instances: EntityRow[] = useMemo(() => {
-    return rawInstances.map((instance) => ({
-      id: instance.id,
-      entityDefinitionId: instance.entityDefinitionId,
-      createdAt: instance.createdAt,
-      updatedAt: instance.updatedAt,
-      archivedAt: instance.archivedAt,
-      // Normalize to customFieldValues format for column helpers
-      customFieldValues: instance.values.map((v) => ({
-        fieldId: v.fieldId,
-        value: v.value,
-      })),
-      // Keep original for dialog
-      _originalValues: instance.values,
-    }))
-  }, [rawInstances])
-
-  /**
-   * Handle scrolling to bottom - load more data
-   */
-  const handleScrollToBottom = useCallback(() => {
-    if (hasNextPage && !isFetchingNextPage && !instancesLoading) {
-      fetchNextPage()
-    }
-  }, [hasNextPage, isFetchingNextPage, instancesLoading, fetchNextPage])
 
   // Row IDs for syncer
   const rowIds = useMemo(() => instances.map((i) => i.id), [instances])
@@ -355,155 +296,25 @@ export function EntityRecordsContent() {
     }
   }, [instances, selectedInstance])
 
-  // Archive mutation
-  const archiveInstance = api.entityInstance.archive.useMutation({
-    onSuccess: () => {
-      utils.entityInstance.list.invalidate()
-    },
-    onError: (error) => {
-      toastError({ title: 'Failed to archive', description: error.message })
-    },
-  })
-
-  // Delete mutation
-  const deleteInstance = api.entityInstance.delete.useMutation({
-    onSuccess: () => {
-      utils.entityInstance.list.invalidate()
-    },
-    onError: (error) => {
-      toastError({ title: 'Failed to delete', description: error.message })
-    },
-  })
-
-  // Bulk delete mutation
-  const bulkDeleteInstances = api.entityInstance.bulkDelete.useMutation({
-    onSuccess: () => {
-      utils.entityInstance.list.invalidate()
-      setSelectedRowIds(new Set())
-    },
-    onError: (error) => {
-      toastError({ title: 'Failed to delete', description: error.message })
-    },
-  })
-
-  // Bulk archive mutation
-  const bulkArchiveInstances = api.entityInstance.bulkArchive.useMutation({
-    onSuccess: () => {
-      utils.entityInstance.list.invalidate()
-      setSelectedRowIds(new Set())
-    },
-    onError: (error) => {
-      toastError({ title: 'Failed to archive', description: error.message })
-    },
-  })
-
-  // Cell value mutation for inline editing
-  const setFieldValue = api.customField.setValue.useMutation({
-    onSuccess: () => {
-      utils.entityInstance.list.invalidate({ entityDefinitionId: entityDefinitionId ?? '' })
-    },
-    onError: (error) => {
-      toastError({ title: 'Failed to update field', description: error.message })
-    },
+  // Cell value saving with optimistic updates
+  const { saveValue } = useSaveFieldValue({
+    resourceType: 'entity',
+    entityDefId: entityDefinitionId,
+    modelType: 'entity',
   })
 
   /**
    * Handle kanban card move (update groupBy field value)
+   * Uses optimistic updates via useSaveFieldValue for instant visual feedback
    */
   const handleKanbanCardMove = useCallback(
-    async (cardId: string, newColumnId: string) => {
-      // Find the groupByFieldId from selectFields (first available)
-      const groupByFieldId = selectFields[0]?.id
-      if (!groupByFieldId) return
-
+    (cardId: string, newColumnId: string, groupByFieldId: string) => {
       const value = newColumnId === '' ? null : newColumnId
 
-      await setFieldValue.mutateAsync({
-        entityId: cardId,
-        fieldId: groupByFieldId,
-        value: value === null ? null : { data: value },
-        modelType: ModelTypes.ENTITY,
-      })
+      // saveValue handles optimistic update + background mutation + rollback on error
+      saveValue(cardId, groupByFieldId, value)
     },
-    [selectFields, setFieldValue]
-  )
-
-  /**
-   * Handle archive action with confirmation
-   */
-  const handleArchive = useCallback(
-    async (instanceId: string) => {
-      const confirmed = await confirmArchive({
-        title: `Archive ${resource?.label ?? 'Record'}`,
-        description: `Are you sure you want to archive this ${resource?.label?.toLowerCase() ?? 'record'}? You can restore it later.`,
-        confirmText: 'Archive',
-        cancelText: 'Cancel',
-        destructive: false,
-      })
-      if (confirmed) {
-        archiveInstance.mutate({ id: instanceId })
-      }
-    },
-    [confirmArchive, resource?.label, archiveInstance]
-  )
-
-  /**
-   * Handle delete action with confirmation
-   */
-  const handleDelete = useCallback(
-    async (instanceId: string) => {
-      const confirmed = await confirmDelete({
-        title: `Delete ${resource?.label ?? 'Record'}`,
-        description: `Are you sure you want to permanently delete this ${resource?.label?.toLowerCase() ?? 'record'}? This action cannot be undone.`,
-        confirmText: 'Delete',
-        cancelText: 'Cancel',
-        destructive: true,
-      })
-      if (confirmed) {
-        deleteInstance.mutate({ id: instanceId })
-      }
-    },
-    [confirmDelete, resource?.label, deleteInstance]
-  )
-
-  /**
-   * Handle bulk delete action with confirmation
-   */
-  const handleBulkDelete = useCallback(
-    async (rows: EntityRow[]) => {
-      const count = rows.length
-      const confirmed = await confirmDelete({
-        title: `Delete ${count} ${count === 1 ? resource?.label : resource?.plural}`,
-        description: `Are you sure you want to permanently delete ${count} ${count === 1 ? resource?.label?.toLowerCase() : resource?.plural?.toLowerCase()}? This action cannot be undone.`,
-        confirmText: `Delete ${count} ${count === 1 ? resource?.label : resource?.plural}`,
-        cancelText: 'Cancel',
-        destructive: true,
-      })
-      if (confirmed) {
-        await bulkDeleteInstances.mutateAsync({ ids: rows.map((r) => r.id) })
-      }
-    },
-    [confirmDelete, resource?.label, resource?.plural, bulkDeleteInstances]
-  )
-
-  /**
-   * Handle bulk archive action with confirmation
-   */
-  const handleBulkArchive = useCallback(
-    async (rows: EntityRow[]) => {
-      const count = rows.length
-      const confirmed = await confirmArchive({
-        title: `Archive ${count} ${count === 1 ? resource?.label : resource?.plural}`,
-        description: `Are you sure you want to archive ${count} ${count === 1 ? resource?.label?.toLowerCase() : resource?.plural?.toLowerCase()}? You can restore them later.`,
-        confirmText: 'Archive',
-        cancelText: 'Cancel',
-        destructive: false,
-      })
-      if (confirmed) {
-        await bulkArchiveInstances.mutateAsync({ ids: rows.map((r) => r.id) })
-      }
-    },
-    [confirmArchive, resource?.label, resource?.plural, bulkArchiveInstances]
+    [saveValue]
   )
 
   /**
@@ -533,27 +344,6 @@ export function EntityRecordsContent() {
   }, [])
 
   /**
-   * Handle delete from drawer with confirmation
-   */
-  const handleDrawerDelete = useCallback(
-    async (instanceId: string) => {
-      const confirmed = await confirmDelete({
-        title: `Delete ${resource?.label ?? 'Record'}`,
-        description: `Are you sure you want to permanently delete this ${resource?.label?.toLowerCase() ?? 'record'}? This action cannot be undone.`,
-        confirmText: 'Delete',
-        cancelText: 'Cancel',
-        destructive: true,
-      })
-      if (confirmed) {
-        deleteInstance.mutate({ id: instanceId })
-        setIsDrawerOpen(false)
-        setSelectedInstance(null)
-      }
-    },
-    [confirmDelete, resource?.label, deleteInstance]
-  )
-
-  /**
    * Handle row selection change
    */
   const handleRowSelectionChange = useCallback((selectedRows: Set<string>) => {
@@ -577,22 +367,6 @@ export function EntityRecordsContent() {
       setEditingInstance(null)
     }
   }, [])
-
-  /**
-   * Handle saving a new custom field
-   */
-  const handleSaveField = useCallback(
-    async (fieldData: any) => {
-      await createField.mutateAsync({
-        ...fieldData,
-        modelType: 'entity',
-        entityDefinitionId,
-      })
-      // Invalidate the query used by EntityRecordsProvider to refresh the table columns
-      utils.customField.getByEntityDefinition.invalidate({ entityDefinitionId })
-    },
-    [createField, entityDefinitionId, utils]
-  )
 
   /**
    * Create column for entity instance field
@@ -791,17 +565,13 @@ export function EntityRecordsContent() {
         modelType: ModelTypes.ENTITY,
       }),
       // Legacy path as fallback (can be removed after validation)
-      onCellValueChange: async (rowId: string, columnId: string, value: unknown) => {
+      onCellValueChange: (rowId: string, columnId: string, value: unknown) => {
         const fieldId = columnId.replace('field_', '')
-        await setFieldValue.mutateAsync({
-          entityId: rowId,
-          fieldId,
-          value: value === null ? null : { data: value },
-          modelType: ModelTypes.ENTITY,
-        })
+        // saveValue handles optimistic update + background mutation + rollback on error
+        saveValue(rowId, fieldId, value)
       },
     }),
-    [customFields, getValue, setFieldValue, entityDefinitionId]
+    [customFields, getValue, saveValue, entityDefinitionId]
   )
 
   /**
@@ -1040,7 +810,7 @@ export function EntityRecordsContent() {
         open={isFieldDialogOpen}
         onOpenChange={setIsFieldDialogOpen}
         onSave={handleSaveField}
-        isPending={createField.isPending}
+        isPending={isCreatingField}
         currentResourceId={`entity_${slug}`}
       />
 

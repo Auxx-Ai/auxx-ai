@@ -5,7 +5,8 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { cn } from '@auxx/ui/lib/utils'
 import { Button } from '@auxx/ui/components/button'
-import { GripVertical, MessageSquare, CheckSquare, StickyNote } from 'lucide-react'
+import { Checkbox } from '@auxx/ui/components/checkbox'
+import { MessageSquare, CheckSquare, StickyNote, Box } from 'lucide-react'
 import { formatDistanceToNowStrict } from 'date-fns'
 
 /** Custom field definition */
@@ -28,6 +29,10 @@ interface KanbanCardProps {
   onTasksClick?: () => void
   onCommentsClick?: () => void
   isDragging?: boolean
+  /** Whether this card is selected for bulk actions */
+  isSelected?: boolean
+  /** Callback when selection changes */
+  onSelectChange?: (selected: boolean) => void
 }
 
 /**
@@ -108,6 +113,8 @@ export function KanbanCard({
   onTasksClick,
   onCommentsClick,
   isDragging,
+  isSelected = false,
+  onSelectChange,
 }: KanbanCardProps) {
   const {
     attributes,
@@ -133,22 +140,41 @@ export function KanbanCard({
       ref={setNodeRef}
       style={style}
       data-index={index}
+      {...attributes}
+      {...listeners}
       className={cn(
-        'bg-background border rounded-lg shadow-sm cursor-pointer transition-all hover:shadow-md group/card',
-        dragging && 'opacity-50 shadow-lg rotate-1 scale-105'
+        'bg-background border rounded-lg shadow-sm cursor-grab active:cursor-grabbing transition-all hover:shadow-md group/card select-none touch-none relative',
+        isDragging && 'shadow-lg rotate-1 scale-105',
+        isSortableDragging && 'shadow-none bg-primary-200/50 border-primary-200'
       )}
       onClick={onClick}>
-      <div className="p-2.5">
-        {/* Header row: drag handle + title */}
+      {/* Drag placeholder overlay */}
+      <div className={cn('p-2.5', isSortableDragging && 'invisible')}>
+        {/* Header row: checkbox/box icon + title */}
         <div className="flex items-start gap-1.5">
-          {/* Drag handle */}
-          <button
-            {...attributes}
-            {...listeners}
-            className="p-0.5 mt-0.5 opacity-0 group-hover/card:opacity-100 cursor-grab active:cursor-grabbing touch-none shrink-0"
-            onClick={(e) => e.stopPropagation()}>
-            <GripVertical className="size-3.5 text-muted-foreground" />
-          </button>
+          {/* Box icon - becomes checkbox on card hover or when selected */}
+          <div
+            className="mt-0.5 shrink-0 relative size-3.5"
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              onSelectChange?.(!isSelected)
+            }}>
+            <Box
+              className={cn(
+                'absolute inset-0 size-3.5 text-muted-foreground',
+                isSelected ? 'hidden' : 'group-hover/card:hidden'
+              )}
+            />
+            <Checkbox
+              checked={isSelected}
+              className={cn(
+                'absolute inset-0 size-3.5 pointer-events-none',
+                !isSelected && 'hidden group-hover/card:block'
+              )}
+            />
+          </div>
 
           {/* Title */}
           <div className="flex-1 min-w-0">

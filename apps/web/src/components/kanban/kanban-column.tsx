@@ -8,10 +8,11 @@ import { CSS } from '@dnd-kit/utilities'
 import { cn } from '@auxx/ui/lib/utils'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Button } from '@auxx/ui/components/button'
-import { ChevronRight, GripVertical, Plus } from 'lucide-react'
+import { ChevronRight, EyeOff, GripVertical, Plus } from 'lucide-react'
 import { getColorSwatch, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
 import { KanbanColumnSettings } from './kanban-column-settings'
-import type { TargetTimeInStatus } from '../dynamic-table/types'
+import { NO_STATUS_COLUMN_ID, type TargetTimeInStatus } from '../dynamic-table/types'
+import { Badge } from '@auxx/ui/components/badge'
 
 /** Props for KanbanColumn component */
 interface KanbanColumnProps {
@@ -69,7 +70,7 @@ export function KanbanColumn({
   onVisibilityChange,
   onDelete,
 }: KanbanColumnProps) {
-  const isNoStatusColumn = id === '__no_status__'
+  const isNoStatusColumn = id === NO_STATUS_COLUMN_ID
   const [isCollapsed, setIsCollapsed] = useState(initialCollapsed)
 
   // Droppable for cards
@@ -123,7 +124,9 @@ export function KanbanColumn({
             style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
             {title}
           </div>
-          <span className="text-xs text-muted-foreground mt-2">{count}</span>
+          <Badge variant="pill" size="xs" className="mt-2">
+            {count}
+          </Badge>
         </div>
       </div>
     )
@@ -134,64 +137,85 @@ export function KanbanColumn({
       ref={setSortableRef}
       style={style}
       className={cn(
-        'w-64 shrink-0 rounded-lg border bg-muted/30 flex flex-col transition-colors max-h-full',
+        'group/kanban-col w-64 shrink-0 rounded-2xl border bg-muted/30 flex flex-col transition-colors max-h-full',
         isActive && 'border-primary-300 bg-primary/5',
         isDragging && 'opacity-50'
       )}>
-      {/* Column header with settings popover */}
-      <KanbanColumnSettings
-        columnId={id}
-        label={title}
-        color={color}
-        targetTimeInStatus={targetTimeInStatus}
-        celebration={celebration}
-        isVisible={isVisible}
-        isNoStatusColumn={isNoStatusColumn}
-        onLabelChange={onLabelChange}
-        onColorChange={onColorChange}
-        onTargetTimeChange={onTargetTimeChange}
-        onCelebrationChange={onCelebrationChange}
-        onVisibilityChange={onVisibilityChange}
-        onDelete={onDelete}>
-        <div
-          ref={setDroppableRef}
-          className="flex items-center gap-2 px-3 py-2.5 border-b group/header cursor-pointer hover:bg-muted/50 transition-colors">
-          {/* Drag handle for sortable columns - stops propagation */}
-          {isSortable && (
-            <button
-              {...attributes}
-              {...listeners}
-              onClick={(e) => e.stopPropagation()}
-              onPointerDown={(e) => e.stopPropagation()}
-              className="p-0.5 -ml-1 opacity-0 group-hover/header:opacity-100 cursor-grab active:cursor-grabbing touch-none">
-              <GripVertical className="size-3.5 text-muted-foreground" />
-            </button>
-          )}
-
-          {/* Color dot */}
-          <div className={cn('size-2.5 rounded-full shrink-0', colorDot)} />
-
-          {/* Title */}
-          <span className="text-sm font-medium truncate flex-1">{title}</span>
-
-          {/* Count badge */}
-          <span className="text-xs text-muted-foreground tabular-nums">{count}</span>
-
-          {/* Add button (on hover) - stops propagation */}
-          {onAddCard && (
+      {/* Column header */}
+      {(() => {
+        const headerContent = (
+          <div
+            ref={setDroppableRef}
+            className={cn(
+              'flex items-center px-3 py-2.5 border-b',
+              !isNoStatusColumn && 'group/header cursor-pointer hover:bg-muted/50 transition-colors'
+            )}>
+            <div className={cn('size-3.5 rounded-full shrink-0 me-2', colorDot)} />
+            <div className="flex-1 min-w-0 flex items-center gap-2">
+              <span className="text-sm font-medium truncate">{title}</span>
+              <Badge variant="pill" size="xs">
+                {count}
+              </Badge>
+            </div>
             <Button
               variant="ghost"
               size="icon-xs"
-              className="size-5 opacity-0 group-hover/header:opacity-100"
+              className="size-5 opacity-0 group-hover/kanban-col:opacity-100"
               onClick={(e) => {
                 e.stopPropagation()
-                onAddCard()
-              }}>
-              <Plus className="size-3" />
+                setIsCollapsed(true)
+              }}
+              onPointerDown={(e) => e.stopPropagation()}>
+              <EyeOff className="size-3" />
             </Button>
-          )}
-        </div>
-      </KanbanColumnSettings>
+            {onAddCard && (
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="size-5 opacity-0 group-hover/kanban-col:opacity-100"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onAddCard()
+                }}>
+                <Plus className="size-3" />
+              </Button>
+            )}
+            {isSortable && (
+              <button
+                {...attributes}
+                {...listeners}
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="p-0.5 -mr-1 opacity-0 group-hover/kanban-col:opacity-100 cursor-grab active:cursor-grabbing touch-none">
+                <GripVertical className="size-3.5 text-muted-foreground" />
+              </button>
+            )}
+          </div>
+        )
+
+        if (isNoStatusColumn) {
+          return headerContent
+        }
+
+        return (
+          <KanbanColumnSettings
+            columnId={id}
+            label={title}
+            color={color}
+            targetTimeInStatus={targetTimeInStatus}
+            celebration={celebration}
+            isVisible={isVisible}
+            onLabelChange={onLabelChange}
+            onColorChange={onColorChange}
+            onTargetTimeChange={onTargetTimeChange}
+            onCelebrationChange={onCelebrationChange}
+            onVisibilityChange={onVisibilityChange}
+            onDelete={onDelete}>
+            {headerContent}
+          </KanbanColumnSettings>
+        )
+      })()}
 
       {/* Column content - scrollable */}
       <ScrollArea className="flex-1 min-h-0">

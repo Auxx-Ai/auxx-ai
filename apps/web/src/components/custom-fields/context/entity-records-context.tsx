@@ -16,7 +16,13 @@ interface CustomField {
   name: string
   type: string
   options?: {
-    options?: Array<{ label: string; value: string }>
+    options?: Array<{
+      label: string
+      value: string
+      color?: string
+      targetTimeInStatus?: { value: number; unit: 'days' | 'months' | 'years' }
+      celebration?: boolean
+    }>
     relationship?: {
       relatedEntityDefinitionId?: string
       relatedModelType?: string
@@ -39,11 +45,14 @@ function transformResourceFieldToCustomField(field: ResourceField, index: number
   // Build options object from ResourceField properties
   const options: CustomField['options'] = {}
 
-  // Handle enum values for select fields
+  // Handle enum values for select fields (including kanban metadata)
   if (field.enumValues && field.enumValues.length > 0) {
     options.options = field.enumValues.map((e) => ({
       label: e.label,
       value: e.dbValue,
+      color: e.color,
+      targetTimeInStatus: e.targetTimeInStatus,
+      celebration: e.celebration,
     }))
   }
 

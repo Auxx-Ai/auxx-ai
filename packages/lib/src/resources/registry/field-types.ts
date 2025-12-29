@@ -13,6 +13,12 @@ export interface EnumValue {
   label: string
   /** Optional description for tooltips or help text */
   description?: string
+  /** Color for kanban column headers and select badges */
+  color?: string
+  /** Target time for items to remain in this status (kanban time tracking) */
+  targetTimeInStatus?: { value: number; unit: 'days' | 'months' | 'years' }
+  /** Trigger celebration animation when cards move to this column (kanban) */
+  celebration?: boolean
 }
 
 /**

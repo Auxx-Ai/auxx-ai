@@ -95,18 +95,6 @@ interface PropertyContextValue {
    * will be called when the popover is about to close (outside click).
    */
   onBeforeClose: React.MutableRefObject<(() => void) | undefined>
-
-  // ─── Deprecated - kept for backward compatibility ───
-  /** @deprecated Use commitValue instead */
-  setValue: (newValue: any) => Promise<any>
-  /** @deprecated Use trackChange instead */
-  // onChange: (newValue: any) => void
-  /** @deprecated Use commitAndClose instead */
-  // save: () => void
-  /** @deprecated Use commitValue + close instead */
-  // handleSave: (newValue: any, keepOpen?: boolean) => Promise<string | undefined>
-  /** @deprecated Use onBeforeClose instead */
-  // requestClose: React.MutableRefObject<((e: any) => void) | undefined>
 }
 
 const PropertyContext = createContext<PropertyContextValue | undefined>(undefined)
@@ -203,12 +191,12 @@ export function PropertyProvider({
 
   // Use store save hook if applicable
   const {
-    saveValue: storeSave,
-    saveValueAsync: storeSaveAsync,
+    saveFieldValue: storeSave,
+    saveFieldValueAsync: storeSaveAsync,
     isPending: storeSaving,
   } = useSaveFieldValue({
     resourceType: storeConfig?.resourceType ?? 'contact',
-    resourceId: storeConfig?.resourceId ?? '',
+    resourceId: storeConfig?.resourceId,
     entityDefId: storeConfig?.entityDefId,
     modelType: storeConfig?.modelType ?? ('contact' as ModelType),
   })
@@ -457,88 +445,6 @@ export function PropertyProvider({
     close()
   }, [close])
 
-  // ─── Deprecated methods (backward compatibility) ───
-
-  /**
-   * @deprecated Use commitValue instead
-   * Async version that waits for mutation
-   */
-  // const setValue = useCallback(
-  //   async (newValue: any): Promise<any> => {
-  //     if (isSaving) return undefined
-
-  //     if (!hasValueChanged(newValue, serverValue)) {
-  //       setIsOpen(false)
-  //       return undefined
-  //     }
-
-  //     const prevValue = currentValue
-  //     setCurrentValue(newValue)
-  //     setIsDirty(true)
-
-  //     if (mutate) {
-  //       setIsSaving(true)
-  //       try {
-  //         const result = await mutate(newValue === null ? null : { data: newValue })
-  //         setServerValue(newValue)
-  //         setIsDirty(false)
-  //         return result
-  //       } catch (err: any) {
-  //         setCurrentValue(prevValue)
-  //         toastError({
-  //           title: 'Error saving field',
-  //           description: err.message || 'Could not save this field value',
-  //         })
-  //         return undefined
-  //       } finally {
-  //         setIsSaving(false)
-  //       }
-  //     }
-
-  //     return undefined
-  //   },
-  //   [currentValue, isSaving, mutate, serverValue]
-  // )
-
-  /**
-   * @deprecated Use trackChange instead
-   */
-  // const onChange = useCallback((newValue: any) => {
-  //   setCurrentValue(newValue)
-  //   setIsDirty(true)
-  // }, [])
-
-  /**
-   * @deprecated Use commitAndClose instead
-   */
-  // const save = useCallback(() => {
-  //   if (isDirty && hasValueChanged(currentValue, serverValue)) {
-  //     setValue(currentValue)
-  //   }
-  //   setIsOpen(false)
-  // }, [currentValue, isDirty, setValue, serverValue])
-
-  /**
-   * @deprecated Use commitValue + close instead
-   */
-  // const handleSave = useCallback(
-  //   async (newValue: any, keepOpen?: boolean): Promise<string | undefined> => {
-  //     let valueId: string | undefined
-
-  //     if (hasValueChanged(newValue, serverValue)) {
-  //       const result = await setValue(newValue)
-  //       valueId = result?.id
-  //     }
-
-  //     if (!keepOpen) {
-  //       setIsOpen(false)
-  //     }
-
-  //     return valueId
-  //   },
-  //   [setValue, serverValue]
-  // )
-
   // ─── Effects ───
 
   // Notify parent of open state changes
@@ -580,12 +486,6 @@ export function PropertyProvider({
     close,
     forceClose,
     onBeforeClose,
-    // Deprecated (backward compatibility)
-    // setValue,
-    // onChange,
-    // save,
-    // handleSave,
-    // requestClose,
   }
 
   return <PropertyContext.Provider value={contextValue}>{children}</PropertyContext.Provider>

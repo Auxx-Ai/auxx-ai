@@ -26,7 +26,11 @@ import { Plus } from 'lucide-react'
 import { KanbanColumn } from './kanban-column'
 import { KanbanCard } from './kanban-card'
 import { showCelebrationConfetti } from '~/components/subscriptions/show-confetti'
-import type { KanbanViewConfig, TargetTimeInStatus } from '../dynamic-table/types'
+import {
+  NO_STATUS_COLUMN_ID,
+  type KanbanViewConfig,
+  type TargetTimeInStatus,
+} from '../dynamic-table/types'
 
 /** Option from SINGLE_SELECT field (raw from DB) */
 interface RawSelectOption {
@@ -147,7 +151,21 @@ export function KanbanView<TData extends KanbanRow>({
     data?: TData | SelectOption
   } | null>(null)
   const [overId, setOverId] = useState<string | null>(null)
+  const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set())
   const containerRef = useRef<HTMLDivElement>(null)
+
+  /** Toggle card selection */
+  const handleCardSelectChange = useCallback((cardId: string, selected: boolean) => {
+    setSelectedCardIds((prev) => {
+      const next = new Set(prev)
+      if (selected) {
+        next.add(cardId)
+      } else {
+        next.delete(cardId)
+      }
+      return next
+    })
+  }, [])
 
   // Get options from the groupBy field - normalize value -> id
   const allColumns: SelectOption[] = useMemo(() => {
@@ -178,7 +196,7 @@ export function KanbanView<TData extends KanbanRow>({
   }, [allColumns, config.columnSettings])
 
   // Column IDs for sortable context
-  const columnIds = useMemo(() => ['__no_status__', ...columns.map((c) => c.id)], [columns])
+  const columnIds = useMemo(() => [NO_STATUS_COLUMN_ID, ...columns.map((c) => c.id)], [columns])
 
   // Group data by column
   const columnData = useMemo(() => {
@@ -190,17 +208,17 @@ export function KanbanView<TData extends KanbanRow>({
     })
 
     // Add "No Status" column for items without a value
-    grouped['__no_status__'] = []
+    grouped[NO_STATUS_COLUMN_ID] = []
 
     // Group items
     data.forEach((item) => {
       const fieldValue = getValue(item.id, config.groupByFieldId)
-      const columnId = fieldValue ? String(fieldValue) : '__no_status__'
+      const columnId = fieldValue ? String(fieldValue) : NO_STATUS_COLUMN_ID
 
       if (grouped[columnId]) {
         grouped[columnId].push(item)
       } else {
-        grouped['__no_status__'].push(item)
+        grouped[NO_STATUS_COLUMN_ID] && grouped[NO_STATUS_COLUMN_ID].push(item)
       }
     })
 
@@ -262,7 +280,7 @@ export function KanbanView<TData extends KanbanRow>({
         const newIndex = columnIds.indexOf(targetOverId)
         if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
           const newOrder = arrayMove(columnIds, oldIndex, newIndex).filter(
-            (id) => id !== '__no_status__'
+            (id) => id !== NO_STATUS_COLUMN_ID
           )
           await onColumnReorder(newOrder)
         }
@@ -270,7 +288,9 @@ export function KanbanView<TData extends KanbanRow>({
       }
 
       // Card operations
-      const overColumn = [...columns, { id: '__no_status__' }].find((c) => c.id === targetOverId)
+      const overColumn = [...columns, { id: NO_STATUS_COLUMN_ID }].find(
+        (c) => c.id === targetOverId
+      )
       const overCard = data.find((d) => d.id === targetOverId)
 
       // Helper to check if target column has celebration enabled
@@ -284,7 +304,7 @@ export function KanbanView<TData extends KanbanRow>({
         const activeCard = data.find((d) => d.id === activeId)
         if (activeCard && onCardMove) {
           const currentColumnId = String(
-            getValue(activeCard.id, config.groupByFieldId) ?? '__no_status__'
+            getValue(activeCard.id, config.groupByFieldId) ?? NO_STATUS_COLUMN_ID
           )
 
           if (currentColumnId !== overColumn.id) {
@@ -292,19 +312,19 @@ export function KanbanView<TData extends KanbanRow>({
             if (shouldCelebrate(overColumn.id)) {
               showCelebrationConfetti()
             }
-            await onCardMove(activeId, overColumn.id === '__no_status__' ? '' : overColumn.id)
+            await onCardMove(activeId, overColumn.id === NO_STATUS_COLUMN_ID ? '' : overColumn.id)
           }
         }
       } else if (overCard) {
         // Dropped on another card
         const overCardColumnId = String(
-          getValue(overCard.id, config.groupByFieldId) ?? '__no_status__'
+          getValue(overCard.id, config.groupByFieldId) ?? NO_STATUS_COLUMN_ID
         )
 
         const activeCard = data.find((d) => d.id === activeId)
         if (activeCard) {
           const activeCardColumnId = String(
-            getValue(activeCard.id, config.groupByFieldId) ?? '__no_status__'
+            getValue(activeCard.id, config.groupByFieldId) ?? NO_STATUS_COLUMN_ID
           )
 
           if (activeCardColumnId !== overCardColumnId) {
@@ -315,7 +335,7 @@ export function KanbanView<TData extends KanbanRow>({
               }
               await onCardMove(
                 activeId,
-                overCardColumnId === '__no_status__' ? '' : overCardColumnId
+                overCardColumnId === NO_STATUS_COLUMN_ID ? '' : overCardColumnId
               )
             }
           } else if (onCardReorder) {
@@ -406,19 +426,19 @@ export function KanbanView<TData extends KanbanRow>({
             <SortableContext items={columnIds} strategy={horizontalListSortingStrategy}>
               {/* No Status column (always first, not sortable) */}
               <KanbanColumn
-                id="__no_status__"
+                id={NO_STATUS_COLUMN_ID}
                 title="No stage"
                 color="gray"
-                count={columnData['__no_status__']?.length ?? 0}
-                isCollapsed={config.collapsedColumns?.includes('__no_status__')}
-                isOver={overId === '__no_status__'}
+                count={columnData[NO_STATUS_COLUMN_ID]?.length ?? 0}
+                isCollapsed={config.collapsedColumns?.includes(NO_STATUS_COLUMN_ID)}
+                isOver={overId === NO_STATUS_COLUMN_ID}
                 entityLabel={entityLabel}
-                onAddCard={onAddCard ? () => onAddCard('__no_status__') : undefined}
+                onAddCard={onAddCard ? () => onAddCard(NO_STATUS_COLUMN_ID) : undefined}
                 isSortable={false}>
                 <SortableContext
-                  items={(columnData['__no_status__'] ?? []).map((c) => c.id)}
+                  items={(columnData[NO_STATUS_COLUMN_ID] ?? []).map((c) => c.id)}
                   strategy={verticalListSortingStrategy}>
-                  {(columnData['__no_status__'] ?? []).map((card, index) => (
+                  {(columnData[NO_STATUS_COLUMN_ID] ?? []).map((card, index) => (
                     <KanbanCard
                       key={card.id}
                       id={card.id}
@@ -428,6 +448,8 @@ export function KanbanView<TData extends KanbanRow>({
                       updatedAt={card.updatedAt}
                       getValue={(fieldId) => getValue(card.id, fieldId)}
                       onClick={() => onCardClick?.(card)}
+                      isSelected={selectedCardIds.has(card.id)}
+                      onSelectChange={(selected) => handleCardSelectChange(card.id, selected)}
                     />
                   ))}
                 </SortableContext>
@@ -452,10 +474,14 @@ export function KanbanView<TData extends KanbanRow>({
                   isVisible={config.columnSettings?.[column.id]?.isVisible !== false}
                   // Settings callbacks
                   onLabelChange={
-                    onColumnLabelChange ? (label) => onColumnLabelChange(column.id, label) : undefined
+                    onColumnLabelChange
+                      ? (label) => onColumnLabelChange(column.id, label)
+                      : undefined
                   }
                   onColorChange={
-                    onColumnColorChange ? (color) => onColumnColorChange(column.id, color) : undefined
+                    onColumnColorChange
+                      ? (color) => onColumnColorChange(column.id, color)
+                      : undefined
                   }
                   onTargetTimeChange={
                     onColumnTargetTimeChange
@@ -486,6 +512,8 @@ export function KanbanView<TData extends KanbanRow>({
                         updatedAt={card.updatedAt}
                         getValue={(fieldId) => getValue(card.id, fieldId)}
                         onClick={() => onCardClick?.(card)}
+                        isSelected={selectedCardIds.has(card.id)}
+                        onSelectChange={(selected) => handleCardSelectChange(card.id, selected)}
                       />
                     ))}
                   </SortableContext>

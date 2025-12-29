@@ -21,6 +21,12 @@ import {
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
 import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from '@auxx/ui/components/input-group'
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -440,7 +446,7 @@ export function ViewSelector({
 
           <div className="space-y-4">
             {/* View name input */}
-            <div className="space-y-2">
+            <div className="flex flex-col space-y-2">
               <Label htmlFor="view-name">Name</Label>
               <Input
                 id="view-name"
@@ -456,7 +462,7 @@ export function ViewSelector({
             </div>
 
             {/* View type selector */}
-            <div className="space-y-2">
+            <div className="flex flex-col space-y-2">
               <Label>View Type</Label>
               <RadioGroup
                 value={viewType}
@@ -478,12 +484,12 @@ export function ViewSelector({
 
             {/* Field selector for kanban */}
             {viewType === 'kanban' && (
-              <div className="space-y-2">
+              <div className="space-y-2 flex flex-col">
                 <Label>Group by field</Label>
                 {isCreatingField ? (
                   // Inline creation mode - Input field
-                  <div className="flex gap-2">
-                    <Input
+                  <InputGroup>
+                    <InputGroupInput
                       value={newFieldName}
                       onChange={(e) => setNewFieldName(e.target.value)}
                       placeholder="Field name..."
@@ -495,16 +501,22 @@ export function ViewSelector({
                         }
                       }}
                     />
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => {
-                        setIsCreatingField(false)
-                        setNewFieldName('')
-                      }}>
-                      Cancel
-                    </Button>
-                  </div>
+                    <InputGroupAddon align="inline-end">
+                      <InputGroupButton
+                        type="button"
+                        className="rounded-lg me-0.5"
+                        variant="destructive-hover"
+                        aria-label="Cancel"
+                        title="Cancel"
+                        size="xs"
+                        onClick={() => {
+                          setIsCreatingField(false)
+                          setNewFieldName('')
+                        }}>
+                        Cancel
+                      </InputGroupButton>
+                    </InputGroupAddon>
+                  </InputGroup>
                 ) : (
                   // Combobox selection mode
                   <Combobox
@@ -516,7 +528,6 @@ export function ViewSelector({
                       setSelectedFieldId(value)
                       setNewFieldName('') // Clear any pending new field name
                     }}
-                    size="sm"
                     addAction={
                       modelType // Show add action if we have a modelType
                         ? {

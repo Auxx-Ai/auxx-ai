@@ -606,9 +606,23 @@ export class ResourceRegistryService {
           field.type === FieldTypeEnum.SINGLE_SELECT ||
           field.type === FieldTypeEnum.MULTI_SELECT ||
           field.type === FieldTypeEnum.TAGS
-            ? (field.options as { options?: { value: string; label: string }[] })?.options?.map(
-                (o) => ({ dbValue: o.value, label: o.label })
-              )
+            ? (
+                field.options as {
+                  options?: {
+                    value: string
+                    label: string
+                    color?: string
+                    targetTimeInStatus?: { value: number; unit: 'days' | 'months' | 'years' }
+                    celebration?: boolean
+                  }[]
+                }
+              )?.options?.map((o) => ({
+                dbValue: o.value,
+                label: o.label,
+                color: o.color,
+                targetTimeInStatus: o.targetTimeInStatus,
+                celebration: o.celebration,
+              }))
             : undefined,
         relationship,
         // Unique custom fields can be used as identifiers for import matching

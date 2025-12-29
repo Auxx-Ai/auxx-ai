@@ -176,6 +176,9 @@ export interface TableView {
 // VIEW TYPE AND KANBAN CONFIGURATION
 // ============================================================================
 
+/** Column ID for items without a status value */
+export const NO_STATUS_COLUMN_ID = '__no_status__'
+
 /** View type - table or kanban */
 export type ViewType = 'table' | 'kanban'
 

@@ -2,7 +2,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
 import { Switch } from '@auxx/ui/components/switch'
 import {
   Select,
@@ -13,7 +19,6 @@ import {
 } from '@auxx/ui/components/select'
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@auxx/ui/components/input-group'
 import { NumberInput, NumberInputField, NumberInputArrows } from '@auxx/ui/components/input-number'
-import { Separator } from '@auxx/ui/components/separator'
 import { EyeOff, Trash2 } from 'lucide-react'
 import { OptionColorPicker } from '~/components/custom-fields/ui/option-color-picker'
 import type { SelectOptionColor } from '@auxx/lib/custom-fields/client'
@@ -36,8 +41,6 @@ interface KanbanColumnSettingsProps {
   celebration?: boolean
   /** Is visible in current view */
   isVisible?: boolean
-  /** Whether this is the "No Status" column (can't be deleted/hidden) */
-  isNoStatusColumn?: boolean
 
   /** Callbacks */
   onLabelChange?: (label: string) => void
@@ -52,7 +55,7 @@ interface KanbanColumnSettingsProps {
 }
 
 /**
- * Popover component for kanban column settings.
+ * Dropdown menu component for kanban column settings.
  * Allows editing label, color, time tracking, celebration, and visibility.
  */
 export function KanbanColumnSettings({
@@ -62,7 +65,6 @@ export function KanbanColumnSettings({
   targetTimeInStatus,
   celebration = false,
   isVisible = true,
-  isNoStatusColumn = false,
   onLabelChange,
   onColorChange,
   onTargetTimeChange,
@@ -159,55 +161,57 @@ export function KanbanColumnSettings({
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>{children}</PopoverTrigger>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
 
-      <PopoverContent className="w-72 p-0" align="start">
+      <DropdownMenuContent
+        className="min-w-[calc(var(--radix-dropdown-menu-trigger-width)+2px)] -mt-[calc(var(--radix-dropdown-menu-trigger-height)+1px)] -ml-px"
+        align="start"
+        sideOffset={0}>
         {/* Section 1: Label + Color */}
-        <div className="p-3 pb-2">
+        <div className="" onPointerDown={(e) => e.stopPropagation()}>
           <InputGroup>
-            <InputGroupAddon align="inline-start" className="pl-3">
+            <InputGroupAddon align="inline-start" className="pl-2">
               <OptionColorPicker
                 value={color as SelectOptionColor}
                 onChange={(newColor) => onColorChange?.(newColor)}
-                disabled={isNoStatusColumn}
               />
             </InputGroupAddon>
             <InputGroupInput
+              className="ps-1!"
               value={localLabel}
               onChange={(e) => setLocalLabel(e.target.value)}
               onBlur={handleLabelBlur}
               onKeyDown={handleLabelKeyDown}
               placeholder="Stage name"
-              disabled={isNoStatusColumn}
             />
           </InputGroup>
         </div>
 
-        <Separator />
+        <DropdownMenuSeparator />
 
         {/* Section 2: Track time in stage */}
-        <div className="">
-          <button
-            type="button"
-            className="p-3 w-full flex items-center justify-between disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={isNoStatusColumn}
-            onClick={() => !isNoStatusColumn && handleTrackTimeToggle(!trackTimeEnabled)}>
-            <span className="text-sm">Track time in stage</span>
-            <Switch
-              checked={trackTimeEnabled}
-              size="sm"
-              tabIndex={-1}
-              className="pointer-events-none"
-            />
-          </button>
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault()
+            handleTrackTimeToggle(!trackTimeEnabled)
+          }}>
+          <span className="flex-1">Track time in stage</span>
+          <Switch
+            checked={trackTimeEnabled}
+            size="sm"
+            tabIndex={-1}
+            className="pointer-events-none"
+          />
+        </DropdownMenuItem>
 
-          {trackTimeEnabled && (
-            <div className="px-3 pb-3 flex gap-2">
-              <NumberInput
-                value={targetTimeValue}
-                onValueChange={handleTargetTimeValueChange}
-                min={1}>
+        {trackTimeEnabled && (
+          <div className="px-2 pb-2" onPointerDown={(e) => e.stopPropagation()}>
+            <NumberInput
+              value={targetTimeValue}
+              onValueChange={handleTargetTimeValueChange}
+              min={1}>
+              <div>
                 <InputGroup className="h-8">
                   <NumberInputField className="text-left ps-2" />
                   <Select value={targetTimeUnit} onValueChange={handleTargetTimeUnitChange}>
@@ -222,55 +226,40 @@ export function KanbanColumnSettings({
                   </Select>
                   <NumberInputArrows />
                 </InputGroup>
-              </NumberInput>
-            </div>
-          )}
-        </div>
+              </div>
+            </NumberInput>
+          </div>
+        )}
 
-        <Separator />
+        <DropdownMenuSeparator />
 
         {/* Section 3: Celebration */}
-        <button
-          type="button"
-          className="p-3 w-full flex items-center justify-between disabled:opacity-50 disabled:cursor-not-allowed"
-          disabled={isNoStatusColumn}
-          onClick={() => !isNoStatusColumn && handleCelebrationToggle(!localCelebration)}>
-          <span className="text-sm">Celebration</span>
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault()
+            handleCelebrationToggle(!localCelebration)
+          }}>
+          <span className="flex-1">Celebration</span>
           <Switch
             checked={localCelebration}
             size="sm"
             tabIndex={-1}
             className="pointer-events-none"
           />
-        </button>
+        </DropdownMenuItem>
 
-        <Separator />
+        <DropdownMenuSeparator />
 
         {/* Section 4: Actions */}
-        <div className="p-1">
-          {!isNoStatusColumn && (
-            <>
-              <button
-                className="w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-muted"
-                onClick={handleHideStage}>
-                <EyeOff className="size-4" />
-                Hide Stage
-              </button>
-              <button
-                className="w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-destructive/10 text-destructive"
-                onClick={handleDeleteStage}>
-                <Trash2 className="size-4" />
-                Delete Stage
-              </button>
-            </>
-          )}
-          {isNoStatusColumn && (
-            <p className="px-2 py-1.5 text-xs text-muted-foreground">
-              The "No Stage" column cannot be modified.
-            </p>
-          )}
-        </div>
-      </PopoverContent>
-    </Popover>
+        <DropdownMenuItem onSelect={handleHideStage}>
+          <EyeOff className="size-4" />
+          Hide Stage
+        </DropdownMenuItem>
+        <DropdownMenuItem variant="destructive" onSelect={handleDeleteStage}>
+          <Trash2 className="size-4" />
+          Delete Stage
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }

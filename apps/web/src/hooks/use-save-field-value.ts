@@ -12,7 +12,8 @@ import type { ModelType } from '@auxx/lib/custom-fields/types'
 
 interface UseSaveFieldValueOptions {
   resourceType: ResourceType
-  resourceId: string
+  /** Default resourceId - can be overridden per-call */
+  resourceId?: string
   entityDefId?: string
   modelType: ModelType
   /** Optional callback after successful save */
@@ -25,7 +26,7 @@ interface UseSaveFieldValueOptions {
  * Automatically rolls back on error.
  */
 export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
-  const { resourceType, resourceId, entityDefId, modelType, onSuccess } = options
+  const { resourceType, resourceId: defaultResourceId, entityDefId, modelType, onSuccess } = options
 
   // Get store actions
   const setValueOptimistic = useCustomFieldValueStore((s) => s.setValueOptimistic)
@@ -38,9 +39,12 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
   /**
    * Save a field value with optimistic update.
    * Returns immediately after updating store - mutation runs in background.
+   * @param resourceId - The resource ID (entity/contact/ticket ID)
+   * @param fieldId - The custom field ID
+   * @param value - The value to save
    */
   const saveValue = useCallback(
-    (fieldId: string, value: unknown): void => {
+    (resourceId: string, fieldId: string, value: unknown): void => {
       const key = buildValueKey(resourceType, resourceId, fieldId, entityDefId)
 
       // 1. Optimistic update to store (table sees it immediately)
@@ -71,7 +75,6 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
     },
     [
       resourceType,
-      resourceId,
       entityDefId,
       modelType,
       mutation,
@@ -83,11 +86,31 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
   )
 
   /**
+   * Save using the default resourceId from options.
+   * Convenience method for single-resource contexts (e.g., contact drawer).
+   * @param fieldId - The custom field ID
+   * @param value - The value to save
+   */
+  const saveFieldValue = useCallback(
+    (fieldId: string, value: unknown): void => {
+      if (!defaultResourceId) {
+        console.error('saveFieldValue called without resourceId - use saveValue instead')
+        return
+      }
+      saveValue(defaultResourceId, fieldId, value)
+    },
+    [defaultResourceId, saveValue]
+  )
+
+  /**
    * Async version that waits for mutation to complete.
    * Use when you need to know the result (e.g., getting the valueId).
+   * @param resourceId - The resource ID (entity/contact/ticket ID)
+   * @param fieldId - The custom field ID
+   * @param value - The value to save
    */
   const saveValueAsync = useCallback(
-    async (fieldId: string, value: unknown): Promise<{ id?: string } | undefined> => {
+    async (resourceId: string, fieldId: string, value: unknown): Promise<{ id?: string } | undefined> => {
       const key = buildValueKey(resourceType, resourceId, fieldId, entityDefId)
 
       setValueOptimistic(key, value)
@@ -115,7 +138,6 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
     },
     [
       resourceType,
-      resourceId,
       entityDefId,
       modelType,
       mutation,
@@ -126,9 +148,32 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
     ]
   )
 
+  /**
+   * Async version using the default resourceId from options.
+   * Convenience method for single-resource contexts.
+   * @param fieldId - The custom field ID
+   * @param value - The value to save
+   */
+  const saveFieldValueAsync = useCallback(
+    async (fieldId: string, value: unknown): Promise<{ id?: string } | undefined> => {
+      if (!defaultResourceId) {
+        console.error('saveFieldValueAsync called without resourceId - use saveValueAsync instead')
+        return undefined
+      }
+      return saveValueAsync(defaultResourceId, fieldId, value)
+    },
+    [defaultResourceId, saveValueAsync]
+  )
+
   return {
+    /** Save with explicit resourceId (for multi-resource contexts like kanban) */
     saveValue,
+    /** Save with explicit resourceId, async (for multi-resource contexts) */
     saveValueAsync,
+    /** Save using default resourceId (for single-resource contexts like drawers) */
+    saveFieldValue,
+    /** Save using default resourceId, async (for single-resource contexts) */
+    saveFieldValueAsync,
     isPending: mutation.isPending,
   }
 }
