@@ -10,6 +10,8 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Button } from '@auxx/ui/components/button'
 import { ChevronRight, GripVertical, Plus } from 'lucide-react'
 import { getColorSwatch, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
+import { KanbanColumnSettings } from './kanban-column-settings'
+import type { TargetTimeInStatus } from '../dynamic-table/types'
 
 /** Props for KanbanColumn component */
 interface KanbanColumnProps {
@@ -24,11 +26,24 @@ interface KanbanColumnProps {
   onAddCalculation?: () => void
   isSortable?: boolean
   children: React.ReactNode
+
+  /** Settings props */
+  targetTimeInStatus?: TargetTimeInStatus
+  celebration?: boolean
+  isVisible?: boolean
+
+  /** Settings callbacks */
+  onLabelChange?: (label: string) => void
+  onColorChange?: (color: string) => void
+  onTargetTimeChange?: (time: TargetTimeInStatus | null) => void
+  onCelebrationChange?: (enabled: boolean) => void
+  onVisibilityChange?: (visible: boolean) => void
+  onDelete?: () => void
 }
 
 /**
  * Kanban column component.
- * Features: color dot, sortable, collapsible, footer, "New X" button.
+ * Features: color dot, sortable, collapsible, footer, "New X" button, settings popover.
  */
 export function KanbanColumn({
   id,
@@ -42,7 +57,19 @@ export function KanbanColumn({
   onAddCalculation,
   isSortable = false,
   children,
+  // Settings props
+  targetTimeInStatus,
+  celebration,
+  isVisible,
+  // Settings callbacks
+  onLabelChange,
+  onColorChange,
+  onTargetTimeChange,
+  onCelebrationChange,
+  onVisibilityChange,
+  onDelete,
 }: KanbanColumnProps) {
+  const isNoStatusColumn = id === '__no_status__'
   const [isCollapsed, setIsCollapsed] = useState(initialCollapsed)
 
   // Droppable for cards
@@ -63,15 +90,6 @@ export function KanbanColumn({
     id,
     data: { type: 'column' },
     disabled: !isSortable,
-  })
-
-  console.log('[KanbanColumn]', {
-    id,
-    isSortable,
-    disabled: !isSortable,
-    hasListeners: !!listeners,
-    listenersKeys: listeners ? Object.keys(listeners) : [],
-    isDragging,
   })
 
   const style = isSortable
@@ -120,47 +138,60 @@ export function KanbanColumn({
         isActive && 'border-primary-300 bg-primary/5',
         isDragging && 'opacity-50'
       )}>
-      {/* Column header */}
-      <div
-        ref={setDroppableRef}
-        className="flex items-center gap-2 px-3 py-2.5 border-b group/header">
-        {/* Drag handle for sortable columns */}
-        {isSortable && (
-          <button
-            {...attributes}
-            {...listeners}
-            className="p-0.5 -ml-1 opacity-0 group-hover/header:opacity-100 cursor-grab active:cursor-grabbing touch-none">
-            <GripVertical className="size-3.5 text-muted-foreground" />
-          </button>
-        )}
+      {/* Column header with settings popover */}
+      <KanbanColumnSettings
+        columnId={id}
+        label={title}
+        color={color}
+        targetTimeInStatus={targetTimeInStatus}
+        celebration={celebration}
+        isVisible={isVisible}
+        isNoStatusColumn={isNoStatusColumn}
+        onLabelChange={onLabelChange}
+        onColorChange={onColorChange}
+        onTargetTimeChange={onTargetTimeChange}
+        onCelebrationChange={onCelebrationChange}
+        onVisibilityChange={onVisibilityChange}
+        onDelete={onDelete}>
+        <div
+          ref={setDroppableRef}
+          className="flex items-center gap-2 px-3 py-2.5 border-b group/header cursor-pointer hover:bg-muted/50 transition-colors">
+          {/* Drag handle for sortable columns - stops propagation */}
+          {isSortable && (
+            <button
+              {...attributes}
+              {...listeners}
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              className="p-0.5 -ml-1 opacity-0 group-hover/header:opacity-100 cursor-grab active:cursor-grabbing touch-none">
+              <GripVertical className="size-3.5 text-muted-foreground" />
+            </button>
+          )}
 
-        {/* Color dot */}
-        <div className={cn('size-2.5 rounded-full shrink-0', colorDot)} />
+          {/* Color dot */}
+          <div className={cn('size-2.5 rounded-full shrink-0', colorDot)} />
 
-        {/* Title */}
-        <span
-          className="text-sm font-medium truncate flex-1 cursor-pointer"
-          onClick={() => setIsCollapsed(true)}>
-          {title}
-        </span>
+          {/* Title */}
+          <span className="text-sm font-medium truncate flex-1">{title}</span>
 
-        {/* Count badge */}
-        <span className="text-xs text-muted-foreground tabular-nums">{count}</span>
+          {/* Count badge */}
+          <span className="text-xs text-muted-foreground tabular-nums">{count}</span>
 
-        {/* Add button (on hover) */}
-        {onAddCard && (
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            className="size-5 opacity-0 group-hover/header:opacity-100"
-            onClick={(e) => {
-              e.stopPropagation()
-              onAddCard()
-            }}>
-            <Plus className="size-3" />
-          </Button>
-        )}
-      </div>
+          {/* Add button (on hover) - stops propagation */}
+          {onAddCard && (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="size-5 opacity-0 group-hover/header:opacity-100"
+              onClick={(e) => {
+                e.stopPropagation()
+                onAddCard()
+              }}>
+              <Plus className="size-3" />
+            </Button>
+          )}
+        </div>
+      </KanbanColumnSettings>
 
       {/* Column content - scrollable */}
       <ScrollArea className="flex-1 min-h-0">

@@ -11,6 +11,11 @@ import { ModelTypeValues } from '@auxx/lib/custom-fields/types'
 /** Schema for model type validation */
 const modelTypeSchema = z.enum(ModelTypeValues)
 
+/** Schema for kanban column settings (per-column view settings) */
+const kanbanColumnSettingsSchema = z.object({
+  isVisible: z.boolean().optional(),
+})
+
 /**
  * Zod schema for kanban configuration
  */
@@ -20,6 +25,7 @@ const kanbanConfigSchema = z.object({
   collapsedColumns: z.array(z.string()).optional(),
   cardFields: z.array(z.string()).optional(),
   primaryFieldId: z.string().optional(),
+  columnSettings: z.record(z.string(), kanbanColumnSettingsSchema).optional(),
 })
 
 /**

@@ -25,13 +25,18 @@ import { Button } from '@auxx/ui/components/button'
 import { Plus } from 'lucide-react'
 import { KanbanColumn } from './kanban-column'
 import { KanbanCard } from './kanban-card'
-import type { KanbanViewConfig } from '../dynamic-table/types'
+import { showCelebrationConfetti } from '~/components/subscriptions/show-confetti'
+import type { KanbanViewConfig, TargetTimeInStatus } from '../dynamic-table/types'
 
 /** Option from SINGLE_SELECT field (raw from DB) */
 interface RawSelectOption {
   value: string
   label: string
   color?: string
+  /** Target time for items to remain in this status */
+  targetTimeInStatus?: TargetTimeInStatus
+  /** Trigger celebration animation when cards move to this column */
+  celebration?: boolean
 }
 
 /** Normalized option for kanban columns */
@@ -39,6 +44,10 @@ interface SelectOption {
   id: string
   label: string
   color?: string
+  /** Target time for items to remain in this status */
+  targetTimeInStatus?: TargetTimeInStatus
+  /** Trigger celebration animation when cards move to this column */
+  celebration?: boolean
 }
 
 /** Generic row data with customFieldValues */
@@ -95,11 +104,19 @@ interface KanbanViewProps<TData extends KanbanRow> {
   isLoading?: boolean
   /** Get value for a field */
   getValue: (rowId: string, fieldId: string) => unknown
+
+  /** Column settings callbacks */
+  onColumnLabelChange?: (columnId: string, label: string) => void
+  onColumnColorChange?: (columnId: string, color: string) => void
+  onColumnTargetTimeChange?: (columnId: string, time: TargetTimeInStatus | null) => void
+  onColumnCelebrationChange?: (columnId: string, enabled: boolean) => void
+  onColumnVisibilityChange?: (columnId: string, visible: boolean) => void
+  onColumnDelete?: (columnId: string) => void
 }
 
 /**
  * Kanban board view component.
- * Features: sortable columns, color dots, quick actions, last activity.
+ * Features: sortable columns, color dots, quick actions, last activity, celebration.
  */
 export function KanbanView<TData extends KanbanRow>({
   data,
@@ -116,6 +133,13 @@ export function KanbanView<TData extends KanbanRow>({
   onAddColumn,
   isLoading,
   getValue,
+  // Column settings callbacks
+  onColumnLabelChange,
+  onColumnColorChange,
+  onColumnTargetTimeChange,
+  onColumnCelebrationChange,
+  onColumnVisibilityChange,
+  onColumnDelete,
 }: KanbanViewProps<TData>) {
   const [activeItem, setActiveItem] = useState<{
     type: DragItemType
@@ -126,15 +150,16 @@ export function KanbanView<TData extends KanbanRow>({
   const containerRef = useRef<HTMLDivElement>(null)
 
   // Get options from the groupBy field - normalize value -> id
-  const columns: SelectOption[] = useMemo(() => {
+  const allColumns: SelectOption[] = useMemo(() => {
     const rawOptions: RawSelectOption[] = groupByField.options?.options ?? []
     // Normalize: map 'value' to 'id' for consistent usage
     const normalizedOptions: SelectOption[] = rawOptions.map((o) => ({
       id: o.value,
       label: o.label,
       color: o.color,
+      targetTimeInStatus: o.targetTimeInStatus,
+      celebration: o.celebration,
     }))
-    console.log('[KanbanView] normalized options:', normalizedOptions)
     // Use custom column order if defined, otherwise use field option order
     if (config.columnOrder?.length) {
       return config.columnOrder
@@ -143,6 +168,14 @@ export function KanbanView<TData extends KanbanRow>({
     }
     return normalizedOptions
   }, [groupByField.options, config.columnOrder])
+
+  // Filter columns by visibility settings
+  const columns = useMemo(() => {
+    return allColumns.filter((col) => {
+      const settings = config.columnSettings?.[col.id]
+      return settings?.isVisible !== false
+    })
+  }, [allColumns, config.columnSettings])
 
   // Column IDs for sortable context
   const columnIds = useMemo(() => ['__no_status__', ...columns.map((c) => c.id)], [columns])
@@ -186,21 +219,10 @@ export function KanbanView<TData extends KanbanRow>({
       const { active } = event
       const type = active.data.current?.type as DragItemType
 
-      console.log('[DragStart]', {
-        activeId: active.id,
-        activeType: type,
-        activeDataCurrent: active.data.current,
-        columnsAvailable: columns.map((c) => c.id),
-        columnIds,
-      })
-
       if (type === 'column') {
         const column = columns.find((c) => c.id === active.id)
-        console.log('[DragStart] Column match:', { column, searchingFor: active.id })
         if (column) {
           setActiveItem({ type: 'column', id: String(active.id), data: column })
-        } else {
-          console.warn('[DragStart] No column found for id:', active.id)
         }
       } else {
         const card = data.find((d) => d.id === active.id)
@@ -209,7 +231,7 @@ export function KanbanView<TData extends KanbanRow>({
         }
       }
     },
-    [data, columns, columnIds]
+    [data, columns]
   )
 
   /** Handle drag over */
@@ -224,20 +246,10 @@ export function KanbanView<TData extends KanbanRow>({
       const { active, over } = event
       const activeType = active.data.current?.type as DragItemType
 
-      console.log('[DragEnd]', {
-        activeId: active.id,
-        activeType,
-        activeDataCurrent: active.data.current,
-        overId: over?.id,
-        overDataCurrent: over?.data.current,
-        columnIds,
-      })
-
       setActiveItem(null)
       setOverId(null)
 
       if (!over) {
-        console.log('[DragEnd] No over target, returning')
         return
       }
 
@@ -248,22 +260,11 @@ export function KanbanView<TData extends KanbanRow>({
       if (activeType === 'column' && onColumnReorder) {
         const oldIndex = columnIds.indexOf(activeId)
         const newIndex = columnIds.indexOf(targetOverId)
-        console.log('[DragEnd] Column reorder attempt:', {
-          activeId,
-          targetOverId,
-          oldIndex,
-          newIndex,
-          columnIds,
-          onColumnReorderExists: !!onColumnReorder,
-        })
         if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
           const newOrder = arrayMove(columnIds, oldIndex, newIndex).filter(
             (id) => id !== '__no_status__'
           )
-          console.log('[DragEnd] Calling onColumnReorder with:', newOrder)
           await onColumnReorder(newOrder)
-        } else {
-          console.log('[DragEnd] Column reorder skipped - indices invalid or same position')
         }
         return
       }
@@ -271,6 +272,12 @@ export function KanbanView<TData extends KanbanRow>({
       // Card operations
       const overColumn = [...columns, { id: '__no_status__' }].find((c) => c.id === targetOverId)
       const overCard = data.find((d) => d.id === targetOverId)
+
+      // Helper to check if target column has celebration enabled
+      const shouldCelebrate = (targetColumnId: string): boolean => {
+        const targetColumn = columns.find((c) => c.id === targetColumnId)
+        return targetColumn?.celebration === true
+      }
 
       if (overColumn) {
         // Dropped directly on a column
@@ -281,6 +288,10 @@ export function KanbanView<TData extends KanbanRow>({
           )
 
           if (currentColumnId !== overColumn.id) {
+            // Check for celebration before moving
+            if (shouldCelebrate(overColumn.id)) {
+              showCelebrationConfetti()
+            }
             await onCardMove(activeId, overColumn.id === '__no_status__' ? '' : overColumn.id)
           }
         }
@@ -298,6 +309,10 @@ export function KanbanView<TData extends KanbanRow>({
 
           if (activeCardColumnId !== overCardColumnId) {
             if (onCardMove) {
+              // Check for celebration before moving
+              if (shouldCelebrate(overCardColumnId)) {
+                showCelebrationConfetti()
+              }
               await onCardMove(
                 activeId,
                 overCardColumnId === '__no_status__' ? '' : overCardColumnId
@@ -430,7 +445,34 @@ export function KanbanView<TData extends KanbanRow>({
                   isOver={overId === column.id}
                   entityLabel={entityLabel}
                   onAddCard={onAddCard ? () => onAddCard(column.id) : undefined}
-                  isSortable>
+                  isSortable
+                  // Settings props
+                  targetTimeInStatus={column.targetTimeInStatus}
+                  celebration={column.celebration}
+                  isVisible={config.columnSettings?.[column.id]?.isVisible !== false}
+                  // Settings callbacks
+                  onLabelChange={
+                    onColumnLabelChange ? (label) => onColumnLabelChange(column.id, label) : undefined
+                  }
+                  onColorChange={
+                    onColumnColorChange ? (color) => onColumnColorChange(column.id, color) : undefined
+                  }
+                  onTargetTimeChange={
+                    onColumnTargetTimeChange
+                      ? (time) => onColumnTargetTimeChange(column.id, time)
+                      : undefined
+                  }
+                  onCelebrationChange={
+                    onColumnCelebrationChange
+                      ? (enabled) => onColumnCelebrationChange(column.id, enabled)
+                      : undefined
+                  }
+                  onVisibilityChange={
+                    onColumnVisibilityChange
+                      ? (visible) => onColumnVisibilityChange(column.id, visible)
+                      : undefined
+                  }
+                  onDelete={onColumnDelete ? () => onColumnDelete(column.id) : undefined}>
                   <SortableContext
                     items={(columnData[column.id] ?? []).map((c) => c.id)}
                     strategy={verticalListSortingStrategy}>

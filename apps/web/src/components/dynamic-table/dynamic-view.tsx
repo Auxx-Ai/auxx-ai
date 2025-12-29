@@ -1,11 +1,19 @@
 // apps/web/src/components/dynamic-table/dynamic-view.tsx
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState, useCallback, useEffect } from 'react'
 import { DynamicTable } from './index'
 import { KanbanView } from '../kanban'
 import { useDynamicTable } from './hooks/use-dynamic-table'
-import type { DynamicTableProps, ViewType, KanbanViewConfig } from './types'
+import { api } from '~/trpc/react'
+import { toastError } from '@auxx/ui/components/toast'
+import type {
+  DynamicTableProps,
+  ViewType,
+  KanbanViewConfig,
+  ViewConfig,
+  TargetTimeInStatus,
+} from './types'
 // ModelType is inherited from DynamicTableProps via types.ts
 
 /** Select option from SINGLE_SELECT field */
@@ -82,6 +90,192 @@ export function DynamicView<TData extends Record<string, any>>({
   const viewType: ViewType = (currentView?.config as any)?.viewType ?? 'table'
   const kanbanConfig: KanbanViewConfig | undefined = (currentView?.config as any)?.kanban
 
+  // Local state for optimistic column reordering
+  const [localColumnOrder, setLocalColumnOrder] = useState<string[] | null>(null)
+
+  // Reset local state when view changes
+  useEffect(() => {
+    setLocalColumnOrder(null)
+  }, [currentView?.id])
+
+  // Mutation for updating view config
+  const updateView = api.tableView.update.useMutation()
+
+  // Effective column order: local state takes precedence for instant feedback
+  const effectiveColumnOrder = localColumnOrder ?? kanbanConfig?.columnOrder ?? []
+
+  /** Handle kanban column reorder with optimistic updates */
+  const handleKanbanColumnReorder = useCallback(
+    async (newColumnOrder: string[]) => {
+      // 1. Optimistic update - instant feedback
+      setLocalColumnOrder(newColumnOrder)
+
+      // 2. Persist in background
+      if (currentView?.id) {
+        const updatedConfig: ViewConfig = {
+          ...(currentView.config as ViewConfig),
+          kanban: {
+            ...(currentView.config as ViewConfig).kanban!,
+            columnOrder: newColumnOrder,
+          },
+        }
+
+        updateView.mutate(
+          { id: currentView.id, config: updatedConfig },
+          {
+            onError: (error) => {
+              // Rollback on error
+              setLocalColumnOrder(null)
+              toastError({ title: 'Failed to save column order', description: error.message })
+            },
+            onSuccess: () => {
+              // Clear local state, view is now source of truth
+              setLocalColumnOrder(null)
+            },
+          }
+        )
+      }
+    },
+    [currentView, updateView]
+  )
+
+  // Mutations for column settings (field-level)
+  const updateSelectOption = api.customField.updateSelectOption.useMutation()
+  const deleteSelectOption = api.customField.deleteSelectOption.useMutation()
+
+  /** Handle column label change */
+  const handleColumnLabelChange = useCallback(
+    (columnId: string, label: string) => {
+      if (!kanbanConfig?.groupByFieldId) return
+      updateSelectOption.mutate(
+        {
+          fieldId: kanbanConfig.groupByFieldId,
+          optionValue: columnId,
+          updates: { label },
+          modelType: tableProps.modelType ?? 'contact',
+        },
+        {
+          onError: (error) => {
+            toastError({ title: 'Failed to update stage name', description: error.message })
+          },
+        }
+      )
+    },
+    [kanbanConfig?.groupByFieldId, updateSelectOption, tableProps.modelType]
+  )
+
+  /** Handle column color change */
+  const handleColumnColorChange = useCallback(
+    (columnId: string, color: string) => {
+      if (!kanbanConfig?.groupByFieldId) return
+      updateSelectOption.mutate(
+        {
+          fieldId: kanbanConfig.groupByFieldId,
+          optionValue: columnId,
+          updates: { color: color as any },
+          modelType: tableProps.modelType ?? 'contact',
+        },
+        {
+          onError: (error) => {
+            toastError({ title: 'Failed to update stage color', description: error.message })
+          },
+        }
+      )
+    },
+    [kanbanConfig?.groupByFieldId, updateSelectOption, tableProps.modelType]
+  )
+
+  /** Handle column target time change */
+  const handleColumnTargetTimeChange = useCallback(
+    (columnId: string, time: TargetTimeInStatus | null) => {
+      if (!kanbanConfig?.groupByFieldId) return
+      updateSelectOption.mutate(
+        {
+          fieldId: kanbanConfig.groupByFieldId,
+          optionValue: columnId,
+          updates: { targetTimeInStatus: time },
+          modelType: tableProps.modelType ?? 'contact',
+        },
+        {
+          onError: (error) => {
+            toastError({ title: 'Failed to update time tracking', description: error.message })
+          },
+        }
+      )
+    },
+    [kanbanConfig?.groupByFieldId, updateSelectOption, tableProps.modelType]
+  )
+
+  /** Handle column celebration change */
+  const handleColumnCelebrationChange = useCallback(
+    (columnId: string, enabled: boolean) => {
+      if (!kanbanConfig?.groupByFieldId) return
+      updateSelectOption.mutate(
+        {
+          fieldId: kanbanConfig.groupByFieldId,
+          optionValue: columnId,
+          updates: { celebration: enabled },
+          modelType: tableProps.modelType ?? 'contact',
+        },
+        {
+          onError: (error) => {
+            toastError({ title: 'Failed to update celebration', description: error.message })
+          },
+        }
+      )
+    },
+    [kanbanConfig?.groupByFieldId, updateSelectOption, tableProps.modelType]
+  )
+
+  /** Handle column visibility change (view-level setting) */
+  const handleColumnVisibilityChange = useCallback(
+    (columnId: string, visible: boolean) => {
+      if (!currentView?.id || !kanbanConfig) return
+
+      const currentSettings = kanbanConfig.columnSettings ?? {}
+      const updatedConfig: ViewConfig = {
+        ...(currentView.config as ViewConfig),
+        kanban: {
+          ...kanbanConfig,
+          columnSettings: {
+            ...currentSettings,
+            [columnId]: { ...currentSettings[columnId], isVisible: visible },
+          },
+        },
+      }
+
+      updateView.mutate(
+        { id: currentView.id, config: updatedConfig },
+        {
+          onError: (error) => {
+            toastError({ title: 'Failed to update column visibility', description: error.message })
+          },
+        }
+      )
+    },
+    [currentView, kanbanConfig, updateView]
+  )
+
+  /** Handle column delete */
+  const handleColumnDelete = useCallback(
+    (columnId: string) => {
+      if (!kanbanConfig?.groupByFieldId) return
+      deleteSelectOption.mutate(
+        {
+          fieldId: kanbanConfig.groupByFieldId,
+          optionValue: columnId,
+          modelType: tableProps.modelType ?? 'contact',
+        },
+        {
+          onError: (error) => {
+            toastError({ title: 'Failed to delete stage', description: error.message })
+          },
+        }
+      )
+    },
+    [kanbanConfig?.groupByFieldId, deleteSelectOption, tableProps.modelType]
+  )
+
   // Get the groupBy field for kanban
   const groupByField = useMemo(() => {
     if (!kanbanConfig?.groupByFieldId || !selectFields) return null
@@ -91,21 +285,38 @@ export function DynamicView<TData extends Record<string, any>>({
   // Check if current view is kanban with valid config
   const isKanbanView = viewType === 'kanban' && !!groupByField && !!getValue
 
+  // Build effective kanban config with optimistic column order
+  const effectiveKanbanConfig = useMemo(() => {
+    if (!kanbanConfig) return undefined
+    return {
+      ...kanbanConfig,
+      columnOrder: effectiveColumnOrder,
+    }
+  }, [kanbanConfig, effectiveColumnOrder])
+
   // Render Kanban view
-  if (isKanbanView && kanbanConfig && groupByField) {
+  if (isKanbanView && effectiveKanbanConfig && groupByField) {
     return (
       <KanbanView
         data={tableProps.data}
-        config={kanbanConfig}
+        config={effectiveKanbanConfig}
         groupByField={groupByField}
         customFields={customFields ?? []}
-        primaryFieldId={kanbanConfig.primaryFieldId ?? primaryFieldId}
+        primaryFieldId={effectiveKanbanConfig.primaryFieldId ?? primaryFieldId}
         entityLabel={entityLabel}
         onCardMove={onKanbanCardMove}
         onCardClick={onCardClick}
         onAddCard={onAddCard}
+        onColumnReorder={handleKanbanColumnReorder}
         isLoading={tableProps.isLoading}
         getValue={getValue!}
+        // Column settings callbacks
+        onColumnLabelChange={handleColumnLabelChange}
+        onColumnColorChange={handleColumnColorChange}
+        onColumnTargetTimeChange={handleColumnTargetTimeChange}
+        onColumnCelebrationChange={handleColumnCelebrationChange}
+        onColumnVisibilityChange={handleColumnVisibilityChange}
+        onColumnDelete={handleColumnDelete}
       />
     )
   }

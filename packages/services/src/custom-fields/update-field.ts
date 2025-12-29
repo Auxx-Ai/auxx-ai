@@ -21,7 +21,17 @@ export interface UpdateCustomFieldInput {
   description?: string
   required?: boolean
   defaultValue?: string
-  options?: Array<{ label: string; value: string }> | { allowMultiple?: boolean }
+  options?:
+    | Array<{
+        label: string
+        value: string
+        color?: string
+        /** Target time for items to remain in this status (kanban) */
+        targetTimeInStatus?: { value: number; unit: 'days' | 'months' | 'years' }
+        /** Trigger celebration animation when cards move to this column (kanban) */
+        celebration?: boolean
+      }>
+    | { allowMultiple?: boolean }
   addressComponents?: string[]
   icon?: string
   isCustom?: boolean

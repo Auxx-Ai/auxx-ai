@@ -179,6 +179,18 @@ export interface TableView {
 /** View type - table or kanban */
 export type ViewType = 'table' | 'kanban'
 
+/** Per-column view settings (stored in view config) */
+export interface KanbanColumnSettings {
+  /** Hide this column in the current view */
+  isVisible?: boolean // defaults to true if undefined
+}
+
+/** Target time configuration for kanban columns (stored in field options) */
+export interface TargetTimeInStatus {
+  value: number
+  unit: 'days' | 'months' | 'years'
+}
+
 /** Kanban-specific configuration */
 export interface KanbanViewConfig {
   /** ID of the SINGLE_SELECT custom field used for columns */
@@ -191,6 +203,8 @@ export interface KanbanViewConfig {
   cardFields?: string[]
   /** Primary display field ID (for card title) */
   primaryFieldId?: string
+  /** Column-specific view settings keyed by column value */
+  columnSettings?: Record<string, KanbanColumnSettings>
 }
 
 /**

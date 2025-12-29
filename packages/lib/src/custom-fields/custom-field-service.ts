@@ -124,7 +124,15 @@ export class CustomFieldService {
     required?: boolean
     defaultValue?: string
     options?:
-      | Array<{ label: string; value: string; color?: SelectOptionColor }>
+      | Array<{
+          label: string
+          value: string
+          color?: SelectOptionColor
+          /** Target time for items to remain in this status (kanban) */
+          targetTimeInStatus?: { value: number; unit: 'days' | 'months' | 'years' }
+          /** Trigger celebration animation when cards move to this column (kanban) */
+          celebration?: boolean
+        }>
       | { allowMultiple?: boolean }
       | {
           currency: {
