@@ -4,15 +4,7 @@
 import { useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { api } from '~/trpc/react'
-import {
-  Archive,
-  Calculator,
-  PackagePlus,
-  Pencil,
-  Plus,
-  Settings,
-  UserPlus,
-} from 'lucide-react'
+import { Archive, Calculator, PackagePlus, Pencil, Plus, Settings, UserPlus } from 'lucide-react'
 import {
   SidebarGroup,
   SidebarMenu,
@@ -172,7 +164,9 @@ export function EntitySidebarNav() {
                 id="contacts"
                 name="Contacts"
                 href="/app/contacts"
-                icon={<EntityIcon iconId="users" color="gray" size="sm" inverse className="-ms-0.5" />}
+                icon={
+                  <EntityIcon iconId="users" color="gray" size="sm" inverse className="-ms-0.5" />
+                }
                 isActive={isContactsActive()}
                 editItems={
                   <DropdownMenuItem onClick={() => router.push('/app/contacts?create=true')}>
@@ -188,7 +182,9 @@ export function EntitySidebarNav() {
                 id="tickets"
                 name="Support Tickets"
                 href="/app/tickets"
-                icon={<EntityIcon iconId="tags" color="gray" size="sm" inverse className="-ms-0.5" />}
+                icon={
+                  <EntityIcon iconId="tags" color="gray" size="sm" inverse className="-ms-0.5" />
+                }
                 isActive={isTicketsActive()}
                 editItems={
                   <DropdownMenuItem onClick={() => router.push('/app/tickets?create=true')}>
@@ -204,7 +200,15 @@ export function EntitySidebarNav() {
                 id="parts"
                 name="Parts"
                 href="/app/parts"
-                icon={<EntityIcon iconId="boxes" color="gray" size="sm" inverse className="-ms-0.5" />}
+                icon={
+                  <EntityIcon
+                    iconId="boxes"
+                    color="gray"
+                    size="sm"
+                    inverse
+                    className="-ms-0.5 inset-shadow-black/5"
+                  />
+                }
                 isActive={isPartsActive()}
                 editItems={
                   <>

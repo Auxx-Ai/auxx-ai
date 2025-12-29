@@ -10,14 +10,7 @@ import {
 } from '@auxx/ui/components/select'
 import { FieldGroup, Field, FieldLabel } from '@auxx/ui/components/field'
 import { CurrencyPicker } from '~/components/pickers/currency-picker'
-
-/** Currency options for the CURRENCY field type */
-export interface CurrencyOptions {
-  currencyCode: string
-  decimalPlaces: 'two-places' | 'no-decimal'
-  displayType: 'symbol' | 'name' | 'code'
-  groups: 'default' | 'no-groups'
-}
+import type { CurrencyOptions } from '@auxx/lib/custom-fields/types'
 
 /** Props for CurrencyOptionsEditor component */
 interface CurrencyOptionsEditorProps {

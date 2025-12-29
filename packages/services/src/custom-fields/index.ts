@@ -41,6 +41,34 @@ export { ModelTypes, type ModelType, UNIQUEABLE_FIELD_TYPES, canFieldBeUnique } 
 // Relationship types
 export type { RelationshipConfig, RelationshipOptions } from './types'
 
+// Consolidated field option types (single source of truth)
+export {
+  // Select option colors
+  SELECT_OPTION_COLORS,
+  DEFAULT_SELECT_OPTION_COLOR,
+  type SelectOptionColor,
+  // Target time in status
+  targetTimeInStatusSchema,
+  type TargetTimeInStatus,
+  // Select option
+  selectOptionSchema,
+  type SelectOption,
+  // Currency options
+  currencyOptionsSchema,
+  decimalPlacesValues,
+  currencyDisplayTypeValues,
+  currencyGroupsValues,
+  type CurrencyOptions,
+  type DecimalPlaces,
+  type CurrencyDisplayType,
+  type CurrencyGroups,
+  // File options
+  fileOptionsSchema,
+  type FileOptions,
+  // Field options union
+  fieldOptionsUnionSchema,
+} from './types'
+
 // Errors
 export type {
   CustomFieldError,

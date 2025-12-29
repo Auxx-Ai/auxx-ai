@@ -13,18 +13,8 @@ import type {
   ViewType,
   KanbanViewConfig,
   ViewConfig,
-  TargetTimeInStatus,
 } from './types'
-import type { ModelType } from '@auxx/lib/custom-fields/types'
-
-/** Select option from SINGLE_SELECT field */
-interface SelectOption {
-  value: string
-  label: string
-  color?: string
-  targetTimeInStatus?: { value: number; unit: 'days' | 'months' | 'years' }
-  celebration?: boolean
-}
+import type { ModelType, SelectOption, TargetTimeInStatus } from '@auxx/lib/custom-fields/types'
 
 /** Custom field for kanban display */
 interface SelectField {

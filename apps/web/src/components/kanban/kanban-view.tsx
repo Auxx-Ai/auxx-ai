@@ -26,25 +26,11 @@ import { Plus } from 'lucide-react'
 import { KanbanColumn } from './kanban-column'
 import { KanbanCard } from './kanban-card'
 import { showCelebrationConfetti } from '~/components/subscriptions/show-confetti'
-import {
-  NO_STATUS_COLUMN_ID,
-  type KanbanViewConfig,
-  type TargetTimeInStatus,
-} from '../dynamic-table/types'
+import { NO_STATUS_COLUMN_ID, type KanbanViewConfig } from '../dynamic-table/types'
+import type { SelectOption as RawSelectOption, TargetTimeInStatus } from '@auxx/lib/custom-fields/types'
 
-/** Option from SINGLE_SELECT field (raw from DB) */
-interface RawSelectOption {
-  value: string
-  label: string
-  color?: string
-  /** Target time for items to remain in this status */
-  targetTimeInStatus?: TargetTimeInStatus
-  /** Trigger celebration animation when cards move to this column */
-  celebration?: boolean
-}
-
-/** Normalized option for kanban columns */
-interface SelectOption {
+/** Normalized option for kanban columns (with id instead of value) */
+interface KanbanColumn {
   id: string
   label: string
   color?: string
@@ -71,7 +57,7 @@ interface CustomField {
   name: string
   type: string
   options?: {
-    options?: SelectOption[]
+    options?: KanbanColumn[]
   }
 }
 

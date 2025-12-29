@@ -29,18 +29,38 @@ import type { CustomFieldEntity as CustomField } from '@auxx/database/models'
 // Re-export ModelType and related types from @auxx/database for convenience
 export { ModelTypes, ModelTypeMeta, ModelTypeValues, type ModelType }
 
-/**
- * Field types that can be marked as unique identifiers.
- * Only scalar types with clear equality semantics are supported.
- */
-export const UNIQUEABLE_FIELD_TYPES = new Set<string>([
-  FieldTypeEnum.TEXT,
-  FieldTypeEnum.NUMBER,
-  FieldTypeEnum.EMAIL,
-  FieldTypeEnum.PHONE_INTL,
-  FieldTypeEnum.URL,
-  // RELATIONSHIP is handled separately - only has_one allowed
-])
+// =============================================================================
+// RE-EXPORT CONSOLIDATED TYPES FROM SERVICES (Single source of truth)
+// =============================================================================
+export {
+  // Select option colors
+  SELECT_OPTION_COLORS,
+  DEFAULT_SELECT_OPTION_COLOR,
+  type SelectOptionColor,
+  // Target time in status
+  targetTimeInStatusSchema,
+  type TargetTimeInStatus,
+  // Select option
+  selectOptionSchema,
+  type SelectOption,
+  // Currency options
+  currencyOptionsSchema,
+  decimalPlacesValues,
+  currencyDisplayTypeValues,
+  currencyGroupsValues,
+  type CurrencyOptions,
+  type DecimalPlaces,
+  type CurrencyDisplayType,
+  type CurrencyGroups,
+  // File options
+  fileOptionsSchema,
+  type FileOptions,
+  // Field options union
+  fieldOptionsUnionSchema,
+  // Re-export canFieldBeUnique from services
+  canFieldBeUnique,
+  UNIQUEABLE_FIELD_TYPES,
+} from '@auxx/services/custom-fields'
 
 /**
  * Grouped FieldType values for UI pickers
@@ -58,57 +78,6 @@ export const FIELD_TYPE_GROUPS: Record<string, FieldType[]> = {
     FieldTypeEnum.RICH_TEXT,
     FieldTypeEnum.RELATIONSHIP,
   ],
-}
-
-/**
- * Check if a field type supports uniqueness.
- * @param type - The field type
- * @param relationshipType - For RELATIONSHIP fields, the cardinality
- * @returns True if the field type can be marked as unique
- */
-export function canFieldBeUnique(
-  type: string,
-  relationshipType?: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
-): boolean {
-  if (type === FieldTypeEnum.RELATIONSHIP) {
-    return relationshipType === 'has_one'
-  }
-  return UNIQUEABLE_FIELD_TYPES.has(type)
-}
-
-/**
- * Available colors for select options
- * Matches ICON_COLORS from icon-picker for consistency
- */
-export const SELECT_OPTION_COLORS = [
-  'gray',
-  'red',
-  'orange',
-  'amber',
-  'green',
-  'teal',
-  'blue',
-  'indigo',
-  'purple',
-  'pink',
-] as const
-
-export type SelectOptionColor = (typeof SELECT_OPTION_COLORS)[number]
-
-/**
- * Default color for select options (used when no color is specified)
- */
-export const DEFAULT_SELECT_OPTION_COLOR: SelectOptionColor = 'gray'
-
-/**
- * SelectOption interface
- * Describes an option for select/multi-select fields
- */
-export interface SelectOption {
-  label: string
-  value: string
-  /** Optional color for badges and kanban columns */
-  color?: SelectOptionColor
 }
 
 /**
@@ -370,11 +339,7 @@ export const checkboxFieldOptionsSchema = baseFieldOptionsSchema.extend({
   label: z.string().optional(),
 })
 export const selectFieldOptionsSchema = baseFieldOptionsSchema.extend({
-  options: z.array(z.object({
-    label: z.string(),
-    value: z.string(),
-    color: z.enum(SELECT_OPTION_COLORS).optional(),
-  })).optional(),
+  options: z.array(selectOptionSchema).optional(),
 })
 export const addressFieldOptionsSchema = baseFieldOptionsSchema.extend({
   addressComponents: z.array(z.string()).optional(),
@@ -410,32 +375,18 @@ export const relationshipFieldOptionsSchema = baseFieldOptionsSchema.extend({
 
 /** Currency display options schema */
 export const currencyFieldOptionsSchema = baseFieldOptionsSchema.extend({
-  currency: z
-    .object({
-      currencyCode: z.string().length(3).default('USD'),
-      decimalPlaces: z.enum(['two-places', 'no-decimal']).default('two-places'),
-      displayType: z.enum(['symbol', 'name', 'code']).default('symbol'),
-      groups: z.enum(['default', 'no-groups']).default('default'),
-    })
-    .optional(),
+  currency: currencyOptionsSchema.optional(),
 })
 
-/** Currency options type */
+/** Currency field options type (includes base options + currency) */
 export type CurrencyFieldOptions = z.infer<typeof currencyFieldOptionsSchema>
 
 /** File field options schema */
 export const fileFieldOptionsSchema = baseFieldOptionsSchema.extend({
-  file: z
-    .object({
-      allowMultiple: z.boolean().default(false),
-      maxFiles: z.number().int().min(1).max(10).optional(),
-      allowedFileTypes: z.array(z.enum(FILE_TYPE_CATEGORIES)).optional(),
-      allowedFileExtensions: z.array(z.string()).optional(),
-    })
-    .optional(),
+  file: fileOptionsSchema.optional(),
 })
 
-/** File options type */
+/** File field options type (includes base options + file) */
 export type FileFieldOptions = z.infer<typeof fileFieldOptionsSchema>
 /**
  * Map of field type to options schema

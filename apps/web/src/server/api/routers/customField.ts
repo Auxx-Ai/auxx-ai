@@ -4,27 +4,18 @@ import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { CustomFieldService } from '@auxx/lib/custom-fields'
-import { ModelTypes, ModelTypeValues, SELECT_OPTION_COLORS } from '@auxx/lib/custom-fields/types'
+import {
+  ModelTypes,
+  ModelTypeValues,
+  selectOptionSchema,
+  currencyOptionsSchema,
+  fileOptionsSchema,
+} from '@auxx/lib/custom-fields/types'
 import { FieldType } from '@auxx/database/enums'
 import { batchGetFieldValuesQuery } from '@auxx/services/custom-fields'
 
 // Zod schema for ModelType validation
 const modelTypeSchema = z.enum(ModelTypeValues)
-
-/** Schema for target time in status (kanban-specific) */
-const targetTimeInStatusSchema = z.object({
-  value: z.number().min(1),
-  unit: z.enum(['days', 'months', 'years']),
-})
-
-/** Schema for select/multi-select field options */
-const selectOptionSchema = z.object({
-  label: z.string(),
-  value: z.string(),
-  color: z.enum(SELECT_OPTION_COLORS).optional(),
-  targetTimeInStatus: targetTimeInStatusSchema.optional(),
-  celebration: z.boolean().optional(),
-})
 
 export const customFieldRouter = createTRPCRouter({
   /**
@@ -78,15 +69,8 @@ export const customFieldRouter = createTRPCRouter({
         options: z
           .union([
             z.array(selectOptionSchema),
-            z.object({ allowMultiple: z.boolean() }),
-            z.object({
-              currency: z.object({
-                currencyCode: z.string().length(3),
-                decimalPlaces: z.enum(['two-places', 'no-decimal']),
-                displayType: z.enum(['symbol', 'name', 'code']),
-                groups: z.enum(['default', 'no-groups']),
-              }),
-            }),
+            z.object({ file: fileOptionsSchema }),
+            z.object({ currency: currencyOptionsSchema }),
           ])
           .optional(),
         addressComponents: z.array(z.string()).optional(),
@@ -132,15 +116,8 @@ export const customFieldRouter = createTRPCRouter({
         options: z
           .union([
             z.array(selectOptionSchema),
-            z.object({ allowMultiple: z.boolean() }),
-            z.object({
-              currency: z.object({
-                currencyCode: z.string().length(3),
-                decimalPlaces: z.enum(['two-places', 'no-decimal']),
-                displayType: z.enum(['symbol', 'name', 'code']),
-                groups: z.enum(['default', 'no-groups']),
-              }),
-            }),
+            z.object({ file: fileOptionsSchema }),
+            z.object({ currency: currencyOptionsSchema }),
           ])
           .optional(),
         addressComponents: z.array(z.string()).optional(),

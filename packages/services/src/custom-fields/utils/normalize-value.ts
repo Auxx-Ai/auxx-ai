@@ -2,14 +2,7 @@
 
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { FieldType } from '@auxx/database/types'
-
-/**
- * SelectOption interface for select/multi-select fields
- */
-interface SelectOption {
-  label: string
-  value: string
-}
+import type { SelectOption } from '../types'
 
 /**
  * Extract raw value from {"data": x} wrapper if present

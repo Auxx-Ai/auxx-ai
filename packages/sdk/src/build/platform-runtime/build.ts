@@ -2,7 +2,7 @@
 
 import * as esbuild from 'esbuild'
 import { createHash } from 'crypto'
-import { readFileSync, renameSync, existsSync, mkdirSync, readdirSync, unlinkSync } from 'fs'
+import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync, readdirSync, unlinkSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 

@@ -8,7 +8,12 @@ import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { FieldType } from '@auxx/database/types'
 import type { CustomFieldNotFoundError } from './errors'
 import type { CustomFieldEntity } from '@auxx/database/models'
-import { canFieldBeUnique } from './types'
+import {
+  canFieldBeUnique,
+  type SelectOption,
+  type CurrencyOptions,
+  type FileOptions,
+} from './types'
 import { checkExistingDuplicates } from './check-unique-value'
 
 /**
@@ -21,17 +26,7 @@ export interface UpdateCustomFieldInput {
   description?: string
   required?: boolean
   defaultValue?: string
-  options?:
-    | Array<{
-        label: string
-        value: string
-        color?: string
-        /** Target time for items to remain in this status (kanban) */
-        targetTimeInStatus?: { value: number; unit: 'days' | 'months' | 'years' }
-        /** Trigger celebration animation when cards move to this column (kanban) */
-        celebration?: boolean
-      }>
-    | { allowMultiple?: boolean }
+  options?: SelectOption[] | { file: FileOptions } | { currency: CurrencyOptions }
   addressComponents?: string[]
   icon?: string
   isCustom?: boolean
@@ -139,8 +134,14 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
     }
 
     if (fieldType === FieldTypeEnum.FILE) {
-      if (options !== undefined && !Array.isArray(options)) {
-        fieldOptions.allowMultiple = options.allowMultiple
+      if (options !== undefined && !Array.isArray(options) && 'file' in options) {
+        fieldOptions.file = options.file
+      }
+    }
+
+    if (fieldType === FieldTypeEnum.CURRENCY) {
+      if (options !== undefined && !Array.isArray(options) && 'currency' in options) {
+        fieldOptions.currency = options.currency
       }
     }
 

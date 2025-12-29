@@ -1,6 +1,7 @@
 // packages/lib/src/workflow-engine/resources/registry/field-types.ts
 
 import { BaseType } from '../types'
+import type { TargetTimeInStatus } from '@auxx/services/custom-fields'
 
 /**
  * Enum value with UI metadata
@@ -16,7 +17,7 @@ export interface EnumValue {
   /** Color for kanban column headers and select badges */
   color?: string
   /** Target time for items to remain in this status (kanban time tracking) */
-  targetTimeInStatus?: { value: number; unit: 'days' | 'months' | 'years' }
+  targetTimeInStatus?: TargetTimeInStatus
   /** Trigger celebration animation when cards move to this column (kanban) */
   celebration?: boolean
 }

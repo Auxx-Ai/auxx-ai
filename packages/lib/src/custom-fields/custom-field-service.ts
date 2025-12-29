@@ -24,7 +24,7 @@ import type { FieldType } from '@auxx/database/types'
 import { isBuiltInField, getBuiltInFieldHandler } from './built-in-fields'
 import { publisher } from '../events'
 import type { ContactFieldUpdatedEvent } from '../events/types'
-import type { SelectOptionColor } from './types'
+import type { SelectOption, CurrencyOptions, FileOptions } from '@auxx/services/custom-fields'
 
 /**
  * Service for managing custom fields and their values across different models
@@ -79,17 +79,7 @@ export class CustomFieldService {
       description?: string
       required?: boolean
       defaultValue?: string
-      options?:
-        | Array<{ label: string; value: string; color?: SelectOptionColor }>
-        | { allowMultiple?: boolean }
-        | {
-            currency: {
-              currencyCode: string
-              decimalPlaces: 'two-places' | 'no-decimal'
-              displayType: 'symbol' | 'name' | 'code'
-              groups: 'default' | 'no-groups'
-            }
-          }
+      options?: SelectOption[] | { file: FileOptions } | { currency: CurrencyOptions }
       addressComponents?: string[]
       icon?: string
       isCustom?: boolean
@@ -123,25 +113,7 @@ export class CustomFieldService {
     description?: string
     required?: boolean
     defaultValue?: string
-    options?:
-      | Array<{
-          label: string
-          value: string
-          color?: SelectOptionColor
-          /** Target time for items to remain in this status (kanban) */
-          targetTimeInStatus?: { value: number; unit: 'days' | 'months' | 'years' }
-          /** Trigger celebration animation when cards move to this column (kanban) */
-          celebration?: boolean
-        }>
-      | { allowMultiple?: boolean }
-      | {
-          currency: {
-            currencyCode: string
-            decimalPlaces: 'two-places' | 'no-decimal'
-            displayType: 'symbol' | 'name' | 'code'
-            groups: 'default' | 'no-groups'
-          }
-        }
+    options?: SelectOption[] | { file: FileOptions } | { currency: CurrencyOptions }
     addressComponents?: string[]
     icon?: string
     isCustom?: boolean

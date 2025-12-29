@@ -10,6 +10,9 @@ import {
   type RelationshipConfig,
   type RelationshipOptions,
   canFieldBeUnique,
+  type SelectOption,
+  type CurrencyOptions,
+  type FileOptions,
 } from './types'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { FieldType } from '@auxx/database/types'
@@ -26,17 +29,7 @@ export interface CreateCustomFieldInput {
   description?: string
   required?: boolean
   defaultValue?: string
-  options?:
-    | Array<{ label: string; value: string }>
-    | { allowMultiple?: boolean }
-    | {
-        currency: {
-          currencyCode: string
-          decimalPlaces: 'two-places' | 'no-decimal'
-          displayType: 'symbol' | 'name' | 'code'
-          groups: 'default' | 'no-groups'
-        }
-      }
+  options?: SelectOption[] | { file: FileOptions } | { currency: CurrencyOptions }
   addressComponents?: string[]
   icon?: string
   isCustom?: boolean
@@ -160,8 +153,8 @@ export async function createCustomField(input: CreateCustomFieldInput) {
   }
 
   if (type === FieldTypeEnum.FILE) {
-    if (options && !Array.isArray(options) && 'allowMultiple' in options) {
-      fieldOptions.allowMultiple = options.allowMultiple
+    if (options && !Array.isArray(options) && 'file' in options) {
+      fieldOptions.file = options.file
     }
   }
 

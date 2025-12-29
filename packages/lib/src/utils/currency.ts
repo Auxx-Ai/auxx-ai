@@ -1,12 +1,9 @@
 // packages/lib/src/utils/currency.ts
 
-/** Currency display options */
-export interface CurrencyDisplayOptions {
-  currencyCode?: string
-  decimalPlaces?: 'two-places' | 'no-decimal'
-  displayType?: 'symbol' | 'name' | 'code'
-  groups?: 'default' | 'no-groups'
-}
+import type { CurrencyOptions } from '@auxx/services/custom-fields'
+
+/** Currency display options (uses CurrencyOptions with all fields optional for formatting) */
+export type CurrencyDisplayOptions = Partial<CurrencyOptions>
 
 /**
  * Format cents to currency display string

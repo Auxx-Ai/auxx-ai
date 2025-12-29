@@ -3,7 +3,10 @@
 import { type ColumnDef, type Table as TanstackTable } from '@tanstack/react-table'
 import { type LucideIcon } from 'lucide-react'
 import type { StoreConfig } from '~/components/contacts/drawer/property-provider'
-import type { ModelType } from '@auxx/lib/custom-fields/types'
+import type { ModelType, TargetTimeInStatus } from '@auxx/lib/custom-fields/types'
+
+// Re-export TargetTimeInStatus for backward compatibility
+export type { TargetTimeInStatus }
 
 // ============================================================================
 // COLUMN FORMATTING TYPES
@@ -186,12 +189,6 @@ export type ViewType = 'table' | 'kanban'
 export interface KanbanColumnSettings {
   /** Hide this column in the current view */
   isVisible?: boolean // defaults to true if undefined
-}
-
-/** Target time configuration for kanban columns (stored in field options) */
-export interface TargetTimeInStatus {
-  value: number
-  unit: 'days' | 'months' | 'years'
 }
 
 /** Kanban-specific configuration */
