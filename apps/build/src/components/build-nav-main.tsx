@@ -1,0 +1,104 @@
+// apps/build/src/components/build-nav-main.tsx
+'use client'
+
+import { usePathname } from 'next/navigation'
+import { Building2, NotebookText, Package, Plus, Users } from 'lucide-react'
+import {
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarGroupAction,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+} from '@auxx/ui/components/sidebar'
+import { SidebarItem } from './sidebar/sidebar-item'
+import { useDeveloperAccount, useAccountApps } from './providers/dehydrated-state-provider'
+import { CreateAppDialog } from './apps/create-app-dialog'
+import Link from 'next/link'
+
+interface Props {
+  accountSlug: string
+}
+
+/**
+ * BuildNavMain - main sidebar navigation
+ * Shows list of apps for the active developer account
+ */
+export function BuildNavMain({ accountSlug }: Props) {
+  const pathname = usePathname()
+  const account = useDeveloperAccount(accountSlug)
+  const apps = useAccountApps(account?.id || '')
+
+  function isActive(appSlug: string): boolean {
+    return pathname.startsWith(`/${accountSlug}/apps/${appSlug}`)
+  }
+
+  return (
+    <>
+      <SidebarGroup>
+        <SidebarGroupLabel>Apps</SidebarGroupLabel>
+        <SidebarMenu className="">
+          {apps.length === 0 ? (
+            <SidebarMenuItem>
+              <div className="px-2 py-1.5 text-xs text-muted-foreground">No apps yet</div>
+            </SidebarMenuItem>
+          ) : (
+            apps.map((app) => (
+              <SidebarMenuItem key={app.id}>
+                <SidebarItem
+                  id={app.id}
+                  name={app.title}
+                  href={`/${accountSlug}/apps/${app.slug}`}
+                  icon={<Package />}
+                  isActive={isActive(app.slug)}
+                />
+              </SidebarMenuItem>
+            ))
+          )}
+          {apps.length > 0 && (
+            <SidebarMenuItem>
+              <CreateAppDialog
+                accountSlug={accountSlug}
+                trigger={
+                  <SidebarMenuButton className="text-muted-foreground">
+                    <Plus />
+                    <span>New app</span>
+                  </SidebarMenuButton>
+                }
+              />
+            </SidebarMenuItem>
+          )}
+        </SidebarMenu>
+      </SidebarGroup>
+      <SidebarGroup>
+        <SidebarGroupLabel>Organization Settings</SidebarGroupLabel>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton className="text-muted-foreground" asChild>
+              <Link href={`/${accountSlug}/settings/general`}>
+                <Building2 /> General
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton className="text-muted-foreground" asChild>
+              <Link href={`/${accountSlug}/settings/members`}>
+                <Users /> Members
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarGroup>
+      <SidebarGroup>
+        <SidebarGroupLabel>Resources</SidebarGroupLabel>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton className="text-muted-foreground">
+              <NotebookText /> Documentation
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarGroup>
+    </>
+  )
+}

@@ -1,0 +1,31 @@
+// Credentials
+export { AirtableApi } from './airtable-api.credentials'
+export { AirtableOAuth2Api } from './airtable-oauth2-api.credentials'
+export { HttpBasicAuth } from './http-basic-auth.credentials'
+export { HttpHeaderAuth } from './http-header-auth.credentials'
+export { OAuth2Api } from './oauth2-api.credentials'
+export { GoogleOAuth2Api } from './google-oauth2.credentials'
+export { OutlookOAuth2Api } from './outlook-oauth2.credentials'
+export { FacebookOAuth2Api } from './facebook-oauth2.credentials'
+export { InstagramOAuth2Api } from './instagram-oauth2.credentials'
+export { ShopifyOAuth2Api } from './shopify-oauth2.credentials'
+export { ProfessionalNetworkAuth } from '../nodes/linkedin/credentials/linkedin-oauth2.credentials'
+export { Postgres } from './postgres.db.credentials'
+export { CrateDb } from './crate-db.credentials'
+export { Imap } from './imap.credentials'
+export { SmtpCredentials } from './smtp.credentials'
+export { PostgresWithTesting } from './postgres-with-testing.credentials'
+
+// Storage provider credentials
+export { AwsS3Credentials } from './aws-s3.credentials'
+export { GoogleDriveStorageOAuth2 } from './google-drive-storage.credentials'
+export { DropboxOAuth2 } from './dropbox-oauth2.credentials'
+export { OneDriveOAuth2 } from './onedrive-oauth2.credentials'
+export { BoxOAuth2 } from './box-oauth2.credentials'
+
+// AI provider credentials
+export { OpenAIApiCredentials } from './openai-api.credentials'
+export { AnthropicApiCredentials } from './anthropic-api.credentials'
+export { GoogleAIApiCredentials } from './google-ai-api.credentials'
+export { GroqApiCredentials } from './groq-api.credentials'
+export { DeepSeekApiCredentials } from './deepseek-api.credentials'

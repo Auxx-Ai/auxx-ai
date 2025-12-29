@@ -1,0 +1,45 @@
+{
+  "name": "@auxx/workflow-nodes",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./credentials": "./src/credentials/index.ts",
+    "./types": "./src/types/index.ts",
+    "./server": "./src/server/index.ts",
+    "./nodes": "./src/nodes/index.ts"
+  },
+  "scripts": {
+    "generate": "tsx scripts/generate-frontend.ts",
+    "generate:watch": "tsx scripts/generate-frontend.ts --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 1000",
+    "lint:fix": "eslint . --fix --max-warnings 1000",
+    "clean": "rm -rf node_modules .turbo dist",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest --watch"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "catalog:",
+    "googleapis": "catalog:",
+    "@auxx/config": "workspace:*",
+    "@auxx/database": "workspace:*"
+  },
+  "devDependencies": {
+    "@auxx/eslint-config": "workspace:*",
+    "@auxx/typescript-config": "workspace:*",
+    "@vitejs/plugin-react": "catalog:",
+    "eslint": "catalog:",
+    "fs-extra": "^11.2.0",
+    "glob": "^10.3.10",
+    "tsup": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-tsconfig-paths": "catalog:",
+    "vitest": "catalog:"
+  }
+}

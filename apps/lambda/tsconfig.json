@@ -1,0 +1,10 @@
+{
+  // apps/lambda/tsconfig.json
+  "extends": "../../packages/typescript-config/base.json",
+  "compilerOptions": {
+    "lib": ["es2022"],
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["src"]
+}

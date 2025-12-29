@@ -1,0 +1,42 @@
+{
+  "name": "@auxx/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --clear-screen=false src/index.ts",
+    "build": "esbuild src/index.ts --bundle --platform=node --outdir=dist --format=esm --packages=external",
+    "build:platform-runtime": "NODE_ENV=development tsx build-platform-runtime.ts",
+    "dev:platform-runtime": "NODE_ENV=development tsx build-platform-runtime.ts --watch --include ../../packages/sdk/src --include ../../packages/sdk/lib",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@auxx/config": "workspace:*",
+    "@auxx/database": "workspace:*",
+    "@auxx/lib": "workspace:*",
+    "@auxx/logger": "workspace:*",
+    "@auxx/redis": "workspace:*",
+    "@auxx/sdk": "workspace:*",
+    "@auxx/services": "workspace:*",
+    "@aws-sdk/client-s3": "catalog:",
+    "@aws-sdk/s3-request-presigner": "catalog:",
+    "@hono/node-server": "^1.14.3",
+    "dotenv": "catalog:",
+    "drizzle-orm": "catalog:",
+    "hono": "^4.7.11",
+    "jose": "^6.1.0",
+    "neverthrow": "^8.2.0",
+    "pg": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@auxx/eslint-config": "workspace:*",
+    "@auxx/typescript-config": "workspace:*",
+    "@types/node": "catalog:",
+    "esbuild": "^0.25.11",
+    "tsx": "^4.19.2",
+    "typescript": "catalog:"
+  }
+}

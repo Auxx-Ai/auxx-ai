@@ -1,0 +1,13 @@
+{
+  "root": true,
+  "pages": [
+    "overview",
+    "---General---",
+    "signing-in",
+    "general-settings",
+    "organization",
+    "signatures",
+    "snippets",
+    "notifications"
+  ]
+}

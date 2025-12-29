@@ -1,0 +1,619 @@
+// packages/lib/src/resources/registry/resource-registry-service.ts
+
+import type { Database } from '@auxx/database'
+import { RESOURCE_TABLE_REGISTRY, RESOURCE_FIELD_REGISTRY, type TableId } from './field-registry'
+import { RESOURCE_DISPLAY_CONFIG } from './display-config'
+import type {
+  Resource,
+  SystemResource,
+  CustomResource,
+  DisplayFieldConfig,
+  CustomResourceId,
+} from './types'
+import type { ResourceField } from './field-types'
+import { mapFieldTypeToBaseType } from '../../workflow-engine/utils/field-type-mapper'
+import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
+import { getEntityInstanceFields } from './entity-instance-fields'
+
+/** CustomField entity from database */
+type CustomFieldRecord = {
+  id: string
+  name: string
+  type: string
+  description: string | null
+  required: boolean
+  options: unknown
+  modelType: string
+  entityDefinitionId: string | null
+  isUnique: boolean
+}
+
+/** EntityDefinition with display field relations and customFields loaded */
+type EntityDefinitionWithFields = {
+  id: string
+  apiSlug: string
+  singular: string
+  plural: string
+  icon: string
+  color: string | null
+  organizationId: string
+  primaryDisplayField: { id: string; name: string; type: string } | null
+  secondaryDisplayField: { id: string; name: string; type: string } | null
+  avatarField: { id: string; name: string; type: string } | null
+  customFields: CustomFieldRecord[]
+}
+
+/**
+ * Transform a CustomField to DisplayFieldConfig
+ */
+function toDisplayFieldConfig(
+  field: { id: string; name: string; type: string } | null
+): DisplayFieldConfig | null {
+  if (!field) return null
+  return { id: field.id, name: field.name, type: field.type }
+}
+
+/**
+ * Transform an EntityDefinition to CustomResource (without fields - added separately)
+ */
+function toCustomResourceBase(
+  def: Omit<EntityDefinitionWithFields, 'customFields'>
+): Omit<CustomResource, 'fields'> {
+  return {
+    id: `entity_${def.apiSlug}` as CustomResourceId,
+    type: 'custom',
+    label: def.singular,
+    plural: def.plural,
+    icon: def.icon,
+    color: def.color ?? undefined,
+    entityDefinitionId: def.id,
+    organizationId: def.organizationId,
+    display: {
+      primaryDisplayField: toDisplayFieldConfig(def.primaryDisplayField),
+      secondaryDisplayField: toDisplayFieldConfig(def.secondaryDisplayField),
+      avatarField: toDisplayFieldConfig(def.avatarField),
+      defaultSortField: 'updatedAt',
+      defaultSortDirection: 'desc',
+      orgScopingStrategy: 'direct',
+    },
+  }
+}
+
+/**
+ * Build a SystemResource base from registry entry and display config (without fields)
+ */
+function toSystemResourceBase(tableId: TableId): Omit<SystemResource, 'fields'> {
+  const entry = RESOURCE_TABLE_REGISTRY.find((r) => r.id === tableId)
+  if (!entry) throw new Error(`Unknown system resource: ${tableId}`)
+
+  const displayConfig = RESOURCE_DISPLAY_CONFIG[tableId]
+
+  return {
+    id: entry.id,
+    type: 'system',
+    label: entry.label,
+    plural: entry.plural,
+    icon: entry.icon,
+    dbName: entry.dbName,
+    display: {
+      identifierField: displayConfig.identifierField,
+      displayNameField: displayConfig.displayNameField,
+      secondaryInfoField: displayConfig.secondaryInfoField,
+      avatarField: displayConfig.avatarField,
+      searchFields: displayConfig.searchFields,
+      defaultSortField: displayConfig.defaultSortField,
+      defaultSortDirection: displayConfig.defaultSortDirection,
+      orgScopingStrategy: displayConfig.orgScopingStrategy ?? 'direct',
+      joinScoping: displayConfig.joinScoping,
+    },
+  }
+}
+
+/**
+ * Build a SystemResource from registry entry and display config (with static fields only)
+ * Used for synchronous access when custom fields are not needed
+ */
+function toSystemResource(tableId: TableId): SystemResource {
+  const fieldRegistry = RESOURCE_FIELD_REGISTRY[tableId]
+  const fields: ResourceField[] = fieldRegistry ? Object.values(fieldRegistry) : []
+
+  return {
+    ...toSystemResourceBase(tableId),
+    fields,
+  }
+}
+
+/**
+ * Service to access the unified resource registry.
+ * Returns resources (system + custom entities) with display config merged in.
+ *
+ * Includes internal caching to avoid repeated DB lookups for the same resource type
+ * during a single workflow execution.
+ */
+export class ResourceRegistryService {
+  private db: Database
+  private organizationId: string
+
+  // Performance optimization: Cache field definitions per resource type
+  private fieldCache: Map<string, ResourceField[]> = new Map()
+
+  // Performance optimization: Cache full resource definitions
+  private resourceCache: Map<string, Resource> = new Map()
+
+  // Performance optimization: Cache entity slug map
+  private entitySlugMap: Map<string, string> | null = null
+
+  constructor(organizationId: string, db: Database) {
+    this.organizationId = organizationId
+    this.db = db
+  }
+
+  /**
+   * Clear all internal caches.
+   * Call this if you need to refresh data during a long-running operation.
+   */
+  clearCache(): void {
+    this.fieldCache.clear()
+    this.resourceCache.clear()
+    this.entitySlugMap = null
+  }
+
+  /**
+   * Get all available resources (system + custom) with display config and fields included.
+   * Custom fields are fetched separately and merged with both system and custom resources.
+   */
+  async getAll(): Promise<Resource[]> {
+    // Query 1: Entity definitions (without nested customFields)
+    const entityDefinitions = await this.db.query.EntityDefinition.findMany({
+      where: (defs, { eq, and, isNull }) =>
+        and(eq(defs.organizationId, this.organizationId), isNull(defs.archivedAt)),
+      with: {
+        primaryDisplayField: true,
+        secondaryDisplayField: true,
+        avatarField: true,
+      },
+    })
+
+    // Query 2: All active custom fields for organization
+    const customFields = await this.db.query.CustomField.findMany({
+      where: (fields, { eq, and }) =>
+        and(eq(fields.organizationId, this.organizationId), eq(fields.active, true)),
+      orderBy: (fields, { asc }) => [asc(fields.position)],
+    })
+
+    // Group fields by target (entityDefinitionId for custom entities, modelType for system models)
+    const fieldsByEntityId = new Map<string, CustomFieldRecord[]>()
+    const fieldsByModelType = new Map<string, CustomFieldRecord[]>()
+
+    for (const field of customFields as CustomFieldRecord[]) {
+      if (field.entityDefinitionId) {
+        const existing = fieldsByEntityId.get(field.entityDefinitionId) ?? []
+        fieldsByEntityId.set(field.entityDefinitionId, [...existing, field])
+      } else {
+        const existing = fieldsByModelType.get(field.modelType) ?? []
+        fieldsByModelType.set(field.modelType, [...existing, field])
+      }
+    }
+
+    // Build lookup map: entityDefinitionId -> apiSlug (for relationship targetTable resolution)
+    const entityIdToSlug = new Map(entityDefinitions.map((d) => [d.id, d.apiSlug]))
+
+    // System resources with merged fields (static registry + organization custom fields)
+    const systemResources: SystemResource[] = RESOURCE_TABLE_REGISTRY.map((r) => {
+      const tableId = r.id as TableId
+      const fieldRegistry = RESOURCE_FIELD_REGISTRY[tableId]
+      const staticFields = fieldRegistry ? Object.values(fieldRegistry) : []
+      const orgCustomFields = fieldsByModelType.get(tableId) ?? []
+      const customResourceFields = this.mapCustomFieldsToResourceFields(
+        orgCustomFields,
+        entityIdToSlug
+      )
+
+      return {
+        ...toSystemResourceBase(tableId),
+        fields: [...staticFields, ...customResourceFields],
+      }
+    })
+
+    // Custom resources with fields from grouped map
+    // Include implicit EntityInstance system fields (id, createdAt, updatedAt) before custom fields
+    const customResources: CustomResource[] = entityDefinitions.map((def) => ({
+      ...toCustomResourceBase(def),
+      fields: [
+        ...getEntityInstanceFields(),
+        ...this.mapCustomFieldsToResourceFields(fieldsByEntityId.get(def.id) ?? [], entityIdToSlug),
+      ],
+    }))
+
+    return [...systemResources, ...customResources]
+  }
+
+  /**
+   * Get all system resources only (synchronous, no database call)
+   * Returns only static fields from the registry.
+   * Use getAll() if you need organization's custom fields included.
+   */
+  getSystemResources(): SystemResource[] {
+    return RESOURCE_TABLE_REGISTRY.map((r) => toSystemResource(r.id as TableId))
+  }
+
+  /**
+   * Get all custom entity resources for this organization (with fields)
+   */
+  async getCustomResources(): Promise<CustomResource[]> {
+    const entityDefinitions = await this.db.query.EntityDefinition.findMany({
+      where: (defs, { eq, and, isNull }) =>
+        and(eq(defs.organizationId, this.organizationId), isNull(defs.archivedAt)),
+      with: {
+        primaryDisplayField: true,
+        secondaryDisplayField: true,
+        avatarField: true,
+        customFields: {
+          where: (fields, { eq }) => eq(fields.active, true),
+          orderBy: (fields, { asc }) => [asc(fields.position)],
+        },
+      },
+    })
+
+    // Build lookup map for relationship targetTable resolution
+    const entityIdToSlug = new Map(entityDefinitions.map((d) => [d.id, d.apiSlug]))
+
+    // Include implicit EntityInstance system fields (id, createdAt, updatedAt) before custom fields
+    return (entityDefinitions as EntityDefinitionWithFields[]).map((def) => ({
+      ...toCustomResourceBase(def),
+      fields: [
+        ...getEntityInstanceFields(),
+        ...this.mapCustomFieldsToResourceFields(def.customFields, entityIdToSlug),
+      ],
+    }))
+  }
+
+  /**
+   * Get custom resource by apiSlug (with fields)
+   */
+  async getBySlug(slug: string): Promise<CustomResource | null> {
+    const entityDef = await this.db.query.EntityDefinition.findFirst({
+      where: (defs, { eq, and, isNull }) =>
+        and(
+          eq(defs.apiSlug, slug),
+          eq(defs.organizationId, this.organizationId),
+          isNull(defs.archivedAt)
+        ),
+      with: {
+        primaryDisplayField: true,
+        secondaryDisplayField: true,
+        avatarField: true,
+        customFields: {
+          where: (fields, { eq }) => eq(fields.active, true),
+          orderBy: (fields, { asc }) => [asc(fields.position)],
+        },
+      },
+    })
+
+    if (!entityDef) return null
+
+    // Load all entity definitions for relationship targetTable resolution
+    const entityIdToSlug = await this.getEntitySlugMap()
+
+    // Include implicit EntityInstance system fields (id, createdAt, updatedAt) before custom fields
+    return {
+      ...toCustomResourceBase(entityDef as EntityDefinitionWithFields),
+      fields: [
+        ...getEntityInstanceFields(),
+        ...this.mapCustomFieldsToResourceFields(
+          (entityDef as EntityDefinitionWithFields).customFields,
+          entityIdToSlug
+        ),
+      ],
+    }
+  }
+
+  /**
+   * Get resource by ID with display config and fields included
+   * Supports both entity_<apiSlug> and entity_<entityDefinitionId> formats.
+   *
+   * For system resources: Returns static registry fields + organization's custom fields
+   *
+   * Results are cached to avoid repeated DB lookups.
+   */
+  async getById(resourceId: string): Promise<Resource | null> {
+    // Check cache first
+    if (this.resourceCache.has(resourceId)) {
+      return this.resourceCache.get(resourceId)!
+    }
+
+    let resource: Resource | null = null
+
+    // Check if system resource
+    const systemEntry = RESOURCE_TABLE_REGISTRY.find((r) => r.id === resourceId)
+    if (systemEntry) {
+      const tableId = systemEntry.id as TableId
+
+      // Get static fields from registry
+      const fieldRegistry = RESOURCE_FIELD_REGISTRY[tableId]
+      const staticFields = fieldRegistry ? Object.values(fieldRegistry) : []
+
+      // Get custom fields from database
+      const customFields = await this.db.query.CustomField.findMany({
+        where: (f, { eq, and, isNull }) =>
+          and(
+            eq(f.organizationId, this.organizationId),
+            eq(f.modelType, tableId),
+            eq(f.active, true),
+            isNull(f.entityDefinitionId)
+          ),
+        orderBy: (f, { asc }) => [asc(f.position)],
+      })
+
+      const entityIdToSlug = await this.getEntitySlugMap()
+      const customResourceFields = this.mapCustomFieldsToResourceFields(
+        customFields as CustomFieldRecord[],
+        entityIdToSlug
+      )
+
+      resource = {
+        ...toSystemResourceBase(tableId),
+        fields: [...staticFields, ...customResourceFields],
+      }
+    } else if (resourceId.startsWith('entity_')) {
+      // Check if custom resource (entity_xxx format)
+      const identifier = resourceId.replace('entity_', '')
+
+      // Try apiSlug lookup first (canonical format)
+      const bySlug = await this.getBySlug(identifier)
+      if (bySlug) {
+        resource = bySlug
+      } else {
+        // Fallback: try by EntityDefinition ID
+        const entityDef = await this.db.query.EntityDefinition.findFirst({
+          where: (defs, { eq, and, isNull }) =>
+            and(
+              eq(defs.id, identifier),
+              eq(defs.organizationId, this.organizationId),
+              isNull(defs.archivedAt)
+            ),
+          with: {
+            primaryDisplayField: true,
+            secondaryDisplayField: true,
+            avatarField: true,
+            customFields: {
+              where: (fields, { eq }) => eq(fields.active, true),
+              orderBy: (fields, { asc }) => [asc(fields.position)],
+            },
+          },
+        })
+
+        if (entityDef) {
+          const entityIdToSlug = await this.getEntitySlugMap()
+          // Include implicit EntityInstance system fields before custom fields
+          resource = {
+            ...toCustomResourceBase(entityDef as EntityDefinitionWithFields),
+            fields: [
+              ...getEntityInstanceFields(),
+              ...this.mapCustomFieldsToResourceFields(
+                (entityDef as EntityDefinitionWithFields).customFields,
+                entityIdToSlug
+              ),
+            ],
+          }
+        }
+      }
+    }
+
+    // Cache the result (even if null, to avoid repeated lookups)
+    if (resource) {
+      this.resourceCache.set(resourceId, resource)
+    }
+
+    return resource
+  }
+
+  /**
+   * Get system resource by TableId (synchronous, no database call)
+   * Returns only static fields from the registry.
+   * Use getById() if you need organization's custom fields included.
+   */
+  getSystemById(tableId: TableId): SystemResource {
+    return toSystemResource(tableId)
+  }
+
+  /**
+   * Check if resource ID is a system resource
+   */
+  isSystemResource(resourceId: string): resourceId is TableId {
+    return RESOURCE_TABLE_REGISTRY.some((r) => r.id === resourceId)
+  }
+
+  /**
+   * Check if resource ID is a custom entity
+   */
+  isCustomResource(resourceId: string): boolean {
+    return resourceId.startsWith('entity_')
+  }
+
+  /**
+   * Get fields for a resource (system or custom)
+   * Used by backend services that need fields for a specific resource.
+   *
+   * For system resources: Returns static registry fields + organization's custom fields
+   * For custom resources: Returns custom fields from EntityDefinition
+   *
+   * Results are cached to avoid repeated DB lookups for the same resource type.
+   */
+  async getFieldsForResource(resourceId: string): Promise<ResourceField[]> {
+    // Check cache first
+    if (this.fieldCache.has(resourceId)) {
+      return this.fieldCache.get(resourceId)!
+    }
+
+    let fields: ResourceField[] = []
+
+    if (this.isSystemResource(resourceId)) {
+      // Static fields from registry
+      const fieldRegistry = RESOURCE_FIELD_REGISTRY[resourceId]
+      const staticFields = fieldRegistry ? Object.values(fieldRegistry) : []
+
+      // Custom fields from database (where modelType matches and entityDefinitionId is null)
+      const customFields = await this.db.query.CustomField.findMany({
+        where: (f, { eq, and, isNull }) =>
+          and(
+            eq(f.organizationId, this.organizationId),
+            eq(f.modelType, resourceId),
+            eq(f.active, true),
+            isNull(f.entityDefinitionId)
+          ),
+        orderBy: (f, { asc }) => [asc(f.position)],
+      })
+
+      const entityIdToSlug = await this.getEntitySlugMap()
+      const customResourceFields = this.mapCustomFieldsToResourceFields(
+        customFields as CustomFieldRecord[],
+        entityIdToSlug
+      )
+
+      fields = [...staticFields, ...customResourceFields]
+    } else if (this.isCustomResource(resourceId)) {
+      const slug = resourceId.replace('entity_', '')
+      const entityDef = await this.db.query.EntityDefinition.findFirst({
+        where: (defs, { eq, and, isNull }) =>
+          and(
+            eq(defs.apiSlug, slug),
+            eq(defs.organizationId, this.organizationId),
+            isNull(defs.archivedAt)
+          ),
+        with: {
+          customFields: {
+            where: (fields, { eq }) => eq(fields.active, true),
+            orderBy: (fields, { asc }) => [asc(fields.position)],
+          },
+        },
+      })
+
+      if (entityDef) {
+        const entityIdToSlug = await this.getEntitySlugMap()
+        // Include implicit EntityInstance system fields before custom fields
+        fields = [
+          ...getEntityInstanceFields(),
+          ...this.mapCustomFieldsToResourceFields(
+            entityDef.customFields as CustomFieldRecord[],
+            entityIdToSlug
+          ),
+        ]
+      }
+    }
+
+    // Cache the result
+    this.fieldCache.set(resourceId, fields)
+    return fields
+  }
+
+  /**
+   * Get all fields that can be used to identify/match existing records.
+   * Includes system fields with isIdentifier and custom fields with isUnique.
+   */
+  getIdentifierFields(resource: Resource): ResourceField[] {
+    // All fields marked as identifiers (system identifiers + unique custom fields)
+    return resource.fields.filter((f) => f.isIdentifier)
+  }
+
+  /**
+   * Get the default identifier field for a resource.
+   * Returns the first identifier field, or undefined if none.
+   */
+  getDefaultIdentifierField(resource: Resource): ResourceField | undefined {
+    const identifiers = this.getIdentifierFields(resource)
+    return identifiers[0]
+  }
+
+  /**
+   * Get entity definition ID to apiSlug lookup map
+   * Used for resolving relationship targetTable for custom entities.
+   *
+   * Result is cached to avoid repeated DB lookups.
+   */
+  private async getEntitySlugMap(): Promise<Map<string, string>> {
+    // Return cached map if available
+    if (this.entitySlugMap) {
+      return this.entitySlugMap
+    }
+
+    const defs = await this.db.query.EntityDefinition.findMany({
+      where: (d, { eq, isNull, and }) =>
+        and(eq(d.organizationId, this.organizationId), isNull(d.archivedAt)),
+      columns: { id: true, apiSlug: true },
+    })
+
+    this.entitySlugMap = new Map(defs.map((d) => [d.id, d.apiSlug]))
+    return this.entitySlugMap
+  }
+
+  /**
+   * Map CustomField records to ResourceField format
+   * Resolves relationship targetTable using entityIdToSlug lookup
+   */
+  private mapCustomFieldsToResourceFields(
+    customFields: CustomFieldRecord[],
+    entityIdToSlug: Map<string, string>
+  ): ResourceField[] {
+    return customFields.map((field) => {
+      const baseType = mapFieldTypeToBaseType(field.type)
+
+      // Build relationship config with proper targetTable resolution
+      let relationship: ResourceField['relationship']
+      if (field.type === FieldTypeEnum.RELATIONSHIP) {
+        const rel = (
+          field.options as {
+            relationship?: {
+              relatedModelType?: string
+              relatedEntityDefinitionId?: string
+              relationshipType?: 'belongs_to' | 'has_one' | 'has_many'
+            }
+          }
+        )?.relationship
+
+        let targetTable: string | undefined
+        if (rel?.relatedModelType) {
+          // System resource (e.g., "contact", "ticket")
+          targetTable = rel.relatedModelType
+        } else if (rel?.relatedEntityDefinitionId) {
+          // Custom entity - look up apiSlug from preloaded map
+          const apiSlug = entityIdToSlug.get(rel.relatedEntityDefinitionId)
+          targetTable = apiSlug ? `entity_${apiSlug}` : undefined
+        }
+
+        if (targetTable) {
+          relationship = {
+            targetTable,
+            cardinality: rel?.relationshipType === 'has_many' ? 'one-to-many' : 'many-to-one',
+          }
+        }
+      }
+
+      return {
+        id: field.id, // Database field ID for CRUD operations
+        key: field.name, // Human-readable name for variable paths
+        label: field.name,
+        type: baseType,
+        description: field.description ?? undefined,
+        capabilities: {
+          filterable: true,
+          sortable: true,
+          creatable: true,
+          updatable: true,
+          required: field.required,
+        },
+        enumValues:
+          field.type === FieldTypeEnum.SINGLE_SELECT ||
+          field.type === FieldTypeEnum.MULTI_SELECT ||
+          field.type === FieldTypeEnum.TAGS
+            ? (field.options as { options?: { value: string; label: string }[] })?.options?.map(
+                (o) => ({ dbValue: o.value, label: o.label })
+              )
+            : undefined,
+        relationship,
+        // Unique custom fields can be used as identifiers for import matching
+        isIdentifier: field.isUnique,
+      }
+    })
+  }
+}

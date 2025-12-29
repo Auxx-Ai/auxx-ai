@@ -1,0 +1,30 @@
+{
+  "node": "auxx-ai.professionalNetworkPoster",
+  "nodeVersion": "1.0",
+  "codexVersion": "1.0",
+  "categories": ["Marketing", "Social Media", "Communication"],
+  "resources": {
+    "credentialDocumentation": [
+      {
+        "url": "https://docs.auxx.ai/integrations/linkedin/"
+      }
+    ],
+    "primaryDocumentation": [
+      {
+        "url": "https://docs.auxx.ai/workflow-nodes/professional-network-poster/"
+      }
+    ],
+    "generic": [
+      {
+        "label": "Automate customer engagement with professional network posting",
+        "icon": "📱",
+        "url": "https://docs.auxx.ai/use-cases/social-media-automation/"
+      },
+      {
+        "label": "LinkedIn API integration for business workflows",
+        "icon": "🔗",
+        "url": "https://docs.auxx.ai/integrations/linkedin-api/"
+      }
+    ]
+  }
+}

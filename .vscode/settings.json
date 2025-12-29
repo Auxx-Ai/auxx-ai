@@ -1,0 +1,25 @@
+{
+  "tailwindCSS.files.exclude": [
+    "**/.git/**",
+    "**/node_modules/**",
+    "**/.hg/**",
+    "**/.svn/**",
+    "**/scripts/**/*.sh",
+    "**/scripts/**/*.bash",
+    "**/.sst/**",
+    "**/out/**",
+    "**/.turbo/**",
+    "**/.next/**",
+    "**/.open-next/**",
+    "packages/lib/**",
+    ".vscode/settings.json"
+  ],
+  "tailwindCSS.includeLanguages": {
+    "typescript": "javascript",
+    "typescriptreact": "javascript"
+  },
+  "tailwindCSS.experimental.configFile": "apps/web/tailwind.config.ts",
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+  "typescript.preferences.preferGoToSource": true
+}

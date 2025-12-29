@@ -1,0 +1,125 @@
+// apps/web/src/components/dynamic-table/context/table-context.tsx
+
+'use client'
+
+import { createContext, useContext, type ReactNode } from 'react'
+import type { Table } from '@tanstack/react-table'
+import type { TableView, TableFilter, BulkAction, DragDropConfig, ColumnFormatting } from '../types'
+
+interface TableContextValue<TData = any> {
+  // Table instance
+  table: Table<TData>
+
+  // Props
+  tableId: string
+  enableFiltering?: boolean
+  enableSorting?: boolean
+  enableSearch?: boolean
+  enableBulkActions: boolean
+  enableImport?: boolean
+  showFooter?: boolean
+  enableCheckbox: boolean
+  showRowNumbers?: boolean
+
+  // State
+  views: TableView[]
+  currentView: TableView | null
+  isLoadingViews: boolean
+  isSavingView: boolean
+  hasUnsavedViewChanges: boolean
+  saveCurrentView: () => Promise<void>
+  resetViewChanges: () => void
+  markViewClean: () => void
+  isLoading: boolean
+  searchQuery: string
+  filters: TableFilter[]
+  columnTypes: Record<string, string>
+  columnLabels: Record<string, string>
+  columnFormatting: Record<string, ColumnFormatting>
+  pinnedColumnId: string | null
+
+  // Actions
+  setSearchQuery: (query: string) => void
+  setActiveView: (viewId: string | null) => void
+  setFilters: (filters: TableFilter[]) => void
+  setColumnLabel: (columnId: string, label: string | null) => void
+  setColumnFormatting: (columnId: string, formatting: ColumnFormatting | null) => void
+  setPinnedColumn: (columnId: string | null) => void
+
+  // Bulk mode state
+  isBulkMode: boolean
+
+  // Callbacks
+  onRowClick?: (row: TData, event: React.MouseEvent, rowId: string, table: Table<TData>) => void
+  onImport?: (file: File) => Promise<void>
+  importHref?: string
+  onRefresh?: () => void
+  bulkActions?: BulkAction<TData>[]
+  onRowSelectionChange?: (selectedRows: Set<string>) => void
+  onScrollToBottom?: () => void
+
+  // Row selection utilities
+  toggleRowSelection?: (rowId: string, event: React.MouseEvent) => void
+
+  // Utilities
+  rowClassName?: (row: TData) => string | undefined
+
+  // Checkbox state - using getters to avoid context re-renders
+  getLastSelectedIndex: () => number | null
+  setLastSelectedIndex: (index: number | null) => void
+
+  // Last clicked row - using getters to avoid context re-renders
+  getLastClickedRowId: () => string | null
+  setLastClickedRowId: (id: string | null) => void
+
+  // Footer
+  footerElement?: ReactNode
+
+  // Custom components
+  bulkActionBarElement?: ReactNode
+  tableToolbarElement?: ReactNode
+  customFilter?: ReactNode
+  headerActions?: ReactNode
+
+  emptyState?: ReactNode
+
+  // Drag and drop
+  dragDropConfig?: DragDropConfig<TData>
+  activeDragItems: TData[] | null
+  setActiveDragItems: (items: TData[] | null) => void
+
+  // Debug
+  debug?: {
+    enabled?: boolean
+    showRects?: boolean
+    showCenters?: boolean
+    showDistances?: boolean
+  }
+}
+
+const TableContext = createContext<TableContextValue | undefined>(undefined)
+
+interface TableProviderProps<TData = any> {
+  children: ReactNode
+  value: TableContextValue<TData>
+}
+
+/**
+ * Provider for DynamicTable context
+ */
+export function TableProvider<TData = any>({ children, value }: TableProviderProps<TData>) {
+  return (
+    <TableContext.Provider value={value as TableContextValue}>{children}</TableContext.Provider>
+  )
+}
+
+/**
+ * Hook to access table context
+ */
+export function useTableContext<TData = any>() {
+  const context = useContext(TableContext)
+  if (!context) {
+    throw new Error('useTableContext must be used within a TableProvider')
+  }
+  return context as TableContextValue<TData>
+}

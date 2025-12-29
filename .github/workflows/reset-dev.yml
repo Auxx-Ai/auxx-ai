@@ -1,0 +1,61 @@
+name: Reset Dev AWS (Destructive)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type I UNDERSTAND to confirm destructive reset of dev"
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  reset-dev:
+    name: Reset dev environment
+    runs-on: ubuntu-latest
+    environment: dev
+    if: ${{ github.event.inputs.confirm == 'I UNDERSTAND' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup pnpm (optional)
+        uses: pnpm/action-setup@v4
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::486437023232:role/AuxxGithubDeployRole
+          aws-region: us-west-1
+
+      - name: Dry-run reset (preview)
+        env:
+          APP_NAME: auxx-ai
+          STAGE: dev
+          REGION_APP: us-west-1
+          REGION_CF: us-east-1
+          DOMAIN: auxx.ai
+        run: |
+          bash scripts/aws/reset-dev.sh <<<'y'
+
+      - name: Execute reset (destructive)
+        env:
+          APP_NAME: auxx-ai
+          STAGE: dev
+          REGION_APP: us-west-1
+          REGION_CF: us-east-1
+          DOMAIN: auxx.ai
+        run: |
+          bash scripts/aws/reset-dev.sh --execute <<<'y'
+

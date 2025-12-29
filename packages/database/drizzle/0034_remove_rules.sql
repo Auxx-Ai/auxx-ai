@@ -1,0 +1,26 @@
+DROP TABLE "_prisma_migrations" CASCADE;--> statement-breakpoint
+DROP TABLE "AutoResponseRule" CASCADE;--> statement-breakpoint
+DROP TABLE "CustomExtractionRule" CASCADE;--> statement-breakpoint
+DROP TABLE "EmailAIAnalysis" CASCADE;--> statement-breakpoint
+DROP TABLE "EmailContentAnalysis" CASCADE;--> statement-breakpoint
+DROP TABLE "EmailKBArticleReference" CASCADE;--> statement-breakpoint
+DROP TABLE "EmailProcessingJob" CASCADE;--> statement-breakpoint
+DROP TABLE "EmailResponse" CASCADE;--> statement-breakpoint
+DROP TABLE "EmailRuleMatch" CASCADE;--> statement-breakpoint
+DROP TABLE "ExecutedRuleGroup" CASCADE;--> statement-breakpoint
+DROP TABLE "ExecutedRule" CASCADE;--> statement-breakpoint
+DROP TABLE "ExtractionTemplate" CASCADE;--> statement-breakpoint
+DROP TABLE "IntegrationSchedule" CASCADE;--> statement-breakpoint
+DROP TABLE "ResponseTemplate" CASCADE;--> statement-breakpoint
+DROP TABLE "ThreadAnalysis" CASCADE;--> statement-breakpoint
+DROP TABLE "ThreadTracker" CASCADE;--> statement-breakpoint
+DROP TABLE "RuleGroup" CASCADE;--> statement-breakpoint
+DROP TABLE "RuleGroupRule" CASCADE;--> statement-breakpoint
+DROP TABLE "RuleGroupRelation" CASCADE;--> statement-breakpoint
+DROP TABLE "RuleInSuite" CASCADE;--> statement-breakpoint
+DROP TABLE "RuleAction" CASCADE;--> statement-breakpoint
+DROP TABLE "Rule" CASCADE;--> statement-breakpoint
+DROP TABLE "ProposedAction" CASCADE;--> statement-breakpoint
+DROP TABLE "ShopifyAutomationMetrics" CASCADE;--> statement-breakpoint
+DROP TABLE "ShopifyAutomationRule" CASCADE;--> statement-breakpoint
+DROP TYPE "public"."ThreadTrackerType";

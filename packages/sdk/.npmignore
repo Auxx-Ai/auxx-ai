@@ -1,0 +1,6 @@
+src/
+*.test.ts
+*.spec.ts
+tsconfig.json
+.gitignore
+.eslintrc.js

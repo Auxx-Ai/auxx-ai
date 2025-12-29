@@ -1,0 +1,4 @@
+// apps/web/src/components/workflow/providers/index.ts
+
+export { VarStoreSyncProvider } from './var-store-sync-provider'
+export { WorkflowResourceProvider, useWorkflowResources } from './workflow-resource-provider'

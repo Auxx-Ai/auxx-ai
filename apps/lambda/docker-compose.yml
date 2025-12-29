@@ -1,0 +1,37 @@
+# apps/lambda/docker-compose.yml
+
+version: '3.9'
+
+services:
+  lambda-dev:
+    build:
+      context: ../..
+      dockerfile: apps/lambda/Dockerfile.dev
+    container_name: auxx-lambda-dev
+    # Use host network mode so container can access localhost:3007 directly
+    ports:
+      - '3008:3008'
+
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=development
+      - AWS_REGION=us-west-1
+      - AWS_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY}
+      - BUNDLES_BUCKET_NAME=auxx-private-local
+      # - LOCAL_BUNDLES_PATH=/bundles  # Commented out to test S3
+      - PORT=3008
+      - API_URL=${API_URL:-http://host.docker.internal:3007}
+    volumes:
+      # Mount source for hot reload
+      - ./src:/app/src:ro
+      # Mount local bundles directory
+      - ../../.bundles:/bundles:ro
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:3008/health']
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped

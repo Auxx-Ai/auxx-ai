@@ -1,0 +1,14 @@
+{
+  "node": "airtable",
+  "version": "1.0",
+  "categories": ["Data & Storage"],
+  "resources": {
+    "credentialDocumentation": [
+      { "url": "https://docs.auxx.ai/integrations/builtin/credentials/airtable/" }
+    ],
+    "primaryDocumentation": [
+      { "url": "https://docs.auxx.ai/integrations/builtin/app-nodes/airtable/" }
+    ],
+    "generic": []
+  }
+}

@@ -1,0 +1,32 @@
+// packages/billing/vitest.config.ts
+import { defineConfig } from 'vitest/config'
+import tsconfigPaths from 'vite-tsconfig-paths'
+import path from 'path'
+
+export default defineConfig({
+  root: __dirname,
+  plugins: [tsconfigPaths()],
+  test: {
+    name: 'billing',
+    globals: true,
+    environment: 'node',
+    include: [
+      'src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts}',
+      'src/**/__tests__/**/*.{js,mjs,cjs,ts,mts,cts}',
+    ],
+    exclude: ['node_modules/**', 'dist/**', '**/*.config.*'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      exclude: ['node_modules/', 'dist/', '**/*.test.*', '**/*.config.*', '**/index.ts'],
+    },
+  },
+  resolve: {
+    alias: {
+      '@auxx/billing': path.resolve(__dirname, './src'),
+      '@auxx/database': path.resolve(__dirname, '../database/src'),
+      '@auxx/lib': path.resolve(__dirname, '../lib/src'),
+      '~/': path.resolve(__dirname, './src/'),
+    },
+  },
+})

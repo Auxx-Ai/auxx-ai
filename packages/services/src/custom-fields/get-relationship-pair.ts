@@ -1,0 +1,88 @@
+// packages/services/src/custom-fields/get-relationship-pair.ts
+
+import { database, schema } from '@auxx/database'
+import { eq, and } from 'drizzle-orm'
+import { ok, err } from 'neverthrow'
+import { fromDatabase } from '../shared/utils'
+import type { RelationshipConfig } from './types'
+import type { CustomFieldEntity } from '@auxx/database/models'
+
+/**
+ * Input for getting a relationship pair
+ */
+export interface GetRelationshipPairInput {
+  fieldId: string
+  organizationId: string
+}
+
+/**
+ * Get both sides of a relationship field
+ *
+ * @param input - Field identification
+ * @returns Result with primary and inverse fields
+ */
+export async function getRelationshipPair(input: GetRelationshipPairInput) {
+  const { fieldId, organizationId } = input
+
+  // Get the primary field
+  const primaryResult = await fromDatabase(
+    database
+      .select()
+      .from(schema.CustomField)
+      .where(
+        and(
+          eq(schema.CustomField.id, fieldId),
+          eq(schema.CustomField.organizationId, organizationId)
+        )
+      )
+      .limit(1),
+    'get-relationship-primary'
+  )
+
+  if (primaryResult.isErr()) {
+    return primaryResult
+  }
+
+  const primary = primaryResult.value[0] as CustomFieldEntity | undefined
+  if (!primary) {
+    return err({
+      code: 'CUSTOM_FIELD_NOT_FOUND' as const,
+      message: 'Field not found',
+      fieldId,
+    })
+  }
+
+  if (primary.type !== 'RELATIONSHIP') {
+    return err({
+      code: 'VALIDATION_ERROR' as const,
+      message: 'Field is not a relationship field',
+    })
+  }
+
+  const relationshipConfig = (primary.options as { relationship?: RelationshipConfig })?.relationship
+  const inverseFieldId = relationshipConfig?.inverseFieldId
+
+  let inverse: CustomFieldEntity | null = null
+
+  if (inverseFieldId) {
+    const inverseResult = await fromDatabase(
+      database
+        .select()
+        .from(schema.CustomField)
+        .where(
+          and(
+            eq(schema.CustomField.id, inverseFieldId),
+            eq(schema.CustomField.organizationId, organizationId)
+          )
+        )
+        .limit(1),
+      'get-relationship-inverse'
+    )
+
+    if (inverseResult.isOk() && inverseResult.value[0]) {
+      inverse = inverseResult.value[0] as CustomFieldEntity
+    }
+  }
+
+  return ok({ primary, inverse })
+}

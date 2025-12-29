@@ -1,0 +1,10 @@
+#!/bin/sh
+set -euo pipefail
+
+# AWS Lambda Runtime Interface for Deno
+exec deno run \
+  --allow-net \
+  --allow-env \
+  --allow-read=/var/task,/tmp \
+  --no-check \
+  /var/task/src/index.ts

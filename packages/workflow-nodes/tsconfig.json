@@ -1,0 +1,15 @@
+{
+  "extends": "@auxx/typescript-config/base.json",
+  "compilerOptions": {
+    "moduleResolution": "bundler",
+    "rootDir": "src",
+    "declaration": true,
+    "skipLibCheck": true,
+    "composite": true,
+    "noEmit": true
+    // Lib specific options if needed, often none
+    // "noEmit": true // Set to false if you build this package
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+}

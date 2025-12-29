@@ -1,0 +1,99 @@
+// /Users/mklooth/Sites/auxx-ai/apps/web/src/app/(protected)/app/settings/integrations/new/[integrationType]/[integrationId]/page.tsx
+
+'use client'
+
+import React, { useEffect } from 'react'
+import { useSearchParams, useParams, useRouter } from 'next/navigation'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
+import { Button } from '@auxx/ui/components/button'
+import { CheckCircle, XCircle } from 'lucide-react'
+import { toastSuccess, toastError } from '@auxx/ui/components/toast'
+import SettingsPage from '~/components/global/settings-page'
+import { api } from '~/trpc/react'
+
+/**
+ * NewIntegrationSuccess component
+ * Displays the result of a new integration setup
+ * Note: [integrationType] is a route param representing integration.provider (not removed schema field)
+ */
+export default function NewIntegrationSuccess() {
+  // Get URL parameters
+  const params = useParams()
+  const searchParams = useSearchParams()
+  const router = useRouter()
+
+  const utils = api.useUtils()
+
+  // Extract params from URL
+  // Note: integrationType route parameter represents the provider type
+  const integrationId = searchParams.get('integrationId')
+  const integrationType = params.integrationType as string
+  const success = searchParams.get('success') === 'true'
+  const error = searchParams.get('error')
+  const errorDescription = searchParams.get('error_description')
+
+  useEffect(() => {
+    // Show appropriate toast based on success/error status
+    if (success) {
+      toastSuccess({
+        title: 'Integration successful',
+        description: `Your ${integrationType} integration has been set up successfully.`,
+      })
+
+      utils.user.me.invalidate()
+    } else if (error) {
+      toastError({
+        title: 'Integration failed',
+        description: error || 'There was an error setting up your integration.',
+      })
+    }
+  }, [success, error, integrationType])
+
+  // Navigate back to integrations page
+  const handleReturn = () => {
+    router.push('/app/settings/integrations')
+  }
+
+  return (
+    <SettingsPage
+      title={`${integrationType} Integration`}
+      description="Setup your new integration"
+      breadcrumbs={[
+        { title: 'Settings', href: '/app/settings' },
+        { title: 'Integrations', href: '/app/settings/integrations' },
+        { title: 'Add New Integration', href: '/app/settings/integrations/new' },
+        { title: integrationType },
+      ]}>
+      <div className="p-6">
+        <Card className="max-w-md mx-auto mt-10">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              {success ? (
+                <>
+                  <CheckCircle className="text-green-500" />
+                  Integration Successful
+                </>
+              ) : (
+                <>
+                  <XCircle className="text-red-500" />
+                  Integration Failed
+                </>
+              )}
+            </CardTitle>
+            <CardDescription>
+              {integrationType.charAt(0).toUpperCase() + integrationType.slice(1)} integration
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="mb-4">
+              {success
+                ? `Your ${integrationType} integration has been successfully set up.`
+                : `There was an error setting up your ${integrationType} integration: ${errorDescription || 'Unknown error'}`}
+            </p>
+            <Button onClick={handleReturn}>Return to Integrations</Button>
+          </CardContent>
+        </Card>
+      </div>
+    </SettingsPage>
+  )
+}

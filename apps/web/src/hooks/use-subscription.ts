@@ -1,0 +1,75 @@
+// apps/web/src/hooks/use-subscription.ts
+
+import {
+  useDehydratedOrganization,
+  useDehydratedOrganizationId,
+} from '~/providers/dehydrated-state-provider'
+
+/**
+ * Hook to get subscription data for the current organization
+ * Uses dehydrated state - no API calls!
+ * @returns Subscription data or null if no subscription
+ */
+export function useSubscription() {
+  const organizationId = useDehydratedOrganizationId()
+  const org = useDehydratedOrganization(organizationId)
+  return org?.subscription ?? null
+}
+
+/**
+ * Hook to check if current organization has an active subscription
+ * @returns True if subscription is active
+ */
+export function useHasActiveSubscription(): boolean {
+  const subscription = useSubscription()
+  if (!subscription) return false
+
+  // Active statuses
+  const activeStatuses = ['active', 'trialing']
+  return activeStatuses.includes(subscription.status.toLowerCase())
+}
+
+/**
+ * Hook to check if subscription is expired
+ * @returns True if subscription is expired or canceled
+ */
+export function useIsSubscriptionExpired(): boolean {
+  const subscription = useSubscription()
+  if (!subscription) return false
+
+  // Expired/inactive statuses
+  const expiredStatuses = ['canceled', 'unpaid', 'past_due', 'incomplete_expired']
+  return expiredStatuses.includes(subscription.status.toLowerCase())
+}
+
+/**
+ * Hook to check if current organization is on trial
+ * @returns True if currently trialing and trial hasn't ended
+ */
+export function useIsOnTrial(): boolean {
+  const subscription = useSubscription()
+  if (!subscription) return false
+
+  return subscription.status.toLowerCase() === 'trialing' && !subscription.hasTrialEnded
+}
+
+/**
+ * Hook to get subscription status details for current organization
+ * @returns Detailed subscription status
+ */
+export function useSubscriptionStatus() {
+  const subscription = useSubscription()
+  const isActive = useHasActiveSubscription()
+  const isExpired = useIsSubscriptionExpired()
+  const isOnTrial = useIsOnTrial()
+
+  return {
+    subscription,
+    isActive,
+    isExpired,
+    isOnTrial,
+    hasCanceled: subscription?.canceledAt !== null,
+    willCancelAtPeriodEnd: subscription?.cancelAtPeriodEnd ?? false,
+    hasScheduledChanges: subscription?.scheduledPlanId !== null,
+  }
+}

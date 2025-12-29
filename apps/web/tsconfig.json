@@ -1,0 +1,41 @@
+{
+  "extends": "@auxx/typescript-config/nextjs.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "incremental": true,
+    "moduleResolution": "Bundler",
+    "paths": {
+      "~/*": ["./src/*"]
+      // "@auxx/lib": ["../../packages/lib"],
+      // "@auxx/config": ["../../packages/config"],
+      // "@auxx/database": ["../../packages/database"],
+      // "@auxx/ui": ["../../packages/ui"]
+    },
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+
+    "resolveJsonModule": true,
+    "jsx": "preserve",
+    "skipLibCheck": true,
+    "module": "esnext"
+  },
+  "references": [{ "path": "../../packages/services" }],
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts"
+    // "../../packages/lib/src/**/*" CHANGED 2025-08-27
+  ],
+  "exclude": [
+    "node_modules",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx",
+    "**/__tests__/**"
+  ]
+}

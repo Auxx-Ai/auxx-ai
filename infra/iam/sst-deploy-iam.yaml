@@ -1,0 +1,137 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: IAM setup for SST v3 deploys via GitHub OIDC (Auxx) — policy + role + OIDC provider
+
+Parameters:
+  RepoOwner:
+    Type: String
+    Description: GitHub organization or user that owns the repository (e.g., auxx-ai)
+  RepoName:
+    Type: String
+    Description: GitHub repository name (e.g., auxx-ai)
+  GitHubOidcThumbprint:
+    Type: String
+    Default: '6938fd4d98bab03faadb97b34396831e3780aea1'
+    Description: Thumbprint for token.actions.githubusercontent.com (update if GitHub rotates certs)
+  RoleName:
+    Type: String
+    Default: AuxxGithubDeployRole
+    Description: Name of the IAM role assumed by GitHub Actions via OIDC
+  ManagedPolicyName:
+    Type: String
+    Default: AuxxSSTDeployPolicy
+    Description: Name of the managed policy allowing SST v3 deployments
+
+  CreateOidcProvider:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'false'
+    Description: Set to 'true' to create the GitHub OIDC provider; set to 'false' to use an existing provider via ExistingOidcProviderArn
+
+  ExistingOidcProviderArn:
+    Type: String
+    Default: ''
+    Description: ARN of an existing OIDC provider for token.actions.githubusercontent.com (leave blank if creating a new provider)
+
+Conditions:
+  DoCreateOidc: !Equals [ !Ref CreateOidcProvider, 'true' ]
+  UseExistingProvider: !Not [ !Equals [ !Ref ExistingOidcProviderArn, '' ] ]
+
+Resources:
+  GitHubOidcProvider:
+    Condition: DoCreateOidc
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [ 'sts.amazonaws.com' ]
+      ThumbprintList: [ !Ref GitHubOidcThumbprint ]
+
+  AuxxSSTDeployPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Ref ManagedPolicyName
+      Description: Permissions for SST v3 deployments (CodeBuild, CloudFront, VPC, RDS, ECS, etc.)
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: CoreInfra
+            Effect: Allow
+            Action:
+              - cloudformation:*
+              - ec2:*
+              - elasticloadbalancing:*
+              - ecr:*
+              - ecs:*
+              - application-autoscaling:*
+              - logs:*
+              - events:*
+              - lambda:*
+              - sqs:*
+              - s3:*
+              - rds:*
+              - elasticache:*
+              - dynamodb:*
+              - servicediscovery:*
+              - ssm:*
+              - secretsmanager:*
+              - route53:*
+              - acm:*
+              - cloudfront:*
+              - cloudfront-keyvaluestore:*
+              - codebuild:*
+            Resource: '*'
+          - Sid: IAMRoleManagement
+            Effect: Allow
+            Action:
+              - iam:CreateRole
+              - iam:DeleteRole
+              - iam:GetRole
+              - iam:UpdateRole
+              - iam:TagRole
+              - iam:UntagRole
+              - iam:ListAttachedRolePolicies
+              - iam:ListRolePolicies
+              - iam:ListInstanceProfilesForRole
+              - iam:ListInstanceProfiles
+              - iam:RemoveRoleFromInstanceProfile
+              - iam:DeleteInstanceProfile
+              - iam:CreateServiceLinkedRole
+              - iam:DeleteServiceLinkedRole
+              - iam:GetServiceLinkedRoleDeletionStatus
+              - iam:AttachRolePolicy
+              - iam:DetachRolePolicy
+              - iam:PutRolePolicy
+              - iam:GetRolePolicy
+              - iam:DeleteRolePolicy
+              - iam:PassRole
+            Resource: '*'
+
+  AuxxGithubDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If [ UseExistingProvider, !Ref ExistingOidcProviderArn, !Ref GitHubOidcProvider ]
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub:
+                  - !Sub 'repo:${RepoOwner}/${RepoName}:*'
+      ManagedPolicyArns:
+        - !Ref AuxxSSTDeployPolicy
+
+Outputs:
+  RoleArn:
+    Description: ARN of the GitHub OIDC deploy role
+    Value: !GetAtt AuxxGithubDeployRole.Arn
+  ManagedPolicyArn:
+    Description: ARN of the managed deploy policy
+    Value: !Ref AuxxSSTDeployPolicy
+  OIDCProviderArn:
+    Description: ARN of the GitHub OIDC provider
+    Value: !Ref GitHubOidcProvider

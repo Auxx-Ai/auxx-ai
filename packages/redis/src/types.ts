@@ -1,0 +1,148 @@
+// packages/redis/src/types.ts
+import { createScopedLogger } from '@auxx/logger'
+
+export const logger = createScopedLogger('redis-client')
+
+/**
+ * Enhanced Redis client interface with optional pub/sub methods
+ * Not all providers support all operations
+ */
+export interface RedisClient {
+  // Standard Redis operations (supported by all providers)
+  get(key: string): Promise<any>
+  set(key: string, value: any, ...args: any[]): Promise<any>
+  setex(key: string, seconds: number, value: string): Promise<string>
+  del(key: string | string[]): Promise<number>
+  exists(key: string | string[]): Promise<number>
+  expire(key: string, seconds: number): Promise<number>
+  ping(): Promise<string>
+  quit(): Promise<string>
+
+  // Optional pub/sub operations (not all providers support these)
+  publish(channel: string, message: string): Promise<number>
+  subscribe(channel: string): Promise<number>
+  unsubscribe(channel: string): Promise<number>
+  psubscribe(pattern: string): Promise<number>
+  punsubscribe(pattern: string): Promise<number>
+
+  // Event handling
+  on(event: string, listener: (...args: any[]) => void): void
+  removeListener(event: string, listener: (...args: any[]) => void): void
+  disconnect(): void
+
+  // Additional operations for polling-based providers
+  keys(pattern: string): Promise<string[]>
+  rpop(key: string): Promise<string | null>
+  lpush(key: string, ...values: string[]): Promise<number>
+  llen(key: string): Promise<number>
+  ltrim(key: string, start: number, stop: number): Promise<string>
+  lrange(key: string, start: number, stop: number): Promise<string[]>
+
+  // Sorted set operations (Redis 2.0+)
+  zadd(key: string, score: number, member: string): Promise<number>
+  zadd(key: string, ...args: (number | string)[]): Promise<number>
+  zrem(key: string, ...members: string[]): Promise<number>
+  zrevrange(key: string, start: number, stop: number): Promise<string[]>
+  zcard(key: string): Promise<number>
+  zrank(key: string, member: string): Promise<number | null>
+  zrevrank(key: string, member: string): Promise<number | null>
+  zscore(key: string, member: string): Promise<string | null>
+
+  // TTL operations
+  ttl(key: string): Promise<number>
+  pttl(key: string): Promise<number>
+
+  // Lua script support (IORedis/AWS)
+  eval?(script: string, numKeys: number, ...args: any[]): Promise<any>
+}
+
+/**
+ * Describes what each Redis provider supports
+ */
+export interface RedisProviderCapabilities {
+  provider: 'upstash' | 'aws' | 'hosted'
+  nativePubSub: boolean
+  patternSubscribe: boolean
+  transactions: boolean
+  sortedSets: boolean
+  connectionType: 'HTTP' | 'TCP'
+  requiresPolling: boolean
+  supportedOperations: string[]
+}
+
+/**
+ * Router performance and status information
+ */
+export interface EventRouterStats {
+  activeHandlers: number
+  totalMessages: number
+  messageRate: number
+  lastActivity: Date | null
+  provider: string
+  connectionStatus: 'connected' | 'disconnected' | 'reconnecting' | 'error'
+  errors: number
+  uptime: number
+}
+
+/**
+ * Configuration for event subscriptions
+ */
+export interface SubscriptionOptions {
+  pattern: string
+  handler: (event: any) => void | Promise<void>
+  metadata?: Record<string, any>
+  once?: boolean
+}
+
+/**
+ * Event handler registration
+ */
+export interface EventHandler {
+  id: string
+  pattern: string
+  handler: (event: any) => void | Promise<void>
+  metadata?: Record<string, any>
+  once?: boolean
+  createdAt: Date
+  lastTriggered?: Date
+  triggerCount: number
+}
+
+/**
+ * Redis event message format
+ */
+export interface RedisEvent {
+  channel: string
+  data: any
+  timestamp: number
+  id?: string
+}
+
+/**
+ * Pub/Sub adapter interface
+ */
+export interface PubSubAdapter {
+  subscribe(pattern: string, handler: (channel: string, message: string) => void): Promise<void>
+  unsubscribe(pattern: string): Promise<void>
+  publish(channel: string, message: string): Promise<number>
+  disconnect(): Promise<void>
+  isConnected(): boolean
+  getCapabilities(): RedisProviderCapabilities
+}
+
+/**
+ * Provider-specific connection options
+ */
+export interface RedisConnectionOptions {
+  host?: string
+  port?: number
+  password?: string
+  url?: string
+  restApiUrl?: string
+  restApiToken?: string
+}
+
+/**
+ * Redis provider type
+ */
+export type RedisProvider = 'upstash' | 'aws' | 'hosted'

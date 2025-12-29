@@ -1,0 +1,28 @@
+{
+  "name": "@auxx/billing",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "dev": "pnpm exec dotenv -e ../../.env -e .env -- bash -lc 'echo \"NGROK_URL=$NGROK_URL\" && ngrok http --url=$NGROK_URL 3000'",
+    "clean": "rm -rf node_modules"
+  },
+  "dependencies": {
+    "stripe": "catalog:",
+    "@auxx/database": "workspace:*",
+    "@auxx/logger": "workspace:*",
+    "drizzle-orm": "catalog:"
+  },
+  "devDependencies": {
+    "dotenv": "catalog:",
+    "@auxx/typescript-config": "workspace:*",
+    "concurrently": "^9.1.2",
+    "typescript": "catalog:"
+  }
+}

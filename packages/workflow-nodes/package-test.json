@@ -1,0 +1,57 @@
+{
+  "name": "@auxx/workflow-nodes",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/client/index.d.ts",
+      "default": "./dist/public/index.js"
+    },
+    "./types": {
+      "types": "./dist/types/index.d.ts",
+      "default": "./dist/empty.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b",
+    "generate": "tsx scripts/generate-frontend.ts",
+    "generate:watch": "tsx scripts/generate-frontend.ts --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 1000",
+    "lint:fix": "eslint . --fix --max-warnings 1000",
+    "clean": "rm -rf node_modules .turbo dist",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest --watch"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.772.0",
+    "googleapis": "144.0.0",
+    "@auxx/config": "workspace:*",
+    "@auxx/database": "workspace:*"
+  },
+  "devDependencies": {
+    "@auxx/eslint-config": "workspace:*",
+    "@auxx/typescript-config": "workspace:*",
+    "@vitejs/plugin-react": "^4.5.0",
+    "eslint": "9.24.0",
+    "fs-extra": "^11.2.0",
+    "glob": "^10.3.10",
+    "tsup": "^8.0.2",
+    "tsx": "^4.7.1",
+    "typescript": "5.9.2",
+    "vite": "^6.3.5",
+    "vite-tsconfig-paths": "^5.1.4",
+    "vitest": "^3.0.9"
+  }
+}

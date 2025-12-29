@@ -1,0 +1,60 @@
+// apps/web/src/components/workflow/ui/conditions/components/sortable-condition-group.tsx
+
+'use client'
+
+import { useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import ConditionGroup from './condition-group'
+import type { ConditionGroup as ConditionGroupType } from '../types'
+
+interface SortableConditionGroupProps {
+  group: ConditionGroupType
+  showNameInput?: boolean
+  showDescription?: boolean
+  showSubtext?: boolean
+  allowCollapse?: boolean
+  showRemoveButton?: boolean
+  disabled?: boolean
+}
+
+/**
+ * Sortable wrapper for ConditionGroup component
+ * Based on proven pattern from if-else/condition-wrap.tsx
+ */
+const SortableConditionGroup = ({
+  group,
+  disabled,
+  ...groupProps
+}: SortableConditionGroupProps) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: group.id,
+    disabled,
+  })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <ConditionGroup
+        group={group}
+        showDragHandle={!disabled}
+        isDragging={isDragging}
+        dragHandleAttributes={attributes}
+        dragHandleListeners={listeners}
+        {...groupProps}
+      />
+    </div>
+  )
+}
+
+export default SortableConditionGroup

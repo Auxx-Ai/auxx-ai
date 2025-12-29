@@ -1,0 +1,111 @@
+/* apps/web/src/components/workflow/ui/input-editor/input-editor.css */
+
+/* Wrapper styling to match standard input appearance */
+.input-editor-wrapper {
+  @apply relative flex h-9 w-full items-center rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors;
+  @apply hover:border-accent-foreground/20 focus-within:outline-none focus-within:ring-1 focus-within:ring-ring;
+}
+
+/* Disabled state */
+.input-editor-wrapper.opacity-50 {
+  @apply hover:border-input;
+}
+
+/* The editor field itself */
+.input-editor-field {
+  @apply flex-1 min-w-0;
+}
+
+/* Core editor content styling */
+.input-editor-content {
+  @apply outline-none;
+  
+  /* Ensure single line behavior */
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  
+  /* Remove Tiptap's default paragraph margins */
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Ensure Tiptap paragraph has no margins */
+.input-editor-content p {
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: normal !important;
+  
+  /* Single line constraints */
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+/* Tiptap placeholder styling */
+.input-editor-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: hsl(var(--muted-foreground));
+  pointer-events: none;
+  height: 0;
+}
+
+/* Alternative placeholder selector */
+.input-editor-content .is-empty::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: hsl(var(--muted-foreground));
+  pointer-events: none;
+  height: 0;
+}
+
+/* Variable node styling within input editor */
+.input-editor-content .variable-node-placeholder {
+  @apply inline-flex items-center align-middle;
+  /* Ensure variables don't break the single line */
+  white-space: nowrap;
+}
+
+/* Style the variable tag within the input editor */
+.input-editor-content [data-type="variable"] {
+  @apply inline-flex items-center align-middle mx-0.5;
+  vertical-align: middle;
+  line-height: 1;
+}
+
+/* Ensure VariableTag displays properly inline */
+.input-editor-content .variable-tag,
+.input-editor-content [role="button"][aria-label*="Variable"] {
+  @apply inline-flex;
+  vertical-align: middle;
+}
+
+/* Selected variable styling */
+.input-editor-content [data-type="variable"][aria-selected="true"] {
+  @apply ring-1 ring-info/50 rounded-sm;
+}
+
+/* Override any prose styling that might be inherited */
+.input-editor-content.prose {
+  @apply max-w-none;
+}
+
+.input-editor-content.prose p {
+  @apply my-0;
+}
+
+/* Ensure focus state works properly */
+.input-editor-wrapper:focus-within .input-editor-content {
+  @apply outline-none;
+}
+
+/* Hide scrollbars but keep functionality */
+.input-editor-content::-webkit-scrollbar {
+  display: none;
+}
+
+.input-editor-content {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

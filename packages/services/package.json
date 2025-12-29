@@ -1,0 +1,52 @@
+{
+  "name": "@auxx/services",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "node": "./dist/index.js",
+      "default": "./src/index.ts"
+    },
+    "./app-settings/client": {
+      "types": "./src/app-settings/client.ts",
+      "node": "./dist/app-settings/client.js",
+      "default": "./src/app-settings/client.ts"
+    },
+    "./*": {
+      "types": "./src/*/index.ts",
+      "node": "./dist/*.js",
+      "default": "./src/*.ts"
+    }
+  },
+  "scripts": {
+    "clean": "rm -rf node_modules .turbo dist *.tsbuildinfo",
+    "test": "vitest",
+    "build": "tsc || true && tsx scripts/generate-dist-entries.ts",
+    "dev": "concurrently -k -n TSC,SHIMS -c blue,green \"tsc -w --preserveWatchOutput\" \"chokidar \\\"dist/**/index.js\\\" -c \\\"tsx scripts/generate-dist-entries.ts\\\"\""
+  },
+  "dependencies": {
+    "@auxx/config": "workspace:*",
+    "@auxx/logger": "workspace:*",
+    "@auxx/credentials": "workspace:*",
+    "@auxx/database": "workspace:*",
+    "drizzle-orm": "catalog:",
+    "neverthrow": "^6.2.2",
+    "pg": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@auxx/eslint-config": "workspace:*",
+    "@auxx/typescript-config": "workspace:*",
+    "@types/node": "catalog:",
+    "chokidar-cli": "^3.0.0",
+    "concurrently": "^9.2.1",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-tsconfig-paths": "catalog:",
+    "vitest": "catalog:"
+  }
+}

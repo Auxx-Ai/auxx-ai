@@ -1,0 +1,1 @@
+ALTER TABLE "ApprovalResponse" ADD COLUMN "comment" text;

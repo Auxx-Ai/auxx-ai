@@ -1,0 +1,27 @@
+{
+  "name": "slug-to-be-replaced",
+  "version": "1.0.0",
+  "description": "description-to-be-replaced",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "auxx dev",
+    "build": "auxx build",
+    "lint": "prettier --check \"src/**/*.{ts,tsx}\"",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\""
+  },
+  "dependencies": {
+    "@auxx/sdk": "latest",
+    "react": "19.1.0",
+    "zod": "~3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "prettier": "^3.5.3",
+    "typescript": "^5.9.2",
+    "@types/react": "19.1.8",
+    "node-fetch": "3.3.2",
+    "eslint": "^9.29.0",
+    "@typescript-eslint/parser": "^8.34.1"
+  }
+}

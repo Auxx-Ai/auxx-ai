@@ -1,0 +1,75 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+.DS_Store
+node_modules
+.turbo
+dist
+coverage
+*.log
+.pnpm-store
+.sst
+.aws.md
+repomix-output.txt
+repomix.config.json
+.repomix
+.claude
+
+# database
+/prisma/db.sqlite
+/prisma/db.sqlite-journal
+db.sqlite
+/plans
+# next.js
+.open-next
+/.next/
+*/.next/
+/out/
+next-env.d.ts
+/progress.md
+
+# production
+/build
+dist
+apps/web/.next/
+apps/admin/.next/
+apps/kb/.next/
+
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# local env files
+# do not commit any .env files to git, except for the .env.example file. https://create.t3.gg/en/usage/env-variables#using-environment-variables
+.env
+.env*.local
+!.env.example
+.tscheck
+# vercel
+.vercel
+
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+
+# typescript
+*.tsbuildinfo
+
+# idea files
+.idea
+
+# infra
+cdk.out
+
+# backups
+.backups.bundles/

@@ -1,0 +1,17 @@
+{
+  "folders": [{ "path": "." }],
+  "settings": {
+    "postman.settings.dotenv-detection-notification-visibility": false,
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "search.exclude": {
+      "./next/*": true,
+    },
+    "[dockerfile]": {
+      "editor.defaultFormatter": "ms-azuretools.vscode-containers",
+    },
+    "typescript.tsdk": "node_modules/typescript/lib",
+    "[markdown]": {
+      "editor.defaultFormatter": "yzhang.markdown-all-in-one",
+    },
+  },
+}

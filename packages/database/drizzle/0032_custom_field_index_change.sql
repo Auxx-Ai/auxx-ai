@@ -1,0 +1,2 @@
+DROP INDEX "CustomField_name_organizationId_key";--> statement-breakpoint
+CREATE UNIQUE INDEX "CustomField_name_org_model_entity_key" ON "CustomField" USING btree ("name","organizationId","modelType","entityDefinitionId");

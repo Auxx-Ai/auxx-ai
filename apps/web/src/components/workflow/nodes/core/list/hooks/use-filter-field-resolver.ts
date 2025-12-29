@@ -1,0 +1,140 @@
+// apps/web/src/components/workflow/nodes/core/list/hooks/use-filter-field-resolver.ts
+
+import { useMemo } from 'react'
+import { useAvailableVariables } from '~/components/workflow/hooks'
+import type { FieldDefinition } from '~/components/workflow/ui/conditions/types'
+import {
+  BaseType,
+  getOperatorsForType,
+  getFieldOperators,
+  RESOURCE_FIELD_REGISTRY,
+  type TableId,
+  type Operator,
+} from '@auxx/lib/workflow-engine/client'
+import { isNodeVariable } from '~/components/workflow/utils/variable-utils'
+import { useVariable } from '~/components/workflow/hooks/use-var-store-sync'
+
+/**
+ * Options for the field resolver hook
+ */
+interface UseFilterFieldResolverOptions {
+  /** The ID of the current node */
+  nodeId: string
+  /** The raw value from inputList (could be variable or TiptapJSON) */
+  inputListValue: string | undefined
+}
+
+/**
+ * Hook to extract field definitions from an array variable's metadata.
+ *
+ * This hook analyzes the input array variable and extracts field definitions
+ * from its items metadata, supporting:
+ * - Object arrays with defined properties
+ * - Resource references (contacts, tickets, etc.)
+ * - Primitive arrays (string[], number[], etc.)
+ *
+ * @param options - Configuration options
+ * @returns Field definitions, availability flags, and state information
+ */
+export function useFilterFieldResolver({ nodeId, inputListValue }: UseFilterFieldResolverOptions) {
+  // const { allVariables } = useAvailableVariables({ nodeId })
+  const { variable } = useVariable(inputListValue, nodeId)
+
+  const fieldDefinitions = useMemo((): FieldDefinition[] => {
+    if (!inputListValue) {
+      return [] // No array selected
+    }
+
+    // PICKER mode returns plain variable ID (e.g., "find-123.results")
+    // Validate it's a proper node variable format
+    if (!isNodeVariable(inputListValue)) {
+      return []
+    }
+
+    // Find the array variable
+    if (!variable) {
+      return []
+    }
+
+    if (variable.type !== BaseType.ARRAY) {
+      return []
+    }
+
+    // Get the item definition from the array
+    const itemVar = variable.items
+
+    if (!itemVar) {
+      return []
+    }
+    // CASE 1: Item is a reference to a known resource type
+    if (itemVar.reference) {
+      const resourceFields = RESOURCE_FIELD_REGISTRY[itemVar.reference as TableId]
+      if (resourceFields) {
+        const filterableFields = Object.values(resourceFields)
+          .filter((field) => field.capabilities.filterable) // Only filterable fields
+          .map(
+            (field): FieldDefinition => ({
+              id: field.key,
+              label: field.label,
+              type: field.type,
+              operators: getFieldOperators(field) as Operator[],
+              enumValues: field.enumValues,
+              // Add fieldReference for RELATION type fields
+              ...(field.type === BaseType.RELATION &&
+                field.relationship && {
+                  fieldReference: `${itemVar.reference}:${field.key}`,
+                }),
+            })
+          )
+        return filterableFields
+      }
+    }
+
+    // CASE 2: Item has properties (object with defined fields)
+    if (itemVar.properties) {
+      const fields = Object.entries(itemVar.properties).map(
+        ([key, prop]): FieldDefinition => ({
+          id: key,
+          label: prop.label || key,
+          type: prop.type,
+          operators: getOperatorsForType(prop.type),
+          enumValues: prop.enum?.map(String),
+          description: prop.description,
+          // Preserve field reference for relation types (reference is only set on RELATION fields)
+          ...(prop.reference && {
+            fieldReference: `${itemVar.reference}:${key}`,
+          }),
+        })
+      )
+      return fields
+    }
+
+    // CASE 3: Item is a primitive type (rare but possible)
+    // Example: string[], number[]
+    if ([BaseType.STRING, BaseType.NUMBER, BaseType.BOOLEAN].includes(itemVar.type)) {
+      return [
+        {
+          id: '_value',
+          label: 'Value',
+          type: itemVar.type,
+          operators: getOperatorsForType(itemVar.type),
+          description: 'The item value',
+        },
+      ]
+    }
+
+    return []
+  }, [variable, inputListValue])
+
+  const hasFields = fieldDefinitions.length > 0
+  const isEmpty = !inputListValue
+
+  return {
+    /** Extracted field definitions for the array items */
+    fieldDefinitions,
+    /** Whether any fields were found */
+    hasFields,
+    /** Whether no input list is selected */
+    isEmpty,
+  }
+}

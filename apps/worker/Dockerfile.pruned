@@ -1,0 +1,129 @@
+# apps/worker/Dockerfile.pruned — Turborepo prune-based build for worker
+
+ARG PROJECT="worker"
+ARG PROJECT_PATH="apps/worker"
+
+# Base stage with pnpm and turbo
+FROM node:22-alpine AS base
+
+RUN apk add --no-cache libc6-compat python3 make g++ gcc
+
+# Enable corepack for pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+
+# Install turbo globally
+RUN pnpm add -g turbo
+
+# 1) Prune the monorepo to only what's needed for the worker
+FROM base AS pruner
+ARG PROJECT="worker"
+ARG PROJECT_PATH="apps/worker"
+WORKDIR /repo
+
+# Copy the entire repo; prune will output a minimized workspace in /repo/out
+COPY . .
+RUN turbo prune \
+    --scope="${PROJECT}" \
+    --scope="@auxx/lib" \
+    --scope="@auxx/database" \
+    --scope="@auxx/workflow-nodes" \
+    --scope="@auxx/config" \
+    --docker
+
+# 2) Install dependencies for the pruned workspace
+FROM base AS installer
+ARG PROJECT="worker"
+ARG PROJECT_PATH="apps/worker"
+WORKDIR /repo
+
+# First, install root dependencies for the pruned workspace (json manifests only)
+COPY --from=pruner /repo/out/json/ ./
+# Bring over workspace config to keep settings consistent
+COPY --from=pruner /repo/.pnpmrc ./.pnpmrc
+COPY --from=pruner /repo/.npmrc ./.npmrc
+COPY --from=pruner /repo/pnpm-workspace.yaml ./pnpm-workspace.yaml
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    pnpm install --no-frozen-lockfile
+
+# Then, bring in the pruned sources and re-install to wire local workspaces
+COPY --from=pruner /repo/out/full/ ./
+
+# Ensure key workspace packages are present for local linking
+COPY --from=pruner /repo/packages/lib ./packages/lib
+COPY --from=pruner /repo/packages/database ./packages/database
+COPY --from=pruner /repo/packages/workflow-nodes ./packages/workflow-nodes
+COPY --from=pruner /repo/packages/config ./packages/config
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    pnpm install --no-frozen-lockfile
+
+# Force workspace links for internal packages to ensure src resolution during build
+RUN set -eux; \
+    mkdir -p node_modules/@auxx; \
+    rm -rf node_modules/@auxx/lib && ln -s /repo/packages/lib node_modules/@auxx/lib; \
+    rm -rf node_modules/@auxx/database && ln -s /repo/packages/database node_modules/@auxx/database; \
+    rm -rf node_modules/@auxx/workflow-nodes && ln -s /repo/packages/workflow-nodes node_modules/@auxx/workflow-nodes; \
+    rm -rf node_modules/@auxx/config && ln -s /repo/packages/config node_modules/@auxx/config
+
+
+# 3) Build the worker and its dependencies
+FROM installer AS builder
+ARG PROJECT="worker"
+ARG PROJECT_PATH="apps/worker"
+WORKDIR /repo
+# Ensure @auxx/lib workspace sources are present even if prune missed some subpaths
+# Ensure key workspace packages are present even if prune misses some subpaths
+COPY --from=pruner /repo/packages/lib ./packages/lib
+COPY --from=pruner /repo/packages/database ./packages/database
+COPY --from=pruner /repo/packages/workflow-nodes ./packages/workflow-nodes
+COPY --from=pruner /repo/packages/config ./packages/config
+RUN pnpm turbo build --filter="${PROJECT}..."
+
+# 4) Create a slim deployable package for the worker
+FROM base AS deploy
+ARG PROJECT="worker"
+ARG PROJECT_PATH="apps/worker"
+WORKDIR /repo
+
+# Copy the built pruned workspace
+COPY --from=builder /repo .
+
+# Improve reliability of network fetches during deploy packaging
+ENV PNPM_NETWORK_CONCURRENCY=4 \
+    PNPM_FETCH_RETRIES=5 \
+    PNPM_FETCH_RETRY_FACTOR=2 \
+    PNPM_FETCH_RETRY_MINTIMEOUT=20000 \
+    PNPM_FETCH_RETRY_MAXTIMEOUT=120000 \
+    PNPM_PREFER_OFFLINE=true
+
+# Produce a standalone deploy directory with only runtime deps for the worker
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    pnpm --filter "${PROJECT}" --prod deploy /deployed
+
+# 5) Runtime image
+FROM node:22-alpine AS runner
+ENV NODE_ENV=production
+ENV PORT=8080
+
+RUN apk add --no-cache libc6-compat
+
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 worker
+
+WORKDIR /app
+
+# Copy the deployed package
+COPY --from=deploy --chown=worker:nodejs /deployed /app
+
+USER worker
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD node -e "require('http').get('http://localhost:8080/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+
+EXPOSE 8080
+
+CMD ["node", "dist/server.js"]

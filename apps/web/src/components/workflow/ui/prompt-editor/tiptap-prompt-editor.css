@@ -1,0 +1,33 @@
+/* apps/web/src/components/workflow/ui/prompt-editor/tiptap-prompt-editor.css */
+
+/* TipTap placeholder styling for the prompt editor */
+.tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: rgb(var(--primary-400));
+  /* color: #adb5bd;  */
+  pointer-events: none;
+  height: 0;
+}
+
+/* Alternative selector for TipTap placeholder */
+.tiptap .is-empty::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: rgb(var(--primary-400));
+
+  /* color: #adb5bd; */
+  pointer-events: none;
+  height: 0;
+}
+
+/* Ensure placeholder is visible when paragraph is empty */
+.tiptap p.is-empty.is-editor-empty::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: rgb(var(--primary-400));
+
+  /* color: #adb5bd; */
+  pointer-events: none;
+  height: 0;
+}

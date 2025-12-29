@@ -1,0 +1,50 @@
+{
+  "name": "@auxx/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsup",
+    "start": "cd dist && node server.js",
+    "dev": "node --import tsx/esm --watch src/server.ts",
+    "lint": "eslint . --max-warnings 100",
+    "lint:fix": "eslint . --fix --max-warnings 100",
+    "tc": "tsc --noEmit",
+    "clean": "rm -rf node_modules dist .turbo"
+  },
+  "dependencies": {
+    "@aws-sdk/s3-presigned-post": "catalog:",
+    "@bull-board/api": "^6.7.9",
+    "@bull-board/hono": "^6.12.7",
+    "@bull-board/ui": "^6.12.7",
+    "@hono/node-server": "^1.13.7",
+    "@auxx/billing": "workspace:*",
+    "@auxx/config": "workspace:*",
+    "@auxx/database": "workspace:*",
+    "@auxx/lib": "workspace:*",
+    "@auxx/logger": "workspace:*",
+    "@auxx/redis": "workspace:*",
+    "@auxx/email": "workspace:*",
+    "@auxx/workflow-nodes": "workspace:*",
+    "@t3-oss/env-nextjs": "catalog:",
+    "bullmq": "catalog:",
+    "dotenv": "catalog:",
+    "hono": "^4.9.7",
+    "ioredis": "catalog:",
+    "pg": "catalog:",
+    "socket.io": "^4.8.1",
+    "zod": "catalog:",
+    "sst": "^3.17.12"
+  },
+  "devDependencies": {
+    "@auxx/eslint-config": "workspace:*",
+    "@auxx/typescript-config": "workspace:*",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "rimraf": "catalog:",
+    "tsconfig-paths": "^4.2.0",
+    "tsup": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
+  }
+}

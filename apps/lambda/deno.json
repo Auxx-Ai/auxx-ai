@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "lib": ["deno.window"],
+    "strict": true,
+    "noImplicitAny": true
+  },
+  "fmt": {
+    "useTabs": false,
+    "lineWidth": 100,
+    "indentWidth": 2,
+    "semiColons": false,
+    "singleQuote": true,
+    "proseWrap": "preserve"
+  },
+  "lint": {
+    "rules": {
+      "tags": ["recommended"]
+    }
+  },
+  "tasks": {
+    "dev": "deno run --watch --allow-all src/index.ts",
+    "test": "deno test --allow-all"
+  },
+  "imports": {
+    "@aws-sdk/client-s3": "npm:@aws-sdk/client-s3@^3.893.0",
+    "zod": "npm:zod@^4.1.5",
+    "@auxx/sdk": "./packages/sdk/lib/root/index.js"
+  }
+}

@@ -1,0 +1,29 @@
+@layer base {
+  @import '@xyflow/react/dist/style.css';
+}
+
+/* Monaco Editor Overrides */
+.monaco-editor {
+  outline: none !important;
+}
+
+.monaco-editor,
+.monaco-editor .margin,
+.monaco-editor .monaco-editor-background {
+  background-color: initial !important;
+}
+
+.monaco-editor-overlaymessage {
+  display: none !important;
+}
+
+/* Note node z-index - ensures notes appear behind all other nodes */
+.react-flow__node-note {
+  z-index: -1000 !important;
+}
+
+/* Hide placeholder in note editor when not focused */
+.hide-placeholder .ProseMirror .is-empty::before,
+.hide-placeholder .ProseMirror .is-editor-empty::before {
+  content: none !important;
+}

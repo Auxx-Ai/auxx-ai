@@ -1,0 +1,1 @@
+ALTER TABLE "PlanSubscription" ALTER COLUMN "updatedAt" SET DEFAULT now();

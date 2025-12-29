@@ -1,0 +1,21 @@
+{
+  "extends": "@auxx/typescript-config/base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "moduleResolution": "bundler",
+    "module": "esnext",
+    "noEmit": true,
+    "baseUrl": ".",
+    "sourceMap": true,
+    "outDir": "./dist",
+    "target": "ES2022",
+    "rootDirs": ["."],
+    "jsx": "preserve"
+    // "paths": {
+    //   "@auxx/lib": ["../../packages/lib"],
+    //   "@auxx/database": ["../../packages/database"],
+    //   "@auxx/workflow-nodes": ["../../packages/workflow-nodes"]
+    // }
+  },
+  "include": ["src/**/*.ts", "*.ts"]
+}

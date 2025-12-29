@@ -1,0 +1,84 @@
+{
+  "name": "auxx-ai",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "turbo build",
+    "dev": "pnpm run build --filter=@auxx/sdk --filter=@auxx/services && turbo dev dev:platform-runtime --concurrency=20 --parallel",
+    "start": "turbo start",
+    "sst:dev": "sst dev --stage=${STAGE:-dev}",
+    "sst:deploy": "sst deploy --stage=${STAGE:-dev}",
+    "sst:remove": "sst remove --stage=${STAGE:-dev}",
+    "sso": "aws sso login --sso-session=auxxai",
+    "clean": "turbo run clean && rm -rf node_modules .turbo out pnpm-lock.yaml",
+    "lint": "turbo lint",
+    "lint:fix": "turbo lint:fix",
+    "typecheck:dirs": "node scripts/typecheck-dirs.mjs",
+    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+    "setup:dev": "node scripts/setup-s3-cdn-secure.js development direct-s3",
+    "setup:cloudfront": "node scripts/setup-cloudfront-secure.js production",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest --watch",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "db:generate": "turbo run db:generate --filter=@auxx/database",
+    "db:seed": "pnpm seed",
+    "db:reset": "turbo run db:reset --filter=@auxx/database",
+    "db:studio": "turbo run db:studio --filter=@auxx/database",
+    "fetch-env:dev": "tsx scripts/fetch-env.ts dev",
+    "fetch-env:staging": "tsx scripts/fetch-env.ts staging",
+    "fetch-env:prod": "tsx scripts/fetch-env.ts production",
+    "docker:dev": "./docker-start.sh",
+    "docker:prod": "./docker-start.sh prod",
+    "docker:build": "./docker-start.sh dev build",
+    "docker:build:prod": "./docker-start.sh prod build",
+    "docker:stop": "./docker-stop.sh",
+    "docker:stop:prod": "./docker-stop.sh prod",
+    "docker:logs": "docker-compose logs -f",
+    "docker:logs:prod": "docker-compose -f docker-compose.prod.yml logs -f",
+    "seed": "pnpm -F @auxx/seed seed",
+    "seed:dev": "pnpm -F @auxx/seed seed:dev",
+    "seed:test": "pnpm -F @auxx/seed seed:test",
+    "seed:screenshot": "pnpm -F @auxx/seed seed:screenshot",
+    "seed:performance": "pnpm -F @auxx/seed seed:performance"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-cloudfront": "^3.893.0",
+    "@aws-sdk/client-s3": "catalog:",
+    "@aws-sdk/client-ssm": "3.799.0",
+    "@aws-sdk/client-sts": "^3.893.0",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitest/ui": "catalog:",
+    "dotenv-cli": "^8.0.0",
+    "eslint": "catalog:",
+    "prettier": "catalog:",
+    "rimraf": "catalog:",
+    "sst": "^3.17.25",
+    "tsx": "catalog:",
+    "turbo": "2.5.2",
+    "typescript": "catalog:",
+    "undici-types": "^7.16.0",
+    "vitest": "catalog:"
+  },
+  "packageManager": "pnpm@10.17.0",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@postman/node-keytar",
+      "deno"
+    ],
+    "ignoredBuiltDependencies": [
+      "@postman/node-keytar"
+    ]
+  }
+}

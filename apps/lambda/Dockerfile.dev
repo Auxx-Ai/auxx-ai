@@ -1,0 +1,34 @@
+# apps/lambda/Dockerfile.dev
+# Development-only Dockerfile with hot reload
+
+FROM denoland/deno:debian-1.45.5
+
+WORKDIR /app
+
+# Install curl for healthcheck
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
+# Set environment
+ENV DENO_DIR=/tmp/deno_cache
+ENV NODE_ENV=development
+ENV PORT=3008
+
+# Copy SDK files (needed by import map)
+COPY packages/sdk/lib ./packages/sdk/lib
+
+# Copy source files
+COPY apps/lambda/src ./src
+COPY apps/lambda/deno.json ./deno.json
+
+# Expose port
+EXPOSE 3008
+
+# Development server with hot reload
+CMD ["deno", "run", \
+     "--watch", \
+     "--allow-net", \
+     "--allow-env", \
+     "--allow-read=/app,/bundles", \
+     "--allow-sys", \
+     "--no-check", \
+     "src/dev-server.ts"]

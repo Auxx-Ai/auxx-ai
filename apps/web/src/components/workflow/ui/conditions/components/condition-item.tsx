@@ -1,0 +1,184 @@
+// apps/web/src/components/workflow/ui/conditions/components/condition-item.tsx
+
+'use client'
+
+import { useCallback, useState } from 'react'
+import { Trash2 } from 'lucide-react'
+import { Button } from '@auxx/ui/components/button'
+import { cn } from '@auxx/ui/lib/utils'
+import { useConditionContext } from '../condition-context'
+import ConditionOperator from './condition-operator'
+import FieldSelector from './field-selector'
+import ValueInput from '../inputs/value-input'
+import { operatorRequiresValue } from '../types'
+import type { ConditionItemProps, Operator } from '../types'
+
+/**
+ * Generic condition item component that works with both if-else and find systems
+ * Maintains the same styling as the original if-else condition-item
+ */
+const ConditionItem = ({
+  condition,
+  groupId,
+  showDragHandle = false,
+  showRemoveButton = true,
+  showLogicalOperator = true,
+  compactMode = false,
+  className,
+  onUpdate,
+  onRemove,
+}: ConditionItemProps) => {
+  const [isHovered, setIsHovered] = useState(false)
+  const { config, readOnly, updateCondition, removeCondition, getFieldDefinition, nodeId } =
+    useConditionContext()
+
+  const fieldDef = getFieldDefinition(condition.fieldId)
+
+  const handleUpdate = useCallback(
+    (updates: Partial<typeof condition>) => {
+      if (onUpdate) {
+        onUpdate(updates)
+      } else {
+        updateCondition(condition.id, updates, groupId)
+      }
+    },
+    [condition.id, groupId, onUpdate, updateCondition]
+  )
+
+  const handleRemove = useCallback(() => {
+    if (onRemove) {
+      onRemove()
+    } else {
+      removeCondition(condition.id, groupId)
+    }
+  }, [condition.id, groupId, onRemove, removeCondition])
+
+  const handleFieldChange = useCallback(
+    (fieldId: string) => {
+      const newFieldDef = getFieldDefinition(fieldId)
+      if (!newFieldDef) return
+
+      // Reset operator and value when field changes
+      const firstOperator = newFieldDef.operators?.[0] || 'equals'
+      handleUpdate({
+        fieldId,
+        operator: firstOperator,
+        value: '',
+        // Update variableId for backward compatibility
+        variableId: config.mode === 'variable' ? fieldId : condition.variableId,
+      })
+    },
+    [getFieldDefinition, handleUpdate, config.mode, condition.variableId]
+  )
+
+  const handleOperatorChange = useCallback(
+    (operator: Operator) => {
+      const oldOperator = condition.operator
+      let newValue = condition.value
+
+      // Reset value for operators that don't need one
+      if (
+        ['isEmpty', 'isNotEmpty', 'empty', 'not empty', 'exists', 'not exists'].includes(operator)
+      ) {
+        newValue = ''
+      }
+      // Handle switching FROM multiple mode TO single mode
+      else if (['in', 'not in'].includes(oldOperator) && !['in', 'not in'].includes(operator)) {
+        // Switching from MULTIPLE to SINGLE mode
+        // Take first value from array, or empty string if array is empty
+        if (Array.isArray(newValue)) {
+          newValue = newValue.length > 0 && newValue[0] ? newValue[0] : ''
+        }
+      }
+      // Handle switching FROM single mode TO multiple mode
+      else if (!['in', 'not in'].includes(oldOperator) && ['in', 'not in'].includes(operator)) {
+        // Switching from SINGLE to MULTIPLE mode
+        // Wrap single value in array
+        if (!Array.isArray(newValue)) {
+          newValue = newValue ? [newValue] : ['']
+        }
+      }
+
+      handleUpdate({ operator, value: newValue })
+    },
+    [condition.operator, condition.value, handleUpdate]
+  )
+
+  const handleValueChange = useCallback(
+    (value: any, isConstantMode?: boolean) => {
+      const updates: any = { value }
+      if (isConstantMode !== undefined) {
+        updates.isConstant = isConstantMode
+      }
+      handleUpdate(updates)
+    },
+    [handleUpdate]
+  )
+
+  return (
+    <div className={cn('mb-1 flex last-of-type:mb-0', className)}>
+      <div
+        className={cn(
+          'grow rounded-xl bg-primary-200/30 border',
+          isHovered && 'bg-destructive/10 border-destructive/20'
+        )}>
+        {/* Main condition row */}
+        <div className="flex items-center p-1">
+          <div className="w-0 grow">
+            <FieldSelector
+              value={condition.fieldId}
+              onChange={handleFieldChange}
+              disabled={readOnly}
+              placeholder="Select field"
+              className="h-6 w-full border-0 px-0 text-xs"
+            />
+          </div>
+
+          <div className="mx-1 h-3 w-[1px] bg-divider"></div>
+
+          <ConditionOperator
+            fieldId={condition.fieldId}
+            value={condition.operator}
+            onChange={handleOperatorChange}
+            disabled={!condition.fieldId || readOnly}
+          />
+        </div>
+
+        {/* Value input section */}
+        {fieldDef && operatorRequiresValue(condition.operator) && (
+          <div
+            className={cn(
+              'border-t border-t-divider px-1 py-0.5',
+              isHovered && 'border-destructive/20',
+              compactMode && 'max-h-[60px] overflow-y-auto'
+            )}>
+            <ValueInput
+              condition={condition}
+              field={fieldDef}
+              value={condition.value}
+              onChange={handleValueChange}
+              disabled={readOnly}
+              nodeId={nodeId}
+              className="text-xs"
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Remove button */}
+      {showRemoveButton && !readOnly && (
+        <Button
+          className="ml-1"
+          onClick={handleRemove}
+          variant="destructive-hover"
+          size="xs"
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}>
+          <Trash2 className="size-6 shrink-0" />
+        </Button>
+      )}
+    </div>
+  )
+}
+
+export default ConditionItem

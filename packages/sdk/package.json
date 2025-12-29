@@ -1,0 +1,130 @@
+{
+  "name": "@auxx/sdk",
+  "version": "0.0.1-experimental.1",
+  "description": "CLI tool and SDK for creating Auxx apps",
+  "type": "module",
+  "bin": {
+    "auxx": "./lib/auxx.js"
+  },
+  "files": [
+    "lib",
+    "template",
+    "auxx.js",
+    "client.d.ts",
+    "server.d.ts",
+    "global.d.ts",
+    "root.d.ts",
+    "lint.cjs",
+    "schema.graphql"
+  ],
+  "exports": {
+    ".": {
+      "types": "./root.d.ts"
+    },
+    "./client": {
+      "types": "./client.d.ts"
+    },
+    "./global": {
+      "types": "./global.d.ts"
+    },
+    "./server": {
+      "types": "./server.d.ts"
+    },
+    "./workflow": {
+      "types": "./lib/root/workflow/index.d.ts",
+      "import": "./lib/root/workflow/index.js"
+    },
+    "./shared": {
+      "types": "./lib/shared/index.d.ts",
+      "import": "./lib/shared/index.js"
+    },
+    "./runtime": {
+      "types": "./lib/runtime/index.d.ts",
+      "import": "./lib/runtime/index.js"
+    },
+    "./build/platform-runtime": {
+      "types": "./lib/build/platform-runtime/build.d.ts",
+      "import": "./lib/build/platform-runtime/build.js"
+    },
+    "./lint": {
+      "default": "./lint.cjs"
+    }
+  },
+  "scripts": {
+    "build": "pnpm run build:types && pnpm run build:strip",
+    "build:types": "tsc -p tsconfig.sdk.json && tsc -p tsconfig.cli.json",
+    "build:strip": "node scripts/strip-implementations.js",
+    "build:keytar": "pnpm rebuild @postman/node-keytar",
+    "build:platform-runtime": "tsx src/build/platform-runtime/build.ts",
+    "clean": "rm -rf node_modules lib .turbo",
+    "dev": "tsc -p tsconfig.build.json --watch",
+    "lint": "eslint src --ext .ts",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "test": "vitest",
+    "prepublishOnly": "pnpm run build",
+    "debug:link": "./debug-link.sh",
+    "debug:tarball": "./debug-init.sh",
+    "debug:rebuild": "./refresh-link.sh"
+  },
+  "keywords": [
+    "auxx",
+    "sdk",
+    "cli",
+    "extensions",
+    "apps"
+  ],
+  "author": "Auxx Team",
+  "license": "MIT",
+  "dependencies": {
+    "@babel/code-frame": "^7.27.1",
+    "@fal-works/esbuild-plugin-global-externals": "^2.1.2",
+    "@graphql-codegen/core": "^4.0.2",
+    "@graphql-codegen/typescript-operations": "^4.6.1",
+    "@hono/graphql-server": "0.6.2",
+    "@hono/node-server": "1.14.4",
+    "@inquirer/prompts": "7.5.3",
+    "@postman/node-keytar": "^7.9.0",
+    "@typescript-eslint/parser": "8.44.1",
+    "@typescript-eslint/scope-manager": "8.44.1",
+    "ably": "^2.0.1",
+    "boxen": "^8.0.1",
+    "chalk": "^5.4.1",
+    "chokidar": "^3.6.0",
+    "cli-table3": "^0.6.5",
+    "commander": "^13.0.0",
+    "date-fns": "^2.21.1",
+    "dotenv": "^16.5.0",
+    "esbuild": "^0.25.5",
+    "find-up-simple": "^1.0.0",
+    "glob": "^11.0.2",
+    "graphql": "16.9.0",
+    "hono": "4.6.18",
+    "node-notifier": "^10.0.1",
+    "open": "^7.0.0",
+    "prettier": "^3.5.3",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-reconciler": "^0.33.0",
+    "stdin-blocker": "^2.0.0",
+    "tiny-cursor": "^2.0.0",
+    "tmp-promise": "^3.0.3",
+    "ts-morph": "^24.0.0",
+    "typescript": "5.9.2",
+    "vitest": "^3.2.4",
+    "zimmerframe": "1.1.4",
+    "zod": "^3.25.64"
+  },
+  "devDependencies": {
+    "@types/babel__code-frame": "^7.0.6",
+    "@types/node": "^20.0.0",
+    "@types/node-notifier": "^8.0.5",
+    "@types/react": "19.1.0",
+    "@types/react-dom": "19.1.0",
+    "@types/react-reconciler": "^0.32.2",
+    "@typescript-eslint/eslint-plugin": "^8.44.1",
+    "eslint": "^9.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

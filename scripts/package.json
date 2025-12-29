@@ -1,0 +1,17 @@
+{
+  "name": "@auxx/scripts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Setup and utility scripts for Auxx.ai",
+  "scripts": {
+    "setup:dev": "node setup-s3-cdn-secure.js development direct-s3",
+    "setup:staging": "node setup-s3-cdn-secure.js staging cloudfront",
+    "setup:production": "node setup-s3-cdn-secure.js production cloudfront",
+    "setup:cloudfront": "node setup-cloudfront-secure.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "catalog:",
+    "@aws-sdk/client-cloudfront": "^3.686.0",
+    "@aws-sdk/client-sts": "^3.686.0"
+  }
+}

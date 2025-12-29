@@ -1,0 +1,1 @@
+ALTER TABLE "AppVersion" ADD COLUMN "settingsSchema" jsonb DEFAULT '{"organization":{},"user":{}}'::jsonb;

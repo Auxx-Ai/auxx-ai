@@ -1,0 +1,33 @@
+{
+  "name": "@auxx/docs",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "next build --turbopack",
+    "dev": "next dev --turbopack --port 3004",
+    "start": "next start --port 3004",
+    "postinstall": "fumadocs-mdx",
+    "clean": "rm -rf node_modules .turbo .next .open-next *.tsbuildinfo"
+  },
+  "dependencies": {
+    "fumadocs-core": "15.7.8",
+    "fumadocs-mdx": "11.8.3",
+    "fumadocs-ui": "15.7.8",
+    "lucide-react": "catalog:",
+    "next": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "catalog:",
+    "@types/mdx": "^2.0.13",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "eslint": "catalog:",
+    "eslint-config-next": "15.3.2",
+    "postcss": "catalog:",
+    "tailwindcss": "catalog:",
+    "typescript": "catalog:"
+  }
+}

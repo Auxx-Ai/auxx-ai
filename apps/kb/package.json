@@ -1,0 +1,31 @@
+{
+  "name": "@auxx/kb",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --turbopack --port 3002",
+    "build": "next build",
+    "clean": "rm -rf .turbo node_modules .next",
+    "start": "next start --port 3002",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@aws-sdk/s3-presigned-post": "catalog:",
+    "@auxx/config": "workspace:*",
+    "@auxx/database": "workspace:*",
+    "@auxx/lib": "workspace:*",
+    "next": "catalog:",
+    "sharp": "catalog:"
+  },
+  "devDependencies": {
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@auxx/eslint-config": "workspace:*",
+    "@auxx/typescript-config": "workspace:*",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "rimraf": "catalog:",
+    "typescript": "catalog:"
+  }
+}

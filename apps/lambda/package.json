@@ -1,0 +1,25 @@
+{
+  "name": "@auxx/lambda",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "docker compose up --build",
+    "dev:logs": "docker compose logs -f lambda-dev",
+    "dev:down": "docker compose down",
+    "dev:restart": "docker compose restart lambda-dev",
+    "dev:bash": "docker compose exec lambda-dev bash",
+    "build": "docker build -t auxx-lambda -f Dockerfile ../..",
+    "test": "deno test --allow-all",
+    "typecheck": "deno check src/index.ts",
+    "clean": "docker compose down -v && rm -rf .deno"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "deno": "^2.1.4"
+  }
+}

@@ -1,0 +1,15 @@
+export const avatars = {
+  adriana: '/images/avatars/adriana.jpg',
+  calvin: '/images/avatars/calvin.jpg',
+  carolin: '/images/avatars/carolin.jpg',
+  charles: '/images/avatars/charles.jpg',
+  danielle: '/images/avatars/danielle.jpg',
+  jack: '/images/avatars/jack.jpg',
+  karo: '/images/avatars/karo.jpg',
+  kyle: '/images/avatars/kyle.jpg',
+  luis: '/images/avatars/luis.jpg',
+  markus: '/images/avatars/markus.jpg',
+  rey: '/images/avatars/rey.jpg',
+  vicken: '/images/avatars/vicken.jpg',
+  zach: '/images/avatars/zach.jpg',
+}

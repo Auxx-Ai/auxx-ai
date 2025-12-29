@@ -1,0 +1,21 @@
+{
+  "extends": "@auxx/typescript-config/base.json",
+  "compilerOptions": {
+    "module": "esnext",
+    "moduleResolution": "bundler"
+  },
+  "include": ["**/*.ts", "**/*.tsx", "**/*.d.ts"],
+  "exclude": [
+    "dist",
+    "build",
+    "node_modules",
+    "src/test/**",
+    "**/.next/**",
+    "**/.turbo/**",
+    "**/coverage/**",
+    "**/build/**",
+    "**/*.d.ts.map",
+    "vitest.config.*",
+    "vite.config.*"
+  ]
+}

@@ -1,0 +1,1 @@
+ALTER TYPE "public"."ContactFieldType" ADD VALUE 'CURRENCY' BEFORE 'MULTI_SELECT';

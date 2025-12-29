@@ -1,0 +1,349 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1758157319105,
+      "tag": "0000_init",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1758927784652,
+      "tag": "0001_bored_bulldozer",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1759352049206,
+      "tag": "0002_wet_echo",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1759362792629,
+      "tag": "0003_plan_sub_status_change",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1759363878507,
+      "tag": "0004_plan_id_nullable",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1759364292020,
+      "tag": "0005_plan_sub_updated_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1759512341022,
+      "tag": "0006_add-scheduled-plan-changes",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1759790143792,
+      "tag": "0007_add-trial-deletion-tracking-fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1759811219092,
+      "tag": "0008_admin-billing-actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1759990462187,
+      "tag": "0009_timeline",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1760209751986,
+      "tag": "0010_add_lastlogin_timezone",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1760302915902,
+      "tag": "0011_developer",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1760380410145,
+      "tag": "0012_oauth_oidc",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1760388363005,
+      "tag": "0013_remove_ref_client_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1760499427430,
+      "tag": "0014_app_bundle",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1761164600166,
+      "tag": "0015_version_modify_slug_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1761236394043,
+      "tag": "0016_oauth_apps",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1761258939586,
+      "tag": "0017_credentials_update",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1761286859658,
+      "tag": "0018_webhook_handler_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1761353849931,
+      "tag": "0019_app_review_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1761456905410,
+      "tag": "0020_app_version_sha",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1761518539481,
+      "tag": "0021_bundle_sha_fix",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1761518990240,
+      "tag": "0022_apps_auto_approve",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1761526001406,
+      "tag": "0023_app_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1761532987133,
+      "tag": "0024_add_settings_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1761713509315,
+      "tag": "0025_add_oauth2_refresh_tracking",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1762744454733,
+      "tag": "0026_outgoing_monster_badoon",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1763191655555,
+      "tag": "0027_add_comments_approval",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1763751970339,
+      "tag": "0028_message_type_removal",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1764024786517,
+      "tag": "0029_entity_definition_and_relationship",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1764035188340,
+      "tag": "0030_entity_instance",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1764046851952,
+      "tag": "0031_magenta_captain_flint",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1764621629899,
+      "tag": "0032_custom_field_index_change",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1764628334580,
+      "tag": "0033_add_currency_enum",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1764659436222,
+      "tag": "0034_remove_rules",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1765227355558,
+      "tag": "0035_chunk_settings_jsonb",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1765235444897,
+      "tag": "0036_system_model_default",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1765257714616,
+      "tag": "0037_update_embedding",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1765262656198,
+      "tag": "0038_add_credit_usage",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1765320676974,
+      "tag": "0039_add_source_ai_usage",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1765396167329,
+      "tag": "0040_add_chunksettings_document",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1765487949643,
+      "tag": "0041_add_search_content",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1765489338596,
+      "tag": "0042_fix_vector",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1765689773611,
+      "tag": "0043_add_share_workflowapp",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1765865532480,
+      "tag": "0044_add_api_enabled",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1765998575109,
+      "tag": "0045_add_field_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1766034688179,
+      "tag": "0046_add_importer",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1766215294184,
+      "tag": "0047_add_unique_custom",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1766875269754,
+      "tag": "0048_remove_vendor",
+      "breakpoints": true
+    }
+  ]
+}

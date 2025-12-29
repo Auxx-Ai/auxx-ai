@@ -1,0 +1,44 @@
+{
+  "extends": "@auxx/typescript-config/base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    // added
+    "declaration": true,
+    "declarationMap": false,
+    "noEmit": false,
+    "emitDeclarationOnly": false,
+    "composite": true
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
+  "exclude": [
+    "dist",
+    "build",
+    "node_modules",
+    "src/test/**",
+    "**/.next/**",
+    "**/.turbo/**",
+    "**/coverage/**",
+    "**/build/**",
+    "**/*.d.ts.map",
+    "vitest.config.*",
+    "vite.config.*"
+  ]
+}
+// {
+//   "extends": "@auxx/typescript-config/base.json",
+//   "compilerOptions": {
+//     "rootDir": "src",
+//     "outDir": "dist",
+//     "declaration": true,
+//     "declarationMap": false,
+//     "emitDeclarationOnly": false,
+//     "noEmit": false,
+//     "module": "esnext",
+//     "moduleResolution": "bundler"
+//   },
+//   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
+//   "exclude": ["dist", "node_modules"]
+// }

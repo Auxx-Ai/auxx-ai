@@ -1,0 +1,40 @@
+{
+  "name": "@auxx/homepage",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack --port=3001",
+    "build": "next build --turbopack",
+    "start": "next start",
+    "clean": "rm -rf node_modules .turbo .next .open-next *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@number-flow/react": "^0.5.10",
+    "@radix-ui/react-accordion": "^1.2.12",
+    "@radix-ui/react-avatar": "^1.1.10",
+    "@radix-ui/react-context-menu": "^2.2.16",
+    "@radix-ui/react-navigation-menu": "^1.2.14",
+    "@radix-ui/react-slot": "^1.2.3",
+    "@radix-ui/react-tooltip": "^1.2.8",
+    "@auxx/config": "workspace:*",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "catalog:",
+    "motion": "^12.23.16",
+    "next": "catalog:",
+    "next-themes": "^0.4.4",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "recharts": "^2.15.4",
+    "tailwind-merge": "^3.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "tailwindcss": "^4",
+    "tw-animate-css": "^1.4.0",
+    "typescript": "catalog:"
+  }
+}

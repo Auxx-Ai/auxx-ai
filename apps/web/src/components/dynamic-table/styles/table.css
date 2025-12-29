@@ -1,0 +1,98 @@
+/* apps/web/src/components/dynamic-table/styles/table.css */
+
+/* Column resize handle */
+.table-resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  height: 100%;
+  width: 4px;
+  background: transparent;
+  cursor: col-resize;
+  user-select: none;
+  touch-action: none;
+}
+
+.table-resize-handle:hover,
+.table-resize-handle:active {
+  background: hsl(var(--primary) / 0.2);
+}
+
+/* Table header styles */
+.dynamic-table th {
+  position: relative;
+  white-space: nowrap;
+}
+
+/* Prevent text selection while resizing */
+.table-resizing {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+/* Column being resized */
+.column-resizing {
+  background: hsl(var(--primary) / 0.05);
+}
+
+/* Sort indicator animations */
+.sort-indicator {
+  transition: transform 200ms ease;
+}
+
+/* Row states */
+.table-row-hover {
+  background: hsl(var(--muted) / 0.5);
+}
+
+.table-row-selected {
+  background: hsl(var(--muted));
+}
+
+.table-row-checked {
+  background: hsl(var(--primary) / 0.1);
+}
+
+/* File upload transition states */
+.table-row {
+  transition: opacity 200ms ease-in-out;
+}
+
+.table-row.transitioning {
+  opacity: 0.8;
+}
+
+/* Sticky header shadow */
+.table-header-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: hsl(var(--background));
+  box-shadow: 0 1px 0 hsl(var(--border));
+}
+
+/* Column drag overlay */
+.column-drag-overlay {
+  background: hsl(var(--background));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  padding: 0.5rem;
+}
+
+/* Responsive table container */
+.dynamic-table-container {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Scroll margin for keyboard navigation - accounts for sticky header and pinned columns */
+[data-row-id] {
+  scroll-margin-top: 100px;
+  scroll-margin-bottom: 20px;
+  /* Add 50px buffer to pinned width to ensure cell is clearly visible */
+  scroll-margin-left: calc(var(--pinned-left-width, 0px) + 50px);
+}

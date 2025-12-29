@@ -1,0 +1,158 @@
+// apps/web/src/server/api/routers/entityDefinition.ts
+
+import { z } from 'zod'
+import { createTRPCRouter, protectedProcedure } from '../trpc'
+import { EntityDefinitionService } from '@auxx/lib/entity-definitions'
+import { checkSlugExists } from '@auxx/services/entity-definitions'
+import {
+  createEntityDefinitionSchema,
+  updateEntityDefinitionSchema,
+} from '@auxx/lib/entity-definitions/types'
+
+export const entityDefinitionRouter = createTRPCRouter({
+  /**
+   * Check if an apiSlug already exists for the organization
+   */
+  checkSlugExists: protectedProcedure
+    .input(
+      z.object({
+        slug: z.string(),
+        excludeId: z.string().optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const result = await checkSlugExists({
+        slug: input.slug,
+        organizationId: ctx.session.organizationId,
+        excludeId: input.excludeId,
+      })
+      if (result.isErr()) throw new Error(result.error.message)
+      return { exists: result.value }
+    }),
+
+  /**
+   * Get all entity definitions for the organization
+   */
+  getAll: protectedProcedure
+    .input(
+      z
+        .object({
+          includeArchived: z.boolean().optional().default(false),
+        })
+        .optional()
+    )
+    .query(async ({ ctx, input }) => {
+      const service = new EntityDefinitionService(
+        ctx.session.organizationId,
+        ctx.session.user.id
+      )
+      return await service.getAll(input)
+    }),
+
+  /**
+   * Get a single entity definition by ID
+   */
+  getById: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const service = new EntityDefinitionService(
+        ctx.session.organizationId,
+        ctx.session.user.id
+      )
+      const result = await service.getById(input.id)
+      if (!result) {
+        throw new Error('Entity definition not found')
+      }
+      return result
+    }),
+
+  /**
+   * Get entity definition by apiSlug
+   */
+  getBySlug: protectedProcedure
+    .input(z.object({ slug: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const service = new EntityDefinitionService(
+        ctx.session.organizationId,
+        ctx.session.user.id
+      )
+      const result = await service.getBySlug(input.slug)
+      if (!result) {
+        throw new Error('Entity definition not found')
+      }
+      return result
+    }),
+
+  /**
+   * Create a new entity definition
+   */
+  create: protectedProcedure
+    .input(createEntityDefinitionSchema)
+    .mutation(async ({ ctx, input }) => {
+      const service = new EntityDefinitionService(
+        ctx.session.organizationId,
+        ctx.session.user.id
+      )
+      return await service.create(input)
+    }),
+
+  /**
+   * Update an entity definition
+   * Only allows updating: icon, singular, plural, archivedAt
+   */
+  update: protectedProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        data: updateEntityDefinitionSchema,
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const service = new EntityDefinitionService(
+        ctx.session.organizationId,
+        ctx.session.user.id
+      )
+      return await service.update(input.id, input.data)
+    }),
+
+  /**
+   * Archive an entity definition (soft delete)
+   * Convenience endpoint that calls update internally
+   */
+  archive: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const service = new EntityDefinitionService(
+        ctx.session.organizationId,
+        ctx.session.user.id
+      )
+      return await service.archive(input.id)
+    }),
+
+  /**
+   * Restore an archived entity definition
+   * Convenience endpoint that calls update internally
+   */
+  restore: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const service = new EntityDefinitionService(
+        ctx.session.organizationId,
+        ctx.session.user.id
+      )
+      return await service.restore(input.id)
+    }),
+
+  /**
+   * Permanently delete an entity definition
+   */
+  delete: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const service = new EntityDefinitionService(
+        ctx.session.organizationId,
+        ctx.session.user.id
+      )
+      return await service.delete(input.id)
+    }),
+})

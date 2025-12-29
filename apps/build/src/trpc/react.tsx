@@ -1,0 +1,71 @@
+// apps/build/src/trpc/react.tsx
+// tRPC React client for developer portal
+
+'use client'
+
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { loggerLink, unstable_httpBatchStreamLink } from '@trpc/client'
+import { createTRPCReact } from '@trpc/react-query'
+import { type inferRouterInputs, type inferRouterOutputs } from '@trpc/server'
+
+import { useState } from 'react'
+import SuperJSON from 'superjson'
+import { type AppRouter } from '~/server/api/root'
+import { createQueryClient } from './query-client'
+
+/** tRPC React client */
+export const api = createTRPCReact<AppRouter>()
+
+/** Get or create query client singleton */
+let clientQueryClientSingleton: QueryClient | undefined = undefined
+const getQueryClient = () => {
+  if (typeof window === 'undefined') {
+    // Server: always make a new query client
+    return createQueryClient()
+  }
+  // Browser: use singleton pattern to keep the same query client
+  return (clientQueryClientSingleton ??= createQueryClient())
+}
+
+/** Get base URL for tRPC */
+function getBaseUrl() {
+  if (typeof window !== 'undefined') return window.location.origin
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
+  return `http://localhost:${process.env.PORT ?? 3006}`
+}
+
+/** tRPC React provider component */
+export function TRPCReactProvider({ children }: { children: React.ReactNode }) {
+  const queryClient = getQueryClient()
+
+  const [trpcClient] = useState(() =>
+    api.createClient({
+      links: [
+        loggerLink({
+          enabled: (op) =>
+            process.env.NODE_ENV === 'development' ||
+            (op.direction === 'down' && op.result instanceof Error),
+        }),
+        unstable_httpBatchStreamLink({
+          transformer: SuperJSON,
+          url: getBaseUrl() + '/api/trpc',
+          headers: () => {
+            const headers = new Headers()
+            headers.set('x-trpc-source', 'nextjs-react')
+            return headers
+          },
+        }),
+      ],
+    })
+  )
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <api.Provider client={trpcClient} queryClient={queryClient}>
+        {children}
+      </api.Provider>
+    </QueryClientProvider>
+  )
+}
+
+export type RouterOutputs = inferRouterOutputs<AppRouter>

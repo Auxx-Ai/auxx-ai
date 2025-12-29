@@ -1,0 +1,293 @@
+{
+  "node": {
+    "id": "professionalNetwork",
+    "name": "professionalNetworkPoster",
+    "displayName": "LinkedIn",
+    "description": "Post content to LinkedIn professional networks",
+    "icon": "linkedin.svg",
+    "color": "#0077B5",
+    "category": "integration",
+    "version": "1.0",
+    "group": ["marketing", "social"]
+  },
+  
+  "execution": {
+    "credentials": [
+      {
+        "name": "professionalNetworkOAuth2",
+        "required": true
+      }
+    ],
+    "defaultVersion": 1.0,
+    "canRunSingle": true
+  },
+
+  "ui": {
+    "sections": [
+      {
+        "id": "action",
+        "title": "Action",
+        "type": "section",
+        "children": [
+          {
+            "id": "action",
+            "name": "action",
+            "type": "select",
+            "title": "What would you like to do?",
+            "required": true,
+            "default": "publishContent",
+            "options": [
+              {
+                "name": "Publish Now",
+                "value": "publishContent",
+                "description": "Publish content immediately"
+              },
+              {
+                "name": "Schedule",
+                "value": "scheduleContent", 
+                "description": "Schedule content for later"
+              }
+            ]
+          }
+        ]
+      },
+      
+      {
+        "id": "content",
+        "title": "Content",
+        "type": "section",
+        "children": [
+          {
+            "id": "contentType",
+            "name": "contentType",
+            "type": "select",
+            "title": "Content Type",
+            "required": true,
+            "default": "textPost",
+            "options": [
+              {
+                "name": "Text Post",
+                "value": "textPost",
+                "description": "Simple text-based post"
+              },
+              {
+                "name": "Image Post", 
+                "value": "imagePost",
+                "description": "Post with image attachment"
+              },
+              {
+                "name": "Article Post",
+                "value": "articlePost", 
+                "description": "Post with article/link preview"
+              }
+            ]
+          },
+          {
+            "id": "textContent",
+            "name": "textContent",
+            "type": "textarea",
+            "title": "Text Content",
+            "required": true,
+            "placeholder": "Enter your post content here...",
+            "rows": 4,
+            "validation": [
+              {
+                "type": "required",
+                "message": "Text content is required"
+              },
+              {
+                "type": "maxLength",
+                "value": 3000,
+                "message": "Content exceeds 3000 character limit"
+              }
+            ]
+          }
+        ]
+      },
+
+      {
+        "id": "publishing",
+        "title": "Publishing",
+        "type": "section",
+        "children": [
+          {
+            "id": "authorType",
+            "name": "authorType", 
+            "type": "select",
+            "title": "Post As",
+            "required": true,
+            "default": "person",
+            "options": [
+              {
+                "name": "Personal Profile",
+                "value": "person",
+                "description": "Post from your personal LinkedIn profile"
+              },
+              {
+                "name": "Organization Page",
+                "value": "organization",
+                "description": "Post from a company/organization page"
+              }
+            ]
+          },
+          {
+            "id": "postVisibility",
+            "name": "postVisibility",
+            "type": "select", 
+            "title": "Post Visibility",
+            "default": "PUBLIC",
+            "options": [
+              {
+                "name": "Public",
+                "value": "PUBLIC",
+                "description": "Visible to everyone on LinkedIn"
+              },
+              {
+                "name": "Connections Only", 
+                "value": "CONNECTIONS",
+                "description": "Visible only to your connections"
+              }
+            ],
+            "showWhen": [
+              {
+                "field": "authorType",
+                "operator": "equals",
+                "value": "person"
+              }
+            ]
+          }
+        ]
+      },
+
+      {
+        "id": "imageSettings", 
+        "title": "Image Settings",
+        "type": "section",
+        "showWhen": [
+          {
+            "field": "contentType",
+            "operator": "equals",
+            "value": "imagePost"
+          }
+        ],
+        "children": [
+          {
+            "id": "imageData",
+            "name": "imageData",
+            "type": "input", 
+            "title": "Image Data Property",
+            "required": true,
+            "default": "data",
+            "placeholder": "Binary property name (e.g., 'data')"
+          },
+          {
+            "id": "imageTitle",
+            "name": "imageTitle",
+            "type": "input",
+            "title": "Image Title", 
+            "placeholder": "Optional image title...",
+            "validation": [
+              {
+                "type": "maxLength",
+                "value": 200,
+                "message": "Image title too long"
+              }
+            ]
+          }
+        ]
+      },
+
+      {
+        "id": "articleSettings",
+        "title": "Article Settings", 
+        "type": "section",
+        "showWhen": [
+          {
+            "field": "contentType",
+            "operator": "equals",
+            "value": "articlePost"
+          }
+        ],
+        "children": [
+          {
+            "id": "articleUrl",
+            "name": "articleUrl",
+            "type": "url",
+            "title": "Article URL",
+            "required": true,
+            "placeholder": "https://example.com/article",
+            "validation": [
+              {
+                "type": "url",
+                "message": "Please enter a valid URL"
+              }
+            ]
+          },
+          {
+            "id": "articleTitle", 
+            "name": "articleTitle",
+            "type": "input",
+            "title": "Article Title",
+            "required": true,
+            "placeholder": "Enter article title...",
+            "validation": [
+              {
+                "type": "maxLength",
+                "value": 200,
+                "message": "Article title too long"
+              }
+            ]
+          },
+          {
+            "id": "articleDescription",
+            "name": "articleDescription", 
+            "type": "textarea",
+            "title": "Article Description",
+            "placeholder": "Optional article description...",
+            "rows": 3,
+            "validation": [
+              {
+                "type": "maxLength",
+                "value": 500,
+                "message": "Article description too long"
+              }
+            ]
+          }
+        ]
+      },
+
+      {
+        "id": "scheduling",
+        "title": "Scheduling",
+        "type": "section",
+        "showWhen": [
+          {
+            "field": "action",
+            "operator": "equals", 
+            "value": "scheduleContent"
+          }
+        ],
+        "children": [
+          {
+            "id": "scheduleDate",
+            "name": "scheduleDate",
+            "type": "datetime",
+            "title": "Schedule Date",
+            "required": true,
+            "placeholder": "YYYY-MM-DDTHH:MM:SS"
+          }
+        ]
+      }
+    ]
+  },
+
+  "visual": {
+    "width": 260,
+    "height": "auto",
+    "preview": {
+      "contentField": "textContent",
+      "typeField": "contentType",
+      "actionField": "action"
+    }
+  }
+}
