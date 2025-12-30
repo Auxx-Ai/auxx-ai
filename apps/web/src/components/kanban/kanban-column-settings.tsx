@@ -94,72 +94,31 @@ export function KanbanColumnSettings({
   const [localCelebration, setLocalCelebration] = useState(celebration)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Sync local state when props change (when not open)
+  // Sync local state when props change (only when closed to avoid fighting with user input)
   useEffect(() => {
-    if (!open && mode === 'full') {
+    if (!open) {
       setLocalLabel(label)
       setLocalColor(color)
       setTrackTimeEnabled(!!targetTimeInStatus)
       if (targetTimeInStatus) {
         setTargetTimeValue(targetTimeInStatus.value)
         setTargetTimeUnit(targetTimeInStatus.unit)
+      } else {
+        setTargetTimeValue(5)
+        setTargetTimeUnit('days')
       }
       setLocalCelebration(celebration)
     }
-  }, [label, color, targetTimeInStatus, celebration, mode, open])
+  }, [label, color, targetTimeInStatus, celebration, open])
 
-  // Reset state when opening in create mode
+  // Focus input when opening in create mode
   useEffect(() => {
     if (open && mode === 'create') {
       setLocalLabel('')
       setLocalColor(DEFAULT_SELECT_OPTION_COLOR)
-      // Focus input after dropdown opens
       setTimeout(() => inputRef.current?.focus(), 0)
     }
   }, [open, mode])
-
-  /** Build changes object from local state vs props */
-  const getChanges = (): ColumnOptionChanges | null => {
-    const changes: ColumnOptionChanges = {}
-    let hasChanges = false
-
-    if (localLabel !== label) {
-      changes.label = localLabel
-      hasChanges = true
-    }
-    if (localColor !== color) {
-      changes.color = localColor
-      hasChanges = true
-    }
-
-    const currentTime = targetTimeInStatus
-    const newTime = trackTimeEnabled ? { value: targetTimeValue, unit: targetTimeUnit } : null
-    const timeChanged = trackTimeEnabled !== !!currentTime ||
-      (trackTimeEnabled && (targetTimeValue !== currentTime?.value || targetTimeUnit !== currentTime?.unit))
-    if (timeChanged) {
-      changes.targetTimeInStatus = newTime
-      hasChanges = true
-    }
-
-    if (localCelebration !== celebration) {
-      changes.celebration = localCelebration
-      hasChanges = true
-    }
-
-    return hasChanges ? changes : null
-  }
-
-  /** Handle dropdown open/close - save changes on close */
-  const handleOpenChange = (newOpen: boolean) => {
-    if (!newOpen && open && mode === 'full') {
-      // Closing - save any pending changes
-      const changes = getChanges()
-      if (changes) {
-        onChange?.(changes)
-      }
-    }
-    setOpen(newOpen)
-  }
 
   /** Handle create submission */
   const handleCreate = () => {
@@ -169,67 +128,86 @@ export function KanbanColumnSettings({
     }
   }
 
-  /** Handle label blur - for create mode only */
-  const handleLabelBlur = () => {
+  /** Commit label change - called on blur or Enter */
+  const handleLabelCommit = () => {
     if (mode === 'create') {
       handleCreate()
+      return
     }
-    // In full mode, changes are saved on dropdown close
+    // In full mode, save if changed
+    if (localLabel.trim() && localLabel !== label) {
+      onChange?.({ label: localLabel.trim() })
+    }
   }
 
-  /** Handle label key down - Enter to save/create, Escape to close */
+  /** Handle label key down */
   const handleLabelKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault()
-      if (mode === 'create') {
-        handleCreate()
-      } else {
-        // Close dropdown to trigger save
+      handleLabelCommit()
+      if (mode === 'full') {
         setOpen(false)
       }
     }
     if (e.key === 'Escape') {
-      // Reset local state and close without saving
-      setLocalLabel(label)
-      setLocalColor(color)
+      setLocalLabel(label) // Reset
       setOpen(false)
     }
   }
 
-  /** Handle color change - just update local state */
+  /** Handle color change - immediate save */
   const handleColorChange = (newColor: string) => {
     setLocalColor(newColor)
-  }
-
-  /** Handle track time toggle - just update local state */
-  const handleTrackTimeToggle = (enabled: boolean) => {
-    setTrackTimeEnabled(enabled)
-  }
-
-  /** Handle target time value change - just update local state */
-  const handleTargetTimeValueChange = (value: number | undefined) => {
-    if (value !== undefined && value > 0) {
-      setTargetTimeValue(value)
+    if (mode === 'full') {
+      onChange?.({ color: newColor })
     }
   }
 
-  /** Handle target time unit change - just update local state */
+  /** Handle track time toggle - immediate save */
+  const handleTrackTimeToggle = (enabled: boolean) => {
+    setTrackTimeEnabled(enabled)
+    if (mode === 'full') {
+      if (enabled) {
+        onChange?.({ targetTimeInStatus: { value: targetTimeValue, unit: targetTimeUnit } })
+      } else {
+        onChange?.({ targetTimeInStatus: null })
+      }
+    }
+  }
+
+  /** Handle target time value change - immediate save */
+  const handleTargetTimeValueChange = (value: number | undefined) => {
+    if (value !== undefined && value > 0) {
+      setTargetTimeValue(value)
+      if (mode === 'full' && trackTimeEnabled) {
+        onChange?.({ targetTimeInStatus: { value, unit: targetTimeUnit } })
+      }
+    }
+  }
+
+  /** Handle target time unit change - immediate save */
   const handleTargetTimeUnitChange = (unit: TimeUnit) => {
     setTargetTimeUnit(unit)
+    if (mode === 'full' && trackTimeEnabled) {
+      onChange?.({ targetTimeInStatus: { value: targetTimeValue, unit } })
+    }
   }
 
-  /** Handle celebration toggle - just update local state */
+  /** Handle celebration toggle - immediate save */
   const handleCelebrationToggle = (enabled: boolean) => {
     setLocalCelebration(enabled)
+    if (mode === 'full') {
+      onChange?.({ celebration: enabled })
+    }
   }
 
-  /** Handle hide stage click - this is immediate (view-level) */
+  /** Handle hide stage click */
   const handleHideStage = () => {
     onVisibilityChange?.(false)
     setOpen(false)
   }
 
-  /** Handle delete stage click - this is immediate */
+  /** Handle delete stage click */
   const handleDeleteStage = () => {
     onDelete?.()
     setOpen(false)
@@ -238,7 +216,7 @@ export function KanbanColumnSettings({
   const isCreateMode = mode === 'create'
 
   return (
-    <DropdownMenu open={open} onOpenChange={handleOpenChange}>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
 
       <DropdownMenuContent
@@ -259,7 +237,7 @@ export function KanbanColumnSettings({
               className="ps-1!"
               value={localLabel}
               onChange={(e) => setLocalLabel(e.target.value)}
-              onBlur={handleLabelBlur}
+              onBlur={handleLabelCommit}
               onKeyDown={handleLabelKeyDown}
               placeholder={isCreateMode ? 'New stage name' : 'Stage name'}
             />

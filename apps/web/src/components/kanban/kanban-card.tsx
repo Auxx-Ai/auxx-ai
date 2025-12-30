@@ -6,7 +6,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { MessageSquare, CheckSquare, StickyNote, Box } from 'lucide-react'
-import { formatDistanceToNowStrict } from 'date-fns'
+import { formatRelativeTime } from '@auxx/lib/utils'
 
 /** Custom field definition */
 interface CustomField {
@@ -33,6 +33,8 @@ interface KanbanCardProps {
   onSelectChange?: (selected: boolean) => void
   /** Whether this card is being dragged as part of a multi-select */
   isBeingDragged?: boolean
+  /** When true, clicking the card toggles selection instead of opening drawer */
+  massSelectMode?: boolean
 }
 
 /**
@@ -72,32 +74,6 @@ function formatValue(value: unknown, type: string): string {
 }
 
 /**
- * Format relative time for last activity indicator
- */
-function formatRelativeTime(date: string | Date): string {
-  try {
-    const d = typeof date === 'string' ? new Date(date) : date
-    return formatDistanceToNowStrict(d, { addSuffix: false })
-      .replace(' seconds', 's')
-      .replace(' second', 's')
-      .replace(' minutes', 'm')
-      .replace(' minute', 'm')
-      .replace(' hours', 'h')
-      .replace(' hour', 'h')
-      .replace(' days', 'd')
-      .replace(' day', 'd')
-      .replace(' weeks', 'w')
-      .replace(' week', 'w')
-      .replace(' months', 'mo')
-      .replace(' month', 'mo')
-      .replace(' years', 'y')
-      .replace(' year', 'y')
-  } catch {
-    return ''
-  }
-}
-
-/**
  * Kanban card component.
  * Features: drag handle, quick actions on hover, last activity indicator.
  */
@@ -115,6 +91,7 @@ export function KanbanCard({
   isSelected = false,
   onSelectChange,
   isBeingDragged = false,
+  massSelectMode = false,
 }: KanbanCardProps) {
   const {
     attributes,
@@ -133,17 +110,29 @@ export function KanbanCard({
   // Show as placeholder if this card is the active draggable OR part of a multi-select drag
   const showAsPlaceholder = isDraggableDragging || isBeingDragged
 
+  /** Handle card content click - respects mass select mode */
+  const handleContentClick = () => {
+    if (massSelectMode) {
+      onSelectChange?.(!isSelected)
+    } else {
+      onClick?.()
+    }
+  }
+
   return (
     <div
       ref={setNodeRef}
+      data-kanban-card
       {...attributes}
       {...listeners}
+      onClick={handleContentClick}
       className={cn(
-        'bg-background border rounded-lg shadow-sm transition-all hover:shadow-md group/card select-none touch-none relative',
-        isDragging && 'shadow-lg rotate-1 scale-105 cursor-grabbing',
-        showAsPlaceholder && 'shadow-none bg-primary-200/50 border-primary-200'
-      )}
-      onClick={onClick}>
+        'bg-background cursor-default dark:bg-muted border rounded-lg shadow-sm transition-all hover:shadow-md group/card select-none touch-none relative',
+        isSelected && 'border-info/90 bg-info/8 dark:bg-info/10',
+        isDragging && 'shadow-lg rotate-1 scale-105 ',
+        showAsPlaceholder && 'shadow-none bg-primary-200/50 dark:bg-muted dark:border-white/3 border-primary-200',
+        massSelectMode && 'cursor-pointer'
+      )}>
       {/* Drag placeholder overlay */}
       <div className={cn('p-2.5', showAsPlaceholder && 'invisible')}>
         {/* Header row: checkbox/box icon + title */}
@@ -160,27 +149,29 @@ export function KanbanCard({
             <Box
               className={cn(
                 'absolute inset-0 size-3.5 text-muted-foreground',
-                isSelected ? 'hidden' : 'group-hover/card:hidden'
+                // Hide Box when: selected, hovering, or in mass select mode
+                (isSelected || massSelectMode) ? 'hidden' : 'group-hover/card:hidden'
               )}
             />
             <Checkbox
               checked={isSelected}
               className={cn(
-                'absolute inset-0 size-3.5 pointer-events-none',
-                !isSelected && 'hidden group-hover/card:block'
+                'absolute inset-0 size-3.5 pointer-events-none [&_svg]:size-3!',
+                // Show checkbox when: selected, hovering, or in mass select mode
+                !isSelected && !massSelectMode && 'hidden group-hover/card:block'
               )}
             />
           </div>
 
-          {/* Title */}
-          <div className="flex-1 min-w-0">
-            <h4 className="font-medium text-sm leading-snug truncate">{title}</h4>
+          {/* Title - clickable to open drawer (or toggle selection in mass select mode) */}
+          <div className="flex-1 min-w-0" >
+            <h4 className={cn('font-medium text-sm leading-snug truncate', isSelected && 'font-semibold')}>{title}</h4>
           </div>
         </div>
 
-        {/* Field values (compact) */}
+        {/* Field values (compact) - clickable */}
         {fields.length > 0 && (
-          <div className="mt-2 pl-5 space-y-0.5">
+          <div className="mt-2 pl-5 space-y-0.5" >
             {fields.slice(0, 2).map((field) => {
               const value = getValue(field.id)
               if (value == null) return null
@@ -194,7 +185,7 @@ export function KanbanCard({
         )}
 
         {/* Footer: quick actions + last activity */}
-        <div className="mt-2 pl-5 flex items-center justify-between">
+        <div className="mt-2 pl-5 flex items-center justify-between" >
           {/* Quick actions (on hover) */}
           <div className="flex items-center gap-0.5 opacity-0 group-hover/card:opacity-100 transition-opacity">
             {onNotesClick && (
@@ -237,8 +228,8 @@ export function KanbanCard({
 
           {/* Last activity indicator */}
           {updatedAt && (
-            <div className="text-xs text-muted-foreground tabular-nums">
-              {formatRelativeTime(updatedAt)}
+            <div className={cn('text-xs text-muted-foreground tabular-nums', isSelected && 'text-info')}>
+              {formatRelativeTime(updatedAt, true)}
             </div>
           )}
         </div>

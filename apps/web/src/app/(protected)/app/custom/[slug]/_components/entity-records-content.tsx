@@ -181,6 +181,9 @@ export function EntityRecordsContent() {
   const [selectedInstance, setSelectedInstance] = useState<EntityRow | null>(null)
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
 
+  // Kanban card selection state (lives here to persist across drawer open/close)
+  const [selectedKanbanCardIds, setSelectedKanbanCardIds] = useState<Set<string>>(new Set())
+
   // Custom field dialog state
   const [isFieldDialogOpen, setIsFieldDialogOpen] = useState(false)
 
@@ -741,7 +744,9 @@ export function EntityRecordsContent() {
               onCardClick={handleOpenDrawer}
               onAddCard={() => setIsCreateDialogOpen(true)}
               modelType="entity"
-              entityDefinitionId={entityDefinitionId}>
+              entityDefinitionId={entityDefinitionId}
+              selectedKanbanCardIds={selectedKanbanCardIds}
+              onSelectedKanbanCardIdsChange={setSelectedKanbanCardIds}>
               <DynamicTableFooter>
                 <div className="flex items-center justify-between px-4 py-2 text-sm text-muted-foreground">
                   <div>

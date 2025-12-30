@@ -150,7 +150,7 @@ export function KanbanColumn({
     <div ref={setNodeRef} style={style} className="shrink-0 pr-3 max-h-full">
       <div
         className={cn(
-          'group/kanban-col w-64 h-full rounded-2xl border border-transparent bg-muted/30 flex flex-col max-h-full',
+          'group/kanban-col w-64 h-full rounded-lg border border-transparent bg-muted/30 flex flex-col max-h-full',
           isActive && 'border-info bg-info/10',
           isDragging && 'border-primary-200 bg-primary-200 backdrop-blur-sm shadow-lg z-50'
         )}>

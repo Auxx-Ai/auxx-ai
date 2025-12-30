@@ -4,18 +4,16 @@
 import { useMemo, useState, useCallback, useEffect } from 'react'
 import { DynamicTable } from './index'
 import { KanbanView } from '../kanban'
-import { type ColumnOptionChanges } from '../kanban/kanban-column-settings'
 import { useDynamicTable } from './hooks/use-dynamic-table'
 import { api } from '~/trpc/react'
 import { toastError } from '@auxx/ui/components/toast'
-import { useCustomField } from '~/components/custom-fields/hooks/use-custom-field'
 import type {
   DynamicTableProps,
   ViewType,
   KanbanViewConfig,
   ViewConfig,
 } from './types'
-import type { ModelType, SelectOption, TargetTimeInStatus } from '@auxx/types/custom-field'
+import type { ModelType, SelectOption } from '@auxx/types/custom-field'
 
 /** Custom field for kanban display */
 interface SelectField {
@@ -52,6 +50,11 @@ interface DynamicViewProps<TData> extends DynamicTableProps<TData> {
   /** Callback to add a new card in a column */
   onAddCard?: (columnId: string) => void
   // modelType and entityDefinitionId inherited from DynamicTableProps
+
+  /** Selected card IDs for kanban view (controlled from parent) */
+  selectedKanbanCardIds?: Set<string>
+  /** Callback when kanban card selection changes */
+  onSelectedKanbanCardIdsChange?: (ids: Set<string>) => void
 }
 
 /**
@@ -65,6 +68,8 @@ export function DynamicView<TData extends Record<string, any>>({
   entityLabel,
   onCardClick,
   onAddCard,
+  selectedKanbanCardIds: controlledSelectedCardIds,
+  onSelectedKanbanCardIdsChange,
   children,
   ...tableProps
 }: DynamicViewProps<TData> & { children?: React.ReactNode }) {
@@ -78,6 +83,13 @@ export function DynamicView<TData extends Record<string, any>>({
 
   // Local state for optimistic column reordering
   const [localColumnOrder, setLocalColumnOrder] = useState<string[] | null>(null)
+
+  // Internal state for kanban selection (used when not controlled)
+  const [internalSelectedCardIds, setInternalSelectedCardIds] = useState<Set<string>>(new Set())
+
+  // Use controlled or internal state
+  const selectedCardIds = controlledSelectedCardIds ?? internalSelectedCardIds
+  const setSelectedCardIds = onSelectedKanbanCardIdsChange ?? setInternalSelectedCardIds
 
   // Reset local state when view changes
   useEffect(() => {
@@ -123,75 +135,6 @@ export function DynamicView<TData extends Record<string, any>>({
     [currentView, updateView]
   )
 
-  // Custom field management hook for updating select options
-  const { update: updateField } = useCustomField({
-    modelType: (tableProps.modelType ?? 'contact') as ModelType,
-    entityDefinitionId: tableProps.entityDefinitionId,
-  })
-
-  // Get current options from groupByField for merging updates
-  const getCurrentOptions = useCallback((): SelectOption[] => {
-    if (!kanbanConfig?.groupByFieldId || !selectFields) return []
-    const field = selectFields.find((f) => f.id === kanbanConfig.groupByFieldId)
-    return field?.options?.options ?? []
-  }, [kanbanConfig?.groupByFieldId, selectFields])
-
-  /** Handle column option changes (unified callback - called when dropdown closes) */
-  const handleColumnChange = useCallback(
-    (columnId: string, changes: ColumnOptionChanges) => {
-      if (!kanbanConfig?.groupByFieldId) return
-      const currentOptions = getCurrentOptions()
-
-      const updatedOptions = currentOptions.map((opt) => {
-        if (opt.value !== columnId) return opt
-        return {
-          ...opt,
-          ...(changes.label !== undefined && { label: changes.label }),
-          ...(changes.color !== undefined && { color: changes.color }),
-          ...(changes.targetTimeInStatus !== undefined && {
-            targetTimeInStatus: changes.targetTimeInStatus ?? undefined,
-          }),
-          ...(changes.celebration !== undefined && { celebration: changes.celebration }),
-        }
-      })
-
-      updateField.mutate(
-        { id: kanbanConfig.groupByFieldId, options: updatedOptions },
-        {
-          onError: (error) => {
-            toastError({ title: 'Failed to update stage', description: error.message })
-          },
-        }
-      )
-    },
-    [kanbanConfig?.groupByFieldId, getCurrentOptions, updateField]
-  )
-
-  /** Handle creating a new column */
-  const handleColumnCreate = useCallback(
-    (option: { label: string; color: string }) => {
-      console.log('Creating column', option)
-      if (!kanbanConfig?.groupByFieldId) return
-      const currentOptions = getCurrentOptions()
-
-      const newOption: SelectOption = {
-        label: option.label,
-        value: option.label, // Use label as value (same pattern as options-editor)
-        color: option.color,
-      }
-
-      updateField.mutate(
-        { id: kanbanConfig.groupByFieldId, options: [...currentOptions, newOption] },
-        {
-          onError: (error) => {
-            toastError({ title: 'Failed to add stage', description: error.message })
-          },
-        }
-      )
-    },
-    [kanbanConfig?.groupByFieldId, getCurrentOptions, updateField]
-  )
-
   /** Handle column visibility change (view-level setting) */
   const handleColumnVisibilityChange = useCallback(
     (columnId: string, visible: boolean) => {
@@ -219,24 +162,6 @@ export function DynamicView<TData extends Record<string, any>>({
       )
     },
     [currentView, kanbanConfig, updateView]
-  )
-
-  /** Handle column delete */
-  const handleColumnDelete = useCallback(
-    (columnId: string) => {
-      if (!kanbanConfig?.groupByFieldId) return
-      const currentOptions = getCurrentOptions()
-      const updatedOptions = currentOptions.filter((opt) => opt.value !== columnId)
-      updateField.mutate(
-        { id: kanbanConfig.groupByFieldId, options: updatedOptions },
-        {
-          onError: (error) => {
-            toastError({ title: 'Failed to delete stage', description: error.message })
-          },
-        }
-      )
-    },
-    [kanbanConfig?.groupByFieldId, getCurrentOptions, updateField]
   )
 
   // Get the groupBy field for kanban
@@ -271,15 +196,15 @@ export function DynamicView<TData extends Record<string, any>>({
         onAddCard={onAddCard}
         onColumnReorder={handleKanbanColumnReorder}
         isLoading={tableProps.isLoading}
-        // Column settings callbacks
-        onColumnChange={handleColumnChange}
-        onColumnCreate={handleColumnCreate}
+        // View-level callback (column visibility is stored in view config)
         onColumnVisibilityChange={handleColumnVisibilityChange}
-        onColumnDelete={handleColumnDelete}
-        // Self-contained props - KanbanView reads from store directly
+        // Self-contained props - KanbanView handles column mutations internally
         resourceType={tableProps.modelType === 'entity' ? 'entity' : 'contact'}
         entityDefinitionId={tableProps.entityDefinitionId}
         modelType={(tableProps.modelType ?? 'contact') as ModelType}
+        // Selection state lives here so it persists across drawer open/close
+        selectedCardIds={selectedCardIds}
+        onSelectedCardIdsChange={setSelectedCardIds}
       />
     )
   }

@@ -33,8 +33,9 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
   const confirmOptimistic = useCustomFieldValueStore((s) => s.confirmOptimistic)
   const rollbackOptimistic = useCustomFieldValueStore((s) => s.rollbackOptimistic)
 
-  // Mutation
+  // Mutations
   const mutation = api.customField.setValue.useMutation()
+  const bulkMutation = api.customField.bulkSetValues.useMutation()
 
   /**
    * Save a field value with optimistic update.
@@ -165,6 +166,60 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
     [defaultResourceId, saveValueAsync]
   )
 
+  /**
+   * Save the same field value for multiple resources in a single API call.
+   * Applies optimistic updates to all resources, then fires one bulk mutation.
+   * @param resourceIds - Array of resource IDs to update
+   * @param fieldId - The field ID to update
+   * @param value - The value to set for all resources
+   */
+  const saveBulkValues = useCallback(
+    (resourceIds: string[], fieldId: string, value: unknown): void => {
+      const keys = resourceIds.map((id) => buildValueKey(resourceType, id, fieldId, entityDefId))
+
+      // Apply optimistic updates to all
+      for (const key of keys) {
+        setValueOptimistic(key, value)
+      }
+
+      // Fire single bulk mutation
+      bulkMutation.mutate(
+        {
+          entityIds: resourceIds,
+          values: [{ fieldId, value: value === null ? null : { data: value } }],
+          modelType,
+        },
+        {
+          onSuccess: () => {
+            for (const key of keys) {
+              confirmOptimistic(key)
+            }
+            onSuccess?.()
+          },
+          onError: (error) => {
+            for (const key of keys) {
+              rollbackOptimistic(key)
+            }
+            toastError({
+              title: 'Error saving fields',
+              description: error.message || 'Could not save field values',
+            })
+          },
+        }
+      )
+    },
+    [
+      resourceType,
+      entityDefId,
+      modelType,
+      bulkMutation,
+      setValueOptimistic,
+      confirmOptimistic,
+      rollbackOptimistic,
+      onSuccess,
+    ]
+  )
+
   return {
     /** Save with explicit resourceId (for multi-resource contexts like kanban) */
     saveValue,
@@ -174,6 +229,8 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
     saveFieldValue,
     /** Save using default resourceId, async (for single-resource contexts) */
     saveFieldValueAsync,
+    /** Save same value to multiple resources in one API call (for bulk operations) */
+    saveBulkValues,
     isPending: mutation.isPending,
   }
 }

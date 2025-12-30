@@ -1,7 +1,7 @@
 // apps/web/src/components/kanban/kanban-view.tsx
 'use client'
 
-import { useCallback, useMemo, useState, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import {
   DndContext,
   DragOverlay,
@@ -35,6 +35,8 @@ import {
   type ResourceType,
 } from '~/stores/custom-field-value-store'
 import { useSaveFieldValue } from '~/hooks/use-save-field-value'
+import { useCustomField } from '~/components/custom-fields/hooks/use-custom-field'
+import { toastError } from '@auxx/ui/components/toast'
 
 /** Normalized option for kanban columns (with id instead of value) */
 interface KanbanColumn {
@@ -94,7 +96,7 @@ interface KanbanViewProps<TData extends KanbanRow> {
   primaryFieldId?: string
   /** Entity label (singular) for "New X" buttons */
   entityLabel?: string
-  /** Callback when columns are reordered */
+  /** Callback when columns are reordered (view-level) */
   onColumnReorder?: (columnIds: string[]) => Promise<void>
   /** Callback when a card is clicked */
   onCardClick?: (card: TData) => void
@@ -103,14 +105,8 @@ interface KanbanViewProps<TData extends KanbanRow> {
   /** Loading state */
   isLoading?: boolean
 
-  /** Unified callback for column option changes (called on dropdown close) */
-  onColumnChange?: (columnId: string, changes: ColumnOptionChanges) => void
-  /** Callback to create a new column */
-  onColumnCreate?: (option: { label: string; color: string }) => void
-  /** View-level visibility change */
+  /** View-level visibility change (modifies view config, not field options) */
   onColumnVisibilityChange?: (columnId: string, visible: boolean) => void
-  /** Delete column */
-  onColumnDelete?: (columnId: string) => void
 
   /** Resource type for store key building */
   resourceType: ResourceType
@@ -118,6 +114,11 @@ interface KanbanViewProps<TData extends KanbanRow> {
   entityDefinitionId?: string
   /** Model type for useSaveFieldValue */
   modelType: ModelType
+
+  /** Selected card IDs (controlled mode - state lives in parent) */
+  selectedCardIds?: Set<string>
+  /** Callback when selected card IDs change */
+  onSelectedCardIdsChange?: (ids: Set<string>) => void
 }
 
 /** Props for KanbanDragOverlay component */
@@ -158,7 +159,7 @@ function KanbanDragOverlay<TData extends KanbanRow>({
   if (activeItem.type === 'card' && draggedCards.length > 0) {
     return (
       <DragOverlay dropAnimation={null}>
-        <div className="relative">
+        <div className="relative cursor-grabbing">
           {showBadge && (
             <span
               className="absolute z-10 inline-flex size-5 items-center justify-center rounded-full bg-info text-[10px] font-medium leading-none text-white"
@@ -212,15 +213,15 @@ export function KanbanView<TData extends KanbanRow>({
   onCardClick,
   onAddCard,
   isLoading,
-  // Column settings callbacks
-  onColumnChange,
-  onColumnCreate,
+  // View-level callback (modifies view config, not field options)
   onColumnVisibilityChange,
-  onColumnDelete,
   // Self-contained props
   resourceType,
   entityDefinitionId,
   modelType,
+  // Controlled selection (optional - falls back to internal state)
+  selectedCardIds: controlledSelectedCardIds,
+  onSelectedCardIdsChange,
 }: KanbanViewProps<TData>) {
   const [activeItem, setActiveItem] = useState<{
     type: DragItemType
@@ -233,8 +234,14 @@ export function KanbanView<TData extends KanbanRow>({
     dragWidth?: number
   } | null>(null)
   const [overId, setOverId] = useState<string | null>(null)
-  const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set())
+  const [internalSelectedCardIds, setInternalSelectedCardIds] = useState<Set<string>>(new Set())
   const containerRef = useRef<HTMLDivElement>(null)
+
+  // Use controlled or internal state
+  const selectedCardIds = controlledSelectedCardIds ?? internalSelectedCardIds
+  const setSelectedCardIds = onSelectedCardIdsChange ?? setInternalSelectedCardIds
+  // Track pending options for optimistic updates (prevents race conditions on rapid creates)
+  const [pendingOptions, setPendingOptions] = useState<RawSelectOption[]>([])
 
   // Subscribe to store values - this IS reactive (component re-renders when groupBy values change)
   const storeValues = useCustomFieldValueStore((s) => s.values)
@@ -249,11 +256,108 @@ export function KanbanView<TData extends KanbanRow>({
   )
 
   // useSaveFieldValue for internal card moves with optimistic updates
-  const { saveValue } = useSaveFieldValue({
+  const { saveBulkValues } = useSaveFieldValue({
     resourceType,
     entityDefId: entityDefinitionId,
     modelType,
   })
+
+  // useCustomField for column option mutations (label, color, etc.)
+  const { update: updateField } = useCustomField({
+    modelType,
+    entityDefinitionId,
+  })
+
+  /** Get current options from groupByField for mutations (includes pending optimistic options) */
+  const getCurrentOptions = useCallback((): RawSelectOption[] => {
+    const baseOptions = groupByField.options?.options ?? []
+    // Merge pending options that aren't already in base (by value)
+    const baseValues = new Set(baseOptions.map((o) => o.value))
+    const newPending = pendingOptions.filter((o) => !baseValues.has(o.value))
+    return [...baseOptions, ...newPending]
+  }, [groupByField.options, pendingOptions])
+
+  // Clear pending options when groupByField.options changes (refetch completed)
+  useEffect(() => {
+    if (pendingOptions.length > 0) {
+      const baseValues = new Set((groupByField.options?.options ?? []).map((o) => o.value))
+      // Remove pending options that are now in the base options
+      const stillPending = pendingOptions.filter((o) => !baseValues.has(o.value))
+      if (stillPending.length !== pendingOptions.length) {
+        setPendingOptions(stillPending)
+      }
+    }
+  }, [groupByField.options, pendingOptions])
+
+  /** Handle column option changes (label, color, time, celebration) */
+  const handleColumnChange = useCallback(
+    (columnId: string, changes: ColumnOptionChanges) => {
+      const currentOptions = getCurrentOptions()
+      const updatedOptions = currentOptions.map((opt) => {
+        if (opt.value !== columnId) return opt
+        return {
+          ...opt,
+          ...(changes.label !== undefined && { label: changes.label }),
+          ...(changes.color !== undefined && { color: changes.color }),
+          ...(changes.targetTimeInStatus !== undefined && {
+            targetTimeInStatus: changes.targetTimeInStatus ?? undefined,
+          }),
+          ...(changes.celebration !== undefined && { celebration: changes.celebration }),
+        }
+      })
+      updateField.mutate(
+        { id: config.groupByFieldId, options: updatedOptions },
+        {
+          onError: (error) => {
+            toastError({ title: 'Failed to update stage', description: error.message })
+          },
+        }
+      )
+    },
+    [getCurrentOptions, config.groupByFieldId, updateField]
+  )
+
+  /** Handle creating a new column */
+  const handleColumnCreate = useCallback(
+    (option: { label: string; color: string }) => {
+      const currentOptions = getCurrentOptions()
+      const newOption: RawSelectOption = {
+        label: option.label,
+        value: option.label, // Use label as value (same pattern as options-editor)
+        color: option.color,
+      }
+      // Optimistic update: add to pending so rapid creates don't lose options
+      setPendingOptions((prev) => [...prev, newOption])
+      updateField.mutate(
+        { id: config.groupByFieldId, options: [...currentOptions, newOption] },
+        {
+          onError: (error) => {
+            // Rollback: remove from pending on error
+            setPendingOptions((prev) => prev.filter((o) => o.value !== newOption.value))
+            toastError({ title: 'Failed to add stage', description: error.message })
+          },
+        }
+      )
+    },
+    [getCurrentOptions, config.groupByFieldId, updateField]
+  )
+
+  /** Handle deleting a column */
+  const handleColumnDelete = useCallback(
+    (columnId: string) => {
+      const currentOptions = getCurrentOptions()
+      const updatedOptions = currentOptions.filter((opt) => opt.value !== columnId)
+      updateField.mutate(
+        { id: config.groupByFieldId, options: updatedOptions },
+        {
+          onError: (error) => {
+            toastError({ title: 'Failed to delete stage', description: error.message })
+          },
+        }
+      )
+    },
+    [getCurrentOptions, config.groupByFieldId, updateField]
+  )
 
   /** Toggle card selection */
   const handleCardSelectChange = useCallback((cardId: string, selected: boolean) => {
@@ -268,25 +372,34 @@ export function KanbanView<TData extends KanbanRow>({
     })
   }, [])
 
-  // Get options from the groupBy field - normalize value -> id
+  // Get options from the groupBy field - normalize value -> id (includes pending options)
   const allColumns: SelectOption[] = useMemo(() => {
     const rawOptions: RawSelectOption[] = groupByField.options?.options ?? []
+    // Merge pending options that aren't already in base (by value)
+    const baseValues = new Set(rawOptions.map((o) => o.value))
+    const newPending = pendingOptions.filter((o) => !baseValues.has(o.value))
+    const mergedOptions = [...rawOptions, ...newPending]
     // Normalize: map 'value' to 'id' for consistent usage
-    const normalizedOptions: SelectOption[] = rawOptions.map((o) => ({
+    const normalizedOptions: SelectOption[] = mergedOptions.map((o) => ({
       id: o.value,
       label: o.label,
       color: o.color,
       targetTimeInStatus: o.targetTimeInStatus,
       celebration: o.celebration,
     }))
-    // Use custom column order if defined, otherwise use field option order
-    if (config.columnOrder?.length) {
-      return config.columnOrder
-        .map((id) => normalizedOptions.find((o) => o.id === id))
-        .filter(Boolean) as SelectOption[]
+    // If no column order defined, use field option order
+    if (!config.columnOrder?.length) {
+      return normalizedOptions
     }
-    return normalizedOptions
-  }, [groupByField.options, config.columnOrder])
+    // Use column order for ordering, but include ALL options
+    // Options in columnOrder appear first (in that order), then any new options are appended
+    const orderedColumns = config.columnOrder
+      .map((id) => normalizedOptions.find((o) => o.id === id))
+      .filter(Boolean) as SelectOption[]
+    const orderedIds = new Set(config.columnOrder)
+    const unorderedColumns = normalizedOptions.filter((o) => !orderedIds.has(o.id))
+    return [...orderedColumns, ...unorderedColumns]
+  }, [groupByField.options, config.columnOrder, pendingOptions])
 
   // Filter columns by visibility settings
   const columns = useMemo(() => {
@@ -337,8 +450,10 @@ export function KanbanView<TData extends KanbanRow>({
     (event: DragStartEvent) => {
       const { active, activatorEvent } = event
       const type = active.data.current?.type as DragItemType
-      // Capture width from the dragged element
-      const dragWidth = (activatorEvent.srcElement as HTMLElement)?.offsetWidth
+      // Find the card element from the clicked target and get its width
+      const targetElement = activatorEvent.target as HTMLElement
+      const cardElement = targetElement?.closest('[data-kanban-card]') as HTMLElement | null
+      const dragWidth = cardElement?.offsetWidth
 
       if (type === 'column') {
         const column = columns.find((c) => c.id === active.id)
@@ -430,16 +545,18 @@ export function KanbanView<TData extends KanbanRow>({
           showCelebrationConfetti()
         }
 
-        // Move all cards - saveValue handles optimistic updates + background mutation
-        for (const card of cardsToMove) {
-          saveValue(card.id, config.groupByFieldId, newValue)
-        }
+        // Move all cards in single API call with optimistic updates
+        saveBulkValues(
+          cardsToMove.map((card) => card.id),
+          config.groupByFieldId,
+          newValue
+        )
 
         // Clear selection after drop
         setSelectedCardIds(new Set())
       }
     },
-    [activeItem, columns, columnIds, config.groupByFieldId, getValue, onColumnReorder, saveValue]
+    [activeItem, columns, columnIds, config.groupByFieldId, getValue, onColumnReorder, saveBulkValues]
   )
 
   /** Handle drag cancel */
@@ -475,9 +592,12 @@ export function KanbanView<TData extends KanbanRow>({
     return new Set(activeItem.draggedCards.map((c) => c.id))
   }, [activeItem?.draggedCards])
 
+  // Mass select mode: when any card is selected, clicking cards toggles selection
+  const massSelectMode = selectedCardIds.size > 0
+
   if (isLoading) {
     return (
-      <div className="flex gap-4 p-4 overflow-x-auto h-full">
+      <div className="flex gap-4 p-2 overflow-x-auto h-full">
         {[1, 2, 3, 4].map((i) => (
           <div key={i} className="w-64 shrink-0 rounded-lg border bg-muted/30 p-3 animate-pulse">
             <div className="flex items-center gap-2 mb-4">
@@ -505,7 +625,7 @@ export function KanbanView<TData extends KanbanRow>({
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}>
         <ScrollArea className="h-full">
-          <div ref={containerRef} className="flex p-4 min-w-max flex-1 h-full">
+          <div ref={containerRef} className="flex p-2 min-w-max flex-1 h-full">
             {/* Sortable columns */}
             <SortableContext items={columnIds} strategy={horizontalListSortingStrategy}>
               {/* No Status column (always first, not sortable) */}
@@ -533,6 +653,7 @@ export function KanbanView<TData extends KanbanRow>({
                     isSelected={selectedCardIds.has(card.id)}
                     onSelectChange={(selected) => handleCardSelectChange(card.id, selected)}
                     isBeingDragged={draggingCardIds.has(card.id)}
+                    massSelectMode={massSelectMode}
                   />
                 ))}
               </KanbanColumn>
@@ -556,18 +677,14 @@ export function KanbanView<TData extends KanbanRow>({
                   targetTimeInStatus={column.targetTimeInStatus}
                   celebration={column.celebration}
                   isVisible={config.columnSettings?.[column.id]?.isVisible !== false}
-                  // Settings callbacks
-                  onChange={
-                    onColumnChange
-                      ? (changes) => onColumnChange(column.id, changes)
-                      : undefined
-                  }
+                  // Settings callbacks (internal handlers)
+                  onChange={(changes) => handleColumnChange(column.id, changes)}
                   onVisibilityChange={
                     onColumnVisibilityChange
                       ? (visible) => onColumnVisibilityChange(column.id, visible)
                       : undefined
                   }
-                  onDelete={onColumnDelete ? () => onColumnDelete(column.id) : undefined}>
+                  onDelete={() => handleColumnDelete(column.id)}>
                   {(columnData[column.id] ?? []).map((card) => (
                     <KanbanCard
                       key={card.id}
@@ -580,6 +697,7 @@ export function KanbanView<TData extends KanbanRow>({
                       isSelected={selectedCardIds.has(card.id)}
                       onSelectChange={(selected) => handleCardSelectChange(card.id, selected)}
                       isBeingDragged={draggingCardIds.has(card.id)}
+                      massSelectMode={massSelectMode}
                     />
                   ))}
                 </KanbanColumn>
@@ -587,18 +705,16 @@ export function KanbanView<TData extends KanbanRow>({
             </SortableContext>
 
             {/* Add Stage button with create dropdown */}
-            {onColumnCreate && (
-              <div className="shrink-0">
-                <KanbanColumnSettings mode="create" onCreate={onColumnCreate}>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-10 rounded-lg border border-dashed hover:border-primary-300 hover:bg-primary-100">
-                    <Plus className="size-5 text-muted-foreground" />
-                  </Button>
-                </KanbanColumnSettings>
-              </div>
-            )}
+            <div className="shrink-0">
+              <KanbanColumnSettings mode="create" onCreate={handleColumnCreate}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-10 rounded-lg border border-dashed hover:border-primary-300 hover:bg-primary-100">
+                  <Plus className="size-5 text-muted-foreground" />
+                </Button>
+              </KanbanColumnSettings>
+            </div>
           </div>
           <ScrollBar orientation="horizontal" />
         </ScrollArea>

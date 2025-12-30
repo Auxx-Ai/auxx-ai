@@ -416,10 +416,8 @@ export class CustomFieldService {
     values: Array<{ fieldId: string; value: any }>
     modelType?: ModelType
   }) {
-    // Filter out empty values
-    const validValues = values.filter(
-      (v) => v.value !== undefined && v.value !== null && v.value !== ''
-    )
+    // Filter out undefined only - null is valid (clears field value)
+    const validValues = values.filter((v) => v.value !== undefined)
 
     if (validValues.length === 0) {
       return []
@@ -455,9 +453,8 @@ export class CustomFieldService {
     values: Array<{ fieldId: string; value: unknown }>
     modelType?: ModelType
   }): Promise<{ count: number }> {
-    const validValues = values.filter(
-      (v) => v.value !== undefined && v.value !== null && v.value !== ''
-    )
+    // Filter out undefined only - null is valid (clears field value)
+    const validValues = values.filter((v) => v.value !== undefined)
 
     if (validValues.length === 0 || entityIds.length === 0) {
       return { count: 0 }

@@ -50,10 +50,6 @@ export function useCustomField({ modelType, entityDefinitionId }: UseCustomField
     onSuccess: () => {
       invalidateCustomFieldQueries()
       invalidateResourceDefinitions()
-      // toastSuccess({
-      //   title: 'Custom field updated',
-      //   description: 'The custom field has been updated successfully',
-      // })
     },
     onError: (error) => {
       toastError({ title: 'Error updating custom field', description: error.message })
@@ -77,58 +73,11 @@ export function useCustomField({ modelType, entityDefinitionId }: UseCustomField
   const updatePositions = api.customField.updatePositions.useMutation({
     onSuccess: () => {
       invalidateResourceDefinitions()
-      // toastSuccess({
-      //   title: 'Custom field positions updated',
-      //   description: 'The custom field positions have been updated successfully',
-      // })
     },
     onError: (error) => {
       toastError({ title: 'Error updating custom field positions', description: error.message })
     },
   })
-
-  // Handle form submission
-  // function handleSubmit(values: FieldFormValues) {
-  //   if (editingFieldId) {
-  //     updateField.mutate({ id: editingFieldId, ...values })
-  //   } else {
-  //     createField.mutate(values)
-  //   }
-  // }
-
-  // Handle inline add
-  // function handleAddInTable(values: FieldFormValues) {
-  //   createField.mutate(values)
-  // }
-
-  // Handle edit action
-  // function handleEdit(field: any) {
-  //   setEditingFieldId(field.id)
-
-  //   // Set initial values for the form
-  //   setInitialValues({
-  //     name: field.name,
-  //     type: field.type,
-  //     description: field.description || '',
-  //     required: field.required,
-  //     defaultValue: field.defaultValue || '',
-  //     options: field.options,
-  //     addressComponents: field.addressComponents,
-  //   })
-  // }
-
-  // Handle delete action
-  // function handleDelete(id: string) {
-  //   if (confirm('Are you sure you want to delete this custom field?')) {
-  //     deleteField.mutate({ id })
-  //   }
-  // }
-
-  // Reset form state
-  // function resetForm() {
-  //   setEditingFieldId(null)
-  //   setInitialValues(undefined)
-  // }
 
   return {
     fields,
