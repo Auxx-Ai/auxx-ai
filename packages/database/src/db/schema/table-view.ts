@@ -9,6 +9,7 @@ import {
   boolean,
   timestamp,
   jsonb,
+  sql,
   type AnyPgColumn,
 } from './_shared'
 import { createId } from '@paralleldrive/cuid2'
@@ -44,12 +45,11 @@ export const TableView = pgTable(
       table.tableId.asc().nullsLast(),
       table.organizationId.asc().nullsLast()
     ),
-    uniqueIndex('TableView_tableId_organizationId_isDefault_key').using(
-      'btree',
-      table.tableId.asc().nullsLast(),
-      table.organizationId.asc().nullsLast(),
-      table.isDefault.asc().nullsLast()
-    ),
+    // Partial unique index: only one default view per table per organization
+    // Uses SQL expression to only enforce uniqueness WHERE isDefault = true
+    uniqueIndex('TableView_tableId_organizationId_isDefault_key')
+      .on(table.tableId, table.organizationId)
+      .where(sql`${table.isDefault} = true`),
     index('TableView_tableId_userId_idx').using(
       'btree',
       table.tableId.asc().nullsLast(),

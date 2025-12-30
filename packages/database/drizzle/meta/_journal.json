@@ -344,6 +344,13 @@
       "when": 1766875269754,
       "tag": "0048_remove_vendor",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1767129644620,
+      "tag": "0049_update_index_tableView",
+      "breakpoints": true
     }
   ]
 }

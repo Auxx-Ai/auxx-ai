@@ -1,6 +1,7 @@
 // apps/web/src/server/api/routers/tableView.ts
 
 import { z } from 'zod'
+import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 import type { ViewConfig } from '~/components/dynamic-table/types'
 import { database as db, schema } from '@auxx/database'
@@ -107,7 +108,10 @@ export const tableViewRouter = createTRPCRouter({
       .limit(1)
 
     if (!view) {
-      throw new Error('View not found')
+      throw new TRPCError({
+        code: 'NOT_FOUND',
+        message: 'View not found',
+      })
     }
 
     return { ...view, config: view.config as ViewConfig }
@@ -183,23 +187,34 @@ export const tableViewRouter = createTRPCRouter({
         .limit(1)
 
       if (existingView) {
-        throw new Error('A view with this name already exists')
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message: 'A view with this name already exists',
+        })
       }
 
-      const [view] = await db
-        .insert(schema.TableView)
-        .values({
-          tableId,
-          name,
-          config: finalConfig,
-          isShared,
-          userId,
-          organizationId,
-          updatedAt: new Date(),
-        })
-        .returning()
+      try {
+        const [view] = await db
+          .insert(schema.TableView)
+          .values({
+            tableId,
+            name,
+            config: finalConfig,
+            isShared,
+            userId,
+            organizationId,
+            updatedAt: new Date(),
+          })
+          .returning()
 
-      return { ...view, config: view.config as ViewConfig }
+        return { ...view, config: view.config as ViewConfig }
+      } catch (error) {
+        console.error('Failed to create view:', error)
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to create view. Please try again.',
+        })
+      }
     }),
 
   /**
@@ -225,7 +240,10 @@ export const tableViewRouter = createTRPCRouter({
         .limit(1)
 
       if (!existingView) {
-        throw new Error("View not found or you don't have permission to update it")
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: "View not found or you don't have permission to update it",
+        })
       }
 
       const [view] = await db
@@ -263,7 +281,10 @@ export const tableViewRouter = createTRPCRouter({
         .limit(1)
 
       if (!originalView) {
-        throw new Error('View not found')
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'View not found',
+        })
       }
 
       const [view] = await db
@@ -297,11 +318,17 @@ export const tableViewRouter = createTRPCRouter({
         .limit(1)
 
       if (!view) {
-        throw new Error("View not found or you don't have permission to delete it")
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: "View not found or you don't have permission to delete it",
+        })
       }
 
       if (view.isDefault) {
-        throw new Error('Cannot delete the default view')
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Cannot delete the default view',
+        })
       }
 
       await db.delete(schema.TableView).where(eq(schema.TableView.id, input.id))
@@ -331,7 +358,10 @@ export const tableViewRouter = createTRPCRouter({
         .limit(1)
 
       if (!membership) {
-        throw new Error("You don't have permission to set default views")
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: "You don't have permission to set default views",
+        })
       }
 
       // Remove current default

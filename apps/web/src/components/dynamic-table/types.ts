@@ -191,6 +191,41 @@ export interface KanbanColumnSettings {
   isVisible?: boolean // defaults to true if undefined
 }
 
+/** Generic row data for kanban cards */
+export interface KanbanRow {
+  id: string
+  updatedAt?: string | Date
+  customFieldValues?: Array<{
+    fieldId: string
+    value: unknown
+  }>
+  [key: string]: unknown
+}
+
+/** Normalized option for kanban columns (with id instead of value) */
+export interface KanbanSelectOption {
+  id: string
+  label: string
+  color?: string
+  /** Target time for items to remain in this status */
+  targetTimeInStatus?: TargetTimeInStatus
+  /** Trigger celebration animation when cards move to this column */
+  celebration?: boolean
+}
+
+/** Custom field definition for kanban */
+export interface KanbanCustomField {
+  id: string
+  name: string
+  type: string
+  options?: {
+    options?: KanbanSelectOption[]
+  }
+}
+
+/** Drag item type for kanban DnD */
+export type KanbanDragItemType = 'card' | 'column'
+
 /** Kanban-specific configuration */
 export interface KanbanViewConfig {
   /** ID of the SINGLE_SELECT custom field used for columns */
@@ -386,8 +421,34 @@ export interface DynamicTableProps<TData = any> {
   selectFields?: Array<{
     id: string
     name: string
+    type?: string
     options?: { options?: Array<{ id: string; label: string; color?: string }> }
   }>
+
+  /** All custom fields for kanban card display */
+  customFields?: Array<{
+    id: string
+    name: string
+    type: string
+  }>
+
+  /** Primary display field ID for kanban cards */
+  primaryFieldId?: string
+
+  /** Entity label for "New X" buttons in kanban */
+  entityLabel?: string
+
+  /** Callback when kanban card is clicked */
+  onCardClick?: (card: TData) => void
+
+  /** Callback to add a new card in a kanban column */
+  onAddCard?: (columnId: string) => void
+
+  /** Selected kanban card IDs (controlled) */
+  selectedKanbanCardIds?: Set<string>
+
+  /** Callback when kanban card selection changes */
+  onSelectedKanbanCardIdsChange?: (ids: Set<string>) => void
 
   /** Model type for creating new fields: 'contact', 'ticket', 'entity', etc. */
   modelType?: ModelType

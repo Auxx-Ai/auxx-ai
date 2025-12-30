@@ -118,7 +118,7 @@ export function ViewSelector({
   // Mutations
   const createView = api.tableView.create.useMutation({
     onSuccess: () => {
-      toastSuccess({ description: 'View created successfully' })
+      toastSuccess({ title: 'View created successfully' })
       setShowCreateDialog(false)
       setNewViewName('')
       utils.tableView.list.invalidate({ tableId })
@@ -130,7 +130,7 @@ export function ViewSelector({
 
   const updateView = api.tableView.update.useMutation({
     onSuccess: () => {
-      toastSuccess({ description: 'View updated successfully' })
+      toastSuccess({ title: 'View updated successfully' })
       setShowRenameDialog(false)
       setNewViewName('')
       utils.tableView.list.invalidate({ tableId })
@@ -142,7 +142,7 @@ export function ViewSelector({
 
   const deleteView = api.tableView.delete.useMutation({
     onSuccess: () => {
-      toastSuccess({ description: 'View deleted successfully' })
+      toastSuccess({ title: 'View deleted successfully' })
       if (activeView?.id === deleteView.variables?.id) {
         onViewSelect(null)
       }
@@ -155,7 +155,7 @@ export function ViewSelector({
 
   const duplicateView = api.tableView.duplicate.useMutation({
     onSuccess: () => {
-      toastSuccess({ description: 'View duplicated successfully' })
+      toastSuccess({ title: 'View duplicated successfully' })
       utils.tableView.list.invalidate({ tableId })
     },
     onError: (error) => {
@@ -165,7 +165,6 @@ export function ViewSelector({
 
   const setDefaultView = api.tableView.setDefault.useMutation({
     onSuccess: () => {
-      toastSuccess({ description: 'Default view updated' })
       utils.tableView.list.invalidate({ tableId })
     },
     onError: (error) => {
@@ -268,7 +267,7 @@ export function ViewSelector({
 
     try {
       await onSave()
-      toastSuccess({ description: 'View saved successfully' })
+      toastSuccess({ title: 'View saved successfully' })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error'
       toastError({ title: 'Failed to save view', description: message })

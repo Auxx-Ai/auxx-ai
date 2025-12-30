@@ -1,0 +1,2 @@
+DROP INDEX "TableView_tableId_organizationId_isDefault_key";--> statement-breakpoint
+CREATE UNIQUE INDEX "TableView_tableId_organizationId_isDefault_key" ON "TableView" USING btree ("tableId","organizationId") WHERE "TableView"."isDefault" = true;

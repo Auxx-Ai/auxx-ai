@@ -109,8 +109,8 @@ if (env.READ_DATABASE_URL) {
   readReplicas.push(
     drizzle(read1, {
       schema: { ...schema, ...relations },
-      logger: sanitizedDrizzleLogger,
-      // logger: undefined,
+      // logger: sanitizedDrizzleLogger,
+      logger: undefined,
     }) as Connection
   )
 }
@@ -120,8 +120,8 @@ if (env.READ_2_DATABASE_URL) {
   readReplicas.push(
     drizzle(read2, {
       schema: { ...schema, ...relations },
-      logger: sanitizedDrizzleLogger,
-      // logger: undefined,
+      // logger: sanitizedDrizzleLogger,
+      logger: undefined,
     }) as Connection
   )
 }
@@ -129,8 +129,8 @@ if (env.READ_2_DATABASE_URL) {
 /** Primary Drizzle client bound to the write pool */
 const primary = drizzle(writePool, {
   schema: { ...schema, ...relations },
-  logger: sanitizedDrizzleLogger,
-  // logger: undefined,
+  // logger: sanitizedDrizzleLogger,
+  logger: undefined,
 }) as Connection
 
 /**

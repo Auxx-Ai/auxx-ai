@@ -27,7 +27,14 @@ import { KanbanCard } from './kanban-card'
 import { KanbanColumnSettings, type ColumnOptionChanges } from './kanban-column-settings'
 import { showCelebrationConfetti } from '~/components/subscriptions/show-confetti'
 import { useStackedDragOverlay } from '~/hooks/use-stacked-drag-overlay'
-import { NO_STATUS_COLUMN_ID, type KanbanViewConfig } from '../dynamic-table/types'
+import {
+  NO_STATUS_COLUMN_ID,
+  type KanbanViewConfig,
+  type KanbanRow,
+  type KanbanSelectOption,
+  type KanbanCustomField,
+  type KanbanDragItemType,
+} from '../dynamic-table/types'
 import type { SelectOption as RawSelectOption, TargetTimeInStatus, ModelType } from '@auxx/types/custom-field'
 import {
   useCustomFieldValueStore,
@@ -38,49 +45,6 @@ import { useSaveFieldValue } from '~/hooks/use-save-field-value'
 import { useCustomField } from '~/components/custom-fields/hooks/use-custom-field'
 import { toastError } from '@auxx/ui/components/toast'
 
-/** Normalized option for kanban columns (with id instead of value) */
-interface KanbanColumn {
-  id: string
-  label: string
-  color?: string
-  /** Target time for items to remain in this status */
-  targetTimeInStatus?: TargetTimeInStatus
-  /** Trigger celebration animation when cards move to this column */
-  celebration?: boolean
-}
-
-/** Generic row data with customFieldValues */
-interface KanbanRow {
-  id: string
-  updatedAt?: string | Date
-  customFieldValues?: Array<{
-    fieldId: string
-    value: unknown
-  }>
-  [key: string]: unknown
-}
-
-/** Custom field definition */
-interface CustomField {
-  id: string
-  name: string
-  type: string
-  options?: {
-    options?: KanbanColumn[]
-  }
-}
-
-/** Drag item type */
-type DragItemType = 'card' | 'column'
-
-/** Normalized SelectOption for internal use */
-interface SelectOption {
-  id: string
-  label: string
-  color?: string
-  targetTimeInStatus?: TargetTimeInStatus
-  celebration?: boolean
-}
 
 /** Props for KanbanView component */
 interface KanbanViewProps<TData extends KanbanRow> {
@@ -89,9 +53,9 @@ interface KanbanViewProps<TData extends KanbanRow> {
   /** Kanban configuration */
   config: KanbanViewConfig
   /** Custom field used for grouping (SINGLE_SELECT) */
-  groupByField: CustomField
+  groupByField: KanbanCustomField
   /** All custom fields for card display */
-  customFields: CustomField[]
+  customFields: KanbanCustomField[]
   /** Primary display field ID */
   primaryFieldId?: string
   /** Entity label (singular) for "New X" buttons */
@@ -124,14 +88,14 @@ interface KanbanViewProps<TData extends KanbanRow> {
 /** Props for KanbanDragOverlay component */
 interface KanbanDragOverlayProps<TData extends KanbanRow> {
   activeItem: {
-    type: DragItemType
+    type: KanbanDragItemType
     id: string
-    data?: TData | SelectOption
+    data?: TData | KanbanSelectOption
     sourceColumnId?: string
     draggedCards?: TData[]
     dragWidth?: number
   } | null
-  cardFields: CustomField[]
+  cardFields: KanbanCustomField[]
   getPrimaryValue: (card: TData) => unknown
   getValue: (rowId: string, fieldId: string) => unknown
 }
@@ -224,9 +188,9 @@ export function KanbanView<TData extends KanbanRow>({
   onSelectedCardIdsChange,
 }: KanbanViewProps<TData>) {
   const [activeItem, setActiveItem] = useState<{
-    type: DragItemType
+    type: KanbanDragItemType
     id: string
-    data?: TData | SelectOption
+    data?: TData | KanbanSelectOption
     sourceColumnId?: string
     /** Cards being dragged (for multi-select) */
     draggedCards?: TData[]
@@ -373,14 +337,14 @@ export function KanbanView<TData extends KanbanRow>({
   }, [])
 
   // Get options from the groupBy field - normalize value -> id (includes pending options)
-  const allColumns: SelectOption[] = useMemo(() => {
+  const allColumns: KanbanSelectOption[] = useMemo(() => {
     const rawOptions: RawSelectOption[] = groupByField.options?.options ?? []
     // Merge pending options that aren't already in base (by value)
     const baseValues = new Set(rawOptions.map((o) => o.value))
     const newPending = pendingOptions.filter((o) => !baseValues.has(o.value))
     const mergedOptions = [...rawOptions, ...newPending]
     // Normalize: map 'value' to 'id' for consistent usage
-    const normalizedOptions: SelectOption[] = mergedOptions.map((o) => ({
+    const normalizedOptions: KanbanSelectOption[] = mergedOptions.map((o) => ({
       id: o.value,
       label: o.label,
       color: o.color,
@@ -395,7 +359,7 @@ export function KanbanView<TData extends KanbanRow>({
     // Options in columnOrder appear first (in that order), then any new options are appended
     const orderedColumns = config.columnOrder
       .map((id) => normalizedOptions.find((o) => o.id === id))
-      .filter(Boolean) as SelectOption[]
+      .filter(Boolean) as KanbanSelectOption[]
     const orderedIds = new Set(config.columnOrder)
     const unorderedColumns = normalizedOptions.filter((o) => !orderedIds.has(o.id))
     return [...orderedColumns, ...unorderedColumns]
@@ -449,7 +413,7 @@ export function KanbanView<TData extends KanbanRow>({
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
       const { active, activatorEvent } = event
-      const type = active.data.current?.type as DragItemType
+      const type = active.data.current?.type as KanbanDragItemType
       // Find the card element from the clicked target and get its width
       const targetElement = activatorEvent.target as HTMLElement
       const cardElement = targetElement?.closest('[data-kanban-card]') as HTMLElement | null
@@ -499,7 +463,7 @@ export function KanbanView<TData extends KanbanRow>({
   const handleDragEnd = useCallback(
     async (event: DragEndEvent) => {
       const { active, over } = event
-      const activeType = active.data.current?.type as DragItemType
+      const activeType = active.data.current?.type as KanbanDragItemType
 
       // Capture dragged cards BEFORE clearing state
       const draggedCards = activeItem?.draggedCards ?? []
@@ -710,7 +674,7 @@ export function KanbanView<TData extends KanbanRow>({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="size-10 rounded-lg border border-dashed hover:border-primary-300 hover:bg-primary-100">
+                  className="size-8 rounded-xl border border-dashed hover:border-primary-300 hover:bg-primary-100">
                   <Plus className="size-5 text-muted-foreground" />
                 </Button>
               </KanbanColumnSettings>

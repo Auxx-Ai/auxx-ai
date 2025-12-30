@@ -11,7 +11,15 @@ import type { ModelType } from '@auxx/types/custom-field'
 interface SelectField {
   id: string
   name: string
+  type?: string
   options?: { options?: Array<{ id: string; label: string; color?: string }> }
+}
+
+/** Custom field definition for kanban card display */
+interface CustomField {
+  id: string
+  name: string
+  type: string
 }
 
 interface TableContextValue<TData = any> {
@@ -26,17 +34,39 @@ interface TableContextValue<TData = any> {
   enableBulkActions: boolean
   enableImport?: boolean
   showFooter?: boolean
+  hideToolbar?: boolean
   enableCheckbox: boolean
   showRowNumbers?: boolean
 
   /** SINGLE_SELECT fields for kanban view grouping */
   selectFields?: SelectField[]
 
+  /** All custom fields for kanban card display */
+  customFields?: CustomField[]
+
+  /** Primary display field ID for kanban cards */
+  primaryFieldId?: string
+
+  /** Entity label for "New X" buttons in kanban */
+  entityLabel?: string
+
   /** Model type for creating new fields: 'contact', 'ticket', 'entity', etc. */
   modelType?: ModelType
 
   /** Entity definition ID - required only when modelType is 'entity' */
   entityDefinitionId?: string
+
+  // Kanban callbacks
+  /** Callback when kanban card is clicked */
+  onCardClick?: (card: TData) => void
+  /** Callback to add a new card in a kanban column */
+  onAddCard?: (columnId: string) => void
+
+  // Kanban selection state (controlled from parent for persistence)
+  /** Selected kanban card IDs */
+  selectedKanbanCardIds?: Set<string>
+  /** Callback when kanban card selection changes */
+  onSelectedKanbanCardIdsChange?: (ids: Set<string>) => void
 
   // State
   views: TableView[]
