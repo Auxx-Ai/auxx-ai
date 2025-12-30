@@ -193,7 +193,9 @@ export function normalizeCustomFieldValue(
         }
         return { data: date.toISOString() }
       }
-      throw new Error(`Cannot convert to ${field.type} for field "${field.name}": ${typeof rawValue}`)
+      throw new Error(
+        `Cannot convert to ${field.type} for field "${field.name}": ${typeof rawValue}`
+      )
     }
 
     case FieldTypeEnum.TAGS: {
@@ -264,7 +266,6 @@ export function normalizeCustomFieldValue(
     case FieldTypeEnum.RICH_TEXT:
     case FieldTypeEnum.EMAIL:
     case FieldTypeEnum.URL:
-    case FieldTypeEnum.PHONE:
     case FieldTypeEnum.PHONE_INTL:
     case FieldTypeEnum.ADDRESS: {
       // Simple string coercion

@@ -51,7 +51,6 @@ export const ChunkingStrategyValues = [
 ] as const
 
 export const FieldTypeValues = [
-  'PHONE',
   'EMAIL',
   'ADDRESS',
   'URL',

@@ -204,13 +204,6 @@ export const fieldTypeOptions: FieldTypeOption[] = [
     icon: Tags,
     description: 'Multiple keyword tags for categorization',
   },
-  // {
-  //   value: ContactFieldType.ADDRESS,
-  //   label: 'Address (Simple)',
-  //   icon: Home,
-  //   description: 'Single field for full address',
-  //   showPencil: false,
-  // },
   {
     value: FieldTypeEnum.ADDRESS_STRUCT,
     label: 'Address',

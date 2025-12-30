@@ -133,7 +133,13 @@ export function EntitySidebarNav() {
    */
   function renderIcon(iconId: string, color: string) {
     return (
-      <EntityIcon iconId={iconId} color={color ?? 'gray'} size="sm" inverse className="-ms-0.5" />
+      <EntityIcon
+        iconId={iconId}
+        color={color ?? 'gray'}
+        size="sm"
+        inverse
+        className="-ms-0.5 inset-shadow-xs inset-shadow-black/20"
+      />
     )
     // const iconData = getIcon(iconId ?? 'circle')
     // if (!iconData) return null
@@ -165,7 +171,13 @@ export function EntitySidebarNav() {
                 name="Contacts"
                 href="/app/contacts"
                 icon={
-                  <EntityIcon iconId="users" color="gray" size="sm" inverse className="-ms-0.5" />
+                  <EntityIcon
+                    iconId="users"
+                    color="gray"
+                    size="sm"
+                    inverse
+                    className="-ms-0.5 inset-shadow-xs inset-shadow-black/20"
+                  />
                 }
                 isActive={isContactsActive()}
                 editItems={
@@ -183,7 +195,13 @@ export function EntitySidebarNav() {
                 name="Support Tickets"
                 href="/app/tickets"
                 icon={
-                  <EntityIcon iconId="tags" color="gray" size="sm" inverse className="-ms-0.5" />
+                  <EntityIcon
+                    iconId="tags"
+                    color="gray"
+                    size="sm"
+                    inverse
+                    className="-ms-0.5 inset-shadow-xs inset-shadow-black/20"
+                  />
                 }
                 isActive={isTicketsActive()}
                 editItems={
@@ -206,7 +224,7 @@ export function EntitySidebarNav() {
                     color="gray"
                     size="sm"
                     inverse
-                    className="-ms-0.5 inset-shadow-black/5"
+                    className="-ms-0.5 inset-shadow-xs inset-shadow-black/20"
                   />
                 }
                 isActive={isPartsActive()}
