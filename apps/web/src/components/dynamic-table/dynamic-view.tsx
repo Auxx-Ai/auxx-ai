@@ -4,6 +4,7 @@
 import { useMemo, useState, useCallback, useEffect } from 'react'
 import { DynamicTable } from './index'
 import { KanbanView } from '../kanban'
+import { type ColumnOptionChanges } from '../kanban/kanban-column-settings'
 import { useDynamicTable } from './hooks/use-dynamic-table'
 import { api } from '~/trpc/react'
 import { toastError } from '@auxx/ui/components/toast'
@@ -45,12 +46,6 @@ interface DynamicViewProps<TData> extends DynamicTableProps<TData> {
   /** Entity label for "New X" buttons (from resource.label) */
   entityLabel?: string
 
-  /** Get value for row/field - PASSED FROM PARENT (from syncer.getValue) */
-  getValue?: (rowId: string, fieldId: string) => unknown
-
-  /** Callback when card moves in kanban - PASSED FROM PARENT */
-  onKanbanCardMove?: (cardId: string, newColumnId: string, groupByFieldId: string) => void
-
   /** Callback when card is clicked */
   onCardClick?: (card: TData) => void
 
@@ -68,8 +63,6 @@ export function DynamicView<TData extends Record<string, any>>({
   customFields,
   primaryFieldId,
   entityLabel,
-  getValue,
-  onKanbanCardMove,
   onCardClick,
   onAddCard,
   children,
@@ -121,10 +114,8 @@ export function DynamicView<TData extends Record<string, any>>({
               setLocalColumnOrder(null)
               toastError({ title: 'Failed to save column order', description: error.message })
             },
-            onSuccess: () => {
-              // Clear local state, view is now source of truth
-              setLocalColumnOrder(null)
-            },
+            // Don't clear localColumnOrder on success - keep optimistic state
+            // until view changes (handled by useEffect) or component unmounts
           }
         )
       }
@@ -145,19 +136,30 @@ export function DynamicView<TData extends Record<string, any>>({
     return field?.options?.options ?? []
   }, [kanbanConfig?.groupByFieldId, selectFields])
 
-  /** Handle column label change */
-  const handleColumnLabelChange = useCallback(
-    (columnId: string, label: string) => {
+  /** Handle column option changes (unified callback - called when dropdown closes) */
+  const handleColumnChange = useCallback(
+    (columnId: string, changes: ColumnOptionChanges) => {
       if (!kanbanConfig?.groupByFieldId) return
       const currentOptions = getCurrentOptions()
-      const updatedOptions = currentOptions.map((opt) =>
-        opt.value === columnId ? { ...opt, label } : opt
-      )
+
+      const updatedOptions = currentOptions.map((opt) => {
+        if (opt.value !== columnId) return opt
+        return {
+          ...opt,
+          ...(changes.label !== undefined && { label: changes.label }),
+          ...(changes.color !== undefined && { color: changes.color }),
+          ...(changes.targetTimeInStatus !== undefined && {
+            targetTimeInStatus: changes.targetTimeInStatus ?? undefined,
+          }),
+          ...(changes.celebration !== undefined && { celebration: changes.celebration }),
+        }
+      })
+
       updateField.mutate(
         { id: kanbanConfig.groupByFieldId, options: updatedOptions },
         {
           onError: (error) => {
-            toastError({ title: 'Failed to update stage name', description: error.message })
+            toastError({ title: 'Failed to update stage', description: error.message })
           },
         }
       )
@@ -165,61 +167,24 @@ export function DynamicView<TData extends Record<string, any>>({
     [kanbanConfig?.groupByFieldId, getCurrentOptions, updateField]
   )
 
-  /** Handle column color change */
-  const handleColumnColorChange = useCallback(
-    (columnId: string, color: string) => {
+  /** Handle creating a new column */
+  const handleColumnCreate = useCallback(
+    (option: { label: string; color: string }) => {
+      console.log('Creating column', option)
       if (!kanbanConfig?.groupByFieldId) return
       const currentOptions = getCurrentOptions()
-      const updatedOptions = currentOptions.map((opt) =>
-        opt.value === columnId ? { ...opt, color } : opt
-      )
-      updateField.mutate(
-        { id: kanbanConfig.groupByFieldId, options: updatedOptions },
-        {
-          onError: (error) => {
-            toastError({ title: 'Failed to update stage color', description: error.message })
-          },
-        }
-      )
-    },
-    [kanbanConfig?.groupByFieldId, getCurrentOptions, updateField]
-  )
 
-  /** Handle column target time change */
-  const handleColumnTargetTimeChange = useCallback(
-    (columnId: string, time: TargetTimeInStatus | null) => {
-      if (!kanbanConfig?.groupByFieldId) return
-      const currentOptions = getCurrentOptions()
-      const updatedOptions = currentOptions.map((opt) =>
-        opt.value === columnId
-          ? { ...opt, targetTimeInStatus: time ?? undefined }
-          : opt
-      )
-      updateField.mutate(
-        { id: kanbanConfig.groupByFieldId, options: updatedOptions },
-        {
-          onError: (error) => {
-            toastError({ title: 'Failed to update time tracking', description: error.message })
-          },
-        }
-      )
-    },
-    [kanbanConfig?.groupByFieldId, getCurrentOptions, updateField]
-  )
+      const newOption: SelectOption = {
+        label: option.label,
+        value: option.label, // Use label as value (same pattern as options-editor)
+        color: option.color,
+      }
 
-  /** Handle column celebration change */
-  const handleColumnCelebrationChange = useCallback(
-    (columnId: string, enabled: boolean) => {
-      if (!kanbanConfig?.groupByFieldId) return
-      const currentOptions = getCurrentOptions()
-      const updatedOptions = currentOptions.map((opt) =>
-        opt.value === columnId ? { ...opt, celebration: enabled } : opt
-      )
       updateField.mutate(
-        { id: kanbanConfig.groupByFieldId, options: updatedOptions },
+        { id: kanbanConfig.groupByFieldId, options: [...currentOptions, newOption] },
         {
           onError: (error) => {
-            toastError({ title: 'Failed to update celebration', description: error.message })
+            toastError({ title: 'Failed to add stage', description: error.message })
           },
         }
       )
@@ -281,7 +246,7 @@ export function DynamicView<TData extends Record<string, any>>({
   }, [kanbanConfig?.groupByFieldId, selectFields])
 
   // Check if current view is kanban with valid config
-  const isKanbanView = viewType === 'kanban' && !!groupByField && !!getValue
+  const isKanbanView = viewType === 'kanban' && !!groupByField
 
   // Build effective kanban config with optimistic column order
   const effectiveKanbanConfig = useMemo(() => {
@@ -291,15 +256,6 @@ export function DynamicView<TData extends Record<string, any>>({
       columnOrder: effectiveColumnOrder,
     }
   }, [kanbanConfig, effectiveColumnOrder])
-
-  // Wrap card move callback to include groupByFieldId
-  const handleCardMove = useCallback(
-    (cardId: string, newColumnId: string) => {
-      if (!kanbanConfig?.groupByFieldId || !onKanbanCardMove) return
-      onKanbanCardMove(cardId, newColumnId, kanbanConfig.groupByFieldId)
-    },
-    [kanbanConfig?.groupByFieldId, onKanbanCardMove]
-  )
 
   // Render Kanban view
   if (isKanbanView && effectiveKanbanConfig && groupByField) {
@@ -311,19 +267,19 @@ export function DynamicView<TData extends Record<string, any>>({
         customFields={customFields ?? []}
         primaryFieldId={effectiveKanbanConfig.primaryFieldId ?? primaryFieldId}
         entityLabel={entityLabel}
-        onCardMove={handleCardMove}
         onCardClick={onCardClick}
         onAddCard={onAddCard}
         onColumnReorder={handleKanbanColumnReorder}
         isLoading={tableProps.isLoading}
-        getValue={getValue!}
         // Column settings callbacks
-        onColumnLabelChange={handleColumnLabelChange}
-        onColumnColorChange={handleColumnColorChange}
-        onColumnTargetTimeChange={handleColumnTargetTimeChange}
-        onColumnCelebrationChange={handleColumnCelebrationChange}
+        onColumnChange={handleColumnChange}
+        onColumnCreate={handleColumnCreate}
         onColumnVisibilityChange={handleColumnVisibilityChange}
         onColumnDelete={handleColumnDelete}
+        // Self-contained props - KanbanView reads from store directly
+        resourceType={tableProps.modelType === 'entity' ? 'entity' : 'contact'}
+        entityDefinitionId={tableProps.entityDefinitionId}
+        modelType={(tableProps.modelType ?? 'contact') as ModelType}
       />
     )
   }

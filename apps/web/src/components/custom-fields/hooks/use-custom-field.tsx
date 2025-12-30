@@ -50,10 +50,10 @@ export function useCustomField({ modelType, entityDefinitionId }: UseCustomField
     onSuccess: () => {
       invalidateCustomFieldQueries()
       invalidateResourceDefinitions()
-      toastSuccess({
-        title: 'Custom field updated',
-        description: 'The custom field has been updated successfully',
-      })
+      // toastSuccess({
+      //   title: 'Custom field updated',
+      //   description: 'The custom field has been updated successfully',
+      // })
     },
     onError: (error) => {
       toastError({ title: 'Error updating custom field', description: error.message })
@@ -77,10 +77,10 @@ export function useCustomField({ modelType, entityDefinitionId }: UseCustomField
   const updatePositions = api.customField.updatePositions.useMutation({
     onSuccess: () => {
       invalidateResourceDefinitions()
-      toastSuccess({
-        title: 'Custom field positions updated',
-        description: 'The custom field positions have been updated successfully',
-      })
+      // toastSuccess({
+      //   title: 'Custom field positions updated',
+      //   description: 'The custom field positions have been updated successfully',
+      // })
     },
     onError: (error) => {
       toastError({ title: 'Error updating custom field positions', description: error.message })

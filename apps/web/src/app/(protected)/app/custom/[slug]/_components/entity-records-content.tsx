@@ -304,20 +304,6 @@ export function EntityRecordsContent() {
   })
 
   /**
-   * Handle kanban card move (update groupBy field value)
-   * Uses optimistic updates via useSaveFieldValue for instant visual feedback
-   */
-  const handleKanbanCardMove = useCallback(
-    (cardId: string, newColumnId: string, groupByFieldId: string) => {
-      const value = newColumnId === '' ? null : newColumnId
-
-      // saveValue handles optimistic update + background mutation + rollback on error
-      saveValue(cardId, groupByFieldId, value)
-    },
-    [saveValue]
-  )
-
-  /**
    * Handle opening drawer from primary display cell
    */
   const handleOpenDrawer = useCallback((row: EntityRow) => {
@@ -752,8 +738,6 @@ export function EntityRecordsContent() {
               customFields={customFields}
               primaryFieldId={resource?.display.primaryDisplayField?.id}
               entityLabel={resource?.label}
-              getValue={getValue}
-              onKanbanCardMove={handleKanbanCardMove}
               onCardClick={handleOpenDrawer}
               onAddCard={() => setIsCreateDialogOpen(true)}
               modelType="entity"

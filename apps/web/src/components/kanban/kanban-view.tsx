@@ -5,7 +5,7 @@ import { useCallback, useMemo, useState, useRef } from 'react'
 import {
   DndContext,
   DragOverlay,
-  closestCorners,
+  pointerWithin,
   KeyboardSensor,
   PointerSensor,
   useSensor,
@@ -16,7 +16,6 @@ import {
 } from '@dnd-kit/core'
 import {
   SortableContext,
-  verticalListSortingStrategy,
   horizontalListSortingStrategy,
   arrayMove,
 } from '@dnd-kit/sortable'
@@ -25,9 +24,17 @@ import { Button } from '@auxx/ui/components/button'
 import { Plus } from 'lucide-react'
 import { KanbanColumn } from './kanban-column'
 import { KanbanCard } from './kanban-card'
+import { KanbanColumnSettings, type ColumnOptionChanges } from './kanban-column-settings'
 import { showCelebrationConfetti } from '~/components/subscriptions/show-confetti'
+import { useStackedDragOverlay } from '~/hooks/use-stacked-drag-overlay'
 import { NO_STATUS_COLUMN_ID, type KanbanViewConfig } from '../dynamic-table/types'
-import type { SelectOption as RawSelectOption, TargetTimeInStatus } from '@auxx/types/custom-field'
+import type { SelectOption as RawSelectOption, TargetTimeInStatus, ModelType } from '@auxx/types/custom-field'
+import {
+  useCustomFieldValueStore,
+  buildValueKey,
+  type ResourceType,
+} from '~/stores/custom-field-value-store'
+import { useSaveFieldValue } from '~/hooks/use-save-field-value'
 
 /** Normalized option for kanban columns (with id instead of value) */
 interface KanbanColumn {
@@ -64,6 +71,15 @@ interface CustomField {
 /** Drag item type */
 type DragItemType = 'card' | 'column'
 
+/** Normalized SelectOption for internal use */
+interface SelectOption {
+  id: string
+  label: string
+  color?: string
+  targetTimeInStatus?: TargetTimeInStatus
+  celebration?: boolean
+}
+
 /** Props for KanbanView component */
 interface KanbanViewProps<TData extends KanbanRow> {
   /** Data rows to display */
@@ -78,30 +94,107 @@ interface KanbanViewProps<TData extends KanbanRow> {
   primaryFieldId?: string
   /** Entity label (singular) for "New X" buttons */
   entityLabel?: string
-  /** Callback when a card is moved to a new column */
-  onCardMove?: (cardId: string, newColumnId: string) => Promise<void>
-  /** Callback when cards are reordered within a column */
-  onCardReorder?: (columnId: string, cardIds: string[]) => Promise<void>
   /** Callback when columns are reordered */
   onColumnReorder?: (columnIds: string[]) => Promise<void>
   /** Callback when a card is clicked */
   onCardClick?: (card: TData) => void
   /** Callback when "New X" is clicked in a column */
   onAddCard?: (columnId: string) => void
-  /** Callback to add a new stage/column */
-  onAddColumn?: () => void
   /** Loading state */
   isLoading?: boolean
-  /** Get value for a field */
-  getValue: (rowId: string, fieldId: string) => unknown
 
-  /** Column settings callbacks */
-  onColumnLabelChange?: (columnId: string, label: string) => void
-  onColumnColorChange?: (columnId: string, color: string) => void
-  onColumnTargetTimeChange?: (columnId: string, time: TargetTimeInStatus | null) => void
-  onColumnCelebrationChange?: (columnId: string, enabled: boolean) => void
+  /** Unified callback for column option changes (called on dropdown close) */
+  onColumnChange?: (columnId: string, changes: ColumnOptionChanges) => void
+  /** Callback to create a new column */
+  onColumnCreate?: (option: { label: string; color: string }) => void
+  /** View-level visibility change */
   onColumnVisibilityChange?: (columnId: string, visible: boolean) => void
+  /** Delete column */
   onColumnDelete?: (columnId: string) => void
+
+  /** Resource type for store key building */
+  resourceType: ResourceType
+  /** Entity definition ID (required for 'entity' resourceType) */
+  entityDefinitionId?: string
+  /** Model type for useSaveFieldValue */
+  modelType: ModelType
+}
+
+/** Props for KanbanDragOverlay component */
+interface KanbanDragOverlayProps<TData extends KanbanRow> {
+  activeItem: {
+    type: DragItemType
+    id: string
+    data?: TData | SelectOption
+    sourceColumnId?: string
+    draggedCards?: TData[]
+    dragWidth?: number
+  } | null
+  cardFields: CustomField[]
+  getPrimaryValue: (card: TData) => unknown
+  getValue: (rowId: string, fieldId: string) => unknown
+}
+
+/**
+ * Drag overlay component for kanban cards.
+ * Renders stacked cards when multiple are selected.
+ */
+function KanbanDragOverlay<TData extends KanbanRow>({
+  activeItem,
+  cardFields,
+  getPrimaryValue,
+  getValue,
+}: KanbanDragOverlayProps<TData>) {
+  const draggedCards = activeItem?.draggedCards ?? []
+  const { getItemStyle, indices, showBadge, totalCount } = useStackedDragOverlay({
+    count: draggedCards.length,
+  })
+  if (!activeItem) return null
+
+  // Column drag: no overlay, let the actual element move
+  if (activeItem.type === 'column') return null
+
+  // Card drag overlay with stacking for multi-select
+  if (activeItem.type === 'card' && draggedCards.length > 0) {
+    return (
+      <DragOverlay dropAnimation={null}>
+        <div className="relative">
+          {showBadge && (
+            <span
+              className="absolute z-10 inline-flex size-5 items-center justify-center rounded-full bg-info text-[10px] font-medium leading-none text-white"
+              style={{ right: '-8px', top: '-8px' }}>
+              {totalCount}
+            </span>
+          )}
+          <div className="relative">
+            {indices.map((itemIndex, renderIndex) => {
+              const card = draggedCards[itemIndex]
+              if (!card) return null
+              return (
+                <div
+                  key={card.id}
+                  className="pointer-events-none"
+                  style={{
+                    ...getItemStyle(renderIndex),
+                    width: activeItem?.dragWidth,
+                  }}>
+                  <KanbanCard
+                    id={card.id}
+                    title={String(getPrimaryValue(card) ?? 'Untitled')}
+                    fields={cardFields}
+                    getValue={(fieldId) => getValue(card.id, fieldId)}
+                    isDragging
+                  />
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </DragOverlay>
+    )
+  }
+
+  return null
 }
 
 /**
@@ -115,30 +208,52 @@ export function KanbanView<TData extends KanbanRow>({
   customFields,
   primaryFieldId,
   entityLabel = 'Record',
-  onCardMove,
-  onCardReorder,
   onColumnReorder,
   onCardClick,
   onAddCard,
-  onAddColumn,
   isLoading,
-  getValue,
   // Column settings callbacks
-  onColumnLabelChange,
-  onColumnColorChange,
-  onColumnTargetTimeChange,
-  onColumnCelebrationChange,
+  onColumnChange,
+  onColumnCreate,
   onColumnVisibilityChange,
   onColumnDelete,
+  // Self-contained props
+  resourceType,
+  entityDefinitionId,
+  modelType,
 }: KanbanViewProps<TData>) {
   const [activeItem, setActiveItem] = useState<{
     type: DragItemType
     id: string
     data?: TData | SelectOption
+    sourceColumnId?: string
+    /** Cards being dragged (for multi-select) */
+    draggedCards?: TData[]
+    /** Width of the dragged card for consistent overlay sizing */
+    dragWidth?: number
   } | null>(null)
   const [overId, setOverId] = useState<string | null>(null)
   const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set())
   const containerRef = useRef<HTMLDivElement>(null)
+
+  // Subscribe to store values - this IS reactive (component re-renders when groupBy values change)
+  const storeValues = useCustomFieldValueStore((s) => s.values)
+
+  // Create reactive getValue from store
+  const getValue = useCallback(
+    (rowId: string, fieldId: string): unknown => {
+      const key = buildValueKey(resourceType, rowId, fieldId, entityDefinitionId)
+      return storeValues[key]
+    },
+    [storeValues, resourceType, entityDefinitionId]
+  )
+
+  // useSaveFieldValue for internal card moves with optimistic updates
+  const { saveValue } = useSaveFieldValue({
+    resourceType,
+    entityDefId: entityDefinitionId,
+    modelType,
+  })
 
   /** Toggle card selection */
   const handleCardSelectChange = useCallback((cardId: string, selected: boolean) => {
@@ -220,8 +335,10 @@ export function KanbanView<TData extends KanbanRow>({
   /** Handle drag start */
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
-      const { active } = event
+      const { active, activatorEvent } = event
       const type = active.data.current?.type as DragItemType
+      // Capture width from the dragged element
+      const dragWidth = (activatorEvent.srcElement as HTMLElement)?.offsetWidth
 
       if (type === 'column') {
         const column = columns.find((c) => c.id === active.id)
@@ -231,11 +348,30 @@ export function KanbanView<TData extends KanbanRow>({
       } else {
         const card = data.find((d) => d.id === active.id)
         if (card) {
-          setActiveItem({ type: 'card', id: String(active.id), data: card })
+          const sourceColumnId = String(getValue(card.id, config.groupByFieldId) ?? NO_STATUS_COLUMN_ID)
+
+          // If dragged card is selected, drag all selected cards
+          // Otherwise, just drag the single card
+          const draggedIds = selectedCardIds.has(String(active.id))
+            ? Array.from(selectedCardIds)
+            : [String(active.id)]
+
+          const draggedCards = draggedIds
+            .map((id) => data.find((d) => d.id === id))
+            .filter(Boolean) as TData[]
+
+          setActiveItem({
+            type: 'card',
+            id: String(active.id),
+            data: card,
+            sourceColumnId,
+            draggedCards,
+            dragWidth,
+          })
         }
       }
     },
-    [data, columns]
+    [data, columns, getValue, config.groupByFieldId, selectedCardIds]
   )
 
   /** Handle drag over */
@@ -244,18 +380,19 @@ export function KanbanView<TData extends KanbanRow>({
     setOverId(over?.id?.toString() ?? null)
   }, [])
 
-  /** Handle drag end */
+  /** Handle drag end - supports multi-select with internal saveValue */
   const handleDragEnd = useCallback(
     async (event: DragEndEvent) => {
       const { active, over } = event
       const activeType = active.data.current?.type as DragItemType
 
+      // Capture dragged cards BEFORE clearing state
+      const draggedCards = activeItem?.draggedCards ?? []
+
       setActiveItem(null)
       setOverId(null)
 
-      if (!over) {
-        return
-      }
+      if (!over) return
 
       const activeId = active.id.toString()
       const targetOverId = over.id.toString()
@@ -273,81 +410,36 @@ export function KanbanView<TData extends KanbanRow>({
         return
       }
 
-      // Card operations
-      const overColumn = [...columns, { id: NO_STATUS_COLUMN_ID }].find(
-        (c) => c.id === targetOverId
-      )
-      const overCard = data.find((d) => d.id === targetOverId)
+      // Card to column drop - handles multi-select with internal saveValue
+      if (activeType === 'card' && draggedCards.length > 0) {
+        const targetColumnId = targetOverId
+        const newValue = targetColumnId === NO_STATUS_COLUMN_ID ? null : targetColumnId
 
-      // Helper to check if target column has celebration enabled
-      const shouldCelebrate = (targetColumnId: string): boolean => {
+        // Filter cards that need moving (not already in target column)
+        const cardsToMove = draggedCards.filter((card) => {
+          const currentValue = getValue(card.id, config.groupByFieldId)
+          const currentColumnId = currentValue ? String(currentValue) : NO_STATUS_COLUMN_ID
+          return currentColumnId !== targetColumnId
+        })
+
+        if (cardsToMove.length === 0) return
+
+        // Show celebration once (not per card)
         const targetColumn = columns.find((c) => c.id === targetColumnId)
-        return targetColumn?.celebration === true
-      }
-
-      if (overColumn) {
-        // Dropped directly on a column
-        const activeCard = data.find((d) => d.id === activeId)
-        if (activeCard && onCardMove) {
-          const currentColumnId = String(
-            getValue(activeCard.id, config.groupByFieldId) ?? NO_STATUS_COLUMN_ID
-          )
-
-          if (currentColumnId !== overColumn.id) {
-            // Check for celebration before moving
-            if (shouldCelebrate(overColumn.id)) {
-              showCelebrationConfetti()
-            }
-            await onCardMove(activeId, overColumn.id === NO_STATUS_COLUMN_ID ? '' : overColumn.id)
-          }
+        if (targetColumn?.celebration) {
+          showCelebrationConfetti()
         }
-      } else if (overCard) {
-        // Dropped on another card
-        const overCardColumnId = String(
-          getValue(overCard.id, config.groupByFieldId) ?? NO_STATUS_COLUMN_ID
-        )
 
-        const activeCard = data.find((d) => d.id === activeId)
-        if (activeCard) {
-          const activeCardColumnId = String(
-            getValue(activeCard.id, config.groupByFieldId) ?? NO_STATUS_COLUMN_ID
-          )
-
-          if (activeCardColumnId !== overCardColumnId) {
-            if (onCardMove) {
-              // Check for celebration before moving
-              if (shouldCelebrate(overCardColumnId)) {
-                showCelebrationConfetti()
-              }
-              await onCardMove(
-                activeId,
-                overCardColumnId === NO_STATUS_COLUMN_ID ? '' : overCardColumnId
-              )
-            }
-          } else if (onCardReorder) {
-            const columnCards = columnData[activeCardColumnId] ?? []
-            const oldIndex = columnCards.findIndex((c) => c.id === activeId)
-            const newIndex = columnCards.findIndex((c) => c.id === targetOverId)
-
-            if (oldIndex !== newIndex) {
-              const newOrder = arrayMove(columnCards, oldIndex, newIndex).map((c) => c.id)
-              await onCardReorder(activeCardColumnId, newOrder)
-            }
-          }
+        // Move all cards - saveValue handles optimistic updates + background mutation
+        for (const card of cardsToMove) {
+          saveValue(card.id, config.groupByFieldId, newValue)
         }
+
+        // Clear selection after drop
+        setSelectedCardIds(new Set())
       }
     },
-    [
-      columns,
-      data,
-      columnData,
-      columnIds,
-      config.groupByFieldId,
-      getValue,
-      onCardMove,
-      onCardReorder,
-      onColumnReorder,
-    ]
+    [activeItem, columns, columnIds, config.groupByFieldId, getValue, onColumnReorder, saveValue]
   )
 
   /** Handle drag cancel */
@@ -377,6 +469,12 @@ export function KanbanView<TData extends KanbanRow>({
       .slice(0, 2)
   }, [config.cardFields, customFields, primaryFieldId, config.groupByFieldId])
 
+  // Track which cards are being dragged (for placeholder styling on multi-select)
+  const draggingCardIds = useMemo(() => {
+    if (!activeItem?.draggedCards) return new Set<string>()
+    return new Set(activeItem.draggedCards.map((c) => c.id))
+  }, [activeItem?.draggedCards])
+
   if (isLoading) {
     return (
       <div className="flex gap-4 p-4 overflow-x-auto h-full">
@@ -401,13 +499,13 @@ export function KanbanView<TData extends KanbanRow>({
     <div className="flex flex-col min-h-0 flex-1 relative">
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCorners}
+        collisionDetection={pointerWithin}
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}>
         <ScrollArea className="h-full">
-          <div ref={containerRef} className="flex gap-3 p-4 min-w-max flex-1">
+          <div ref={containerRef} className="flex p-4 min-w-max flex-1 h-full">
             {/* Sortable columns */}
             <SortableContext items={columnIds} strategy={horizontalListSortingStrategy}>
               {/* No Status column (always first, not sortable) */}
@@ -418,27 +516,25 @@ export function KanbanView<TData extends KanbanRow>({
                 count={columnData[NO_STATUS_COLUMN_ID]?.length ?? 0}
                 isCollapsed={config.collapsedColumns?.includes(NO_STATUS_COLUMN_ID)}
                 isOver={overId === NO_STATUS_COLUMN_ID}
+                isSourceColumn={activeItem?.sourceColumnId === NO_STATUS_COLUMN_ID}
+                isDraggingColumn={activeItem?.type === 'column'}
                 entityLabel={entityLabel}
                 onAddCard={onAddCard ? () => onAddCard(NO_STATUS_COLUMN_ID) : undefined}
                 isSortable={false}>
-                <SortableContext
-                  items={(columnData[NO_STATUS_COLUMN_ID] ?? []).map((c) => c.id)}
-                  strategy={verticalListSortingStrategy}>
-                  {(columnData[NO_STATUS_COLUMN_ID] ?? []).map((card, index) => (
-                    <KanbanCard
-                      key={card.id}
-                      id={card.id}
-                      index={index}
-                      title={String(getPrimaryValue(card) ?? 'Untitled')}
-                      fields={cardFields}
-                      updatedAt={card.updatedAt}
-                      getValue={(fieldId) => getValue(card.id, fieldId)}
-                      onClick={() => onCardClick?.(card)}
-                      isSelected={selectedCardIds.has(card.id)}
-                      onSelectChange={(selected) => handleCardSelectChange(card.id, selected)}
-                    />
-                  ))}
-                </SortableContext>
+                {(columnData[NO_STATUS_COLUMN_ID] ?? []).map((card) => (
+                  <KanbanCard
+                    key={card.id}
+                    id={card.id}
+                    title={String(getPrimaryValue(card) ?? 'Untitled')}
+                    fields={cardFields}
+                    updatedAt={card.updatedAt}
+                    getValue={(fieldId) => getValue(card.id, fieldId)}
+                    onClick={() => onCardClick?.(card)}
+                    isSelected={selectedCardIds.has(card.id)}
+                    onSelectChange={(selected) => handleCardSelectChange(card.id, selected)}
+                    isBeingDragged={draggingCardIds.has(card.id)}
+                  />
+                ))}
               </KanbanColumn>
 
               {/* Regular columns (sortable) */}
@@ -451,6 +547,8 @@ export function KanbanView<TData extends KanbanRow>({
                   count={columnData[column.id]?.length ?? 0}
                   isCollapsed={config.collapsedColumns?.includes(column.id)}
                   isOver={overId === column.id}
+                  isSourceColumn={activeItem?.sourceColumnId === column.id}
+                  isDraggingColumn={activeItem?.type === 'column'}
                   entityLabel={entityLabel}
                   onAddCard={onAddCard ? () => onAddCard(column.id) : undefined}
                   isSortable
@@ -459,24 +557,9 @@ export function KanbanView<TData extends KanbanRow>({
                   celebration={column.celebration}
                   isVisible={config.columnSettings?.[column.id]?.isVisible !== false}
                   // Settings callbacks
-                  onLabelChange={
-                    onColumnLabelChange
-                      ? (label) => onColumnLabelChange(column.id, label)
-                      : undefined
-                  }
-                  onColorChange={
-                    onColumnColorChange
-                      ? (color) => onColumnColorChange(column.id, color)
-                      : undefined
-                  }
-                  onTargetTimeChange={
-                    onColumnTargetTimeChange
-                      ? (time) => onColumnTargetTimeChange(column.id, time)
-                      : undefined
-                  }
-                  onCelebrationChange={
-                    onColumnCelebrationChange
-                      ? (enabled) => onColumnCelebrationChange(column.id, enabled)
+                  onChange={
+                    onColumnChange
+                      ? (changes) => onColumnChange(column.id, changes)
                       : undefined
                   }
                   onVisibilityChange={
@@ -485,38 +568,35 @@ export function KanbanView<TData extends KanbanRow>({
                       : undefined
                   }
                   onDelete={onColumnDelete ? () => onColumnDelete(column.id) : undefined}>
-                  <SortableContext
-                    items={(columnData[column.id] ?? []).map((c) => c.id)}
-                    strategy={verticalListSortingStrategy}>
-                    {(columnData[column.id] ?? []).map((card, index) => (
-                      <KanbanCard
-                        key={card.id}
-                        id={card.id}
-                        index={index}
-                        title={String(getPrimaryValue(card) ?? 'Untitled')}
-                        fields={cardFields}
-                        updatedAt={card.updatedAt}
-                        getValue={(fieldId) => getValue(card.id, fieldId)}
-                        onClick={() => onCardClick?.(card)}
-                        isSelected={selectedCardIds.has(card.id)}
-                        onSelectChange={(selected) => handleCardSelectChange(card.id, selected)}
-                      />
-                    ))}
-                  </SortableContext>
+                  {(columnData[column.id] ?? []).map((card) => (
+                    <KanbanCard
+                      key={card.id}
+                      id={card.id}
+                      title={String(getPrimaryValue(card) ?? 'Untitled')}
+                      fields={cardFields}
+                      updatedAt={card.updatedAt}
+                      getValue={(fieldId) => getValue(card.id, fieldId)}
+                      onClick={() => onCardClick?.(card)}
+                      isSelected={selectedCardIds.has(card.id)}
+                      onSelectChange={(selected) => handleCardSelectChange(card.id, selected)}
+                      isBeingDragged={draggingCardIds.has(card.id)}
+                    />
+                  ))}
                 </KanbanColumn>
               ))}
             </SortableContext>
 
-            {/* Add Stage button */}
-            {onAddColumn && (
+            {/* Add Stage button with create dropdown */}
+            {onColumnCreate && (
               <div className="shrink-0">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-10 rounded-lg border border-dashed hover:border-primary hover:bg-primary/5"
-                  onClick={onAddColumn}>
-                  <Plus className="size-5 text-muted-foreground" />
-                </Button>
+                <KanbanColumnSettings mode="create" onCreate={onColumnCreate}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-10 rounded-lg border border-dashed hover:border-primary-300 hover:bg-primary-100">
+                    <Plus className="size-5 text-muted-foreground" />
+                  </Button>
+                </KanbanColumnSettings>
               </div>
             )}
           </div>
@@ -524,23 +604,12 @@ export function KanbanView<TData extends KanbanRow>({
         </ScrollArea>
 
         {/* Drag overlay */}
-        <DragOverlay>
-          {activeItem?.type === 'card' && activeItem.data && (
-            <KanbanCard
-              id={activeItem.id}
-              index={0}
-              title={String(getPrimaryValue(activeItem.data as TData) ?? 'Untitled')}
-              fields={cardFields}
-              getValue={(fieldId) => getValue((activeItem.data as TData).id, fieldId)}
-              isDragging
-            />
-          )}
-          {activeItem?.type === 'column' && activeItem.data && (
-            <div className="w-64 h-20 rounded-lg border-2 border-primary bg-primary/10 flex items-center justify-center">
-              <span className="font-medium">{(activeItem.data as SelectOption).label}</span>
-            </div>
-          )}
-        </DragOverlay>
+        <KanbanDragOverlay
+          activeItem={activeItem}
+          cardFields={cardFields}
+          getPrimaryValue={getPrimaryValue}
+          getValue={getValue}
+        />
       </DndContext>
     </div>
   )

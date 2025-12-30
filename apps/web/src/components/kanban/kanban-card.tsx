@@ -1,8 +1,7 @@
 // apps/web/src/components/kanban/kanban-card.tsx
 'use client'
 
-import { useSortable } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
+import { useDraggable } from '@dnd-kit/core'
 import { cn } from '@auxx/ui/lib/utils'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
@@ -19,7 +18,6 @@ interface CustomField {
 /** Props for KanbanCard component */
 interface KanbanCardProps {
   id: string
-  index: number
   title: string
   fields: CustomField[]
   updatedAt?: string | Date
@@ -33,6 +31,8 @@ interface KanbanCardProps {
   isSelected?: boolean
   /** Callback when selection changes */
   onSelectChange?: (selected: boolean) => void
+  /** Whether this card is being dragged as part of a multi-select */
+  isBeingDragged?: boolean
 }
 
 /**
@@ -103,7 +103,6 @@ function formatRelativeTime(date: string | Date): string {
  */
 export function KanbanCard({
   id,
-  index,
   title,
   fields,
   updatedAt,
@@ -115,41 +114,38 @@ export function KanbanCard({
   isDragging,
   isSelected = false,
   onSelectChange,
+  isBeingDragged = false,
 }: KanbanCardProps) {
   const {
     attributes,
     listeners,
     setNodeRef,
-    transform,
-    transition,
-    isDragging: isSortableDragging,
-  } = useSortable({
+    isDragging: isDraggableDragging,
+  } = useDraggable({
     id,
-    data: { type: 'card', index },
+    data: { type: 'card' },
   })
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  }
+  // Don't apply transform - we use DragOverlay for the moving card
+  // The original stays in place as a placeholder
+  const dragging = isDragging || isDraggableDragging
 
-  const dragging = isDragging || isSortableDragging
+  // Show as placeholder if this card is the active draggable OR part of a multi-select drag
+  const showAsPlaceholder = isDraggableDragging || isBeingDragged
 
   return (
     <div
       ref={setNodeRef}
-      style={style}
-      data-index={index}
       {...attributes}
       {...listeners}
       className={cn(
-        'bg-background border rounded-lg shadow-sm cursor-grab active:cursor-grabbing transition-all hover:shadow-md group/card select-none touch-none relative',
-        isDragging && 'shadow-lg rotate-1 scale-105',
-        isSortableDragging && 'shadow-none bg-primary-200/50 border-primary-200'
+        'bg-background border rounded-lg shadow-sm transition-all hover:shadow-md group/card select-none touch-none relative',
+        isDragging && 'shadow-lg rotate-1 scale-105 cursor-grabbing',
+        showAsPlaceholder && 'shadow-none bg-primary-200/50 border-primary-200'
       )}
       onClick={onClick}>
       {/* Drag placeholder overlay */}
-      <div className={cn('p-2.5', isSortableDragging && 'invisible')}>
+      <div className={cn('p-2.5', showAsPlaceholder && 'invisible')}>
         {/* Header row: checkbox/box icon + title */}
         <div className="flex items-start gap-1.5">
           {/* Box icon - becomes checkbox on card hover or when selected */}
