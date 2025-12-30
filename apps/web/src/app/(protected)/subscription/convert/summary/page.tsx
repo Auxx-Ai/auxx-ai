@@ -136,9 +136,10 @@ function SummaryContent() {
       }
 
       utils.billing.getCurrentSubscription.invalidate()
-      router.refresh()
       resetState()
-      router.push('/app/settings/plans?upgrade=true')
+      // Use hard navigation to force full page reload including layouts
+      // This ensures the dehydrated state is refreshed from the database
+      window.location.href = '/app/settings/plans?upgrade=true'
     },
     onError: (error) => {
       toastError({

@@ -48,6 +48,7 @@ export function SimpleLayout({ children, title, showBackToDashboard = true }: Si
   }
 
   return (
+    <div className='relative overflow-hidden'>
     <ColorfulBg>
       <div className="min-h-screen flex flex-col">
         {/* Header */}
@@ -86,5 +87,6 @@ export function SimpleLayout({ children, title, showBackToDashboard = true }: Si
         </footer>
       </div>
     </ColorfulBg>
+    </div>
   )
 }

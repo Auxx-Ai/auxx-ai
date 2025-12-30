@@ -58,6 +58,7 @@ export interface UpdateSubscriptionDirectInput {
   seats: number
   paymentMethodId?: string
   previousPaymentMethodId?: string
+  userId?: string
 }
 
 /** Direct subscription update result */

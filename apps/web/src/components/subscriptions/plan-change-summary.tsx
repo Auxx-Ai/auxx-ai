@@ -215,8 +215,10 @@ function PlanChangeSummaryContent({
   const updateSubscriptionDirect = api.billing.updateSubscriptionDirect.useMutation({
     onSuccess: () => {
       utils.billing.getCurrentSubscription.invalidate()
-      router.refresh()
       onClose()
+      // Use hard navigation to force full page reload including layouts
+      // This ensures the dehydrated state is refreshed from the database
+      window.location.reload()
     },
     onError: (error) => {
       toastError({

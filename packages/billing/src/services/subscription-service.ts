@@ -825,6 +825,11 @@ export class SubscriptionService {
 
       // Save to database
       const firstItem = stripeSubscription.items.data[0]!
+
+      // Determine if this is a reactivation from expired trial
+      const isReactivationFromTrial =
+        currentSubscription?.status === 'canceled' && currentSubscription?.hasTrialEnded
+
       const basePayload = {
         planId: targetPlan.id,
         plan: targetPlan.name,
@@ -843,6 +848,14 @@ export class SubscriptionService {
         scheduledSeats: null,
         scheduledChangeAt: null,
         updatedAt: new Date(),
+        // Handle reactivation from expired trial
+        ...(isReactivationFromTrial
+          ? {
+              trialConversionStatus: 'CONVERTED_TO_PAID' as const,
+              isEligibleForTrial: false,
+              trialEligibilityReason: 'Reactivated from expired trial',
+            }
+          : {}),
       }
 
       const dbSubscription = await (currentSubscription
@@ -862,6 +875,22 @@ export class SubscriptionService {
             .then((rows) => rows[0]!))
 
       await this.detachPreviousPaymentMethod(stripe, input.previousPaymentMethodId, input.paymentMethodId)
+
+      // Record subscription history (reactivation or new subscription)
+      const changeType = currentSubscription ? 'reactivation' : 'new_subscription'
+      await this.recordSubscriptionChange({
+        subscriptionId: dbSubscription.id,
+        organizationId: input.organizationId,
+        userId: input.userId,
+        changeType,
+        fromPlan: currentSubscription?.plan ?? undefined,
+        toPlan: targetPlan.name,
+        fromBillingCycle: currentSubscription?.billingCycle ?? undefined,
+        toBillingCycle: input.billingCycle,
+        fromSeats: currentSubscription?.seats ?? undefined,
+        toSeats: input.seats,
+        immediate: true,
+      })
 
       // Check if payment requires action
       const latestInvoice = stripeSubscription.latest_invoice
@@ -885,6 +914,7 @@ export class SubscriptionService {
       logger.info('Created subscription successfully', {
         organizationId: input.organizationId,
         subscriptionId: dbSubscription.id,
+        status: stripeSubscription.status,
       })
 
       return {
@@ -941,11 +971,17 @@ export class SubscriptionService {
           })
         }
 
-        await stripe.subscriptions.update(currentSubscription.stripeSubscriptionId, {
-          items: [{ id: subscriptionItemId, price: priceId, quantity: input.seats }],
-          default_payment_method: input.paymentMethodId,
-          proration_behavior: 'always_invoice',
-        })
+        // Capture the updated subscription from Stripe
+        // If trialing, end the trial immediately to trigger first payment
+        const updatedStripeSubscription = await stripe.subscriptions.update(
+          currentSubscription.stripeSubscriptionId,
+          {
+            items: [{ id: subscriptionItemId, price: priceId, quantity: input.seats }],
+            default_payment_method: input.paymentMethodId,
+            proration_behavior: 'always_invoice',
+            ...(isTrialing ? { trial_end: 'now' } : {}),
+          }
+        )
 
         await this.setCustomerDefaultPaymentMethod(
           stripe,
@@ -958,7 +994,15 @@ export class SubscriptionService {
           input.paymentMethodId
         )
 
-        // Update database immediately and clear any cancellation
+        // Get period info from Stripe response
+        const firstItem = updatedStripeSubscription.items.data[0]!
+
+        // Determine if this is a trial→paid conversion
+        const wasTrialing = isTrialing
+        const isNowActive = updatedStripeSubscription.status === 'active'
+        const isTrialConversion = wasTrialing && isNowActive
+
+        // Update database with actual status from Stripe
         await this.db
           .update(schema.PlanSubscription)
           .set({
@@ -966,14 +1010,44 @@ export class SubscriptionService {
             plan: targetPlan.name,
             billingCycle: input.billingCycle,
             seats: input.seats,
+            status: updatedStripeSubscription.status,
+            periodStart: new Date(firstItem.current_period_start * 1000),
+            periodEnd: new Date(firstItem.current_period_end * 1000),
             updatedAt: new Date(),
-            // Clear cancellation since upgrade means continuing service
-            cancelAtPeriodEnd: false,
+            cancelAtPeriodEnd: updatedStripeSubscription.cancel_at_period_end,
             canceledAt: null,
+            // Handle trial→paid conversion
+            ...(isTrialConversion
+              ? {
+                  hasTrialEnded: true,
+                  trialConversionStatus: 'CONVERTED_TO_PAID' as const,
+                  isEligibleForTrial: false,
+                  trialEligibilityReason: 'Already converted from trial',
+                }
+              : {}),
           })
           .where(eq(schema.PlanSubscription.id, currentSubscription.id))
 
-        logger.info('Upgrade processed successfully')
+        // Record subscription history
+        await this.recordSubscriptionChange({
+          subscriptionId: currentSubscription.id,
+          organizationId: input.organizationId,
+          userId: input.userId,
+          changeType: isTrialConversion ? 'trial_conversion' : 'upgrade',
+          fromPlan: currentSubscription.plan?.name,
+          toPlan: targetPlan.name,
+          fromBillingCycle: currentSubscription.billingCycle,
+          toBillingCycle: input.billingCycle,
+          fromSeats: currentSubscription.seats,
+          toSeats: input.seats,
+          immediate: true,
+        })
+
+        logger.info('Upgrade processed successfully', {
+          subscriptionId: currentSubscription.id,
+          newStatus: updatedStripeSubscription.status,
+          isTrialConversion,
+        })
 
         return {
           success: true,
@@ -994,29 +1068,15 @@ export class SubscriptionService {
           })
         }
 
-        // Store the scheduled change in database and clear cancellation
-        await this.db
-          .update(schema.PlanSubscription)
-          .set({
-            scheduledPlanId: targetPlan.id,
-            scheduledPlan: targetPlan.name,
-            scheduledBillingCycle: input.billingCycle,
-            scheduledSeats: input.seats,
-            scheduledChangeAt: currentSubscription.periodEnd,
-            updatedAt: new Date(),
-            // Clear cancellation since downgrade means continuing service
-            cancelAtPeriodEnd: false,
-            canceledAt: null,
-          })
-          .where(eq(schema.PlanSubscription.id, currentSubscription.id))
-
         // Update Stripe subscription to take effect at period end
-        // Only keep billing cycle unchanged if NOT changing intervals
-        await stripe.subscriptions.update(currentSubscription.stripeSubscriptionId, {
-          items: [{ id: subscriptionItemId, price: priceId, quantity: input.seats }],
-          proration_behavior: 'none',
-          ...(isBillingCycleChange ? {} : { billing_cycle_anchor: 'unchanged' }),
-        })
+        const updatedStripeSubscription = await stripe.subscriptions.update(
+          currentSubscription.stripeSubscriptionId,
+          {
+            items: [{ id: subscriptionItemId, price: priceId, quantity: input.seats }],
+            proration_behavior: 'none',
+            ...(isBillingCycleChange ? {} : { billing_cycle_anchor: 'unchanged' }),
+          }
+        )
 
         await this.setCustomerDefaultPaymentMethod(
           stripe,
@@ -1028,6 +1088,38 @@ export class SubscriptionService {
           input.previousPaymentMethodId,
           input.paymentMethodId
         )
+
+        // Store the scheduled change in database and update status from Stripe
+        await this.db
+          .update(schema.PlanSubscription)
+          .set({
+            status: updatedStripeSubscription.status,
+            scheduledPlanId: targetPlan.id,
+            scheduledPlan: targetPlan.name,
+            scheduledBillingCycle: input.billingCycle,
+            scheduledSeats: input.seats,
+            scheduledChangeAt: currentSubscription.periodEnd,
+            updatedAt: new Date(),
+            cancelAtPeriodEnd: updatedStripeSubscription.cancel_at_period_end,
+            canceledAt: null,
+          })
+          .where(eq(schema.PlanSubscription.id, currentSubscription.id))
+
+        // Record subscription history
+        await this.recordSubscriptionChange({
+          subscriptionId: currentSubscription.id,
+          organizationId: input.organizationId,
+          userId: input.userId,
+          changeType: 'downgrade',
+          fromPlan: currentSubscription.plan?.name,
+          toPlan: targetPlan.name,
+          fromBillingCycle: currentSubscription.billingCycle,
+          toBillingCycle: input.billingCycle,
+          fromSeats: currentSubscription.seats,
+          toSeats: input.seats,
+          immediate: false,
+          scheduledFor: currentSubscription.periodEnd ?? undefined,
+        })
 
         logger.info('Downgrade scheduled successfully')
 
@@ -1038,12 +1130,23 @@ export class SubscriptionService {
           scheduledFor: currentSubscription.periodEnd ?? undefined,
         }
       } else {
-        // Same plan, just seat or billing cycle change
-        await stripe.subscriptions.update(currentSubscription.stripeSubscriptionId, {
-          items: [{ id: subscriptionItemId, price: priceId, quantity: input.seats }],
-          default_payment_method: input.paymentMethodId,
-          proration_behavior: 'always_invoice',
+        // Same plan, just seat or billing cycle change (or trial conversion on same plan)
+        logger.info('Processing same-plan change', {
+          isTrialing,
+          seats: input.seats,
+          billingCycle: input.billingCycle,
         })
+
+        // If trialing, end the trial immediately to trigger first payment
+        const updatedStripeSubscription = await stripe.subscriptions.update(
+          currentSubscription.stripeSubscriptionId,
+          {
+            items: [{ id: subscriptionItemId, price: priceId, quantity: input.seats }],
+            default_payment_method: input.paymentMethodId,
+            proration_behavior: 'always_invoice',
+            ...(isTrialing ? { trial_end: 'now' } : {}),
+          }
+        )
 
         await this.setCustomerDefaultPaymentMethod(
           stripe,
@@ -1056,14 +1159,67 @@ export class SubscriptionService {
           input.paymentMethodId
         )
 
+        // Get period info from Stripe response
+        const firstItem = updatedStripeSubscription.items.data[0]!
+
+        // Determine if this is a trial→paid conversion
+        const wasTrialing = isTrialing
+        const isNowActive = updatedStripeSubscription.status === 'active'
+        const isTrialConversion = wasTrialing && isNowActive
+
+        logger.info('Stripe subscription updated (same-plan path)', {
+          stripeStatus: updatedStripeSubscription.status,
+          wasTrialing,
+          isNowActive,
+          isTrialConversion,
+        })
+
+        // Determine change type for history
+        const isSeatChange = input.seats !== currentSubscription.seats
+        const changeType = isTrialConversion
+          ? 'trial_conversion'
+          : isSeatChange
+            ? input.seats > currentSubscription.seats
+              ? 'seat_addition'
+              : 'seat_reduction'
+            : 'billing_cycle'
+
         await this.db
           .update(schema.PlanSubscription)
           .set({
+            status: updatedStripeSubscription.status,
             billingCycle: input.billingCycle,
             seats: input.seats,
+            periodStart: new Date(firstItem.current_period_start * 1000),
+            periodEnd: new Date(firstItem.current_period_end * 1000),
+            cancelAtPeriodEnd: updatedStripeSubscription.cancel_at_period_end,
             updatedAt: new Date(),
+            // Handle trial→paid conversion
+            ...(isTrialConversion
+              ? {
+                  hasTrialEnded: true,
+                  trialConversionStatus: 'CONVERTED_TO_PAID' as const,
+                  isEligibleForTrial: false,
+                  trialEligibilityReason: 'Already converted from trial',
+                }
+              : {}),
           })
           .where(eq(schema.PlanSubscription.id, currentSubscription.id))
+
+        // Record subscription history
+        await this.recordSubscriptionChange({
+          subscriptionId: currentSubscription.id,
+          organizationId: input.organizationId,
+          userId: input.userId,
+          changeType,
+          fromPlan: currentSubscription.plan?.name,
+          toPlan: currentSubscription.plan?.name,
+          fromBillingCycle: currentSubscription.billingCycle,
+          toBillingCycle: input.billingCycle,
+          fromSeats: currentSubscription.seats,
+          toSeats: input.seats,
+          immediate: true,
+        })
 
         return {
           success: true,
@@ -1123,6 +1279,62 @@ export class SubscriptionService {
     } catch (error) {
       logger.error('Failed to detach obsolete payment method', {
         previousPaymentMethodId,
+        error,
+      })
+    }
+  }
+
+  /**
+   * Records a subscription change in the history table for audit purposes.
+   */
+  private async recordSubscriptionChange(params: {
+    subscriptionId: string
+    organizationId: string
+    userId?: string
+    changeType: string
+    fromPlan?: string
+    toPlan?: string
+    fromBillingCycle?: 'MONTHLY' | 'ANNUAL'
+    toBillingCycle?: 'MONTHLY' | 'ANNUAL'
+    fromSeats?: number
+    toSeats?: number
+    immediate: boolean
+    scheduledFor?: Date
+    prorationAmount?: number
+  }): Promise<void> {
+    // Skip recording if no userId (for backwards compatibility)
+    if (!params.userId) {
+      logger.debug('Skipping history recording - no userId provided')
+      return
+    }
+
+    try {
+      await this.db.insert(schema.PlanSubscriptionHistory).values({
+        subscriptionId: params.subscriptionId,
+        organizationId: params.organizationId,
+        userId: params.userId,
+        changeType: params.changeType,
+        fromPlan: params.fromPlan ?? null,
+        toPlan: params.toPlan ?? null,
+        fromBillingCycle: params.fromBillingCycle ?? null,
+        toBillingCycle: params.toBillingCycle ?? null,
+        fromSeats: params.fromSeats ?? null,
+        toSeats: params.toSeats ?? null,
+        immediate: params.immediate,
+        scheduledFor: params.scheduledFor ?? null,
+        appliedAt: params.immediate ? new Date() : null,
+        prorationAmount: params.prorationAmount ?? null,
+      })
+
+      logger.info('Subscription change recorded', {
+        subscriptionId: params.subscriptionId,
+        changeType: params.changeType,
+      })
+    } catch (error) {
+      // Log but don't fail the main operation if history recording fails
+      logger.error('Failed to record subscription change', {
+        subscriptionId: params.subscriptionId,
+        changeType: params.changeType,
         error,
       })
     }

@@ -634,6 +634,7 @@ export const billingRouter = createTRPCRouter({
 
         const result = await subscriptionService.updateSubscriptionDirect({
           organizationId,
+          userId: ctx.session.user.id,
           ...input,
         })
 

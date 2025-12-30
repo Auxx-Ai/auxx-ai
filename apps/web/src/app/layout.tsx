@@ -70,8 +70,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" className={`${inter.className}`} suppressHydrationWarning>
       <body className="bg-primary-100">
-        {/* <div className="h-50 bg-red-500 shrink-0">HELLLO</div> */}
-
         <ClientProviders>{children}</ClientProviders>
       </body>
     </html>

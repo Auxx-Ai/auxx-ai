@@ -39,7 +39,7 @@ export function AppLayoutWrapper({ children, user }: AppLayoutWrapperProps) {
   const { organizationId: currentOrgId } = useOrganizationIdContext()
 
   const currentOrg = organizations.find((org) => org.id === currentOrgId)
-
+  
   const subscriptionExpired = isSubscriptionExpired(currentOrg?.subscription ?? null)
   const trialExpired = isTrialExpired(currentOrg?.subscription ?? null)
 
