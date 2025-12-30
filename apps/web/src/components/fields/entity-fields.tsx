@@ -28,7 +28,7 @@ import {
   FieldNavigationProvider,
   useFieldNavigation,
 } from '../contacts/drawer/field-navigation-context'
-import { ModelTypes, type ModelType } from '@auxx/lib/custom-fields/types'
+import { ModelTypes, type ModelType } from '@auxx/types/custom-field'
 import { modelConfigs, type EntityModelConfig } from './configs/model-field-configs'
 import { useDynamicFieldOptions } from './hooks/use-dynamic-field-options'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'

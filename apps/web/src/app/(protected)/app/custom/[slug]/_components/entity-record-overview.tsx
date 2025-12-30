@@ -2,7 +2,7 @@
 'use client'
 
 import EntityFields from '~/components/fields/entity-fields'
-import { ModelTypes } from '@auxx/lib/custom-fields/types'
+import { ModelTypes } from '@auxx/types/custom-field'
 import { useEntityRecords } from '~/components/custom-fields/context/entity-records-context'
 
 /** Pre-loaded field value from entity instance */

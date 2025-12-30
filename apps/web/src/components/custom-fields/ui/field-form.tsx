@@ -26,7 +26,8 @@ import {
 import { FieldTypeSelect } from './field-type-select'
 import { OptionsEditor } from './options-editor'
 import { AddressComponentsEditor } from './address-component-editor'
-import { getFieldOptionsSchema, canFieldBeUnique } from '@auxx/lib/custom-fields/types'
+import { getFieldOptionsSchema } from '@auxx/lib/custom-fields/types'
+import { canFieldBeUnique } from '@auxx/types/custom-field'
 import { FieldType } from '@auxx/database/enums'
 // import { getFieldOptionsSchema } from './field-options-schema'
 // Form schema (now includes icon, isCustom, options)

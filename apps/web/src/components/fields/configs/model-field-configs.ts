@@ -18,7 +18,7 @@ import {
   DollarSign,
   Package,
 } from 'lucide-react'
-import { ModelTypes, type ModelType, type SelectOption } from '@auxx/lib/custom-fields/types'
+import { ModelTypes, type ModelType, type SelectOption } from '@auxx/types/custom-field'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { FieldType } from '@auxx/database/types'
 

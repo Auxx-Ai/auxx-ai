@@ -14,7 +14,7 @@ import type {
   KanbanViewConfig,
   ViewConfig,
 } from './types'
-import type { ModelType, SelectOption, TargetTimeInStatus } from '@auxx/lib/custom-fields/types'
+import type { ModelType, SelectOption, TargetTimeInStatus } from '@auxx/types/custom-field'
 
 /** Custom field for kanban display */
 interface SelectField {

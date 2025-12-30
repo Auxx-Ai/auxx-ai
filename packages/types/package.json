@@ -1,0 +1,20 @@
+{
+  "name": "@auxx/types",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./index.ts",
+    "./custom-field": "./custom-field/index.ts",
+    "./pagination": "./pagination/index.ts"
+  },
+  "dependencies": {
+    "@auxx/database": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@auxx/eslint-config": "workspace:*",
+    "@auxx/typescript-config": "workspace:*",
+    "typescript": "catalog:"
+  }
+}

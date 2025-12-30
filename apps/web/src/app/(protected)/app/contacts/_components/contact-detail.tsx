@@ -21,7 +21,7 @@ import {
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
 import EntityFields from '~/components/fields/entity-fields'
-import { ModelTypes } from '@auxx/lib/custom-fields/types'
+import { ModelTypes } from '@auxx/types/custom-field'
 import CustomerMergeDialog from './customer-merge-dialog'
 import CustomerSpamDialog from './customer-spam-dialog'
 import CustomerOrdersTab from './customer-orders-tab'

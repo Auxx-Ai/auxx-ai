@@ -16,7 +16,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { usePropertyContext } from '../drawer/property-provider'
 import { useFieldNavigationOptional } from '../drawer/field-navigation-context'
 import { api } from '~/trpc/react'
-import type { SelectOption } from '@auxx/lib/custom-fields/types'
+import type { SelectOption } from '@auxx/types/custom-field'
 import { Button } from '@auxx/ui/components/button'
 
 /**

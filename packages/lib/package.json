@@ -143,6 +143,7 @@
     "@auxx/logger": "workspace:*",
     "@auxx/redis": "workspace:*",
     "@auxx/services": "workspace:*",
+    "@auxx/types": "workspace:*",
     "@auxx/workflow-nodes": "workspace:*",
     "@shopify/admin-api-client": "catalog:",
     "@shopify/shopify-api": "catalog:",

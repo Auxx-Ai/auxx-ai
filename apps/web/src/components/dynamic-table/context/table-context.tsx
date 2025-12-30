@@ -5,7 +5,7 @@
 import { createContext, useContext, type ReactNode } from 'react'
 import type { Table } from '@tanstack/react-table'
 import type { TableView, TableFilter, BulkAction, DragDropConfig, ColumnFormatting } from '../types'
-import type { ModelType } from '@auxx/lib/custom-fields/types'
+import type { ModelType } from '@auxx/types/custom-field'
 
 /** Select field for kanban grouping */
 interface SelectField {

@@ -1,7 +1,7 @@
 // apps/web/src/components/fields/hooks/use-dynamic-field-options.ts
 import { useMemo } from 'react'
 import { api } from '~/trpc/react'
-import { ModelTypes, type ModelType } from '@auxx/lib/custom-fields/types'
+import { ModelTypes, type ModelType } from '@auxx/types/custom-field'
 import type { BuiltInFieldDefinition } from '../configs/model-field-configs'
 
 /**

@@ -3,7 +3,7 @@
 
 import { useMemo } from 'react'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
-import type { SelectOption } from '@auxx/lib/custom-fields/types'
+import type { SelectOption } from '@auxx/types/custom-field'
 import { ItemsListView, ItemsCellView, type ItemsListItem } from './items-list-view'
 
 /**

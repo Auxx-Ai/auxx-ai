@@ -1,9 +1,7 @@
 // packages/lib/src/custom-fields/client.ts
 'use client'
 
-import type { SelectOptionColor } from './types'
-
-// Re-export types and schemas for convenience
+// Re-export types from @auxx/types for client components
 export {
   // Color constants
   SELECT_OPTION_COLORS,
@@ -29,7 +27,9 @@ export {
   type FileOptions,
   // Union
   fieldOptionsUnionSchema,
-} from './types'
+} from '@auxx/types/custom-field'
+
+import type { SelectOptionColor } from '@auxx/types/custom-field'
 
 /**
  * Color configuration for select options

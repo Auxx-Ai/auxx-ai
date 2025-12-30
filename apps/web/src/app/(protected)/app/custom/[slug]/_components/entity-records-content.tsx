@@ -20,7 +20,7 @@ import { useEntityInstanceOperations } from '~/hooks/use-entity-instance-operati
 import { DynamicView, DynamicTableFooter, CustomFieldCell } from '~/components/dynamic-table'
 import type { ExtendedColumnDef, CellSelectionConfig } from '~/components/dynamic-table'
 import type { StoreConfig } from '~/components/contacts/drawer/property-provider'
-import { ModelTypes } from '@auxx/lib/custom-fields/types'
+import { ModelTypes } from '@auxx/types/custom-field'
 import {
   DropdownMenu,
   DropdownMenuContent,

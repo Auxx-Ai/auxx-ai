@@ -16,7 +16,7 @@ import {
   type ResourceType,
 } from '~/stores/custom-field-value-store'
 import { useSaveFieldValue } from '~/hooks/use-save-field-value'
-import type { ModelType } from '@auxx/lib/custom-fields/types'
+import type { ModelType } from '@auxx/types/custom-field'
 
 /**
  * property-provider.tsx

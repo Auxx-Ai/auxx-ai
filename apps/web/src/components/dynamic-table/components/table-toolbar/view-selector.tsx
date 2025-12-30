@@ -60,7 +60,7 @@ import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 import type { TableView, ViewAction, ViewConfig } from '../../types'
 import { cn } from '@auxx/ui/lib/utils'
 import { Tooltip } from '~/components/global/tooltip'
-import type { ModelType } from '@auxx/lib/custom-fields/types'
+import type { ModelType } from '@auxx/types/custom-field'
 
 /** Select field for kanban grouping */
 interface SelectField {

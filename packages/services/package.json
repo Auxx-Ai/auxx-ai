@@ -30,9 +30,10 @@
   },
   "dependencies": {
     "@auxx/config": "workspace:*",
-    "@auxx/logger": "workspace:*",
-    "@auxx/credentials": "workspace:*",
     "@auxx/database": "workspace:*",
+    "@auxx/credentials": "workspace:*",
+    "@auxx/logger": "workspace:*",
+    "@auxx/types": "workspace:*",
     "drizzle-orm": "catalog:",
     "neverthrow": "^6.2.2",
     "pg": "catalog:",

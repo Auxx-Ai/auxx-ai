@@ -8,7 +8,7 @@ import {
   type ResourceType,
 } from '~/stores/custom-field-value-store'
 import { toastError } from '@auxx/ui/components/toast'
-import type { ModelType } from '@auxx/lib/custom-fields/types'
+import type { ModelType } from '@auxx/types/custom-field'
 
 interface UseSaveFieldValueOptions {
   resourceType: ResourceType

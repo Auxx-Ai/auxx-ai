@@ -21,46 +21,19 @@ import {
 import { z } from 'zod'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { FieldType } from '@auxx/database/types'
-import { ModelTypes, ModelTypeMeta, ModelTypeValues, type ModelType } from '@auxx/database/enums'
-import { FILE_TYPE_CATEGORIES } from '../files/file-type-constants'
-
 import type { CustomFieldEntity as CustomField } from '@auxx/database/models'
-
-// Re-export ModelType and related types from @auxx/database for convenience
-export { ModelTypes, ModelTypeMeta, ModelTypeValues, type ModelType }
-
-// =============================================================================
-// RE-EXPORT CONSOLIDATED TYPES FROM SERVICES (Single source of truth)
-// =============================================================================
-export {
-  // Select option colors
-  SELECT_OPTION_COLORS,
-  DEFAULT_SELECT_OPTION_COLOR,
-  type SelectOptionColor,
-  // Target time in status
-  targetTimeInStatusSchema,
-  type TargetTimeInStatus,
-  // Select option
+import {
+  ModelTypes,
+  type ModelType,
+  ModelTypeMeta,
   selectOptionSchema,
   type SelectOption,
-  // Currency options
   currencyOptionsSchema,
-  decimalPlacesValues,
-  currencyDisplayTypeValues,
-  currencyGroupsValues,
-  type CurrencyOptions,
-  type DecimalPlaces,
-  type CurrencyDisplayType,
-  type CurrencyGroups,
-  // File options
   fileOptionsSchema,
-  type FileOptions,
-  // Field options union
-  fieldOptionsUnionSchema,
-  // Re-export canFieldBeUnique from services
-  canFieldBeUnique,
-  UNIQUEABLE_FIELD_TYPES,
-} from '@auxx/services/custom-fields'
+} from '@auxx/types/custom-field'
+
+// Re-export types needed by other lib modules
+export { ModelTypes, type ModelType }
 
 /**
  * Grouped FieldType values for UI pickers
@@ -286,7 +259,6 @@ export const fieldTypeDefaults: Record<FieldType, unknown> = {
   [FieldTypeEnum.NAME]: { first: '', last: '' },
   [FieldTypeEnum.NUMBER]: 0,
   [FieldTypeEnum.CURRENCY]: null,
-  [FieldTypeEnum.PHONE]: '',
   [FieldTypeEnum.PHONE_INTL]: '',
   [FieldTypeEnum.EMAIL]: '',
   [FieldTypeEnum.URL]: '',
@@ -349,17 +321,6 @@ export const dateFieldOptionsSchema = baseFieldOptionsSchema.extend({
   minDate: z.string().optional(),
   maxDate: z.string().optional(),
 })
-/**
- * Relationship configuration stored in options.relationship
- */
-export interface RelationshipConfig {
-  relatedEntityDefinitionId: string | null
-  relatedModelType: string | null
-  inverseFieldId: string | null
-  relationshipType: 'belongs_to' | 'has_one' | 'has_many'
-  displayFieldId: string | null
-  isInverse: boolean
-}
 export const relationshipFieldOptionsSchema = baseFieldOptionsSchema.extend({
   relationship: z
     .object({
@@ -396,7 +357,6 @@ export const fieldTypeOptionsSchemaMap: Record<FieldType, z.ZodTypeAny> = {
   [FieldTypeEnum.NAME]: baseFieldOptionsSchema,
   [FieldTypeEnum.NUMBER]: numberFieldOptionsSchema,
   [FieldTypeEnum.CURRENCY]: currencyFieldOptionsSchema,
-  [FieldTypeEnum.PHONE]: phoneFieldOptionsSchema,
   [FieldTypeEnum.PHONE_INTL]: phoneFieldOptionsSchema,
   [FieldTypeEnum.EMAIL]: baseFieldOptionsSchema,
   [FieldTypeEnum.URL]: baseFieldOptionsSchema,

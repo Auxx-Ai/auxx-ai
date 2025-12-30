@@ -6,7 +6,7 @@ import type { ViewConfig } from '~/components/dynamic-table/types'
 import { database as db, schema } from '@auxx/database'
 import { and, eq, or, desc, asc, inArray } from 'drizzle-orm'
 import { CustomFieldService } from '@auxx/lib/custom-fields'
-import { ModelTypeValues } from '@auxx/lib/custom-fields/types'
+import { ModelTypeValues } from '@auxx/types/custom-field'
 
 /** Schema for model type validation */
 const modelTypeSchema = z.enum(ModelTypeValues)

@@ -10,7 +10,7 @@ import {
   selectOptionSchema,
   currencyOptionsSchema,
   fileOptionsSchema,
-} from '@auxx/lib/custom-fields/types'
+} from '@auxx/types/custom-field'
 import { FieldType } from '@auxx/database/enums'
 import { batchGetFieldValuesQuery } from '@auxx/services/custom-fields'
 

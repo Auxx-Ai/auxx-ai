@@ -51,10 +51,9 @@ import {
   customFieldFormSchema,
   type CustomFieldFormValues,
   fieldTypeOptions,
-  canFieldBeUnique,
   FIELD_TYPE_GROUPS,
-  type SelectOptionColor,
 } from '@auxx/lib/custom-fields/types'
+import { canFieldBeUnique, type SelectOptionColor } from '@auxx/types/custom-field'
 
 import { OptionsEditor } from './options-editor'
 import { AddressComponentsEditor } from './address-component-editor'
