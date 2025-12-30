@@ -92,8 +92,6 @@ const DEFAULT_CUSTOM_ENTITY_EMPTY_STATE = {
   description: (
     <>
       Timeline events will appear as this record is updated
-      <br />
-      and changes occur.
     </>
   ),
 }
@@ -128,7 +126,14 @@ export function TimelineTab({
   const events = data?.pages.flatMap((page) => page.events) ?? []
 
   if (isLoading) {
-    return <TimelineLoading />
+    return (
+    <EmptyState
+      icon={Clock}
+      iconClassName="animate-spin"
+      title="Loading timeline..."
+      description={<>Hang on while we load the timeline events...</>}
+    />
+  )
   }
 
   if (events.length === 0) {
@@ -153,19 +158,6 @@ export function TimelineTab({
   )
 }
 
-/**
- * Loading state component
- */
-function TimelineLoading() {
-  return (
-    <EmptyState
-      icon={Clock}
-      iconClassName="animate-spin"
-      title="Loading timeline..."
-      description={<>Hang on while we load the timeline events...</>}
-    />
-  )
-}
 
 /**
  * Empty state component

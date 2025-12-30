@@ -23,6 +23,8 @@ import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
 import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { Section } from '@auxx/ui/components/section'
 
 // Memoized components for performance
 const MemoDrawerComments = React.memo(DrawerComments)
@@ -259,26 +261,25 @@ export function EntityRecordDrawer({
               </div>
               <div className="flex flex-1 overflow-hidden">
                 <TabsContent value="overview" className="w-full">
-                  <div className="px-4 pt-3 flex items-center">
-                    <h2 className="text-base flex items-center space-x-2 gap-2 text-[14px]">
-                      <Gauge className="size-4 text-muted-foreground/50" />
-                      Overview
-                    </h2>
-                  </div>
-
-                  <EntityRecordOverview
-                    instanceId={instance.id}
-                    preloadedValues={instance._originalValues}
-                    createdAt={instance.createdAt}
-                    updatedAt={instance.updatedAt}
-                    onMutationSuccess={onMutationSuccess}
-                  />
+                  <ScrollArea className="flex-1">
+                    <Section
+                      title="Overview"
+                      icon={<Gauge className="size-4 text-muted-foreground/50" />}>
+                      <EntityRecordOverview
+                        instanceId={instance.id}
+                        preloadedValues={instance._originalValues}
+                        createdAt={instance.createdAt}
+                        updatedAt={instance.updatedAt}
+                        onMutationSuccess={onMutationSuccess}
+                      />
+                    </Section>
+                  </ScrollArea>
                 </TabsContent>
 
-                <TabsContent value="timeline" className="w-full h-full mt-0 p-3 overflow-y-auto">
-                  {timelineEntityType && (
-                    <MemoTimelineTab entityType={timelineEntityType} entityId={instance.id} />
-                  )}
+                <TabsContent value="timeline" className="w-full">
+                  <ScrollArea className="flex-1">
+                    <MemoTimelineTab entityType={timelineEntityType!} entityId={instance.id} />
+                  </ScrollArea>
                 </TabsContent>
 
                 <TabsContent value="comments" className="w-full h-full mt-0">

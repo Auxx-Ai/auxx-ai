@@ -105,11 +105,7 @@ function ContactDetailSidebar({
       </div>
 
       {/* Entity Fields - directly below person card, no tabs */}
-      <MemoEntityFields
-        modelType={ModelTypes.CONTACT}
-        entityId={customer.id}
-        className="m-4"
-      />
+      <MemoEntityFields modelType={ModelTypes.CONTACT} entityId={customer.id} className="m-4" />
 
       {/* Groups and Sources Sections - matching ticket-detail-drawer.tsx pattern */}
       <div className="space-y-4 p-4 pt-0">
@@ -242,7 +238,7 @@ export function ContactDetail({ id }: { id: string }) {
 
           <TabsContent value="timeline" className="flex flex-col flex-1 min-h-0">
             <ScrollArea className="flex-1">
-              <div className="p-6">
+              <div className="p-6 flex-1 flex-col flex">
                 <TimelineTab entityType="contact" entityId={id} />
               </div>
             </ScrollArea>

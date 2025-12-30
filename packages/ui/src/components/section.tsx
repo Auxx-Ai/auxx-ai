@@ -18,6 +18,8 @@ import { TooltipExplanation } from '@auxx/ui/components/tooltip'
  */
 export interface SectionProps {
   className?: string
+  /** Icon to display before the title */
+  icon?: React.ReactNode
   title: string
   titleClassName?: string
   description?: string
@@ -45,6 +47,7 @@ export interface SectionProps {
  */
 export function Section({
   className,
+  icon,
   title,
   titleClassName,
   description,
@@ -97,40 +100,44 @@ export function Section({
       onOpenChange={handleOpenChange}
       className="group">
       <div className={cn('p-3 pb-4 group-data-[state=closed]:pb-0 border-b flex flex-col', className)}>
-        <div className="flex items-center justify-between pb-2">
-          <div className="flex items-center gap-1">
-            <div className={cn(titleClassName, 'flex items-center text-xs font-medium uppercase')}>
-              <CollapsibleTrigger asChild>
-                <span className="mr-1 cursor-default">{title}</span>
-              </CollapsibleTrigger>
-              {isRequired && <span className="mr-1 text-xs font-semibold text-[#D92D20]">*</span>}
-              {description && <TooltipExplanation text={description} className="text-primary-400" />}
-            </div>
-            <CollapsibleTrigger asChild>
-              <button
-                type="button"
-                aria-label="Toggle section"
+        <CollapsibleTrigger
+          asChild
+          disabled={!showCollapseTrigger}>
+          <div className={cn('flex items-center justify-between pb-2 cursor-default')}>
+            <div className="flex items-center gap-1">
+              <div className={cn(titleClassName, 'flex items-center text-xs font-medium uppercase')}>
+                {icon && <span className="mr-1">{icon}</span>}
+                <span className="mr-1">{title}</span>
+                {isRequired && <span className="mr-1 text-xs font-semibold text-[#D92D20]">*</span>}
+                {description && (
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <TooltipExplanation text={description} className="text-primary-400" />
+                  </span>
+                )}
+              </div>
+              <div
                 className={cn(
-                  'p-1 rounded hover:bg-muted transition-colors flex items-center focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500',
-                  !showCollapseTrigger && 'invisible pointer-events-none'
+                  'p-1 rounded hover:bg-muted transition-colors flex items-center',
+                  !showCollapseTrigger && 'invisible'
                 )}>
                 <ChevronDown className="size-4 group-data-[state=closed]:hidden" data-state="open" />
                 <ChevronRight className="size-4 group-data-[state=open]:hidden" data-state="closed" />
-              </button>
-            </CollapsibleTrigger>
+              </div>
+            </div>
+            {/* Stop propagation to prevent collapse toggle when clicking actions or switch */}
+            <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-2">
+              {actions || null}
+              {showEnable && (
+                <Switch
+                  size="sm"
+                  checked={enabled}
+                  disabled={isReadOnly}
+                  onCheckedChange={onEnableChange}
+                />
+              )}
+            </div>
           </div>
-          <div>
-            {actions || null}
-            {showEnable && (
-              <Switch
-                size="sm"
-                checked={enabled}
-                disabled={isReadOnly}
-                onCheckedChange={onEnableChange}
-              />
-            )}
-          </div>
-        </div>
+        </CollapsibleTrigger>
         <CollapsibleContent>{children}</CollapsibleContent>
       </div>
     </Collapsible>

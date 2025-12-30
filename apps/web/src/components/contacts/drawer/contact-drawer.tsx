@@ -41,6 +41,8 @@ import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
 import { EntityIcon } from '~/components/pickers/icon-picker'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { Section } from '@auxx/ui/components/section'
 
 // Memoized tab content components
 const MemoEntityFields = React.memo(EntityFields)
@@ -281,34 +283,50 @@ function ContactDrawerContent({
                 </div>
               </div>
               <div className="flex flex-1 overflow-hidden">
-                <TabsContent value="overview" className="w-full overflow-y-auto">
-                  <MemoEntityFields
-                    modelType={ModelTypes.CONTACT}
-                    entityId={contact?.id}
-                    className="m-4"
-                  />
+                <TabsContent value="overview" className="w-full">
+                  <ScrollArea className="flex-1">
+                    <Section
+                      title="Details"
+                      initialOpen
+                      collapsible={false}
+                      icon={<HouseIcon className="size-4" />}>
+                      <MemoEntityFields modelType={ModelTypes.CONTACT} entityId={contact?.id} />
+                    </Section>
+                  </ScrollArea>
                 </TabsContent>
-                <TabsContent value="tickets" className="w-full overflow-y-auto">
-                  <MemoDrawerTickets contactId={contactId} />
+                <TabsContent value="tickets" className="w-full">
+                  <ScrollArea className="flex-1">
+                    <MemoDrawerTickets contactId={contactId} />
+                  </ScrollArea>
                 </TabsContent>
-                <TabsContent value="orders" className="w-full overflow-y-auto">
-                  <MemoDrawerOrders contactId={contactId} />
+                <TabsContent value="orders" className="w-full">
+                  <ScrollArea className="flex-1">
+                    <MemoDrawerOrders contactId={contactId} />
+                  </ScrollArea>
                 </TabsContent>
-                <TabsContent value="conversations" className="w-full h-full mt-0 overflow-y-auto">
-                  <MemoDrawerConversations contactId={contactId} />
+                <TabsContent value="conversations" className="w-full h-full mt-0">
+                  <ScrollArea className="flex-1">
+                    <MemoDrawerConversations contactId={contactId} />
+                  </ScrollArea>
                 </TabsContent>
-                <TabsContent value="comments" className="w-full h-full mt-0 overflow-y-auto">
-                  <MemoDrawerComments
-                    entityId={contactId}
-                    entityType="Contact"
-                    focusComposerTrigger={focusComposerTrigger}
-                  />
+                <TabsContent value="comments" className="w-full h-full mt-0">
+                  <ScrollArea className="flex-1">
+                    <MemoDrawerComments
+                      entityId={contactId}
+                      entityType="Contact"
+                      focusComposerTrigger={focusComposerTrigger}
+                    />
+                  </ScrollArea>
                 </TabsContent>
-                <TabsContent value="timeline" className="w-full h-full mt-0 p-3 overflow-y-auto">
-                  <MemoTimelineTab entityType="contact" entityId={contactId} />
+                <TabsContent value="timeline" className="w-full h-full mt-0 ">
+                  <ScrollArea className="flex-1">
+                    <MemoTimelineTab entityType="contact" entityId={contactId} />
+                  </ScrollArea>
                 </TabsContent>
-                <TabsContent value="parts" className="w-full overflow-y-auto">
-                  <MemoDrawerParts contactId={contactId} />
+                <TabsContent value="parts" className="w-full">
+                  <ScrollArea className="flex-1">
+                    <MemoDrawerParts contactId={contactId} />
+                  </ScrollArea>
                 </TabsContent>
               </div>
             </div>

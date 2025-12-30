@@ -51,7 +51,7 @@ function EntityRecordOverview({
       createdAt={createdAt}
       updatedAt={updatedAt}
       onMutationSuccess={onMutationSuccess}
-      className="mt-2 m-4"
+      className=""
     />
   )
 }

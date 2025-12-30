@@ -18,6 +18,7 @@ import {
 import { Label } from '@auxx/ui/components/label'
 import { Switch } from '@auxx/ui/components/switch'
 import { Button } from '@auxx/ui/components/button'
+import { Alert, AlertTitle, AlertDescription } from '@auxx/ui/components/alert'
 import { useEdgeInteractions, useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
 import { type HumanConfirmationNodeData } from './types'
 import { BaseType } from '~/components/workflow/types'
@@ -341,10 +342,13 @@ export const HumanConfirmationNodePanel = memo<HumanConfirmationNodePanelProps>(
             </Select>
           }>
           {inputs.test_behavior === 'live' && (
-            <div className="text-sm text-blue-600 bg-blue-50 p-3 rounded border">
-              <strong>Live Test Mode:</strong> This will create real approval requests and send
-              notifications, but will be marked as test data for tracking purposes.
-            </div>
+            <Alert variant="blue">
+              <AlertTitle>Live Test Mode</AlertTitle>
+              <AlertDescription>
+                This will create real approval requests and send notifications, but will be marked
+                as test data for tracking purposes.
+              </AlertDescription>
+            </Alert>
           )}
         </Section>
       </BasePanel>

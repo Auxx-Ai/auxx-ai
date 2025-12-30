@@ -2,12 +2,19 @@
 
 import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, protectedProcedure, adminProcedure } from '~/server/api/trpc'
 import type { ViewConfig } from '~/components/dynamic-table/types'
-import { database as db, schema } from '@auxx/database'
-import { and, eq, or, desc, asc, inArray } from 'drizzle-orm'
 import { CustomFieldService } from '@auxx/lib/custom-fields'
 import { ModelTypeValues } from '@auxx/types/custom-field'
+import {
+  listViews,
+  getView,
+  createView,
+  updateView,
+  duplicateView,
+  deleteView,
+  setDefaultView,
+} from '@auxx/services/table-view'
 
 /** Schema for model type validation */
 const modelTypeSchema = z.enum(ModelTypeValues)
@@ -17,9 +24,7 @@ const kanbanColumnSettingsSchema = z.object({
   isVisible: z.boolean().optional(),
 })
 
-/**
- * Zod schema for kanban configuration
- */
+/** Zod schema for kanban configuration */
 const kanbanConfigSchema = z.object({
   groupByFieldId: z.string(),
   columnOrder: z.array(z.string()).optional(),
@@ -29,9 +34,7 @@ const kanbanConfigSchema = z.object({
   columnSettings: z.record(z.string(), kanbanColumnSettingsSchema).optional(),
 })
 
-/**
- * Zod schema for view configuration
- */
+/** Zod schema for view configuration */
 const viewConfigSchema = z.object({
   filters: z.array(
     z.object({ id: z.string(), columnId: z.string(), operator: z.string(), value: z.any() })
@@ -53,6 +56,23 @@ const viewConfigSchema = z.object({
 })
 
 /**
+ * Map service error codes to TRPCError
+ */
+function mapErrorToTRPC(error: { code: string; message: string }): never {
+  const codeMap: Record<string, 'NOT_FOUND' | 'CONFLICT' | 'BAD_REQUEST' | 'INTERNAL_SERVER_ERROR'> = {
+    VIEW_NOT_FOUND: 'NOT_FOUND',
+    VIEW_ALREADY_EXISTS: 'CONFLICT',
+    CANNOT_DELETE_DEFAULT_VIEW: 'BAD_REQUEST',
+    DATABASE_ERROR: 'INTERNAL_SERVER_ERROR',
+  }
+
+  throw new TRPCError({
+    code: codeMap[error.code] ?? 'INTERNAL_SERVER_ERROR',
+    message: error.message,
+  })
+}
+
+/**
  * Table view router for managing saved table configurations
  */
 export const tableViewRouter = createTRPCRouter({
@@ -62,59 +82,28 @@ export const tableViewRouter = createTRPCRouter({
   list: protectedProcedure
     .input(z.object({ tableId: z.string() }))
     .query(async ({ ctx, input }) => {
-      const { userId, organizationId } = ctx.session
-      const views = await db
-        .select()
-        .from(schema.TableView)
-        .where(
-          and(
-            eq(schema.TableView.tableId, input.tableId),
-            or(
-              // User's personal views
-              eq(schema.TableView.userId, userId),
-              // Organization's shared views
-              and(
-                eq(schema.TableView.organizationId, organizationId),
-                eq(schema.TableView.isShared, true)
-              )
-            )
-          )
-        )
-        .orderBy(desc(schema.TableView.isDefault), asc(schema.TableView.name))
+      const result = await listViews({
+        tableId: input.tableId,
+        userId: ctx.session.userId,
+        organizationId: ctx.session.organizationId,
+      })
 
-      return views.map((view) => ({ ...view, config: view.config as ViewConfig }))
+      if (result.isErr()) mapErrorToTRPC(result.error)
+      return result.value.map((v) => ({ ...v, config: v.config as ViewConfig }))
     }),
 
   /**
    * Get a single view by ID
    */
   get: protectedProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
-    const { userId, organizationId } = ctx.session
-    const [view] = await db
-      .select()
-      .from(schema.TableView)
-      .where(
-        and(
-          eq(schema.TableView.id, input.id),
-          or(
-            eq(schema.TableView.userId, userId),
-            and(
-              eq(schema.TableView.organizationId, organizationId),
-              eq(schema.TableView.isShared, true)
-            )
-          )
-        )
-      )
-      .limit(1)
+    const result = await getView({
+      id: input.id,
+      userId: ctx.session.userId,
+      organizationId: ctx.session.organizationId,
+    })
 
-    if (!view) {
-      throw new TRPCError({
-        code: 'NOT_FOUND',
-        message: 'View not found',
-      })
-    }
-
-    return { ...view, config: view.config as ViewConfig }
+    if (result.isErr()) mapErrorToTRPC(result.error)
+    return { ...result.value, config: result.value.config as ViewConfig }
   }),
 
   /**
@@ -142,79 +131,40 @@ export const tableViewRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { userId, organizationId } = ctx.session
-      const { tableId, name, config, isShared, newField } = input
+      let finalConfig = input.config
 
-      let finalConfig = config
-
-      // If creating a new field for kanban, create it first
-      if (newField && config.viewType === 'kanban') {
+      // Handle new kanban field creation (stays in router - uses CustomFieldService)
+      if (input.newField && input.config.viewType === 'kanban') {
         const fieldService = new CustomFieldService(organizationId, userId, ctx.db)
-
         const createdField = await fieldService.createField(
           {
-            name: newField.name,
+            name: input.newField.name,
             type: 'SINGLE_SELECT',
-            // Only pass entityDefinitionId for custom entities
             entityDefinitionId:
-              newField.modelType === 'entity' ? newField.entityDefinitionId : undefined,
-            options: [], // Empty - stages added later in kanban
+              input.newField.modelType === 'entity' ? input.newField.entityDefinitionId : undefined,
+            options: [],
             isCustom: true,
           },
-          newField.modelType
+          input.newField.modelType
         )
 
-        // Update kanban config with the new field ID
         finalConfig = {
-          ...config,
-          kanban: {
-            ...config.kanban,
-            groupByFieldId: createdField.id,
-          },
+          ...input.config,
+          kanban: { ...input.config.kanban, groupByFieldId: createdField.id },
         }
       }
 
-      // Check if user already has a view with this name for this table
-      const [existingView] = await db
-        .select()
-        .from(schema.TableView)
-        .where(
-          and(
-            eq(schema.TableView.tableId, tableId),
-            eq(schema.TableView.userId, userId),
-            eq(schema.TableView.name, name)
-          )
-        )
-        .limit(1)
+      const result = await createView({
+        tableId: input.tableId,
+        name: input.name,
+        config: finalConfig,
+        isShared: input.isShared,
+        userId,
+        organizationId,
+      })
 
-      if (existingView) {
-        throw new TRPCError({
-          code: 'CONFLICT',
-          message: 'A view with this name already exists',
-        })
-      }
-
-      try {
-        const [view] = await db
-          .insert(schema.TableView)
-          .values({
-            tableId,
-            name,
-            config: finalConfig,
-            isShared,
-            userId,
-            organizationId,
-            updatedAt: new Date(),
-          })
-          .returning()
-
-        return { ...view, config: view.config as ViewConfig }
-      } catch (error) {
-        console.error('Failed to create view:', error)
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to create view. Please try again.',
-        })
-      }
+      if (result.isErr()) mapErrorToTRPC(result.error)
+      return { ...result.value, config: result.value.config as ViewConfig }
     }),
 
   /**
@@ -230,29 +180,17 @@ export const tableViewRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { userId } = ctx.session
-      const { id, name, config, isShared } = input
-      // Verify ownership
-      const [existingView] = await db
-        .select()
-        .from(schema.TableView)
-        .where(and(eq(schema.TableView.id, id), eq(schema.TableView.userId, userId)))
-        .limit(1)
+      const result = await updateView({
+        id: input.id,
+        userId: ctx.session.userId,
+        organizationId: ctx.session.organizationId,
+        name: input.name,
+        config: input.config,
+        isShared: input.isShared,
+      })
 
-      if (!existingView) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: "View not found or you don't have permission to update it",
-        })
-      }
-
-      const [view] = await db
-        .update(schema.TableView)
-        .set({ name, config, isShared })
-        .where(eq(schema.TableView.id, id))
-        .returning()
-
-      return { ...view, config: view.config as ViewConfig }
+      if (result.isErr()) mapErrorToTRPC(result.error)
+      return { ...result.value, config: result.value.config as ViewConfig }
     }),
 
   /**
@@ -261,46 +199,15 @@ export const tableViewRouter = createTRPCRouter({
   duplicate: protectedProcedure
     .input(z.object({ id: z.string(), name: z.string().min(1).max(50) }))
     .mutation(async ({ ctx, input }) => {
-      const { userId, organizationId } = ctx.session
-      const { id, name } = input
-      const [originalView] = await db
-        .select()
-        .from(schema.TableView)
-        .where(
-          and(
-            eq(schema.TableView.id, id),
-            or(
-              eq(schema.TableView.userId, userId),
-              and(
-                eq(schema.TableView.organizationId, organizationId),
-                eq(schema.TableView.isShared, true)
-              )
-            )
-          )
-        )
-        .limit(1)
+      const result = await duplicateView({
+        id: input.id,
+        name: input.name,
+        userId: ctx.session.userId,
+        organizationId: ctx.session.organizationId,
+      })
 
-      if (!originalView) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'View not found',
-        })
-      }
-
-      const [view] = await db
-        .insert(schema.TableView)
-        .values({
-          tableId: originalView.tableId,
-          name,
-          config: originalView.config,
-          isShared: false, // Duplicated views are always personal
-          userId,
-          organizationId,
-          updatedAt: new Date(),
-        })
-        .returning()
-
-      return { ...view, config: view.config as ViewConfig }
+      if (result.isErr()) mapErrorToTRPC(result.error)
+      return { ...result.value, config: result.value.config as ViewConfig }
     }),
 
   /**
@@ -309,83 +216,29 @@ export const tableViewRouter = createTRPCRouter({
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const { userId, organizationId } = ctx.session
-      const { id } = input
-      const [view] = await db
-        .select()
-        .from(schema.TableView)
-        .where(and(eq(schema.TableView.id, id), eq(schema.TableView.userId, userId)))
-        .limit(1)
+      const result = await deleteView({
+        id: input.id,
+        userId: ctx.session.userId,
+        organizationId: ctx.session.organizationId,
+      })
 
-      if (!view) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: "View not found or you don't have permission to delete it",
-        })
-      }
-
-      if (view.isDefault) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: 'Cannot delete the default view',
-        })
-      }
-
-      await db.delete(schema.TableView).where(eq(schema.TableView.id, input.id))
-
-      return { success: true }
+      if (result.isErr()) mapErrorToTRPC(result.error)
+      return result.value
     }),
 
   /**
-   * Set a view as default for the organization
+   * Set a view as default for the organization (admin only)
    */
-  setDefault: protectedProcedure
+  setDefault: adminProcedure
     .input(z.object({ tableId: z.string(), viewId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const { userId, organizationId } = ctx.session
-      const { tableId, viewId } = input
-      // Check if user is admin/owner
-      const [membership] = await db
-        .select()
-        .from(schema.OrganizationMember)
-        .where(
-          and(
-            eq(schema.OrganizationMember.userId, userId),
-            eq(schema.OrganizationMember.organizationId, organizationId),
-            inArray(schema.OrganizationMember.role, ['OWNER', 'ADMIN'])
-          )
-        )
-        .limit(1)
+      const result = await setDefaultView({
+        tableId: input.tableId,
+        viewId: input.viewId,
+        organizationId: ctx.session.organizationId,
+      })
 
-      if (!membership) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: "You don't have permission to set default views",
-        })
-      }
-
-      // Remove current default
-      await db
-        .update(schema.TableView)
-        .set({ isDefault: false })
-        .where(
-          and(
-            eq(schema.TableView.tableId, tableId),
-            eq(schema.TableView.organizationId, organizationId),
-            eq(schema.TableView.isDefault, true)
-          )
-        )
-
-      // Set new default
-      const [view] = await db
-        .update(schema.TableView)
-        .set({
-          isDefault: true,
-          isShared: true, // Default views must be shared
-        })
-        .where(eq(schema.TableView.id, input.viewId))
-        .returning()
-
-      return { ...view, config: view.config as ViewConfig }
+      if (result.isErr()) mapErrorToTRPC(result.error)
+      return { ...result.value, config: result.value.config as ViewConfig }
     }),
 })
