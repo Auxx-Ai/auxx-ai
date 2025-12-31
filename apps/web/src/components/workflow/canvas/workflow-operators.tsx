@@ -27,7 +27,7 @@ import { useRunStore } from '~/components/workflow/store/run-store'
 import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
 import { useWorkflowRun } from '~/hooks/use-workflow-run'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { debounce } from 'lodash'
+import { debounce } from '@auxx/lib/utils'
 
 interface WorkflowOperatorsProps {
   className?: string

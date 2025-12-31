@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/utils/node-layout/node-factory.ts
 
-import { cloneDeep } from 'lodash'
+import { cloneDeep } from '@auxx/lib/utils'
 import type { FlowNode } from '~/components/workflow/types'
 import { NodeType } from '~/components/workflow/types'
 import { unifiedNodeRegistry } from '../../nodes/unified-registry'

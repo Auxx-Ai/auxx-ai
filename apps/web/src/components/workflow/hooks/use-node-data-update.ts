@@ -2,8 +2,7 @@
 import { useCallback, useMemo } from 'react'
 import { produce } from 'immer'
 import { useStoreApi, useStore as useReactFlowStore } from '@xyflow/react'
-import { get as lodashGet } from 'lodash'
-// import { debounce } from 'lodash'
+import { getByPath } from '@auxx/lib/utils'
 import { useWorkflowSave } from './use-workflow-save'
 // import { useWorkflowStore } from '../store/workflow-store'
 import { useWorkflowHistory, WorkflowHistoryEvent } from './use-save-to-history'
@@ -83,7 +82,7 @@ export const useNodeData = <T = any>(nodeId: string) => {
   const get = (path?: string): any => {
     if (!node?.data) return undefined
     if (!path) return node.data as T
-    return lodashGet(node.data, path)
+    return getByPath(node.data, path)
   }
 
   return { node, data: node?.data as T, get }

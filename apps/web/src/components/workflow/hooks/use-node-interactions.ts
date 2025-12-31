@@ -14,7 +14,7 @@ import {
 } from '@xyflow/react'
 
 import { produce } from 'immer'
-import { unionBy } from 'lodash'
+import { uniqueBy } from '@auxx/lib/utils'
 import {
   useSelectionActions,
   useWorkflowSave,
@@ -513,7 +513,7 @@ export const useNodesInteractions = () => {
         // DONT DELETE NOTE:  for some reason some sourceConnectedEdges are empty, .filter(Boolean)
         targetNodes.push(...sourceConnection)
       }
-      const uniqTargetNodes = unionBy(targetNodes, 'id')
+      const uniqTargetNodes = uniqueBy(targetNodes, 'id')
       if (uniqTargetNodes.length > 1) {
         const newNodes = produce(nodes, (draft: any) => {
           draft.forEach((n: any) => {

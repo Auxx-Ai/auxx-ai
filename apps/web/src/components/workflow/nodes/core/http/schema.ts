@@ -12,7 +12,6 @@ import { HttpNodePanel } from './panel'
 import { type HttpNodeData } from './types'
 import { Method, BodyType, AuthType, ErrorStrategy } from './types'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
-import _ from 'lodash'
 
 // Zod schema for validation (config - deprecated)
 export const httpNodeSchema = z.object({

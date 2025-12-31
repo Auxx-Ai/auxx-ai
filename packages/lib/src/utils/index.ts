@@ -128,3 +128,7 @@ export {
 } from './currency'
 
 export { generateKeyBetween, generateNKeysBetween, BASE_62_DIGITS } from './fractional-indexing'
+
+export { cloneDeep, getByPath } from './objects'
+export { uniqueBy } from './arrays'
+export { debounce } from './functions'
