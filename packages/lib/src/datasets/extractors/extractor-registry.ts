@@ -85,23 +85,11 @@ export class ExtractorRegistry {
     }
 
     const best = compatible[0]
-    if (!best.isAvailable) {
-      logger.warn('Best extractor is not available', {
-        extractor: best.name,
-        mimeType,
-        extension,
-      })
+    if (!best!.isAvailable) {
       return null
     }
 
-    logger.debug('Selected best extractor', {
-      extractor: best.name,
-      priority: best.priority,
-      mimeType,
-      extension,
-    })
-
-    return this.extractors.get(best.name) || null
+    return this.extractors.get(best!.name) || null
   }
 
   /**
@@ -152,8 +140,8 @@ export class ExtractorRegistry {
         const tempInstance = new (ExtractorClass as any)('temp', undefined, undefined)
         const capabilities = tempInstance.getSupportedTypes()
 
-        capabilities.mimeTypes.forEach((type) => allMimeTypes.add(type))
-        capabilities.extensions.forEach((ext) => allExtensions.add(ext))
+        capabilities.mimeTypes.forEach((type: string) => allMimeTypes.add(type))
+        capabilities.extensions.forEach((ext: string) => allExtensions.add(ext))
 
         if (this.isExtractorAvailable(name)) {
           availableCount++

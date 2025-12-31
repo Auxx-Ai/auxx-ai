@@ -199,7 +199,7 @@ export class CommentService {
           await this.notificationService.sendNotification({
             type: 'COMMENT_REPLY',
             userId: parentComment.createdById,
-            entityId: result.id,
+            entityId: result!.id,
             entityType: 'Comment',
             message: 'Someone replied to your comment',
             actorId: this.userId,
@@ -214,7 +214,7 @@ export class CommentService {
               return this.notificationService.sendNotification({
                 type: 'COMMENT_MENTION',
                 userId,
-                entityId: result.id,
+                entityId: result!.id,
                 entityType: 'Comment',
                 message: 'You were mentioned in a comment',
                 actorId: this.userId,
@@ -389,7 +389,7 @@ export class CommentService {
         }
       }
 
-      return result.comment
+      return result.comment!
     } catch (error) {
       logger.error('Error updating comment', { error, data })
       throw error
@@ -942,9 +942,9 @@ export class CommentService {
           result.emojis[reaction.emoji] = { count: 0, userReacted: false }
         }
         // Increment count and check if current user reacted
-        result.emojis[reaction.emoji].count++
+        result.emojis[reaction.emoji]!.count++
         if (reaction.userId === currentUserId) {
-          result.emojis[reaction.emoji].userReacted = true
+          result.emojis[reaction.emoji]!.userReacted = true
         }
       }
     }

@@ -1,6 +1,7 @@
 // packages/lib/src/datasets/extractors/html-extractor.ts
 
 import * as cheerio from 'cheerio'
+// @ts-expect-error - turndown lacks type definitions
 import TurndownService from 'turndown'
 import { BaseExtractor } from './base-extractor'
 import { ExtractorRegistry } from './extractor-registry'
@@ -222,13 +223,13 @@ export class HtmlExtractor extends BaseExtractor {
 
     // Look for charset declaration in meta tags
     const charsetMatch = htmlContent.match(/charset=["']?([^"'\s>]+)/i)
-    if (charsetMatch) {
+    if (charsetMatch?.[1]) {
       return charsetMatch[1].toLowerCase()
     }
 
     // Look for XML encoding declaration
     const xmlMatch = htmlContent.match(/encoding=["']?([^"'\s>]+)/i)
-    if (xmlMatch) {
+    if (xmlMatch?.[1]) {
       return xmlMatch[1].toLowerCase()
     }
 

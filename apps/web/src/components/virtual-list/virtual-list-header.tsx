@@ -1,7 +1,7 @@
 // apps/web/src/components/virtual-list/virtual-list-header.tsx
 'use client'
 
-import { ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { useVirtualListContext } from './virtual-list'

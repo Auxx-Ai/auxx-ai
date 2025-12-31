@@ -1,6 +1,6 @@
 // packages/lib/src/contacts/sync-contact.ts
 import { type Database, type Transaction, schema } from '@auxx/database'
-import { ContactEntity as Contact } from '@auxx/database/models'
+import type { ContactEntity as Contact } from '@auxx/database/models'
 import type { CustomerSourceType } from '@auxx/database/types'
 import { sql, eq, and, or, ne } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
@@ -92,13 +92,13 @@ async function syncContactFromSource(db: Database, contactData: ContactData): Pr
       sourceId: finalSourceId,
       email,
       sourceData: sourceData || {},
-      contactId: contact.id,
+      contactId: contact!.id,
       organizationId,
       updatedAt: new Date(),
     })
 
     const createdContact = await tx.query.Contact.findFirst({
-      where: (contactTable, { eq }) => eq(contactTable.id, contact.id),
+      where: (contactTable, { eq }) => eq(contactTable.id, contact!.id),
     })
 
     if (!createdContact) {

@@ -158,35 +158,6 @@ function registerCoreServices(
 }
 
 /**
- * Register action-specific services
- */
-function registerActionServices(registry: ServiceRegistry): void {
-  logger.info('Registering action services')
-
-  // Action Executor will be registered as scoped to allow different configurations
-  registry.registerScoped(
-    ServiceKeys.ACTION_EXECUTOR,
-    async (reg) => {
-      const { createActionExecutor } = await import('../actions/core/action-executor')
-      return await createActionExecutor(reg)
-    },
-    [ServiceKeys.ORGANIZATION_ID, ServiceKeys.PROVIDER_REGISTRY]
-  )
-
-  // Proposed Action Executor - handles execution of database-stored proposed actions
-  registry.registerScoped(
-    ServiceKeys.PROPOSED_ACTION_EXECUTOR,
-    async (reg) => {
-      const { createProposedActionExecutionService } = await import(
-        '../actions/services/proposed-action-execution-service'
-      )
-      return await createProposedActionExecutionService(reg)
-    },
-    [ServiceKeys.ACTION_EXECUTOR, ServiceKeys.DATABASE, ServiceKeys.ORGANIZATION_ID]
-  )
-}
-
-/**
  * Initialize a complete service registry for an organization
  */
 export async function createOrganizationServices(
@@ -197,7 +168,6 @@ export async function createOrganizationServices(
 
   // Register all services
   registerCoreServices(registry, organizationId, userId)
-  registerActionServices(registry)
 
   logger.info('Organization service registry created', {
     organizationId,

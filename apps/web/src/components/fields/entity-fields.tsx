@@ -19,11 +19,9 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
-import PropertyRow from '../contacts/drawer/property-row'
 import { api } from '~/trpc/react'
 import { useFieldValidation } from '../contacts/validation/use-field-validation'
 import { toastError } from '@auxx/ui/components/toast'
-import { PropertyProvider } from '../contacts/drawer/property-provider'
 import {
   FieldNavigationProvider,
   useFieldNavigation,

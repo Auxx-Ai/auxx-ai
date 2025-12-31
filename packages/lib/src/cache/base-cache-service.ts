@@ -91,7 +91,7 @@ export class BaseCacheService {
   /** In-memory cache as fallback when Redis is unavailable */
   private memoryCache = new Map<string, CacheEntry<any>>()
   /** Redis client instance, null if unavailable */
-  private redisClient: RedisClient | null = null
+  private redisClient: RedisClient | undefined = undefined
   /** Flag indicating if Redis is available for use */
   private useRedis = true
   /** Flag indicating if we're in development mode for debug logging */
@@ -483,7 +483,7 @@ export class BaseCacheService {
         const keys = await this.redisClient.keys?.(`${this.keyPrefix}*`)
         if (keys && keys.length > 0) {
           redisKeysCleared = keys.length
-          await this.redisClient.del(...keys)
+          await this.redisClient.del(keys)
         }
       }
 

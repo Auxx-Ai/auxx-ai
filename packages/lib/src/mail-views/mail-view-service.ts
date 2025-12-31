@@ -243,7 +243,7 @@ export class MailViewService {
 
       // Delete all matching keys
       if (keys.length > 0) {
-        await redis!.del(...keys)
+        await redis!.del(keys)
         logger.info('Invalidated all mail view caches', {
           organizationId: this.organizationId,
           keyCount: keys.length,
@@ -296,7 +296,7 @@ export class MailViewService {
       const keys = await redis!.keys(pattern)
 
       if (keys.length > 0) {
-        await redis.del(...keys)
+        await redis.del(keys)
         logger.info('Invalidated mail view threads cache', { mailViewId })
       }
     } catch (error) {
@@ -751,10 +751,11 @@ export class MailViewService {
       const whereCondition = queryBuilder.buildWhereCondition()
 
       // Count total matches for pagination using Drizzle
-      const [{ count: total }] = await this.db
+      const countResult = await this.db
         .select({ count: count() })
         .from(schema.Thread)
         .where(and(eq(schema.Thread.organizationId, this.organizationId), whereCondition))
+      const total = countResult[0]?.count ?? 0
 
       // Calculate pagination
       const skip = (page - 1) * pageSize
@@ -794,16 +795,14 @@ export class MailViewService {
             : desc(schema.Thread.lastMessageAt)
       }
 
-      // Step 1: Get base threads with one-to-one relations (assignee, inbox)
+      // Step 1: Get base threads with one-to-one relations (assignee)
       const baseThreads = await this.db
         .select({
           thread: schema.Thread,
           assignee: schema.User,
-          inbox: schema.Inbox,
         })
         .from(schema.Thread)
         .leftJoin(schema.User, eq(schema.Thread.assigneeId, schema.User.id))
-        .leftJoin(schema.Inbox, eq(schema.Thread.inboxId, schema.Inbox.id))
         .where(and(eq(schema.Thread.organizationId, this.organizationId), whereCondition))
         .orderBy(orderByClause)
         .offset(skip)
@@ -900,7 +899,7 @@ export class MailViewService {
           tags,
           labels,
           assignee: row.assignee,
-          inbox: row.inbox,
+          // inbox: row.inbox,
           participants,
         }
       })
