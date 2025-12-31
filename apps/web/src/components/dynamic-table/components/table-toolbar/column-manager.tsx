@@ -3,7 +3,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Columns, GripVertical, Eye, EyeOff, Check, SquareUser } from 'lucide-react'
+import { Columns, Eye, EyeOff, Check, SquareUser } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import {
@@ -13,79 +13,12 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
+  CommandSortable,
+  CommandSortableItem,
 } from '@auxx/ui/components/command'
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from '@dnd-kit/core'
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable'
-import { useSortable } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
 import { cn } from '@auxx/ui/lib/utils'
 import { useTableContext } from '../../context/table-context'
-import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { Tooltip } from '~/components/global/tooltip'
-
-interface SortableColumnItemProps {
-  column: { id: string; name: string; isVisible: boolean; isCustomField?: boolean }
-  onToggle: (checked: boolean) => void
-}
-
-/**
- * Sortable column item component
- */
-function SortableColumnItem({ column, onToggle }: SortableColumnItemProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: column.id,
-  })
-
-  const style = { transform: CSS.Transform.toString(transform), transition }
-
-  return (
-    <CommandItem
-      ref={setNodeRef}
-      style={style}
-      className={cn(
-        'px-1',
-        // 'flex items-center justify-between px-2 py-1.5 w-full cursor-pointer hover:bg-accent rounded-sm',
-        isDragging && 'opacity-50'
-      )}
-      onSelect={() => {
-        onToggle(!column.isVisible)
-      }}>
-      <div className="flex items-center gap-2 flex-1">
-        <Check
-          className={cn('size-3 text-zinc-700', column.isVisible ? 'opacity-100' : 'opacity-0')}
-        />
-        <span className="text-sm truncate">{column.name || <i className="px-0.5">No name</i>}</span>
-        {column.isCustomField && (
-          <Tooltip content="Custom field">
-            <SquareUser className="size-3 text-muted-foreground" />
-          </Tooltip>
-        )}
-      </div>
-
-      <span
-        className="size-5 cursor-move shrink-0 flex items-center justify-center"
-        aria-label={`Reorder ${column.name} column`}
-        onClick={(e) => e.stopPropagation()}
-        {...attributes}
-        {...listeners}>
-        <GripVertical className="size-3" />
-      </span>
-    </CommandItem>
-  )
-}
 
 /**
  * Column manager component for managing column visibility and order
@@ -150,31 +83,21 @@ export function ColumnManager<TData = any>() {
     }
   }, [table, columnOrder, columnVisibility, columnLabels])
 
-  // Sensors for drag and drop
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  )
-
-  // Handle drag end
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event
-
-    if (over && active.id !== over.id) {
-      const oldIndex = orderedColumns.findIndex((col) => col.id === active.id)
-      const newIndex = orderedColumns.findIndex((col) => col.id === over.id)
-
-      const newOrder = arrayMove(orderedColumns, oldIndex, newIndex)
-      setOrderedColumns(newOrder)
-
-      // Update table column order
-      table.setColumnOrder(newOrder.map((col) => col.id))
-    }
+  // Handle reorder from CommandSortable
+  const handleReorder = (newOrder: string[]) => {
+    const newColumns = newOrder
+      .map((id) => orderedColumns.find((col) => col.id === id))
+      .filter((col): col is NonNullable<typeof col> => col !== undefined)
+    setOrderedColumns(newColumns)
+    table.setColumnOrder(newOrder)
   }
 
   // Handle visibility toggle
-  const handleVisibilityToggle = (columnId: string, checked: boolean) => {
-    table.getColumn(columnId)?.toggleVisibility(checked)
+  const handleVisibilityToggle = (columnId: string) => {
+    const column = orderedColumns.find((col) => col.id === columnId)
+    if (column) {
+      table.getColumn(columnId)?.toggleVisibility(!column.isVisible)
+    }
   }
 
   // Filter columns based on search
@@ -204,7 +127,7 @@ export function ColumnManager<TData = any>() {
         </div>
       </PopoverTrigger>
 
-      <PopoverContent className="w-[250px] p-0 " align="start">
+      <PopoverContent className="w-[250px] p-0" align="start">
         <Command>
           <CommandInput
             placeholder="Search columns..."
@@ -214,33 +137,41 @@ export function ColumnManager<TData = any>() {
           <CommandList className="max-h-auto">
             <CommandEmpty>No columns found.</CommandEmpty>
             <CommandGroup>
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                modifiers={[restrictToVerticalAxis]}
-                onDragEnd={handleDragEnd}>
-                <div className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden p-1">
-                  <SortableContext
-                    items={filteredColumns.map((col) => col.id)}
-                    strategy={verticalListSortingStrategy}>
-                    {filteredColumns.map((column) => (
-                      <SortableColumnItem
-                        column={column}
-                        key={column.id}
-                        onToggle={(checked) => handleVisibilityToggle(column.id, checked)}
+              <CommandSortable
+                items={filteredColumns.map((col) => col.id)}
+                onReorder={handleReorder}>
+                {filteredColumns.map((column) => (
+                  <CommandSortableItem
+                    key={column.id}
+                    id={column.id}
+                    onSelect={() => handleVisibilityToggle(column.id)}>
+                    <div className="flex items-center gap-2">
+                      <Check
+                        className={cn(
+                          'size-3 text-zinc-700',
+                          column.isVisible ? 'opacity-100' : 'opacity-0'
+                        )}
                       />
-                    ))}
-                  </SortableContext>
-                </div>
-              </DndContext>
+                      <span className="truncate text-sm">
+                        {column.name || <i className="px-0.5">No name</i>}
+                      </span>
+                      {column.isCustomField && (
+                        <Tooltip content="Custom field">
+                          <SquareUser className="size-3 text-muted-foreground" />
+                        </Tooltip>
+                      )}
+                    </div>
+                  </CommandSortableItem>
+                ))}
+              </CommandSortable>
             </CommandGroup>
           </CommandList>
           <CommandGroup className="border-t">
-            <CommandItem onSelect={() => toggleAll(true)} className=" gap-2">
+            <CommandItem onSelect={() => toggleAll(true)} className="gap-2">
               <Eye className="size-3" />
               Show all columns
             </CommandItem>
-            <CommandItem onSelect={() => toggleAll(false)} className=" gap-2">
+            <CommandItem onSelect={() => toggleAll(false)} className="gap-2">
               <EyeOff className="size-3" />
               Hide all columns
             </CommandItem>

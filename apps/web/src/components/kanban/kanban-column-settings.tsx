@@ -220,7 +220,11 @@ export function KanbanColumnSettings({
       <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
 
       <DropdownMenuContent
-        className={isCreateMode ? 'w-56' : 'min-w-[calc(var(--radix-dropdown-menu-trigger-width)+2px)] -mt-[calc(var(--radix-dropdown-menu-trigger-height)+1px)] -ml-px'}
+        className={
+          isCreateMode
+            ? 'w-56'
+            : 'min-w-[calc(var(--radix-dropdown-menu-trigger-width)+2px)] -mt-[calc(var(--radix-dropdown-menu-trigger-height)+1px)] -ml-px'
+        }
         align="start"
         sideOffset={isCreateMode ? 4 : 0}>
         {/* Section 1: Label + Color */}
@@ -265,7 +269,7 @@ export function KanbanColumnSettings({
             </DropdownMenuItem>
 
             {trackTimeEnabled && (
-              <div className="px-2 pb-2" onPointerDown={(e) => e.stopPropagation()}>
+              <div className="py-2 px-1" onPointerDown={(e) => e.stopPropagation()}>
                 <NumberInput
                   value={targetTimeValue}
                   onValueChange={handleTargetTimeValueChange}

@@ -9,6 +9,8 @@ import { useState, useEffect } from 'react'
 import { ViewSelector } from './view-selector'
 import { FilterBuilder } from './filter-builder'
 import { ColumnManager } from './column-manager'
+import { KanbanViewSettings } from './kanban-view-settings'
+import type { ViewConfig, ViewType } from '../../types'
 import { useDebounce } from '~/hooks/use-debounced-value'
 import { useTableContext } from '../../context/table-context'
 import type { ExtendedColumnDef } from '../../types'
@@ -54,6 +56,10 @@ export function TableToolbar<TData = any>({ children, className }: TableToolbarP
 
   // Get columns from table instance
   const columns = table.options.columns as ExtendedColumnDef<TData>[]
+
+  // Determine view type
+  const viewType: ViewType = (currentView?.config as ViewConfig)?.viewType ?? 'table'
+  const isKanbanView = viewType === 'kanban'
   // Local search state for immediate UI feedback
   const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery)
   const debouncedSearchQuery = useDebounce(localSearchQuery, 300)
@@ -94,8 +100,8 @@ export function TableToolbar<TData = any>({ children, className }: TableToolbarP
         <FilterBuilder columns={columns} filters={filters} onFiltersChange={setFilters} />
       )}
 
-      {/* Columns Button */}
-      <ColumnManager />
+      {/* Columns/Settings Button - different component for kanban vs table */}
+      {isKanbanView ? <KanbanViewSettings /> : <ColumnManager />}
 
       {/* Import Button - Link to import page if href provided, otherwise file picker */}
       {enableImport && importHref && (

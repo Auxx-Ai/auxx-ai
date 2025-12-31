@@ -408,13 +408,6 @@ export class GoogleProvider
       gmail: this.gmail!,
       integrationId: this.integrationId!,
       integration: this.integration!,
-      throttler: this.throttler!,
-      executeWithThrottle: <T>(operation: string, fn: () => Promise<T>, options: any) =>
-        executeWithThrottle(operation, fn, {
-          ...options,
-          userId: this.integrationId!,
-          throttler: this.throttler!,
-        }),
     })
   }
 
@@ -425,13 +418,6 @@ export class GoogleProvider
     await removeWebhook({
       gmail: this.gmail!,
       integrationId: this.integrationId!,
-      throttler: this.throttler!,
-      executeWithThrottle: <T>(operation: string, fn: () => Promise<T>, options: any) =>
-        executeWithThrottle(operation, fn, {
-          ...options,
-          userId: this.integrationId!,
-          throttler: this.throttler!,
-        }),
     })
   }
   /** Synchronizes messages from Gmail using history records or listing. */

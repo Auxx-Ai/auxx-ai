@@ -20,6 +20,10 @@
     "clean": "rm -rf node_modules .turbo *.tsbuildinfo"
   },
   "peerDependencies": {
+    "@dnd-kit/core": "catalog:",
+    "@dnd-kit/modifiers": "catalog:",
+    "@dnd-kit/sortable": "catalog:",
+    "@dnd-kit/utilities": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
     "next": "catalog:",
@@ -41,6 +45,18 @@
     "react-resizable-panels": "^2.1.7"
   },
   "peerDependenciesMeta": {
+    "@dnd-kit/core": {
+      "optional": true
+    },
+    "@dnd-kit/modifiers": {
+      "optional": true
+    },
+    "@dnd-kit/sortable": {
+      "optional": true
+    },
+    "@dnd-kit/utilities": {
+      "optional": true
+    },
     "sonner": {
       "optional": true
     },
@@ -81,6 +97,10 @@
   "devDependencies": {
     "@auxx/eslint-config": "workspace:*",
     "@auxx/typescript-config": "workspace:*",
+    "@dnd-kit/core": "catalog:",
+    "@dnd-kit/modifiers": "catalog:",
+    "@dnd-kit/sortable": "catalog:",
+    "@dnd-kit/utilities": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@testing-library/jest-dom": "^6.6.3",

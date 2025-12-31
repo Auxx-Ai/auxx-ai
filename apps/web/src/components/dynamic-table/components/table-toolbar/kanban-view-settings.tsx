@@ -1,0 +1,510 @@
+// apps/web/src/components/dynamic-table/components/table-toolbar/kanban-view-settings.tsx
+'use client'
+
+import { useState, useMemo, useCallback } from 'react'
+import { Settings2, Kanban, Plus, LayoutGrid, X, Trash2 } from 'lucide-react'
+import { Button } from '@auxx/ui/components/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+  CommandDescription,
+  CommandNavigation,
+  CommandBreadcrumb,
+  CommandNavigableItem,
+  CommandCheckboxItem,
+  CommandRadioGroup,
+  CommandRadioItem,
+  CommandSortable,
+  CommandSortableItem,
+  useCommandNavigation,
+  type NavigationItem,
+} from '@auxx/ui/components/command'
+import { useTableContext } from '../../context/table-context'
+import { Tooltip } from '~/components/global/tooltip'
+import { api } from '~/trpc/react'
+import type { ViewConfig } from '../../types'
+
+/** Navigation item type for KanbanViewSettings */
+interface SettingsNavigationItem extends NavigationItem {
+  id: string
+  label: string
+  type: 'pipeline' | 'columns' | 'add-field'
+}
+
+/** Props for KanbanViewSettings */
+interface KanbanViewSettingsProps {
+  className?: string
+}
+
+/**
+ * Root stack component - main menu with settings and card fields
+ */
+function RootStack() {
+  const { push } = useCommandNavigation<SettingsNavigationItem>()
+  const { currentView, customFields, selectFields, tableId } = useTableContext()
+
+  const kanbanConfig = (currentView?.config as ViewConfig)?.kanban
+  const cardFields = kanbanConfig?.cardFields ?? []
+
+  const utils = api.useUtils()
+  const updateView = api.tableView.update.useMutation({
+    onMutate: async (newData) => {
+      // Cancel outgoing refetches
+      await utils.tableView.list.cancel({ tableId })
+
+      // Snapshot current data
+      const previousViews = utils.tableView.list.getData({ tableId })
+
+      // Optimistically update
+      utils.tableView.list.setData({ tableId }, (old) => {
+        if (!old) return old
+        return old.map((view) =>
+          view.id === newData.id ? { ...view, config: newData.config ?? view.config } : view
+        )
+      })
+
+      return { previousViews }
+    },
+    onError: (_err, _newData, context) => {
+      // Rollback on error
+      if (context?.previousViews) {
+        utils.tableView.list.setData({ tableId }, context.previousViews)
+      }
+    },
+    onSettled: () => {
+      utils.tableView.list.invalidate({ tableId })
+    },
+  })
+
+  /** Get grouped by field name for display */
+  const groupByField = useMemo(() => {
+    return selectFields?.find((f) => f.id === kanbanConfig?.groupByFieldId)
+  }, [selectFields, kanbanConfig?.groupByFieldId])
+
+  /** Navigate to a sub-stack */
+  const handleNavigate = useCallback(
+    (type: 'pipeline' | 'columns' | 'add-field', label: string) => {
+      push({ id: type, label, type })
+    },
+    [push]
+  )
+
+  /** Handle card fields reorder (optimistic) */
+  const handleCardFieldsReorder = useCallback(
+    (newOrder: string[]) => {
+      if (!currentView || !kanbanConfig) return
+
+      const updatedConfig: ViewConfig = {
+        ...(currentView.config as ViewConfig),
+        kanban: {
+          ...kanbanConfig,
+          cardFields: newOrder,
+        },
+      }
+
+      updateView.mutate({ id: currentView.id, config: updatedConfig })
+    },
+    [currentView, kanbanConfig, updateView]
+  )
+
+  /** Handle removing a card field (optimistic) */
+  const handleRemoveCardField = useCallback(
+    (fieldId: string) => {
+      if (!currentView || !kanbanConfig) return
+
+      const updatedConfig: ViewConfig = {
+        ...(currentView.config as ViewConfig),
+        kanban: {
+          ...kanbanConfig,
+          cardFields: cardFields.filter((id) => id !== fieldId),
+        },
+      }
+
+      updateView.mutate({ id: currentView.id, config: updatedConfig })
+    },
+    [currentView, kanbanConfig, cardFields, updateView]
+  )
+
+  return (
+    <CommandList>
+      {/* View Settings Group */}
+      <CommandGroup heading="View Settings">
+        <CommandNavigableItem
+          item={{ id: 'pipeline', label: 'Grouped by pipeline', type: 'pipeline' }}
+          hasChildren
+          onSelect={() => handleNavigate('pipeline', 'Grouped by pipeline')}>
+          <LayoutGrid />
+          <span className="flex-1">Grouped by pipeline</span>
+          <span className="text-xs text-muted-foreground truncate max-w-24">
+            {groupByField?.name ?? 'Not set'}
+          </span>
+        </CommandNavigableItem>
+
+        <CommandNavigableItem
+          item={{ id: 'columns', label: 'Visible columns', type: 'columns' }}
+          hasChildren
+          onSelect={() => handleNavigate('columns', 'Visible columns')}>
+          <Kanban />
+          <span>Visible columns</span>
+        </CommandNavigableItem>
+      </CommandGroup>
+
+      <CommandSeparator />
+
+      {/* Card Fields Group - Sortable */}
+      <CommandGroup heading="Card Fields">
+        {cardFields.length === 0 ? (
+          <CommandEmpty>No card fields configured</CommandEmpty>
+        ) : (
+          <CommandSortable items={cardFields} onReorder={handleCardFieldsReorder}>
+            {cardFields.map((fieldId) => {
+              const field = customFields?.find((f) => f.id === fieldId)
+              return (
+                <CommandSortableItem key={fieldId} id={fieldId} className="py-0 pe-0.5">
+                  <span className="truncate flex-1 flex items-center">
+                    {field?.name ?? fieldId}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleRemoveCardField(fieldId)
+                    }}
+                    className="shrink-0  size-6.5 flex items-center justify-center rounded-full hover:bg-bad-100 hover:text-bad-500">
+                    <Trash2 className="size-3" />
+                  </button>
+                </CommandSortableItem>
+              )
+            })}
+          </CommandSortable>
+        )}
+      </CommandGroup>
+
+      <CommandSeparator />
+
+      {/* Add Card Field */}
+      <CommandGroup>
+        <CommandNavigableItem
+          item={{ id: 'add-field', label: 'Add card field', type: 'add-field' }}
+          hasChildren
+          onSelect={() => handleNavigate('add-field', 'Add card field')}>
+          <Plus />
+          <span>Add card field</span>
+        </CommandNavigableItem>
+      </CommandGroup>
+    </CommandList>
+  )
+}
+
+/**
+ * Pipeline selection stack - select which field to group by
+ */
+function PipelineSelectionStack() {
+  const { currentView, selectFields, tableId } = useTableContext()
+  const kanbanConfig = (currentView?.config as ViewConfig)?.kanban
+
+  const utils = api.useUtils()
+  const updateView = api.tableView.update.useMutation({
+    onMutate: async (newData) => {
+      await utils.tableView.list.cancel({ tableId })
+      const previousViews = utils.tableView.list.getData({ tableId })
+      utils.tableView.list.setData({ tableId }, (old) => {
+        if (!old) return old
+        return old.map((view) =>
+          view.id === newData.id ? { ...view, config: newData.config ?? view.config } : view
+        )
+      })
+      return { previousViews }
+    },
+    onError: (_err, _newData, context) => {
+      if (context?.previousViews) {
+        utils.tableView.list.setData({ tableId }, context.previousViews)
+      }
+    },
+    onSettled: () => {
+      utils.tableView.list.invalidate({ tableId })
+    },
+  })
+
+  /** Handle selecting a field */
+  const handleSelectField = useCallback(
+    (fieldId: string) => {
+      if (!currentView) return
+
+      const updatedConfig: ViewConfig = {
+        ...(currentView.config as ViewConfig),
+        kanban: {
+          ...(currentView.config as ViewConfig).kanban!,
+          groupByFieldId: fieldId,
+          // Reset column order when changing field
+          columnOrder: [],
+          columnSettings: {},
+        },
+      }
+
+      updateView.mutate({ id: currentView.id, config: updatedConfig })
+    },
+    [currentView, updateView]
+  )
+
+  return (
+    <CommandList>
+      <CommandDescription>Select which field to group cards by.</CommandDescription>
+      <CommandSeparator />
+      <CommandRadioGroup value={kanbanConfig?.groupByFieldId} onValueChange={handleSelectField}>
+        {(selectFields ?? []).map((field) => (
+          <CommandRadioItem key={field.id} value={field.id}>
+            {field.name}
+          </CommandRadioItem>
+        ))}
+      </CommandRadioGroup>
+
+      {selectFields && selectFields.length > 0 && <CommandSeparator />}
+
+      <CommandGroup>
+        <CommandItem>
+          <Plus />
+          Create new field
+        </CommandItem>
+      </CommandGroup>
+    </CommandList>
+  )
+}
+
+/**
+ * Visible columns stack - toggle column visibility
+ */
+function VisibleColumnsStack() {
+  const { currentView, selectFields, tableId } = useTableContext()
+  const kanbanConfig = (currentView?.config as ViewConfig)?.kanban
+
+  const utils = api.useUtils()
+  const updateView = api.tableView.update.useMutation({
+    onMutate: async (newData) => {
+      await utils.tableView.list.cancel({ tableId })
+      const previousViews = utils.tableView.list.getData({ tableId })
+      utils.tableView.list.setData({ tableId }, (old) => {
+        if (!old) return old
+        return old.map((view) =>
+          view.id === newData.id ? { ...view, config: newData.config ?? view.config } : view
+        )
+      })
+      return { previousViews }
+    },
+    onError: (_err, _newData, context) => {
+      if (context?.previousViews) {
+        utils.tableView.list.setData({ tableId }, context.previousViews)
+      }
+    },
+    onSettled: () => {
+      utils.tableView.list.invalidate({ tableId })
+    },
+  })
+
+  /** Get the groupBy field and its options (stages) */
+  const groupByField = useMemo(() => {
+    return selectFields?.find((f) => f.id === kanbanConfig?.groupByFieldId)
+  }, [selectFields, kanbanConfig?.groupByFieldId])
+
+  const stages = groupByField?.options?.options ?? []
+  const columnSettings = kanbanConfig?.columnSettings ?? {}
+
+  /** Handle toggling a column's visibility */
+  const handleToggleColumn = useCallback(
+    (columnId: string, isVisible: boolean) => {
+      if (!currentView || !kanbanConfig) return
+
+      const updatedConfig: ViewConfig = {
+        ...(currentView.config as ViewConfig),
+        kanban: {
+          ...kanbanConfig,
+          columnSettings: {
+            ...columnSettings,
+            [columnId]: { ...columnSettings[columnId], isVisible },
+          },
+        },
+      }
+
+      updateView.mutate({ id: currentView.id, config: updatedConfig })
+    },
+    [currentView, kanbanConfig, columnSettings, updateView]
+  )
+
+  if (!groupByField) {
+    return (
+      <CommandList>
+        <CommandEmpty>Select a pipeline field first</CommandEmpty>
+      </CommandList>
+    )
+  }
+
+  return (
+    <CommandList>
+      <CommandDescription>Toggle visibility of kanban columns.</CommandDescription>
+      <CommandSeparator />
+      <CommandGroup>
+        {stages.map((stage) => {
+          const isVisible = columnSettings[stage.value]?.isVisible !== false
+          return (
+            <CommandCheckboxItem
+              key={stage.value}
+              value={stage.value}
+              checked={isVisible}
+              onCheckedChange={(checked) => handleToggleColumn(stage.value, checked)}
+              variant="switch">
+              <div className="flex items-center gap-2">
+                {stage.color && (
+                  <div className="size-3 rounded-full" style={{ backgroundColor: stage.color }} />
+                )}
+                <span>{stage.label}</span>
+              </div>
+            </CommandCheckboxItem>
+          )
+        })}
+      </CommandGroup>
+
+      {stages.length === 0 && <CommandEmpty>No stages configured for this field</CommandEmpty>}
+    </CommandList>
+  )
+}
+
+/**
+ * Add card field stack - search and add fields to cards
+ */
+function AddCardFieldStack() {
+  const { currentView, customFields, tableId } = useTableContext()
+  const kanbanConfig = (currentView?.config as ViewConfig)?.kanban
+  const [search, setSearch] = useState('')
+
+  const utils = api.useUtils()
+  const updateView = api.tableView.update.useMutation({
+    onMutate: async (newData) => {
+      await utils.tableView.list.cancel({ tableId })
+      const previousViews = utils.tableView.list.getData({ tableId })
+      utils.tableView.list.setData({ tableId }, (old) => {
+        if (!old) return old
+        return old.map((view) =>
+          view.id === newData.id ? { ...view, config: newData.config ?? view.config } : view
+        )
+      })
+      return { previousViews }
+    },
+    onError: (_err, _newData, context) => {
+      if (context?.previousViews) {
+        utils.tableView.list.setData({ tableId }, context.previousViews)
+      }
+    },
+    onSettled: () => {
+      utils.tableView.list.invalidate({ tableId })
+    },
+  })
+
+  const cardFields = kanbanConfig?.cardFields ?? []
+
+  /** Fields available to add (not already in cardFields) */
+  const availableFields = useMemo(() => {
+    const currentFieldIds = new Set(cardFields)
+    return (customFields ?? []).filter((f) => !currentFieldIds.has(f.id))
+  }, [customFields, cardFields])
+
+  /** Filtered fields based on search */
+  const filteredFields = useMemo(() => {
+    if (!search) return availableFields
+    const query = search.toLowerCase()
+    return availableFields.filter((f) => f.name.toLowerCase().includes(query))
+  }, [availableFields, search])
+
+  /** Handle adding a field */
+  const handleAddField = useCallback(
+    (fieldId: string) => {
+      if (!currentView || !kanbanConfig) return
+
+      const updatedConfig: ViewConfig = {
+        ...(currentView.config as ViewConfig),
+        kanban: {
+          ...kanbanConfig,
+          cardFields: [...cardFields, fieldId],
+        },
+      }
+
+      updateView.mutate({ id: currentView.id, config: updatedConfig })
+    },
+    [currentView, kanbanConfig, cardFields, updateView]
+  )
+
+  return (
+    <>
+      <CommandInput placeholder="Search fields..." value={search} onValueChange={setSearch} />
+      <CommandList>
+        <CommandEmpty>No fields found.</CommandEmpty>
+        <CommandGroup>
+          {filteredFields.map((field) => (
+            <CommandItem key={field.id} value={field.id} onSelect={() => handleAddField(field.id)}>
+              {field.name}
+              <span className="text-xs text-muted-foreground ml-auto">{field.type}</span>
+            </CommandItem>
+          ))}
+        </CommandGroup>
+      </CommandList>
+    </>
+  )
+}
+
+/**
+ * Main content component that renders based on navigation state
+ */
+function KanbanViewSettingsContent() {
+  const { current } = useCommandNavigation<SettingsNavigationItem>()
+
+  // Render based on current navigation level
+  if (current?.type === 'pipeline') {
+    return <PipelineSelectionStack />
+  }
+  if (current?.type === 'columns') {
+    return <VisibleColumnsStack />
+  }
+  if (current?.type === 'add-field') {
+    return <AddCardFieldStack />
+  }
+
+  // Root stack
+  return <RootStack />
+}
+
+/**
+ * KanbanViewSettings component
+ * Manages kanban-specific view settings like pipeline selection, column visibility, and card fields
+ */
+export function KanbanViewSettings({ className }: KanbanViewSettingsProps) {
+  const [isOpen, setIsOpen] = useState(false)
+
+  return (
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <PopoverTrigger asChild>
+        <div className={className}>
+          <Tooltip content="Kanban settings">
+            <Button variant="ghost" size="sm">
+              <Settings2 className="size-3" />
+              <span className="hidden @lg/controls:block">Settings</span>
+            </Button>
+          </Tooltip>
+        </div>
+      </PopoverTrigger>
+
+      <PopoverContent className="w-[280px] p-0" align="start">
+        <CommandNavigation<SettingsNavigationItem>>
+          <Command shouldFilter={false}>
+            <CommandBreadcrumb rootLabel="Settings" />
+            <KanbanViewSettingsContent />
+          </Command>
+        </CommandNavigation>
+      </PopoverContent>
+    </Popover>
+  )
+}

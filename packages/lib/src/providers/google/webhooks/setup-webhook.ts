@@ -5,7 +5,6 @@ import { eq } from 'drizzle-orm'
 import { env } from '@auxx/config/server'
 import { createScopedLogger } from '@auxx/logger'
 import type { GoogleIntegration } from '../google-oauth'
-import type { ExecutionOptions, UniversalThrottler } from '../../../utils/rate-limiter'
 import { Common } from 'googleapis'
 
 type GaxiosError = Common.GaxiosError
@@ -20,14 +19,8 @@ export async function setupWebhook(params: {
   gmail: GmailV1.Gmail
   integrationId: string
   integration: GoogleIntegration
-  throttler: UniversalThrottler
-  executeWithThrottle: <T>(
-    operation: string,
-    fn: () => Promise<T>,
-    options: ExecutionOptions
-  ) => Promise<T>
 }): Promise<void> {
-  const { gmail, integrationId, integration, executeWithThrottle } = params
+  const { gmail, integrationId, integration } = params
 
   const topicName = `projects/${env.GOOGLE_PROJECT_ID}/topics/${env.GOOGLE_PUBSUB_TOPIC}`
 
@@ -44,24 +37,14 @@ export async function setupWebhook(params: {
       integrationId,
     })
 
-    const response = await executeWithThrottle(
-      'gmail.users.watch',
-      async () =>
-        gmail.users.watch({
-          userId: 'me',
-          requestBody: {
-            topicName: topicName,
-            labelIds: ['INBOX'], // Watch only the inbox
-            labelFilterBehavior: 'INCLUDE',
-          },
-        }),
-      {
-        userId: integrationId,
-        cost: 1, // 1 webhook operation (not Gmail quota units)
-        queue: false, // Don't queue webhook setup
-        priority: 1, // High priority
-      }
-    )
+    const response = await gmail.users.watch({
+      userId: 'me',
+      requestBody: {
+        topicName: topicName,
+        labelIds: ['INBOX'], // Watch only the inbox
+        labelFilterBehavior: 'INCLUDE',
+      },
+    })
 
     logger.info('Gmail watch setup successful:', {
       response: response.data,

@@ -10,9 +10,13 @@ import {
   CommandEmpty,
   CommandGroup,
   CommandItem,
+  CommandNavigation,
+  CommandBreadcrumb,
+  useCommandNavigation,
+  type NavigationItem,
 } from '@auxx/ui/components/command'
 import { Checkbox } from '@auxx/ui/components/checkbox'
-import { ChevronRight, ChevronLeft, File, Folder } from 'lucide-react'
+import { ChevronRight, File, Folder } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatBytes } from '@auxx/lib/utils'
@@ -29,7 +33,15 @@ export interface FileSelection {
 }
 
 /**
- * Props for the FilesPicker component - Enhanced with global search
+ * Navigation item type for files/folders
+ */
+type FileNavigationItem = NavigationItem & {
+  id: string
+  name: string
+}
+
+/**
+ * Props for the FilesPicker component
  */
 interface FilesPickerProps {
   // Selection control
@@ -48,9 +60,9 @@ interface FilesPickerProps {
   maxFileSize?: number
 
   // Enhanced search capabilities
-  enableGlobalSearch?: boolean // Enable search across all files, not just current folder
-  searchPlaceholder?: string // Custom placeholder for search input
-  showPath?: boolean // Show file paths in search results
+  enableGlobalSearch?: boolean
+  searchPlaceholder?: string
+  showPath?: boolean
 
   // Popover control
   open?: boolean
@@ -69,133 +81,62 @@ interface FilesPickerProps {
   maxHeight?: number | string
 
   // Keyboard navigation
-  enableKeyboardNavigation?: boolean // Enable arrow keys and Enter
-  onSelect?: (item: FileItem) => void // Called when item is selected with keyboard
+  enableKeyboardNavigation?: boolean
+  onSelect?: (item: FileItem) => void
 }
 
 /**
- * Files picker component with Popover wrapper
+ * Internal file list component that uses the navigation context
  */
-function filesPicker({
-  selectedFiles = [],
-  selectedFolders = [],
+function FilesList({
+  items,
+  selectedFiles,
+  selectedFolders,
   onChange,
-  allowMultiple = true,
-  allowFiles = true,
-  allowFolders = true,
-  onlyLeafSelection = false,
-  fileExtensions,
-  maxFileSize,
-  enableGlobalSearch = false,
-  searchPlaceholder = 'Search files and folders...',
-  showPath = false,
-  open: controlledOpen,
-  onOpenChange: controlledOnOpenChange,
-  trigger,
-  disabled = false,
-  className,
-  align = 'start',
-  side = 'bottom',
-  sideOffset = 4,
-  width = 400,
-  maxHeight = 400,
-  enableKeyboardNavigation = true,
+  onOpenChange,
+  allowMultiple,
+  allowFiles,
+  allowFolders,
+  onlyLeafSelection,
+  enableGlobalSearch,
+  showPath,
+  search,
+  enableKeyboardNavigation,
+  selectedIndex,
   onSelect,
-}: FilesPickerProps): React.ReactElement {
-  // Internal open state for uncontrolled mode
-  const [internalOpen, setInternalOpen] = useState(false)
+  navigateToFolder,
+}: {
+  items: FileItem[]
+  selectedFiles: string[]
+  selectedFolders: string[]
+  onChange?: (selection: FileSelection) => void
+  onOpenChange: (open: boolean) => void
+  allowMultiple: boolean
+  allowFiles: boolean
+  allowFolders: boolean
+  onlyLeafSelection: boolean
+  enableGlobalSearch: boolean
+  showPath: boolean
+  search: string
+  enableKeyboardNavigation: boolean
+  selectedIndex: number
+  onSelect?: (item: FileItem) => void
+  navigateToFolder: (folderId: string | null) => void
+}) {
+  const { push } = useCommandNavigation<FileNavigationItem>()
 
-  // Use controlled or uncontrolled open state
-  const open = controlledOpen !== undefined ? controlledOpen : internalOpen
-  const onOpenChange = controlledOnOpenChange || setInternalOpen
-  // Filesystem context - Maps-optimized bulk loading
-  const {
-    items,
-    currentFolderId,
-    breadcrumbs,
-    isLoading,
-    navigateToFolder,
-    totalFiles,
-    hasMoreFiles,
-    loadMoreFiles,
-  } = useFilesystemContext()
-
-  // Local state
-  const [search, setSearch] = useState('')
-  const [navigationStack, setNavigationStack] = useState<
-    Array<{ id: string | null; name: string }>
-  >([])
-  const [selectedIndex, setSelectedIndex] = useState(-1) // For keyboard navigation
-  const contentRef = useRef<HTMLDivElement>(null)
-  const searchInputRef = useRef<HTMLInputElement>(null)
-  const isLoadingMoreRef = useRef(false) // Prevent infinite auto-loading
-
-  // Combined selection state
   const allSelectedIds = useMemo(() => {
     return new Set([...selectedFiles, ...selectedFolders])
   }, [selectedFiles, selectedFolders])
-
-  // Note: Search is now handled locally in filteredItems, not globally
-
-  /**
-   * Enhanced filtering with global search capability
-   */
-  const filteredItems = useMemo(() => {
-    let baseItems = items // All items from filesystem
-
-    // Apply search filter first (only if enableGlobalSearch and search query exists)
-    if (enableGlobalSearch && search.trim()) {
-      const query = search.toLowerCase()
-      baseItems = baseItems.filter((item) => {
-        // Search in item name
-        if (item.name.toLowerCase().includes(query)) return true
-
-        // Search in file extension
-        if (item.ext && item.ext.toLowerCase().includes(query)) return true
-
-        // Search in path
-        if (item.path && item.path.toLowerCase().includes(query)) return true
-
-        // Search in MIME type for files
-        if (item.type === 'file' && item.mimeType && item.mimeType.toLowerCase().includes(query))
-          return true
-
-        return false
-      })
-    }
-
-    // Apply additional filters
-    let filtered = baseItems.filter((item) => {
-      // Filter by type
-      if (item.type === 'file' && !allowFiles) return false
-      // Note: Folders are always shown for navigation, even when allowFolders = false
-
-      // Filter files by extension
-      if (item.type === 'file' && fileExtensions && fileExtensions.length > 0) {
-        const ext = item.ext?.toLowerCase()
-        if (!ext || !fileExtensions.map((e: string) => e.toLowerCase()).includes(ext)) {
-          return false
-        }
-      }
-
-      // Filter files by size
-      if (item.type === 'file' && maxFileSize && item.displaySize > maxFileSize) {
-        return false
-      }
-
-      return true
-    })
-
-    return filtered
-  }, [items, search, enableGlobalSearch, allowFiles, allowFolders, fileExtensions, maxFileSize])
 
   /**
    * Handle item selection
    */
   const toggleItem = useCallback(
-    (item: any) => {
+    (item: FileItem) => {
       // If it's a folder and folders are not allowed for selection, or in leaf-only mode, navigate instead
       if (item.type === 'folder' && (!allowFolders || onlyLeafSelection)) {
+        push({ id: item.id, name: item.name, label: item.name })
         navigateToFolder(item.id)
         return
       }
@@ -249,6 +190,7 @@ function filesPicker({
       allowMultiple,
       allowFolders,
       onlyLeafSelection,
+      push,
       navigateToFolder,
       onOpenChange,
     ]
@@ -258,55 +200,467 @@ function filesPicker({
    * Navigate to folder
    */
   const handleNavigateToFolder = useCallback(
-    (item: any) => {
+    (item: FileItem) => {
       if (item.type !== 'folder') return
-
-      setNavigationStack((prev) => [
-        ...prev,
-        { id: currentFolderId, name: breadcrumbs[breadcrumbs.length - 1]?.name || 'Files' },
-      ])
+      push({ id: item.id, name: item.name, label: item.name })
       navigateToFolder(item.id)
-      setSearch('')
+    },
+    [push, navigateToFolder]
+  )
 
-      // Scroll to top
-      if (contentRef.current) {
-        contentRef.current.scrollTop = 0
+  /**
+   * Get appropriate icon for item
+   */
+  const getItemIcon = useCallback((item: FileItem) => {
+    if (item.type === 'folder') {
+      return <Folder className="h-4 w-4" />
+    }
+    return <File className="h-4 w-4" />
+  }, [])
+
+  /**
+   * Check if item is selectable
+   */
+  const isItemSelectable = useCallback(
+    (item: FileItem) => {
+      if (item.type === 'folder' && !allowFolders) {
+        return false
+      }
+      if (onlyLeafSelection && item.type === 'folder') {
+        return false
+      }
+      return true
+    },
+    [allowFolders, onlyLeafSelection]
+  )
+
+  if (items.length === 0) {
+    return (
+      <CommandEmpty>{search ? 'No files or folders found.' : 'This folder is empty.'}</CommandEmpty>
+    )
+  }
+
+  return (
+    <ScrollArea className="max-h-[300px]">
+      <CommandGroup>
+        {items.map((item, index) => {
+          const isSelected = allSelectedIds.has(item.id)
+          const isSelectable = isItemSelectable(item)
+          const canNavigate = item.type === 'folder'
+          const isKeyboardSelected = enableKeyboardNavigation && selectedIndex === index
+
+          return (
+            <CommandItem
+              key={item.id}
+              value={item.id}
+              onSelect={() => {
+                if (onSelect) onSelect(item)
+                toggleItem(item)
+              }}
+              className={cn(
+                'flex cursor-pointer items-center justify-between px-2',
+                isKeyboardSelected && 'bg-accent text-accent-foreground'
+              )}>
+              <div className="flex items-center space-x-2 flex-1 min-w-0">
+                {isSelectable && (
+                  <Checkbox
+                    checked={isSelected}
+                    onCheckedChange={() => toggleItem(item)}
+                    aria-label={`Select ${item.name}`}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                )}
+
+                {getItemIcon(item)}
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium truncate">{item.name}</div>
+
+                  {item.type === 'file' && (
+                    <div className="text-xs text-muted-foreground">
+                      {formatBytes(item.displaySize)}
+                      {item.ext && ` • ${item.ext.toUpperCase()}`}
+
+                      {(showPath || (enableGlobalSearch && search.trim())) && (
+                        <>
+                          {' • '}
+                          <span className="truncate">
+                            {(item as FileItem & { hierarchy?: { fullPath: string } }).hierarchy
+                              ?.fullPath || item.path}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {item.type === 'folder' && enableGlobalSearch && search.trim() && item.path && (
+                    <div className="text-xs text-muted-foreground truncate">{item.path}</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-1">
+                {canNavigate && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleNavigateToFolder(item)
+                    }}>
+                    <ChevronRight className="h-4 w-4" />
+                    <span className="sr-only">Open folder</span>
+                  </Button>
+                )}
+              </div>
+            </CommandItem>
+          )
+        })}
+      </CommandGroup>
+    </ScrollArea>
+  )
+}
+
+/**
+ * Inner content component that has access to CommandNavigation context
+ */
+function FilesPickerContent({
+  items,
+  filteredItems,
+  selectedFiles,
+  selectedFolders,
+  onChange,
+  onOpenChange,
+  allowMultiple,
+  allowFiles,
+  allowFolders,
+  onlyLeafSelection,
+  enableGlobalSearch,
+  showPath,
+  search,
+  setSearch,
+  searchPlaceholder,
+  totalFiles,
+  hasMoreFiles,
+  enableKeyboardNavigation,
+  onSelect,
+  navigateToFolder,
+  isLoading,
+  isGlobalSearchActive,
+  searchInputRef,
+}: {
+  items: FileItem[]
+  filteredItems: FileItem[]
+  selectedFiles: string[]
+  selectedFolders: string[]
+  onChange?: (selection: FileSelection) => void
+  onOpenChange: (open: boolean) => void
+  allowMultiple: boolean
+  allowFiles: boolean
+  allowFolders: boolean
+  onlyLeafSelection: boolean
+  enableGlobalSearch: boolean
+  showPath: boolean
+  search: string
+  setSearch: (search: string) => void
+  searchPlaceholder: string
+  totalFiles: number
+  hasMoreFiles: boolean
+  enableKeyboardNavigation: boolean
+  onSelect?: (item: FileItem) => void
+  navigateToFolder: (folderId: string | null) => void
+  isLoading: boolean
+  isGlobalSearchActive: boolean
+  searchInputRef: React.RefObject<HTMLInputElement | null>
+}) {
+  const { handleKeyDown: handleNavKeyDown } = useCommandNavigation<FileNavigationItem>()
+  const [selectedIndex, setSelectedIndex] = useState(-1)
+
+  // Reset selected index when filtered items change
+  useEffect(() => {
+    setSelectedIndex(-1)
+  }, [filteredItems])
+
+  // Get selected item for keyboard navigation
+  const selectedItem = useMemo(() => {
+    if (selectedIndex < 0 || selectedIndex >= filteredItems.length) return null
+    const item = filteredItems[selectedIndex]
+    return item ? { id: item.id, label: item.name, name: item.name } : null
+  }, [selectedIndex, filteredItems])
+
+  /**
+   * Toggle item selection
+   */
+  const toggleItem = useCallback(
+    (item: FileItem) => {
+      const allSelectedIds = new Set([...selectedFiles, ...selectedFolders])
+      const isSelected = allSelectedIds.has(item.id)
+
+      if (isSelected) {
+        if (item.type === 'file') {
+          onChange?.({
+            files: selectedFiles.filter((id) => id !== item.id),
+            folders: selectedFolders,
+          })
+        } else {
+          onChange?.({
+            files: selectedFiles,
+            folders: selectedFolders.filter((id) => id !== item.id),
+          })
+        }
+      } else {
+        if (!allowMultiple) {
+          if (item.type === 'file') {
+            onChange?.({ files: [item.id], folders: [] })
+          } else {
+            onChange?.({ files: [], folders: [item.id] })
+          }
+          onOpenChange(false)
+        } else {
+          if (item.type === 'file') {
+            onChange?.({ files: [...selectedFiles, item.id], folders: selectedFolders })
+          } else {
+            onChange?.({ files: selectedFiles, folders: [...selectedFolders, item.id] })
+          }
+        }
       }
     },
-    [currentFolderId, breadcrumbs, navigateToFolder]
+    [selectedFiles, selectedFolders, onChange, allowMultiple, onOpenChange]
   )
 
   /**
-   * Navigate back
+   * Keyboard handler combining navigation and selection
    */
-  const navigateBack = useCallback(() => {
-    if (navigationStack.length === 0) return
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (!enableKeyboardNavigation) return
 
-    const newStack = [...navigationStack]
-    const prevLevel = newStack.pop()
-    setNavigationStack(newStack)
+      // Handle navigation keys (←, →, Enter)
+      handleNavKeyDown(e, {
+        selectedItem,
+        onNavigateRight: (item) => {
+          const fileItem = filteredItems.find((f) => f.id === item.id)
+          if (fileItem?.type === 'folder') {
+            navigateToFolder(fileItem.id)
+            setSelectedIndex(-1)
+            return true
+          }
+          return false
+        },
+        onSelect: (item) => {
+          const fileItem = filteredItems.find((f) => f.id === item.id)
+          if (fileItem) {
+            if (onSelect) onSelect(fileItem)
+            // For folders in leaf-only mode, navigate instead of select
+            if (fileItem.type === 'folder' && (!allowFolders || onlyLeafSelection)) {
+              navigateToFolder(fileItem.id)
+              setSelectedIndex(-1)
+            } else {
+              toggleItem(fileItem)
+            }
+          }
+        },
+      })
 
-    if (prevLevel) {
-      navigateToFolder(prevLevel.id)
-    }
-  }, [navigationStack, navigateToFolder])
-
-  /**
-   * Navigate to specific breadcrumb level
-   */
-  const navigateToBreadcrumb = useCallback(
-    (index: number) => {
-      const targetCrumb = breadcrumbs[index]
-      if (!targetCrumb) return
-
-      // Reset navigation stack to match the new level
-      setNavigationStack([])
-      navigateToFolder(targetCrumb.id)
+      // Handle selection keys (↑, ↓)
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setSelectedIndex((prev) => (prev < filteredItems.length - 1 ? prev + 1 : 0))
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSelectedIndex((prev) => (prev > 0 ? prev - 1 : filteredItems.length - 1))
+      } else if (e.key === 'Escape') {
+        onOpenChange(false)
+      }
     },
-    [breadcrumbs, navigateToFolder]
+    [
+      enableKeyboardNavigation,
+      handleNavKeyDown,
+      selectedItem,
+      filteredItems,
+      navigateToFolder,
+      onSelect,
+      allowFolders,
+      onlyLeafSelection,
+      toggleItem,
+      onOpenChange,
+    ]
   )
 
-  // Auto-load more files when approaching end of list (for global search) - with infinite loop protection
+  return (
+    <Command shouldFilter={false} onKeyDown={handleKeyDown}>
+      <CommandList>
+        <CommandInput
+          ref={searchInputRef}
+          placeholder={
+            enableGlobalSearch
+              ? `Search ${totalFiles} files...`
+              : searchPlaceholder || 'Search files and folders...'
+          }
+          value={search}
+          onValueChange={setSearch}
+          className="h-9"
+          autoFocus
+        />
+
+        {/* Global search indicator */}
+        {isGlobalSearchActive && (
+          <div className="px-3 py-1 text-xs text-muted-foreground bg-muted/50 border-b">
+            Searching across all files... ({filteredItems.length} results)
+          </div>
+        )}
+
+        <CommandBreadcrumb rootLabel="Files" />
+
+        {isLoading ? (
+          <div className="py-6 text-center text-sm text-muted-foreground">Loading files...</div>
+        ) : (
+          <FilesList
+            items={filteredItems}
+            selectedFiles={selectedFiles}
+            selectedFolders={selectedFolders}
+            onChange={onChange}
+            onOpenChange={onOpenChange}
+            allowMultiple={allowMultiple}
+            allowFiles={allowFiles}
+            allowFolders={allowFolders}
+            onlyLeafSelection={onlyLeafSelection}
+            enableGlobalSearch={enableGlobalSearch}
+            showPath={showPath}
+            search={search}
+            enableKeyboardNavigation={enableKeyboardNavigation}
+            selectedIndex={selectedIndex}
+            onSelect={onSelect}
+            navigateToFolder={navigateToFolder}
+          />
+        )}
+      </CommandList>
+
+      {/* Keyboard shortcuts footer */}
+      {enableKeyboardNavigation && (
+        <div className="border-t px-3 py-2 text-xs text-muted-foreground bg-neutral-50/50">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="flex items-center gap-1">
+                <span>Select</span>
+                <kbd className="px-1.5 py-0.5 bg-white border rounded text-[10px] font-mono">↵</kbd>
+              </span>
+              {!isGlobalSearchActive && (
+                <>
+                  <span className="flex items-center gap-1">
+                    <span>Open</span>
+                    <kbd className="px-1.5 py-0.5 bg-white border rounded text-[10px] font-mono">
+                      →
+                    </kbd>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span>Back</span>
+                    <kbd className="px-1.5 py-0.5 bg-white border rounded text-[10px] font-mono">
+                      ←
+                    </kbd>
+                  </span>
+                </>
+              )}
+            </div>
+            {enableGlobalSearch && (
+              <div className="text-xs">
+                {search.trim() ? `${totalFiles} files total` : `${filteredItems.length} items`}
+                {hasMoreFiles && search.trim() && ' (loading more...)'}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </Command>
+  )
+}
+
+/**
+ * Files picker component with Popover wrapper
+ */
+function filesPicker({
+  selectedFiles = [],
+  selectedFolders = [],
+  onChange,
+  allowMultiple = true,
+  allowFiles = true,
+  allowFolders = true,
+  onlyLeafSelection = false,
+  fileExtensions,
+  maxFileSize,
+  enableGlobalSearch = false,
+  searchPlaceholder = 'Search files and folders...',
+  showPath = false,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+  trigger,
+  disabled = false,
+  className,
+  align = 'start',
+  side = 'bottom',
+  sideOffset = 4,
+  width = 400,
+  enableKeyboardNavigation = true,
+  onSelect,
+}: FilesPickerProps): React.ReactElement {
+  // Internal open state for uncontrolled mode
+  const [internalOpen, setInternalOpen] = useState(false)
+
+  // Use controlled or uncontrolled open state
+  const open = controlledOpen !== undefined ? controlledOpen : internalOpen
+  const onOpenChange = controlledOnOpenChange || setInternalOpen
+
+  // Filesystem context
+  const { items, isLoading, navigateToFolder, totalFiles, hasMoreFiles, loadMoreFiles } =
+    useFilesystemContext()
+
+  // Local state
+  const [search, setSearch] = useState('')
+  const contentRef = useRef<HTMLDivElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const isLoadingMoreRef = useRef(false)
+
+  /**
+   * Enhanced filtering with global search capability
+   */
+  const filteredItems = useMemo(() => {
+    let baseItems = items
+
+    // Apply search filter first
+    if (enableGlobalSearch && search.trim()) {
+      const query = search.toLowerCase()
+      baseItems = baseItems.filter((item) => {
+        if (item.name.toLowerCase().includes(query)) return true
+        if (item.ext && item.ext.toLowerCase().includes(query)) return true
+        if (item.path && item.path.toLowerCase().includes(query)) return true
+        if (item.type === 'file' && item.mimeType && item.mimeType.toLowerCase().includes(query))
+          return true
+        return false
+      })
+    }
+
+    // Apply additional filters
+    const filtered = baseItems.filter((item) => {
+      if (item.type === 'file' && !allowFiles) return false
+
+      if (item.type === 'file' && fileExtensions && fileExtensions.length > 0) {
+        const ext = item.ext?.toLowerCase()
+        if (!ext || !fileExtensions.map((e: string) => e.toLowerCase()).includes(ext)) {
+          return false
+        }
+      }
+
+      if (item.type === 'file' && maxFileSize && item.displaySize > maxFileSize) {
+        return false
+      }
+
+      return true
+    })
+
+    return filtered
+  }, [items, search, enableGlobalSearch, allowFiles, fileExtensions, maxFileSize])
+
+  // Auto-load more files when approaching end of list
   useEffect(() => {
     if (!enableGlobalSearch || !hasMoreFiles || !filteredItems.length) return
 
@@ -326,99 +680,10 @@ function filesPicker({
    */
   useEffect(() => {
     if (!open) {
-      setNavigationStack([])
       setSearch('')
-      setSelectedIndex(-1)
-      navigateToFolder(null) // Reset to root
+      navigateToFolder(null)
     }
-  }, [open, navigateToFolder]) // Remove setSearchQuery from deps to prevent infinite loops
-
-  /**
-   * Keyboard navigation handler
-   */
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (!enableKeyboardNavigation) return
-
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        setSelectedIndex((prev) => (prev < filteredItems.length - 1 ? prev + 1 : 0))
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        setSelectedIndex((prev) => (prev > 0 ? prev - 1 : filteredItems.length - 1))
-      } else if (e.key === 'ArrowLeft' && breadcrumbs.length > 1 && !search.trim()) {
-        e.preventDefault()
-        const parentBreadcrumb = breadcrumbs[breadcrumbs.length - 2]
-        navigateToFolder(parentBreadcrumb.id)
-      } else if (e.key === 'ArrowRight' && selectedIndex >= 0) {
-        e.preventDefault()
-        const selectedItem = filteredItems[selectedIndex]
-        if (selectedItem?.type === 'folder') {
-          handleNavigateToFolder(selectedItem)
-        }
-      } else if (e.key === 'Enter' && selectedIndex >= 0) {
-        e.preventDefault()
-        const selectedItem = filteredItems[selectedIndex]
-        if (selectedItem) {
-          if (onSelect) {
-            onSelect(selectedItem)
-          }
-          toggleItem(selectedItem)
-        }
-      } else if (e.key === 'Escape') {
-        onOpenChange(false)
-      }
-    },
-    [
-      enableKeyboardNavigation,
-      filteredItems,
-      breadcrumbs,
-      search,
-      selectedIndex,
-      handleNavigateToFolder,
-      onSelect,
-      toggleItem,
-      navigateToFolder,
-      onOpenChange,
-    ]
-  )
-
-  /**
-   * Reset selected index when filtered items change
-   */
-  useEffect(() => {
-    setSelectedIndex(-1)
-  }, [filteredItems])
-
-  /**
-   * Get appropriate icon for item
-   */
-  const getItemIcon = useCallback((item: any) => {
-    if (item.type === 'folder') {
-      return <Folder className="h-4 w-4" />
-    }
-    return <File className="h-4 w-4" />
-  }, [])
-
-  /**
-   * Check if item is selectable
-   */
-  const isItemSelectable = useCallback(
-    (item: any) => {
-      // Folders are not selectable when allowFolders is false
-      if (item.type === 'folder' && !allowFolders) {
-        return false
-      }
-
-      // Folders are not selectable in leaf-only selection mode
-      if (onlyLeafSelection && item.type === 'folder') {
-        return false
-      }
-
-      return true
-    },
-    [allowFolders, onlyLeafSelection]
-  )
+  }, [open, navigateToFolder])
 
   // Auto-focus search input when picker opens
   useEffect(() => {
@@ -427,7 +692,23 @@ function filesPicker({
     }
   }, [open])
 
-  // If trigger is provided, wrap in Popover
+  // Determine if global search is active (for hiding breadcrumb)
+  const isGlobalSearchActive = enableGlobalSearch && !!search.trim()
+
+  /**
+   * Handle navigation change from CommandNavigation
+   */
+  const handleNavigationChange = useCallback(
+    (stack: FileNavigationItem[], current: FileNavigationItem | null) => {
+      navigateToFolder(current?.id || null)
+      // Scroll to top when navigating
+      if (contentRef.current) {
+        contentRef.current.scrollTop = 0
+      }
+    },
+    [navigateToFolder]
+  )
+
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild disabled={disabled}>
@@ -442,195 +723,36 @@ function filesPicker({
         style={{
           width: typeof width === 'number' ? `${width}px` : width,
         }}>
-        <Command shouldFilter={false} onKeyDown={handleKeyDown}>
-          <CommandList>
-            <CommandInput
-              ref={searchInputRef}
-              placeholder={
-                enableGlobalSearch
-                  ? `Search ${totalFiles} files...`
-                  : searchPlaceholder || 'Search files and folders...'
-              }
-              value={search}
-              onValueChange={setSearch}
-              className="h-9"
-              autoFocus
-            />
-
-            {/* Global search indicator */}
-            {enableGlobalSearch && search.trim() && (
-              <div className="px-3 py-1 text-xs text-muted-foreground bg-muted/50 border-b">
-                Searching across all files... ({filteredItems.length} results)
-              </div>
-            )}
-
-            {/* Breadcrumb Navigation */}
-            {!search && breadcrumbs.length > 1 && (
-              <div className="flex items-center border-b px-2 py-1 text-sm">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={navigateBack}
-                  disabled={navigationStack.length === 0}
-                  className="h-6 w-6 p-0">
-                  <ChevronLeft className="h-3.5 w-3.5" />
-                  <span className="sr-only">Back</span>
-                </Button>
-
-                <div className="flex items-center overflow-x-auto">
-                  {breadcrumbs.map((crumb, index) => (
-                    <div key={crumb.id || 'root'} className="flex items-center">
-                      {index > 0 && (
-                        <ChevronRight className="mx-1 h-3.5 w-3.5 shrink-0 opacity-50" />
-                      )}
-                      <button
-                        onClick={() => navigateToBreadcrumb(index)}
-                        className={cn(
-                          'whitespace-nowrap px-1 hover:underline',
-                          index === breadcrumbs.length - 1 ? 'font-semibold' : ''
-                        )}>
-                        {crumb.name}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {isLoading ? (
-              <div className="py-6 text-center text-sm text-muted-foreground">Loading files...</div>
-            ) : filteredItems.length === 0 ? (
-              <CommandEmpty>
-                {search ? 'No files or folders found.' : 'This folder is empty.'}
-              </CommandEmpty>
-            ) : (
-              <CommandGroup>
-                <ScrollArea
-                  className="max-h-[300px]"
-                  style={{
-                    maxHeight: typeof maxHeight === 'number' ? `${maxHeight}px` : maxHeight,
-                  }}>
-                  {filteredItems.map((item, index) => {
-                    const isSelected = allSelectedIds.has(item.id)
-                    const isSelectable = isItemSelectable(item)
-                    const canNavigate = item.type === 'folder'
-                    const isKeyboardSelected = enableKeyboardNavigation && selectedIndex === index
-
-                    return (
-                      <CommandItem
-                        key={item.id}
-                        value={item.id}
-                        onSelect={() => toggleItem(item)}
-                        className={cn(
-                          'flex cursor-pointer items-center justify-between px-2',
-                          isKeyboardSelected && 'bg-accent text-accent-foreground'
-                        )}>
-                        <div className="flex items-center space-x-2 flex-1 min-w-0">
-                          {isSelectable && (
-                            <Checkbox
-                              checked={isSelected}
-                              onCheckedChange={() => toggleItem(item)}
-                              aria-label={`Select ${item.name}`}
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                          )}
-
-                          {getItemIcon(item)}
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium truncate">{item.name}</div>
-
-                            {/* Enhanced file info with optional path display */}
-                            {item.type === 'file' && (
-                              <div className="text-xs text-muted-foreground">
-                                {formatBytes(item.displaySize)}
-                                {item.ext && ` • ${item.ext.toUpperCase()}`}
-
-                                {/* Show path for global search results or when explicitly requested */}
-                                {(showPath || (enableGlobalSearch && search.trim())) && (
-                                  <>
-                                    {' • '}
-                                    <span className="truncate">
-                                      {(item as any).hierarchy?.fullPath || item.path}
-                                    </span>
-                                  </>
-                                )}
-                              </div>
-                            )}
-
-                            {/* Show folder path for global search results */}
-                            {item.type === 'folder' &&
-                              enableGlobalSearch &&
-                              search.trim() &&
-                              item.path && (
-                                <div className="text-xs text-muted-foreground truncate">
-                                  {item.path}
-                                </div>
-                              )}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center space-x-1">
-                          {canNavigate && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleNavigateToFolder(item)
-                              }}>
-                              <ChevronRight className="h-4 w-4" />
-                              <span className="sr-only">Open folder</span>
-                            </Button>
-                          )}
-                        </div>
-                      </CommandItem>
-                    )
-                  })}
-                </ScrollArea>
-              </CommandGroup>
-            )}
-          </CommandList>
-
-          {/* Keyboard shortcuts footer */}
-          {enableKeyboardNavigation && (
-            <div className="border-t px-3 py-2 text-xs text-muted-foreground bg-neutral-50/50">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <span className="flex items-center gap-1">
-                    <span>Select</span>
-                    <kbd className="px-1.5 py-0.5 bg-white border rounded text-[10px] font-mono">
-                      ↵
-                    </kbd>
-                  </span>
-                  {(!search || !enableGlobalSearch) && (
-                    <>
-                      <span className="flex items-center gap-1">
-                        <span>Open</span>
-                        <kbd className="px-1.5 py-0.5 bg-white border rounded text-[10px] font-mono">
-                          →
-                        </kbd>
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <span>Back</span>
-                        <kbd className="px-1.5 py-0.5 bg-white border rounded text-[10px] font-mono">
-                          ←
-                        </kbd>
-                      </span>
-                    </>
-                  )}
-                </div>
-                {enableGlobalSearch && (
-                  <div className="text-xs">
-                    {search.trim() ? `${totalFiles} files total` : `${filteredItems.length} items`}
-                    {hasMoreFiles && search.trim() && ' (loading more...)'}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </Command>
-      </PopoverContent>{' '}
+        <CommandNavigation<FileNavigationItem>
+          isGlobalSearch={isGlobalSearchActive}
+          onNavigationChange={handleNavigationChange}>
+          <FilesPickerContent
+            items={items}
+            filteredItems={filteredItems}
+            selectedFiles={selectedFiles}
+            selectedFolders={selectedFolders}
+            onChange={onChange}
+            onOpenChange={onOpenChange}
+            allowMultiple={allowMultiple}
+            allowFiles={allowFiles}
+            allowFolders={allowFolders}
+            onlyLeafSelection={onlyLeafSelection}
+            enableGlobalSearch={enableGlobalSearch}
+            showPath={showPath}
+            search={search}
+            setSearch={setSearch}
+            searchPlaceholder={searchPlaceholder}
+            totalFiles={totalFiles}
+            hasMoreFiles={hasMoreFiles}
+            enableKeyboardNavigation={enableKeyboardNavigation}
+            onSelect={onSelect}
+            navigateToFolder={navigateToFolder}
+            isLoading={isLoading}
+            isGlobalSearchActive={isGlobalSearchActive}
+            searchInputRef={searchInputRef}
+          />
+        </CommandNavigation>
+      </PopoverContent>
     </Popover>
   )
 }

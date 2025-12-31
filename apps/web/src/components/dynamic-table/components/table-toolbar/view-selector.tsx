@@ -235,12 +235,15 @@ export function ViewSelector({
           }
         : undefined
 
-    await createView.mutateAsync({
+    const newView = await createView.mutateAsync({
       tableId,
       name: newViewName,
       config,
       newField,
     })
+
+    // Navigate to the newly created view
+    onViewSelect(newView.id)
 
     // Reset state
     setNewViewName('')

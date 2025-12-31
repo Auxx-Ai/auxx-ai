@@ -320,7 +320,9 @@ function ContactDrawerContent({
                 </TabsContent>
                 <TabsContent value="timeline" className="w-full h-full mt-0 ">
                   <ScrollArea className="flex-1">
-                    <MemoTimelineTab entityType="contact" entityId={contactId} />
+                    <div className="p-3">
+                      <MemoTimelineTab entityType="contact" entityId={contactId} />
+                    </div>
                   </ScrollArea>
                 </TabsContent>
                 <TabsContent value="parts" className="w-full">
