@@ -171,6 +171,9 @@ import {
   CaseSensitive,
   TextCursorInput,
   ListFilter,
+  CalendarClock,
+  ListChecks,
+  Link2,
 } from 'lucide-react'
 
 /** Color configuration for icons */
@@ -481,6 +484,9 @@ export const ICON_DATA: IconItem[] = [
   { id: 'text', label: 'Text', icon: CaseSensitive },
   { id: 'text-cursor-input', label: 'Text Cursor Input', icon: TextCursorInput },
   { id: 'list-filter', label: 'List Filter', icon: ListFilter },
+  { id: 'calendar-clock', label: 'Calendar Clock', icon: CalendarClock },
+  { id: 'list-checks', label: 'List Checks', icon: ListChecks },
+  { id: 'link-2', label: 'Link 2', icon: Link2 },
 ]
 
 /** Get icon item by ID */

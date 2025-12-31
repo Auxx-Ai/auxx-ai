@@ -2,7 +2,7 @@
 'use client'
 
 import { useState, useMemo, useCallback } from 'react'
-import { Settings2, Kanban, Plus, LayoutGrid, X, Trash2 } from 'lucide-react'
+import { Settings2, Plus, LayoutGrid, X, Trash2, Columns3 } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import {
@@ -30,6 +30,10 @@ import { Tooltip } from '~/components/global/tooltip'
 import { api } from '~/trpc/react'
 import type { ViewConfig } from '../../types'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { getColorSwatch } from '@auxx/lib/custom-fields/client'
+import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
+import { cn } from '@auxx/ui/lib/utils'
+import { EntityIcon } from '~/components/pickers/icon-picker'
 
 /** Navigation item type for KanbanViewSettings */
 interface SettingsNavigationItem extends NavigationItem {
@@ -150,7 +154,7 @@ function RootStack() {
           item={{ id: 'columns', label: 'Visible columns', type: 'columns' }}
           hasChildren
           onSelect={() => handleNavigate('columns', 'Visible columns')}>
-          <Kanban />
+          <Columns3 />
           <span>Visible columns</span>
         </CommandNavigableItem>
       </CommandGroup>
@@ -359,7 +363,7 @@ function VisibleColumnsStack() {
               variant="switch">
               <div className="flex items-center gap-2">
                 {stage.color && (
-                  <div className="size-3 rounded-full" style={{ backgroundColor: stage.color }} />
+                  <div className={cn('size-3 rounded-full', getColorSwatch(stage.color))} />
                 )}
                 <span>{stage.label}</span>
               </div>
@@ -448,9 +452,14 @@ function AddCardFieldStack() {
               <CommandItem
                 key={field.id}
                 value={field.id}
-                onSelect={() => handleAddField(field.id)}>
+                onSelect={() => handleAddField(field.id)}
+                className="ps-1 py-0">
+                <EntityIcon
+                  iconId={fieldTypeOptions.find((f) => f.value === field.type)?.iconId ?? 'circle'}
+                  color="purple"
+                  variant="full"
+                />
                 {field.name}
-                <span className="text-xs text-muted-foreground ml-auto">{field.type}</span>
               </CommandItem>
             ))}
           </CommandGroup>

@@ -251,28 +251,30 @@ function CommandBreadcrumb({
   return (
     <div className={cn('flex items-center border-b px-2 py-1 text-sm', className)}>
       {showBackButton && (
-        <Button variant="ghost" size="icon-xs" className="mr-1" onClick={pop}>
+        <Button variant="ghost" size="icon-xs" onClick={pop}>
           <ChevronLeft />
           <span className="sr-only">Back</span>
         </Button>
       )}
 
       <div className="flex items-center overflow-x-auto">
-        <button onClick={reset} className="whitespace-nowrap px-1 hover:underline">
+        <Button variant="ghost" size="xs" className="" onClick={reset}>
           {rootLabel}
-        </button>
+        </Button>
 
         {stack.map((item, index) => {
           const isLast = index === stack.length - 1
-
+          const label = renderItem ? renderItem(item, index, isLast) : item.label
           return (
             <div key={item.id} className="flex items-center">
-              <ChevronRight className="mx-1 size-3.5 shrink-0 opacity-50" />
-              <button
-                onClick={() => navigateTo(index)}
-                className={cn('whitespace-nowrap px-1 hover:underline', isLast && 'font-semibold')}>
-                {renderItem ? renderItem(item, index, isLast) : item.label}
-              </button>
+              <ChevronRight className="size-3.5 shrink-0 opacity-50" />
+              {isLast ? (
+                <span className="text-xs font-medium select-none">{label}</span>
+              ) : (
+                <Button variant="ghost" size="xs" className="" onClick={() => navigateTo(index)}>
+                  {label}
+                </Button>
+              )}
             </div>
           )
         })}
@@ -497,7 +499,7 @@ function CommandCheckboxItem({
           <span className="size-4" /> // Spacer to maintain alignment
         )
       case 'switch':
-        return <Switch checked={checked} size="sm" className="pointer-events-none" />
+        return <Switch checked={checked} size="xs" className="pointer-events-none" />
       case 'checkbox':
       default:
         return <Checkbox checked={checked} className="pointer-events-none" />

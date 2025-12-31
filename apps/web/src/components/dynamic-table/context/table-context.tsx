@@ -5,14 +5,14 @@
 import { createContext, useContext, type ReactNode } from 'react'
 import type { Table } from '@tanstack/react-table'
 import type { TableView, TableFilter, BulkAction, DragDropConfig, ColumnFormatting } from '../types'
-import type { ModelType } from '@auxx/types/custom-field'
+import type { ModelType, SelectOptionColor } from '@auxx/types/custom-field'
 
 /** Select field for kanban grouping */
 interface SelectField {
   id: string
   name: string
   type?: string
-  options?: { options?: Array<{ id: string; label: string; color?: string }> }
+  options?: { options?: Array<{ value: string; label: string; color?: SelectOptionColor }> }
 }
 
 /** Custom field definition for kanban card display */

@@ -3,7 +3,13 @@
 export { CustomFieldService, normalizeCustomFieldValue } from './custom-field-service'
 
 // Export unified types from @auxx/database
-export { ModelTypes, type ModelType, getFieldTypeMinWidth, getFieldTypeMaxWidth } from './types'
+export {
+  ModelTypes,
+  type ModelType,
+  getFieldTypeMinWidth,
+  getFieldTypeMaxWidth,
+  fieldTypeOptions,
+} from './types'
 
 // Export built-in field utilities
 export { isBuiltInField, getBuiltInFieldHandler, BUILT_IN_FIELDS } from './built-in-fields'

@@ -14,7 +14,7 @@ const switchVariants = cva(
   'peer inline-flex shrink-0 cursor-pointer items-center border-2 border-transparent shadow-xs transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 ',
   {
     variants: {
-      size: { default: 'h-5 w-9', sm: 'h-4 w-7' },
+      size: { default: 'h-5 w-9', sm: 'h-4 w-7', xs: 'h-3 w-5' },
       variant: {
         default: 'rounded-full',
         square: 'rounded',
@@ -39,6 +39,7 @@ const thumbVariants = cva(
       size: {
         default: 'size-4 data-[state=checked]:translate-x-4',
         sm: 'size-3 data-[state=checked]:translate-x-3',
+        xs: 'size-2 data-[state=checked]:translate-x-2',
       },
       color: { default: 'bg-background', dark: 'bg-secondary' },
       variant: {
