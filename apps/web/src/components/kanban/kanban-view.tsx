@@ -380,8 +380,9 @@ export function KanbanView<TData extends KanbanRow>({
   const columnData = useMemo(() => {
     const grouped: Record<string, TData[]> = {}
 
-    // Initialize all columns (including empty ones)
-    columns.forEach((col) => {
+    // Initialize ALL columns (including hidden ones)
+    // This ensures items keep their correct grouping even when column is hidden
+    allColumns.forEach((col) => {
       grouped[col.id] = []
     })
 
@@ -396,12 +397,13 @@ export function KanbanView<TData extends KanbanRow>({
       if (grouped[columnId]) {
         grouped[columnId].push(item)
       } else {
+        // Only items with truly invalid/deleted column values go to No Stage
         grouped[NO_STATUS_COLUMN_ID] && grouped[NO_STATUS_COLUMN_ID].push(item)
       }
     })
 
     return grouped
-  }, [data, columns, config.groupByFieldId, getValue])
+  }, [data, allColumns, config.groupByFieldId, getValue])
 
   // DnD sensors
   const sensors = useSensors(

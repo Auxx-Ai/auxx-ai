@@ -37,6 +37,8 @@ interface VirtualTableRowProps<TData> {
   ref?: React.Ref<HTMLDivElement>
   /** Whether cell selection is enabled - passed as prop to avoid context re-renders */
   cellSelectionEnabled?: boolean
+  /** Version that changes when column layout changes - busts memoization */
+  columnLayoutVersion?: number
 }
 
 const CELL_DEFAULT =
@@ -260,6 +262,9 @@ function areRowPropsEqual<TData>(
 
   // Compare cell selection
   if (prevProps.cellSelectionEnabled !== nextProps.cellSelectionEnabled) return false
+
+  // Compare column layout version - forces re-render when sizing/visibility/order changes
+  if (prevProps.columnLayoutVersion !== nextProps.columnLayoutVersion) return false
 
   return true
 }

@@ -29,6 +29,7 @@ import { useTableContext } from '../../context/table-context'
 import { Tooltip } from '~/components/global/tooltip'
 import { api } from '~/trpc/react'
 import type { ViewConfig } from '../../types'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 
 /** Navigation item type for KanbanViewSettings */
 interface SettingsNavigationItem extends NavigationItem {
@@ -130,7 +131,6 @@ function RootStack() {
     },
     [currentView, kanbanConfig, cardFields, updateView]
   )
-
   return (
     <CommandList>
       {/* View Settings Group */}
@@ -156,11 +156,10 @@ function RootStack() {
       </CommandGroup>
 
       <CommandSeparator />
-
       {/* Card Fields Group - Sortable */}
       <CommandGroup heading="Card Fields">
         {cardFields.length === 0 ? (
-          <CommandEmpty>No card fields configured</CommandEmpty>
+          <div className="text-sm text-muted-foreground px-2">No card fields configured</div>
         ) : (
           <CommandSortable items={cardFields} onReorder={handleCardFieldsReorder}>
             {cardFields.map((fieldId) => {
@@ -443,14 +442,19 @@ function AddCardFieldStack() {
       <CommandInput placeholder="Search fields..." value={search} onValueChange={setSearch} />
       <CommandList>
         <CommandEmpty>No fields found.</CommandEmpty>
-        <CommandGroup>
-          {filteredFields.map((field) => (
-            <CommandItem key={field.id} value={field.id} onSelect={() => handleAddField(field.id)}>
-              {field.name}
-              <span className="text-xs text-muted-foreground ml-auto">{field.type}</span>
-            </CommandItem>
-          ))}
-        </CommandGroup>
+        {filteredFields.length > 0 && (
+          <CommandGroup>
+            {filteredFields.map((field) => (
+              <CommandItem
+                key={field.id}
+                value={field.id}
+                onSelect={() => handleAddField(field.id)}>
+                {field.name}
+                <span className="text-xs text-muted-foreground ml-auto">{field.type}</span>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        )}
       </CommandList>
     </>
   )

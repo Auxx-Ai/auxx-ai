@@ -2,7 +2,7 @@
 
 'use client'
 
-import { createContext, useContext, useCallback, useMemo } from 'react'
+import { createContext, useContext, useMemo } from 'react'
 import { useEntityDefinition } from '~/components/resources'
 import type { CustomResource, ResourceField } from '@auxx/lib/resources/client'
 import { mapBaseTypeToFieldType } from '@auxx/lib/workflow-engine/client'
@@ -24,6 +24,7 @@ interface CustomField {
       celebration?: boolean
     }>
     relationship?: {
+      targetTable?: string
       relatedEntityDefinitionId?: string
       relatedModelType?: string
     }
@@ -62,7 +63,8 @@ function transformResourceFieldToCustomField(field: ResourceField, index: number
       field.relationship.targetTable
     )
     options.relationship = {
-      // Keep targetTable as-is - it's already the resourceId we need (e.g., "entity_orders")
+      // targetTable is already the resourceId we need (e.g., "entity_orders", "contact")
+      targetTable: field.relationship.targetTable,
       relatedEntityDefinitionId: !isSystemResource ? field.relationship.targetTable : undefined,
       relatedModelType: isSystemResource ? field.relationship.targetTable : undefined,
     }
@@ -98,9 +100,6 @@ interface EntityRecordsContextValue {
 
   /** Loading state for custom fields */
   isLoadingFields: boolean
-
-  /** Build resourceId for a relationship field */
-  getResourceIdForField: (field: CustomField) => string | null
 }
 
 const EntityRecordsContext = createContext<EntityRecordsContextValue | null>(null)
@@ -111,14 +110,6 @@ const EntityRecordsContext = createContext<EntityRecordsContextValue | null>(nul
 interface EntityRecordsProviderProps {
   slug: string
   children: React.ReactNode
-}
-
-/**
- * Relationship options type from custom field options
- */
-interface RelationshipOptions {
-  relatedEntityDefinitionId?: string
-  relatedModelType?: string
 }
 
 /**
@@ -142,29 +133,6 @@ export function EntityRecordsProvider({ slug, children }: EntityRecordsProviderP
   // Loading state for fields matches resource loading (no separate query)
   const isLoadingFields = isLoadingResource
 
-  /**
-   * Get resourceId for a relationship field
-   * Returns the resourceId directly since targetTable is already in the correct format
-   */
-  const getResourceIdForField = useCallback((field: CustomField): string | null => {
-    if (field.type !== 'RELATIONSHIP') return null
-
-    const relationship = (field.options as { relationship?: RelationshipOptions })?.relationship
-    if (!relationship) return null
-
-    // relatedEntityDefinitionId is already in "entity_orders" format = resourceId
-    if (relationship.relatedEntityDefinitionId) {
-      return relationship.relatedEntityDefinitionId
-    }
-
-    // System resources like "contact", "ticket"
-    if (relationship.relatedModelType) {
-      return relationship.relatedModelType
-    }
-
-    return null
-  }, [])
-
   const value = useMemo<EntityRecordsContextValue>(
     () => ({
       resource,
@@ -172,9 +140,8 @@ export function EntityRecordsProvider({ slug, children }: EntityRecordsProviderP
       customFields,
       isLoadingResource,
       isLoadingFields,
-      getResourceIdForField,
     }),
-    [resource, entityDefinitionId, customFields, isLoadingResource, isLoadingFields, getResourceIdForField]
+    [resource, entityDefinitionId, customFields, isLoadingResource, isLoadingFields]
   )
 
   return <EntityRecordsContext.Provider value={value}>{children}</EntityRecordsContext.Provider>

@@ -14,8 +14,8 @@ import type { CurrencyDisplayOptions } from '@auxx/lib/utils'
  * Config for field-specific data passed to renderers
  */
 export interface CellConfig {
-  /** Select/multi-select/tags options */
-  options?: Array<{ label: string; value: string }>
+  /** Field options - select options array or full field.options object */
+  options?: unknown
   /** Currency display options */
   currency?: CurrencyDisplayOptions
   /** Items for ItemsCellView (groups, sources, etc.) */

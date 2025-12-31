@@ -40,6 +40,7 @@ export function VirtualTableBody<TData>({
     isBulkMode,
     enableCheckbox,
     toggleRowSelection,
+    columnLayoutVersion,
   } = useTableContext<TData>()
 
   const { rows } = table.getRowModel()
@@ -248,6 +249,7 @@ export function VirtualTableBody<TData>({
                 toggleRowSelection={toggleRowSelection}
                 dragDropConfig={dragDropConfig}
                 cellSelectionEnabled={cellSelectionEnabled}
+                columnLayoutVersion={columnLayoutVersion}
               />
             )
           }
@@ -266,6 +268,7 @@ export function VirtualTableBody<TData>({
               enableCheckbox={enableCheckbox}
               toggleRowSelection={toggleRowSelection}
               cellSelectionEnabled={cellSelectionEnabled}
+              columnLayoutVersion={columnLayoutVersion}
             />
           )
         })}

@@ -29,6 +29,8 @@ interface DragDropRowProps<TData> {
   dragDropConfig: DragDropConfig<TData>
   /** Whether cell selection is enabled - passed to VirtualTableRow */
   cellSelectionEnabled?: boolean
+  /** Version that changes when column layout changes - busts memoization */
+  columnLayoutVersion?: number
 }
 
 /**
@@ -47,6 +49,7 @@ export function DragDropRow<TData>({
   toggleRowSelection,
   dragDropConfig,
   cellSelectionEnabled = false,
+  columnLayoutVersion,
 }: DragDropRowProps<TData>) {
   const { activeDragItems } = useTableContext<TData>()
 
@@ -142,6 +145,7 @@ export function DragDropRow<TData>({
       isDropTarget={canAcceptDrop}
       isOver={isOver}
       cellSelectionEnabled={cellSelectionEnabled}
+      columnLayoutVersion={columnLayoutVersion}
     />
   )
 }

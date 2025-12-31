@@ -44,7 +44,6 @@ import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-insta
 import { BulkUpdateEntityInstanceDialog } from '~/components/custom-fields/ui/bulk-update-entity-instance-dialog'
 import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
 import { useEntityRecords } from '~/components/custom-fields/context/entity-records-context'
-import { RelationshipCell } from '~/components/custom-fields/components/relationship-cell'
 import { EntityRecordDrawer } from './entity-record-drawer'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
@@ -363,26 +362,7 @@ export function EntityRecordsContent() {
    */
   const createEntityFieldColumn = useCallback(
     (field: (typeof customFields)[0]): ExtendedColumnDef<EntityRow> => {
-      // Use RelationshipCell for RELATIONSHIP type - needs getValue for special rendering
-      if (field.type === 'RELATIONSHIP') {
-        return {
-          id: `field_${field.id}`,
-          accessorFn: (row) => getValue(row.id, field.id),
-          header: field.name,
-          columnType: 'text',
-          fieldType: field.type,
-          icon: getIconForFieldType(field.type),
-          enableSorting: false, // Relationships can't be sorted directly
-          enableFiltering: false,
-          enableResizing: true,
-          minSize: 100,
-          size: 180,
-          cell: ({ row }) => {
-            const value = getValue(row.original.id, field.id)
-            return <RelationshipCell field={field} value={value} />
-          },
-        }
-      }
+      const columnId = `field_${field.id}`
 
       // Build default formatting from field options for CURRENCY type
       const fieldOptions = field.options as { currency?: Record<string, unknown> } | undefined
@@ -391,10 +371,6 @@ export function EntityRecordsContent() {
           ? { type: 'currency' as const, ...fieldOptions.currency }
           : undefined
 
-      const columnId = `field_${field.id}`
-      const enumOptions = field.options?.options ?? field.enumValues ?? []
-
-      // Default column for other types - uses CustomFieldCell for direct store subscription
       return {
         id: columnId,
         accessorFn: () => undefined, // Not used for display - cells read from store
@@ -403,11 +379,11 @@ export function EntityRecordsContent() {
         fieldType: field.type,
         defaultFormatting,
         icon: getIconForFieldType(field.type),
-        enableSorting: true,
-        enableFiltering: true,
+        enableSorting: field.type !== 'RELATIONSHIP',
+        enableFiltering: field.type !== 'RELATIONSHIP',
         enableResizing: true,
         minSize: 100,
-        size: 150,
+        size: field.type === 'RELATIONSHIP' ? 180 : 150,
         cell: ({ row }) => (
           <CustomFieldCell
             resourceType="entity"
@@ -416,12 +392,12 @@ export function EntityRecordsContent() {
             fieldId={field.id}
             fieldType={field.type}
             columnId={columnId}
-            options={enumOptions}
+            options={field.options}
           />
         ),
       }
     },
-    [getValue, entityDefinitionId]
+    [entityDefinitionId]
   )
 
   /**

@@ -402,7 +402,7 @@ function CommandShortcut({ className, ...props }: React.HTMLAttributes<HTMLSpanE
  * Displays helper or description text within a command menu.
  */
 function CommandDescription({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
-  return <p className={cn('py-1 px-2 text-sm text-muted-foreground', className)} {...props} />
+  return <p className={cn('py-2 px-2 text-sm text-muted-foreground', className)} {...props} />
 }
 
 /**
@@ -754,10 +754,10 @@ function CommandRadioItem({
           <span
             className={cn(
               radioGroupVariants({ variant: 'outline', size: 'default' }),
-              'flex items-center justify-center',
-              !isSelected && 'border-muted-foreground'
+              'flex items-center justify-center '
+              // !isSelected && 'border-muted-foreground'
             )}>
-            {isSelected && <Circle className="size-2" />}
+            {isSelected && <Circle className="size-2!" />}
           </span>
         )
     }

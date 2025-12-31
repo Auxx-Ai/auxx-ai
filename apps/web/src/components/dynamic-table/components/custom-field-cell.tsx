@@ -24,8 +24,8 @@ interface CustomFieldCellProps {
   fieldType: string
   /** Column ID for formatting lookup */
   columnId: string
-  /** Select/multi-select options */
-  options?: Array<{ label: string; value: string }>
+  /** Field options - select options array or full field.options object */
+  options?: unknown
 }
 
 /**

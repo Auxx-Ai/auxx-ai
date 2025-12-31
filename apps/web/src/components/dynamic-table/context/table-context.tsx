@@ -96,6 +96,10 @@ interface TableContextValue<TData = any> {
   // Bulk mode state
   isBulkMode: boolean
 
+  // Column layout version - changes when column sizing/visibility/order changes
+  // Used to bust VirtualTableRow memoization
+  columnLayoutVersion: number
+
   // Callbacks
   onRowClick?: (row: TData, event: React.MouseEvent, rowId: string, table: Table<TData>) => void
   onImport?: (file: File) => Promise<void>

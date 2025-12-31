@@ -218,6 +218,7 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
     setSelectedCell,
     editingCell,
     setEditingCell,
+    columnLayoutVersion,
   } = tableState
 
   // Internal kanban selection state (used when not controlled)
@@ -316,6 +317,7 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
       entityDefinitionId,
       selectedKanbanCardIds,
       onSelectedKanbanCardIdsChange: setSelectedKanbanCardIds,
+      columnLayoutVersion,
     }),
     [
       tableInstance,
@@ -385,6 +387,7 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
       entityDefinitionId,
       selectedKanbanCardIds,
       setSelectedKanbanCardIds,
+      columnLayoutVersion,
     ]
   )
 

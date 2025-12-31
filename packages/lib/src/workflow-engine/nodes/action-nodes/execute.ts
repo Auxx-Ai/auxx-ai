@@ -4,7 +4,7 @@ import { BaseNodeProcessor } from '../base-node'
 import type { WorkflowNode, NodeExecutionResult, ValidationResult } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import type { ExecutionContextManager } from '../../core/execution-context'
-import type { ActionDefinition, ActionType } from '../../../actions/core/action-types'
+// import type { ActionDefinition, ActionType } from '../../../actions/core/action-types'
 
 /**
  * Action node that executes actions using the existing action system
@@ -41,106 +41,91 @@ export class ExecuteProcessor extends BaseNodeProcessor {
 
     try {
       // Import the action executor
-      const { createActionExecutor } = await import('../../../actions/core/action-executor')
-      const { createOrganizationServices } = await import('../../../services/service-registrations')
+      // const { createActionExecutor } = await import('../../../actions/core/action-executor')
+      // const { createOrganizationServices } = await import('../../../services/service-registrations')
 
       // Create service registry for action execution
-      const serviceRegistry = await createOrganizationServices(
-        context.organizationId,
-        context.userId || 'system'
-      )
+      // const serviceRegistry = await createOrganizationServices(
+      //   context.organizationId,
+      //   context.userId || 'system'
+      // )
 
-      const actionExecutor = await createActionExecutor(serviceRegistry)
+      // const actionExecutor = await createActionExecutor(serviceRegistry)
 
       for (let i = 0; i < actions.length; i++) {
         const action = actions[i]
 
         try {
-          contextManager.log('DEBUG', node.name, `Executing action ${i + 1}/${actions.length}`, {
-            actionType: action.type,
-            actionParams: action.params,
-          })
-
           // Convert workflow action to ActionDefinition
-          const actionDefinition: ActionDefinition = {
-            type: action.type as ActionType,
-            params: this.resolveActionParams(action.params, contextManager),
-            metadata: action.metadata || {},
-          }
+          // const actionDefinition: ActionDefinition = {
+          //   type: action.type as ActionType,
+          //   params: this.resolveActionParams(action.params, contextManager),
+          //   metadata: action.metadata || {},
+          // }
 
           // Create action context
-          const actionContext = {
-            userId: context.userId || 'system',
-            organizationId: context.organizationId,
-            message: {
-              id: context.message.id,
-              threadId: context.message.threadId,
-              integrationId: context.message.integrationId || '',
-              // Note: integrationType removed - actions should derive from integrationId if needed
-              subject: context.message.subject || '',
-              snippet: context.message.snippet || '',
-            },
-            timestamp: new Date(),
-          }
+          // const actionContext = {
+          //   userId: context.userId || 'system',
+          //   organizationId: context.organizationId,
+          //   message: {
+          //     id: context.message.id,
+          //     threadId: context.message.threadId,
+          //     integrationId: context.message.integrationId || '',
+          //     // Note: integrationType removed - actions should derive from integrationId if needed
+          //     subject: context.message.subject || '',
+          //     snippet: context.message.snippet || '',
+          //   },
+          //   timestamp: new Date(),
+          // }
 
           if (mode === 'MANUAL_REVIEW') {
             // Create proposed action instead of executing immediately
-            const { createProposedActionService } = await import(
-              '../../../actions/services/proposed-action-service'
-            )
-            const proposedActionService = await createProposedActionService(serviceRegistry)
-
-            const proposedAction = await proposedActionService.createProposedAction({
-              messageId: context.message.id,
-              ruleId: `workflow-${node.workflowId}`,
-              actionType: action.type as ActionType,
-              actionParams: actionDefinition.params,
-              confidence: 0.9,
-              explanation: `Action proposed by workflow node: ${node.name}`,
-              userId: context.userId || 'system',
-            })
-
-            executionResults.push({
-              actionIndex: i,
-              actionType: action.type,
-              status: 'proposed',
-              proposedActionId: proposedAction.id,
-              result: proposedAction,
-            })
-
-            contextManager.log('INFO', node.name, `Action ${i + 1} proposed for manual review`, {
-              actionType: action.type,
-              proposedActionId: proposedAction.id,
-            })
+            // const { createProposedActionService } = await import(
+            //   '../../../actions/services/proposed-action-service'
+            // )
+            // const proposedActionService = await createProposedActionService(serviceRegistry)
+            // const proposedAction = await proposedActionService.createProposedAction({
+            //   messageId: context.message.id,
+            //   ruleId: `workflow-${node.workflowId}`,
+            //   actionType: action.type as ActionType,
+            //   actionParams: actionDefinition.params,
+            //   confidence: 0.9,
+            //   explanation: `Action proposed by workflow node: ${node.name}`,
+            //   userId: context.userId || 'system',
+            // })
+            // executionResults.push({
+            //   actionIndex: i,
+            //   actionType: action.type,
+            //   status: 'proposed',
+            //   proposedActionId: proposedAction.id,
+            //   result: proposedAction,
+            // })
           } else {
             // Execute action immediately
-            const result = await actionExecutor.execute(actionDefinition, actionContext)
-
-            executionResults.push({
-              actionIndex: i,
-              actionType: action.type,
-              status: result.success ? 'completed' : 'failed',
-              result: result,
-              error: result.error,
-            })
-
-            if (result.success) {
-              contextManager.log('INFO', node.name, `Action ${i + 1} executed successfully`, {
-                actionType: action.type,
-                actionId: result.actionId,
-              })
-            } else {
-              hasErrors = true
-              contextManager.log('ERROR', node.name, `Action ${i + 1} failed`, {
-                actionType: action.type,
-                error: result.error,
-              })
-
-              // Check if we should stop on error
-              if (config.stopOnError !== false) {
-                break
-              }
-            }
+            // const result = await actionExecutor.execute(actionDefinition, actionContext)
+            // executionResults.push({
+            //   actionIndex: i,
+            //   actionType: action.type,
+            //   status: result.success ? 'completed' : 'failed',
+            //   result: result,
+            //   error: result.error,
+            // })
+            // if (result.success) {
+            //   contextManager.log('INFO', node.name, `Action ${i + 1} executed successfully`, {
+            //     actionType: action.type,
+            //     actionId: result.actionId,
+            //   })
+            // } else {
+            //   hasErrors = true
+            //   contextManager.log('ERROR', node.name, `Action ${i + 1} failed`, {
+            //     actionType: action.type,
+            //     error: result.error,
+            //   })
+            //   // Check if we should stop on error
+            //   if (config.stopOnError !== false) {
+            //     break
+            //   }
+            // }
           }
         } catch (error) {
           hasErrors = true

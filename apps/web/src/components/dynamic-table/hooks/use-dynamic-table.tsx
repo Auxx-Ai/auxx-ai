@@ -470,6 +470,12 @@ export function useDynamicTable<TData extends Record<string, any>>({
 
   const isBulkMode = enableCheckbox && table.getFilteredSelectedRowModel().rows.length > 0
 
+  // Version number that changes when column layout changes (sizing, visibility, order)
+  // Used to bust memoization in VirtualTableRow
+  const columnLayoutVersion = useMemo(() => {
+    return Date.now()
+  }, [columnSizing, columnVisibility, columnOrder])
+
   return {
     table,
     views,
@@ -506,5 +512,6 @@ export function useDynamicTable<TData extends Record<string, any>>({
     setSelectedCell,
     editingCell,
     setEditingCell,
+    columnLayoutVersion,
   }
 }

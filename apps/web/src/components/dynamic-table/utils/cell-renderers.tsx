@@ -1,5 +1,6 @@
 // apps/web/src/components/dynamic-table/utils/cell-renderers.tsx
 
+import { useMemo } from 'react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { formatPhoneNumber } from 'react-phone-number-input'
 import { formatCurrency, formatBytes, type CurrencyDisplayOptions } from '@auxx/lib/utils'
@@ -9,12 +10,55 @@ import { CopyableLinkCell } from '../components/copyable-link-cell'
 import { CellPadding, type CellConfig } from '../components/formatted-cell'
 import { TagsCellView } from '~/components/ui/tags-view'
 import { ItemsCellView } from '~/components/ui/items-list-view'
+import { useRelationship } from '~/components/resources'
 import type {
   ColumnFormatting,
   CurrencyColumnFormatting,
   DateColumnFormatting,
   NumberColumnFormatting,
 } from '../types'
+
+/** Select option type for tags/select renderers */
+type SelectOption = { label: string; value: string }
+
+/**
+ * Relationship cell content - handles hydration internally
+ */
+function RelationshipCellContent({
+  value,
+  resourceId,
+}: {
+  value: unknown
+  resourceId: string | null
+}) {
+  const ids = useMemo(() => {
+    if (!value) return []
+    const data = (value as { data?: string[] })?.data ?? value
+    if (Array.isArray(data)) return data
+    if (typeof data === 'string') return [data]
+    return []
+  }, [value])
+
+  const { items: hydratedItems, isLoading } = useRelationship(resourceId, ids)
+
+  const items = ids.map((id, i) => ({
+    id,
+    displayName: hydratedItems[i]?.displayName ?? id.slice(-6),
+    isNotFound: !hydratedItems[i],
+  }))
+
+  return (
+    <ItemsCellView
+      items={items}
+      isLoading={isLoading && items.length === 0}
+      renderItem={(item) => (
+        <Badge variant="pill" shape="tag" className="text-xs">
+          {item.isNotFound ? item.id : item.displayName}
+        </Badge>
+      )}
+    />
+  )
+}
 
 /**
  * Cell renderer function type
@@ -407,15 +451,32 @@ const cellRenderers: Record<string, CellRenderer> = {
   CHECKBOX: (value) => renderCheckboxValue(value),
 
   // Select/Tags types - use TagsCellView which handles its own layout (no CellPadding needed)
-  TAGS: (value, _, config) => (
-    <TagsCellView value={value as string | string[] | null} options={config?.options ?? []} />
-  ),
-  MULTI_SELECT: (value, _, config) => (
-    <TagsCellView value={value as string | string[] | null} options={config?.options ?? []} />
-  ),
-  SINGLE_SELECT: (value, _, config) => (
-    <TagsCellView value={value as string | string[] | null} options={config?.options ?? []} />
-  ),
+  // Options can be passed as array directly or as field.options object with .options property
+  TAGS: (value, _, config) => {
+    const opts = Array.isArray(config?.options)
+      ? (config.options as SelectOption[])
+      : ((config?.options as { options?: SelectOption[] })?.options ?? [])
+    return <TagsCellView value={value as string | string[] | null} options={opts} />
+  },
+  MULTI_SELECT: (value, _, config) => {
+    const opts = Array.isArray(config?.options)
+      ? (config.options as SelectOption[])
+      : ((config?.options as { options?: SelectOption[] })?.options ?? [])
+    return <TagsCellView value={value as string | string[] | null} options={opts} />
+  },
+  SINGLE_SELECT: (value, _, config) => {
+    const opts = Array.isArray(config?.options)
+      ? (config.options as SelectOption[])
+      : ((config?.options as { options?: SelectOption[] })?.options ?? [])
+    return <TagsCellView value={value as string | string[] | null} options={opts} />
+  },
+
+  // Relationship - uses RelationshipCellContent which handles hydration internally
+  RELATIONSHIP: (value, _, config) => {
+    const targetTable = (config?.options as { relationship?: { targetTable?: string } })
+      ?.relationship?.targetTable
+    return <RelationshipCellContent value={value} resourceId={targetTable ?? null} />
+  },
 
   // Generic items renderer - for groups, sources, any list of items
   // Uses ItemsCellView which handles its own layout (no CellPadding needed)
