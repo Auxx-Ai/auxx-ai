@@ -4,10 +4,9 @@
 import { useCallback, useMemo, useState, useEffect } from 'react'
 import { KanbanView } from '../../kanban'
 import { useTableContext } from '../context/table-context'
-import { api } from '~/trpc/react'
-import { toastError } from '@auxx/ui/components/toast'
 import type { ViewConfig, KanbanViewConfig, KanbanRow } from '../types'
 import type { ModelType } from '@auxx/types/custom-field'
+import { useViewStore } from '../stores/view-store'
 
 /**
  * Kanban view body that integrates with TableContext.
@@ -31,6 +30,8 @@ export function KanbanViewBody<TData extends KanbanRow>() {
     onSelectedKanbanCardIdsChange,
   } = useTableContext<TData>()
 
+  const updateKanbanConfig = useViewStore((state) => state.updateKanbanConfig)
+
   // Get kanban config from current view
   const kanbanConfig = useMemo(() => {
     return (currentView?.config as ViewConfig)?.kanban ?? null
@@ -44,9 +45,6 @@ export function KanbanViewBody<TData extends KanbanRow>() {
     setLocalColumnOrder(null)
   }, [currentView?.id])
 
-  // Mutation for updating view config
-  const updateView = api.tableView.update.useMutation()
-
   // Effective column order
   const effectiveColumnOrder = localColumnOrder ?? kanbanConfig?.columnOrder ?? []
 
@@ -58,30 +56,14 @@ export function KanbanViewBody<TData extends KanbanRow>() {
 
   // Handle column reorder with optimistic updates
   const handleColumnReorder = useCallback(
-    async (newColumnOrder: string[]) => {
+    (newColumnOrder: string[]) => {
       setLocalColumnOrder(newColumnOrder)
 
       if (currentView?.id) {
-        const updatedConfig: ViewConfig = {
-          ...(currentView.config as ViewConfig),
-          kanban: {
-            ...(currentView.config as ViewConfig).kanban!,
-            columnOrder: newColumnOrder,
-          },
-        }
-
-        updateView.mutate(
-          { id: currentView.id, config: updatedConfig },
-          {
-            onError: (error) => {
-              setLocalColumnOrder(null)
-              toastError({ title: 'Failed to save column order', description: error.message })
-            },
-          }
-        )
+        updateKanbanConfig(currentView.id, { columnOrder: newColumnOrder })
       }
     },
-    [currentView, updateView]
+    [currentView?.id, updateKanbanConfig]
   )
 
   // Handle column visibility change
@@ -90,27 +72,14 @@ export function KanbanViewBody<TData extends KanbanRow>() {
       if (!currentView?.id || !kanbanConfig) return
 
       const currentSettings = kanbanConfig.columnSettings ?? {}
-      const updatedConfig: ViewConfig = {
-        ...(currentView.config as ViewConfig),
-        kanban: {
-          ...kanbanConfig,
-          columnSettings: {
-            ...currentSettings,
-            [columnId]: { ...currentSettings[columnId], isVisible: visible },
-          },
+      updateKanbanConfig(currentView.id, {
+        columnSettings: {
+          ...currentSettings,
+          [columnId]: { ...currentSettings[columnId], isVisible: visible },
         },
-      }
-
-      updateView.mutate(
-        { id: currentView.id, config: updatedConfig },
-        {
-          onError: (error) => {
-            toastError({ title: 'Failed to update column visibility', description: error.message })
-          },
-        }
-      )
+      })
     },
-    [currentView, kanbanConfig, updateView]
+    [currentView?.id, kanbanConfig, updateKanbanConfig]
   )
 
   // If no valid kanban config, don't render

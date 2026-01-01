@@ -68,3 +68,44 @@ export function getByPath<T = unknown>(obj: unknown, path: string): T | undefine
 
   return result as T
 }
+
+/**
+ * Deep merges source into target, returning a new object.
+ * - Objects are recursively merged
+ * - Arrays are replaced (not merged)
+ * - Primitives from source override target
+ * - undefined values in source are ignored
+ */
+export function deepMerge<T extends Record<string, unknown>>(
+  target: T,
+  source: Partial<T>
+): T {
+  const result = { ...target }
+
+  for (const key of Object.keys(source) as (keyof T)[]) {
+    const sourceVal = source[key]
+    const targetVal = target[key]
+
+    // Skip undefined values
+    if (sourceVal === undefined) continue
+
+    // Recursively merge plain objects
+    if (
+      sourceVal &&
+      typeof sourceVal === 'object' &&
+      !Array.isArray(sourceVal) &&
+      targetVal &&
+      typeof targetVal === 'object' &&
+      !Array.isArray(targetVal)
+    ) {
+      result[key] = deepMerge(
+        targetVal as Record<string, unknown>,
+        sourceVal as Record<string, unknown>
+      ) as T[keyof T]
+    } else {
+      result[key] = sourceVal as T[keyof T]
+    }
+  }
+
+  return result
+}

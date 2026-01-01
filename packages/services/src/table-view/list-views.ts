@@ -16,6 +16,14 @@ export interface ListViewsInput {
 }
 
 /**
+ * Input for listing all views in an organization
+ */
+export interface ListAllViewsInput {
+  userId: string
+  organizationId: string
+}
+
+/**
  * List all views for a table (user's personal + org shared)
  */
 export async function listViews(input: ListViewsInput) {
@@ -36,6 +44,31 @@ export async function listViews(input: ListViewsInput) {
       )
       .orderBy(desc(schema.TableView.isDefault), asc(schema.TableView.name)),
     'list-views'
+  )
+
+  if (dbResult.isErr()) return dbResult
+  return ok(dbResult.value as TableViewEntity[])
+}
+
+/**
+ * List all views across all tables for an organization (for app-wide store init)
+ * Returns user's personal views + all shared views in the org
+ */
+export async function listAllViews(input: ListAllViewsInput) {
+  const { userId, organizationId } = input
+
+  const dbResult = await fromDatabase(
+    database
+      .select()
+      .from(schema.TableView)
+      .where(
+        or(
+          eq(schema.TableView.userId, userId),
+          and(eq(schema.TableView.organizationId, organizationId), eq(schema.TableView.isShared, true))
+        )
+      )
+      .orderBy(asc(schema.TableView.tableId), asc(schema.TableView.name)),
+    'list-all-views'
   )
 
   if (dbResult.isErr()) return dbResult

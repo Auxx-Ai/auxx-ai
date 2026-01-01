@@ -18,14 +18,14 @@ import {
   type ColumnPinningState,
 } from '@tanstack/react-table'
 import { useQueryStates, parseAsString } from 'nuqs'
-import { api } from '~/trpc/react'
 import { useCallback, useEffect, useMemo, useRef, useState, startTransition } from 'react'
 import type { DynamicTableProps, ViewConfig, ExtendedColumnDef, TableFilter, CellSelectionState, ColumnFormatting } from '../types'
 import { applyFilters } from '../utils/filter-functions'
-import { useViewPersistence } from './use-view-persistence'
 import { CheckboxCell } from '../components/checkbox-cell'
 import { CheckboxHeaderCell } from '../components/checkbox-header-cell'
-import { computeInitialViewConfig, normalizeViewConfig } from '../utils/view-config'
+import { computeInitialViewConfig, normalizeViewConfig, buildViewConfig } from '../utils/view-config'
+import { useTableViews, useViewStore, useViewStoreInitialized } from '../stores/view-store'
+import { useViewStorePersistence } from './use-view-store-persistence'
 
 /**
  * Main hook for managing dynamic table state.
@@ -52,12 +52,14 @@ export function useDynamicTable<TData extends Record<string, any>>({
     q: parseAsString,
   })
 
-  const { data: views = [], isLoading: isLoadingViews } = api.tableView.list.useQuery(
-    { tableId },
-    {
-      staleTime: 5 * 60 * 1000,
-    }
-  )
+  // Get views from centralized store instead of React Query
+  const views = useTableViews(tableId)
+  const isStoreInitialized = useViewStoreInitialized()
+  const isLoadingViews = !isStoreInitialized
+  const updateViewConfig = useViewStore((state) => state.updateViewConfig)
+  const hasUnsavedChanges = useViewStore((state) => state.hasUnsavedChanges)
+  const isSaving = useViewStore((state) => state.isSaving)
+  const resetToSaved = useViewStore((state) => state.resetToSaved)
 
   const currentView = useMemo(() => {
     if (!urlState.v) {
@@ -65,6 +67,9 @@ export function useDynamicTable<TData extends Record<string, any>>({
     }
     return views.find((view) => view.id === urlState.v) ?? null
   }, [urlState.v, views])
+
+  // Initialize persistence (triggers auto-save on changes)
+  useViewStorePersistence(currentView?.id ?? null, tableId)
 
   const baseViewConfig = useMemo(() => {
     if (currentView) {
@@ -323,21 +328,64 @@ export function useDynamicTable<TData extends Record<string, any>>({
     }
   }, [columnVisibility, onColumnVisibilityChange])
 
-  const viewPersistence = useViewPersistence({
-    table,
-    currentView,
-    enabled: Boolean(currentView),
-    filters: localFilters,
-    columnVisibility,
-    columnSizing,
-    columnOrder,
-    columnPinning,
-    columnLabels,
-    columnFormatting,
-    sorting,
-  })
+  // Track whether we've done the initial sync to avoid triggering save on mount
+  const hasMountedRef = useRef(false)
+  const lastSyncedConfigRef = useRef<string | null>(null)
 
-  const { hasUnsavedChanges, isSaving, save, markClean, getLastSavedConfig } = viewPersistence
+  // Build current table config for dirty checking and saving
+  const currentTableConfig = useMemo(
+    () =>
+      buildViewConfig({
+        sorting,
+        columnVisibility,
+        columnOrder,
+        columnSizing,
+        columnPinning,
+        columnLabels,
+        columnFormatting,
+        filters: localFilters,
+      }),
+    [sorting, columnVisibility, columnOrder, columnSizing, columnPinning, columnLabels, columnFormatting, localFilters]
+  )
+
+  // Sync table config changes to store (for table-level config, not kanban)
+  // Skip initial mount to avoid triggering save on page load
+  useEffect(() => {
+    if (!currentView?.id) {
+      hasMountedRef.current = false
+      lastSyncedConfigRef.current = null
+      return
+    }
+
+    // Skip the first render - just record the initial config
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true
+      lastSyncedConfigRef.current = JSON.stringify(currentTableConfig)
+      return
+    }
+
+    // Serialize to check if actually changed
+    const serialized = JSON.stringify(currentTableConfig)
+    if (serialized === lastSyncedConfigRef.current) return
+
+    // Update store with table config changes (preserves kanban config via deepMerge)
+    updateViewConfig(currentView.id, {
+      sorting: currentTableConfig.sorting,
+      columnVisibility: currentTableConfig.columnVisibility,
+      columnOrder: currentTableConfig.columnOrder,
+      columnSizing: currentTableConfig.columnSizing,
+      columnPinning: currentTableConfig.columnPinning,
+      columnLabels: currentTableConfig.columnLabels,
+      columnFormatting: currentTableConfig.columnFormatting,
+      filters: currentTableConfig.filters,
+    })
+
+    lastSyncedConfigRef.current = serialized
+  }, [currentView?.id, currentTableConfig, updateViewConfig])
+
+  // Compute dirty/saving state from store
+  const hasUnsavedViewChanges = currentView?.id ? hasUnsavedChanges(currentView.id) : false
+  const isSavingView = currentView?.id ? isSaving(currentView.id) : false
 
   const setActiveView = useCallback(
     (viewId: string | null) => {
@@ -454,35 +502,53 @@ export function useDynamicTable<TData extends Record<string, any>>({
   )
 
   const resetViewChanges = useCallback(() => {
-    const savedConfig = getLastSavedConfig()
-    if (!savedConfig) {
-      return
-    }
+    if (!currentView?.id) return
+
+    // Reset store to saved state
+    resetToSaved(currentView.id)
+
+    // Re-apply config from the saved view
+    const savedConfig = normalizeViewConfig(currentView.config)
     applyViewConfig(savedConfig)
-    markClean(savedConfig)
-  }, [applyViewConfig, getLastSavedConfig, markClean])
+    lastSyncedConfigRef.current = JSON.stringify(buildViewConfig({
+      sorting: savedConfig.sorting,
+      columnVisibility: savedConfig.columnVisibility,
+      columnOrder: savedConfig.columnOrder,
+      columnSizing: savedConfig.columnSizing,
+      columnPinning: savedConfig.columnPinning,
+      columnLabels: savedConfig.columnLabels,
+      columnFormatting: savedConfig.columnFormatting,
+      filters: savedConfig.filters,
+    }))
+  }, [applyViewConfig, currentView, resetToSaved])
 
-  const saveCurrentView = useCallback(() => save(), [save])
+  // saveCurrentView is now handled by useViewStorePersistence automatically
+  // This is a no-op for backward compatibility (auto-save handles it)
+  const saveCurrentView = useCallback(async () => {
+    // The store persistence hook handles saving automatically
+    // This function exists for API compatibility
+  }, [])
 
+  // markViewClean is now handled by the store
   const markViewClean = useCallback(() => {
-    markClean()
-  }, [markClean])
+    // The store handles this automatically
+  }, [])
 
   const isBulkMode = enableCheckbox && table.getFilteredSelectedRowModel().rows.length > 0
 
-  // Version number that changes when column layout changes (sizing, visibility, order)
+  // Version number that changes when column layout changes (sizing, visibility, order, pinning)
   // Used to bust memoization in VirtualTableRow
   const columnLayoutVersion = useMemo(() => {
     return Date.now()
-  }, [columnSizing, columnVisibility, columnOrder])
+  }, [columnSizing, columnVisibility, columnOrder, columnPinning])
 
   return {
     table,
     views,
     currentView,
     isLoadingViews,
-    isSavingView: isSaving,
-    hasUnsavedViewChanges: hasUnsavedChanges,
+    isSavingView,
+    hasUnsavedViewChanges,
     saveCurrentView,
     markViewClean,
     resetViewChanges,

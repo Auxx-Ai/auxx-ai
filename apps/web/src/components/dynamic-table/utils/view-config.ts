@@ -151,6 +151,11 @@ function cloneKanbanConfig(kanban: KanbanViewConfig): KanbanViewConfig {
     collapsedColumns: kanban.collapsedColumns ? [...kanban.collapsedColumns] : undefined,
     cardFields: kanban.cardFields ? [...kanban.cardFields] : undefined,
     primaryFieldId: kanban.primaryFieldId,
+    columnSettings: kanban.columnSettings
+      ? Object.fromEntries(
+          Object.entries(kanban.columnSettings).map(([k, v]) => [k, { ...v }])
+        )
+      : undefined,
   }
 }
 

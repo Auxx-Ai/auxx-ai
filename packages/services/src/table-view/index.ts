@@ -1,6 +1,6 @@
 // packages/services/src/table-view/index.ts
 
-export { listViews } from './list-views'
+export { listViews, listAllViews } from './list-views'
 export { getView } from './get-view'
 export { createView } from './create-view'
 export { updateView } from './update-view'
@@ -8,7 +8,7 @@ export { duplicateView } from './duplicate-view'
 export { deleteView } from './delete-view'
 export { setDefaultView } from './set-default-view'
 
-export type { ListViewsInput } from './list-views'
+export type { ListViewsInput, ListAllViewsInput } from './list-views'
 export type { GetViewInput, GetViewOptions } from './get-view'
 export type { CreateViewInput } from './create-view'
 export type { UpdateViewInput } from './update-view'

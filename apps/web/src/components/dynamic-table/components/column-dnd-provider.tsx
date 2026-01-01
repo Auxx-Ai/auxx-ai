@@ -41,12 +41,10 @@ export function ColumnDndProvider<TData>({ table, children }: ColumnDndProviderP
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
-  // Get column order
+  // Get column order - must use columnOrder from state for correct drag behavior
   const columnOrder = table.getState().columnOrder
   const allColumns = table.getAllColumns()
-  // const orderedColumnIds = columnOrder.length > 0 ? columnOrder : allColumns.map((col) => col.id)
-  // changed 2025-11-25
-  const orderedColumnIds = allColumns.map((col) => col.id)
+  const orderedColumnIds = columnOrder.length > 0 ? columnOrder : allColumns.map((col) => col.id)
 
   // Handle column drag start
   const handleColumnDragStart = useCallback((event: DragStartEvent) => {

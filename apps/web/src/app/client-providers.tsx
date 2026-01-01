@@ -3,6 +3,7 @@
 
 import React from 'react'
 import { ThemeProvider } from '~/providers/theme-provider'
+import { ViewStoreProvider } from '~/components/dynamic-table/context/view-store-provider'
 import { NuqsAdapter } from 'nuqs/adapters/next/app'
 import { TRPCReactProvider } from '~/trpc/react'
 import { Toaster } from '@auxx/ui/components/sonner'
@@ -18,7 +19,9 @@ export function ClientProviders({ children }: { children: React.ReactNode }) {
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
       <Toaster />
       <NuqsAdapter>
-        <TRPCReactProvider>{children}</TRPCReactProvider>
+        <TRPCReactProvider>
+          <ViewStoreProvider>{children}</ViewStoreProvider>
+        </TRPCReactProvider>
       </NuqsAdapter>
     </ThemeProvider>
   )

@@ -2,7 +2,7 @@
 'use client'
 
 import { useState, useMemo, useCallback } from 'react'
-import { Settings2, Plus, LayoutGrid, X, Trash2, Columns3 } from 'lucide-react'
+import { Settings2, Plus, LayoutGrid, Trash2, Columns3 } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import {
@@ -27,13 +27,12 @@ import {
 } from '@auxx/ui/components/command'
 import { useTableContext } from '../../context/table-context'
 import { Tooltip } from '~/components/global/tooltip'
-import { api } from '~/trpc/react'
 import type { ViewConfig } from '../../types'
-import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { getColorSwatch } from '@auxx/lib/custom-fields/client'
 import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
 import { cn } from '@auxx/ui/lib/utils'
 import { EntityIcon } from '~/components/pickers/icon-picker'
+import { useViewStore } from '../../stores/view-store'
 
 /** Navigation item type for KanbanViewSettings */
 interface SettingsNavigationItem extends NavigationItem {
@@ -52,40 +51,11 @@ interface KanbanViewSettingsProps {
  */
 function RootStack() {
   const { push } = useCommandNavigation<SettingsNavigationItem>()
-  const { currentView, customFields, selectFields, tableId } = useTableContext()
+  const { currentView, customFields, selectFields } = useTableContext()
+  const updateKanbanConfig = useViewStore((state) => state.updateKanbanConfig)
 
   const kanbanConfig = (currentView?.config as ViewConfig)?.kanban
   const cardFields = kanbanConfig?.cardFields ?? []
-
-  const utils = api.useUtils()
-  const updateView = api.tableView.update.useMutation({
-    onMutate: async (newData) => {
-      // Cancel outgoing refetches
-      await utils.tableView.list.cancel({ tableId })
-
-      // Snapshot current data
-      const previousViews = utils.tableView.list.getData({ tableId })
-
-      // Optimistically update
-      utils.tableView.list.setData({ tableId }, (old) => {
-        if (!old) return old
-        return old.map((view) =>
-          view.id === newData.id ? { ...view, config: newData.config ?? view.config } : view
-        )
-      })
-
-      return { previousViews }
-    },
-    onError: (_err, _newData, context) => {
-      // Rollback on error
-      if (context?.previousViews) {
-        utils.tableView.list.setData({ tableId }, context.previousViews)
-      }
-    },
-    onSettled: () => {
-      utils.tableView.list.invalidate({ tableId })
-    },
-  })
 
   /** Get grouped by field name for display */
   const groupByField = useMemo(() => {
@@ -100,41 +70,26 @@ function RootStack() {
     [push]
   )
 
-  /** Handle card fields reorder (optimistic) */
+  /** Handle card fields reorder (optimistic via store) */
   const handleCardFieldsReorder = useCallback(
     (newOrder: string[]) => {
-      if (!currentView || !kanbanConfig) return
-
-      const updatedConfig: ViewConfig = {
-        ...(currentView.config as ViewConfig),
-        kanban: {
-          ...kanbanConfig,
-          cardFields: newOrder,
-        },
-      }
-
-      updateView.mutate({ id: currentView.id, config: updatedConfig })
+      if (!currentView?.id) return
+      updateKanbanConfig(currentView.id, { cardFields: newOrder })
     },
-    [currentView, kanbanConfig, updateView]
+    [currentView?.id, updateKanbanConfig]
   )
 
-  /** Handle removing a card field (optimistic) */
+  /** Handle removing a card field (optimistic via store) */
   const handleRemoveCardField = useCallback(
     (fieldId: string) => {
-      if (!currentView || !kanbanConfig) return
-
-      const updatedConfig: ViewConfig = {
-        ...(currentView.config as ViewConfig),
-        kanban: {
-          ...kanbanConfig,
-          cardFields: cardFields.filter((id) => id !== fieldId),
-        },
-      }
-
-      updateView.mutate({ id: currentView.id, config: updatedConfig })
+      if (!currentView?.id) return
+      updateKanbanConfig(currentView.id, {
+        cardFields: cardFields.filter((id) => id !== fieldId),
+      })
     },
-    [currentView, kanbanConfig, cardFields, updateView]
+    [currentView?.id, cardFields, updateKanbanConfig]
   )
+
   return (
     <CommandList>
       {/* View Settings Group */}
@@ -209,51 +164,23 @@ function RootStack() {
  * Pipeline selection stack - select which field to group by
  */
 function PipelineSelectionStack() {
-  const { currentView, selectFields, tableId } = useTableContext()
+  const { currentView, selectFields } = useTableContext()
+  const updateKanbanConfig = useViewStore((state) => state.updateKanbanConfig)
   const kanbanConfig = (currentView?.config as ViewConfig)?.kanban
-
-  const utils = api.useUtils()
-  const updateView = api.tableView.update.useMutation({
-    onMutate: async (newData) => {
-      await utils.tableView.list.cancel({ tableId })
-      const previousViews = utils.tableView.list.getData({ tableId })
-      utils.tableView.list.setData({ tableId }, (old) => {
-        if (!old) return old
-        return old.map((view) =>
-          view.id === newData.id ? { ...view, config: newData.config ?? view.config } : view
-        )
-      })
-      return { previousViews }
-    },
-    onError: (_err, _newData, context) => {
-      if (context?.previousViews) {
-        utils.tableView.list.setData({ tableId }, context.previousViews)
-      }
-    },
-    onSettled: () => {
-      utils.tableView.list.invalidate({ tableId })
-    },
-  })
 
   /** Handle selecting a field */
   const handleSelectField = useCallback(
     (fieldId: string) => {
-      if (!currentView) return
+      if (!currentView?.id) return
 
-      const updatedConfig: ViewConfig = {
-        ...(currentView.config as ViewConfig),
-        kanban: {
-          ...(currentView.config as ViewConfig).kanban!,
-          groupByFieldId: fieldId,
-          // Reset column order when changing field
-          columnOrder: [],
-          columnSettings: {},
-        },
-      }
-
-      updateView.mutate({ id: currentView.id, config: updatedConfig })
+      // Reset column order when changing field
+      updateKanbanConfig(currentView.id, {
+        groupByFieldId: fieldId,
+        columnOrder: [],
+        columnSettings: {},
+      })
     },
-    [currentView, updateView]
+    [currentView?.id, updateKanbanConfig]
   )
 
   return (
@@ -284,31 +211,9 @@ function PipelineSelectionStack() {
  * Visible columns stack - toggle column visibility
  */
 function VisibleColumnsStack() {
-  const { currentView, selectFields, tableId } = useTableContext()
+  const { currentView, selectFields } = useTableContext()
+  const updateKanbanConfig = useViewStore((state) => state.updateKanbanConfig)
   const kanbanConfig = (currentView?.config as ViewConfig)?.kanban
-
-  const utils = api.useUtils()
-  const updateView = api.tableView.update.useMutation({
-    onMutate: async (newData) => {
-      await utils.tableView.list.cancel({ tableId })
-      const previousViews = utils.tableView.list.getData({ tableId })
-      utils.tableView.list.setData({ tableId }, (old) => {
-        if (!old) return old
-        return old.map((view) =>
-          view.id === newData.id ? { ...view, config: newData.config ?? view.config } : view
-        )
-      })
-      return { previousViews }
-    },
-    onError: (_err, _newData, context) => {
-      if (context?.previousViews) {
-        utils.tableView.list.setData({ tableId }, context.previousViews)
-      }
-    },
-    onSettled: () => {
-      utils.tableView.list.invalidate({ tableId })
-    },
-  })
 
   /** Get the groupBy field and its options (stages) */
   const groupByField = useMemo(() => {
@@ -321,22 +226,16 @@ function VisibleColumnsStack() {
   /** Handle toggling a column's visibility */
   const handleToggleColumn = useCallback(
     (columnId: string, isVisible: boolean) => {
-      if (!currentView || !kanbanConfig) return
+      if (!currentView?.id) return
 
-      const updatedConfig: ViewConfig = {
-        ...(currentView.config as ViewConfig),
-        kanban: {
-          ...kanbanConfig,
-          columnSettings: {
-            ...columnSettings,
-            [columnId]: { ...columnSettings[columnId], isVisible },
-          },
+      updateKanbanConfig(currentView.id, {
+        columnSettings: {
+          ...columnSettings,
+          [columnId]: { ...columnSettings[columnId], isVisible },
         },
-      }
-
-      updateView.mutate({ id: currentView.id, config: updatedConfig })
+      })
     },
-    [currentView, kanbanConfig, columnSettings, updateView]
+    [currentView?.id, columnSettings, updateKanbanConfig]
   )
 
   if (!groupByField) {
@@ -381,32 +280,10 @@ function VisibleColumnsStack() {
  * Add card field stack - search and add fields to cards
  */
 function AddCardFieldStack() {
-  const { currentView, customFields, tableId } = useTableContext()
+  const { currentView, customFields } = useTableContext()
+  const updateKanbanConfig = useViewStore((state) => state.updateKanbanConfig)
   const kanbanConfig = (currentView?.config as ViewConfig)?.kanban
   const [search, setSearch] = useState('')
-
-  const utils = api.useUtils()
-  const updateView = api.tableView.update.useMutation({
-    onMutate: async (newData) => {
-      await utils.tableView.list.cancel({ tableId })
-      const previousViews = utils.tableView.list.getData({ tableId })
-      utils.tableView.list.setData({ tableId }, (old) => {
-        if (!old) return old
-        return old.map((view) =>
-          view.id === newData.id ? { ...view, config: newData.config ?? view.config } : view
-        )
-      })
-      return { previousViews }
-    },
-    onError: (_err, _newData, context) => {
-      if (context?.previousViews) {
-        utils.tableView.list.setData({ tableId }, context.previousViews)
-      }
-    },
-    onSettled: () => {
-      utils.tableView.list.invalidate({ tableId })
-    },
-  })
 
   const cardFields = kanbanConfig?.cardFields ?? []
 
@@ -426,19 +303,13 @@ function AddCardFieldStack() {
   /** Handle adding a field */
   const handleAddField = useCallback(
     (fieldId: string) => {
-      if (!currentView || !kanbanConfig) return
+      if (!currentView?.id) return
 
-      const updatedConfig: ViewConfig = {
-        ...(currentView.config as ViewConfig),
-        kanban: {
-          ...kanbanConfig,
-          cardFields: [...cardFields, fieldId],
-        },
-      }
-
-      updateView.mutate({ id: currentView.id, config: updatedConfig })
+      updateKanbanConfig(currentView.id, {
+        cardFields: [...cardFields, fieldId],
+      })
     },
-    [currentView, kanbanConfig, cardFields, updateView]
+    [currentView?.id, cardFields, updateKanbanConfig]
   )
 
   return (
@@ -453,7 +324,7 @@ function AddCardFieldStack() {
                 key={field.id}
                 value={field.id}
                 onSelect={() => handleAddField(field.id)}
-                className="ps-1 py-0">
+                className="ps-0.5 py-0">
                 <EntityIcon
                   iconId={fieldTypeOptions.find((f) => f.value === field.type)?.iconId ?? 'circle'}
                   color="purple"

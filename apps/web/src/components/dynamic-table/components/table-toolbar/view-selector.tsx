@@ -55,12 +55,12 @@ import { Label } from '@auxx/ui/components/label'
 import { RadioGroup, RadioGroupItemCard } from '@auxx/ui/components/radio-group'
 import { Combobox } from '@auxx/ui/components/combobox'
 import { api } from '~/trpc/react'
-// Select removed - using Combobox instead
 import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 import type { TableView, ViewAction, ViewConfig } from '../../types'
 import { cn } from '@auxx/ui/lib/utils'
 import { Tooltip } from '~/components/global/tooltip'
 import type { ModelType } from '@auxx/types/custom-field'
+import { useViewStore } from '../../stores/view-store'
 
 /** Select field for kanban grouping */
 interface SelectField {
@@ -115,12 +115,21 @@ export function ViewSelector({
 
   const utils = api.useUtils()
 
-  // Mutations
+  // Store actions for syncing
+  const addViewToStore = useViewStore((state) => state.addView)
+  const removeViewFromStore = useViewStore((state) => state.removeView)
+  const updateViewMeta = useViewStore((state) => state.updateViewMeta)
+  const setTableViews = useViewStore((state) => state.setTableViews)
+
+  // Mutations - sync with store on success
   const createView = api.tableView.create.useMutation({
-    onSuccess: () => {
+    onSuccess: (newView) => {
       toastSuccess({ title: 'View created successfully' })
       setShowCreateDialog(false)
       setNewViewName('')
+      // Add to store immediately
+      addViewToStore(newView as TableView)
+      // Also invalidate for backward compatibility
       utils.tableView.list.invalidate({ tableId })
     },
     onError: (error) => {
@@ -129,10 +138,12 @@ export function ViewSelector({
   })
 
   const updateView = api.tableView.update.useMutation({
-    onSuccess: () => {
+    onSuccess: (updatedView) => {
       toastSuccess({ title: 'View updated successfully' })
       setShowRenameDialog(false)
       setNewViewName('')
+      // Update store with new metadata
+      updateViewMeta(updatedView.id, { name: updatedView.name })
       utils.tableView.list.invalidate({ tableId })
     },
     onError: (error) => {
@@ -141,11 +152,13 @@ export function ViewSelector({
   })
 
   const deleteView = api.tableView.delete.useMutation({
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       toastSuccess({ title: 'View deleted successfully' })
-      if (activeView?.id === deleteView.variables?.id) {
+      if (activeView?.id === variables.id) {
         onViewSelect(null)
       }
+      // Remove from store immediately
+      removeViewFromStore(variables.id, tableId)
       utils.tableView.list.invalidate({ tableId })
     },
     onError: (error) => {
@@ -154,8 +167,10 @@ export function ViewSelector({
   })
 
   const duplicateView = api.tableView.duplicate.useMutation({
-    onSuccess: () => {
+    onSuccess: (newView) => {
       toastSuccess({ title: 'View duplicated successfully' })
+      // Add duplicated view to store
+      addViewToStore(newView as TableView)
       utils.tableView.list.invalidate({ tableId })
     },
     onError: (error) => {
@@ -164,8 +179,12 @@ export function ViewSelector({
   })
 
   const setDefaultView = api.tableView.setDefault.useMutation({
-    onSuccess: () => {
-      utils.tableView.list.invalidate({ tableId })
+    onSuccess: async () => {
+      // Refetch to get updated isDefault flags and update store
+      const result = await utils.tableView.list.fetch({ tableId })
+      if (result) {
+        setTableViews(tableId, result as TableView[])
+      }
     },
     onError: (error) => {
       toastError({ title: 'Failed to set default view', description: error.message })

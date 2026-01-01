@@ -8,6 +8,7 @@ import { CustomFieldService } from '@auxx/lib/custom-fields'
 import { ModelTypeValues } from '@auxx/types/custom-field'
 import {
   listViews,
+  listAllViews,
   getView,
   createView,
   updateView,
@@ -91,6 +92,20 @@ export const tableViewRouter = createTRPCRouter({
       if (result.isErr()) mapErrorToTRPC(result.error)
       return result.value.map((v) => ({ ...v, config: v.config as ViewConfig }))
     }),
+
+  /**
+   * Get all views across all tables for the user's organization
+   * Used to populate the app-wide view store on initialization
+   */
+  listAll: protectedProcedure.query(async ({ ctx }) => {
+    const result = await listAllViews({
+      userId: ctx.session.userId,
+      organizationId: ctx.session.organizationId,
+    })
+
+    if (result.isErr()) mapErrorToTRPC(result.error)
+    return result.value.map((v) => ({ ...v, config: v.config as ViewConfig }))
+  }),
 
   /**
    * Get a single view by ID
