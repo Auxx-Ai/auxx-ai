@@ -19,8 +19,8 @@ import {
 } from '@tanstack/react-table'
 import { useQueryStates, parseAsString } from 'nuqs'
 import { useCallback, useEffect, useMemo, useRef, useState, startTransition } from 'react'
-import type { DynamicTableProps, ViewConfig, ExtendedColumnDef, TableFilter, CellSelectionState, ColumnFormatting } from '../types'
-import { applyFilters } from '../utils/filter-functions'
+import type { DynamicTableProps, ViewConfig, ExtendedColumnDef, ColumnFormatting } from '../types'
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { CheckboxCell } from '../components/checkbox-cell'
 import { CheckboxHeaderCell } from '../components/checkbox-header-cell'
 import { computeInitialViewConfig, normalizeViewConfig, buildViewConfig } from '../utils/view-config'
@@ -108,10 +108,8 @@ export function useDynamicTable<TData extends Record<string, any>>({
     [enableCheckbox]
   )
 
-  const [localFilters, setLocalFilters] = useState<TableFilter[]>(() => baseViewConfig.filters)
+  const [localFilters, setLocalFilters] = useState<ConditionGroup[]>(() => baseViewConfig.filters)
   const [activeDragItems, setActiveDragItems] = useState<TData[] | null>(null)
-  const [selectedCell, setSelectedCell] = useState<CellSelectionState | null>(null)
-  const [editingCell, setEditingCell] = useState<CellSelectionState | null>(null)
 
   // Use refs for values that shouldn't trigger re-renders when changed
   const lastSelectedIndexRef = useRef<number | null>(null)
@@ -249,12 +247,8 @@ export function useDynamicTable<TData extends Record<string, any>>({
     return types
   }, [columns])
 
-  const filteredData = useMemo(() => {
-    if (!enableFiltering || localFilters.length === 0) {
-      return data
-    }
-    return data.filter((row) => applyFilters(row, localFilters, columnTypes))
-  }, [columnTypes, data, enableFiltering, localFilters])
+  // Note: Client-side filtering removed - filtering is now handled server-side
+  // Data is passed through directly; useRecordList (Plan 06) handles server-side filtering
 
   const handleColumnOrderChange = useCallback(
     (updater: ColumnOrderState | ((old: ColumnOrderState) => ColumnOrderState)) => {
@@ -267,7 +261,7 @@ export function useDynamicTable<TData extends Record<string, any>>({
   )
 
   const table = useReactTable({
-    data: filteredData,
+    data,
     columns: enhancedColumns,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: enableSorting ? getSortedRowModel() : undefined,
@@ -402,7 +396,7 @@ export function useDynamicTable<TData extends Record<string, any>>({
     [setUrlState]
   )
 
-  const setFilters = useCallback((filters: TableFilter[]) => {
+  const setFilters = useCallback((filters: ConditionGroup[]) => {
     setLocalFilters(filters)
   }, [])
 
@@ -460,9 +454,14 @@ export function useDynamicTable<TData extends Record<string, any>>({
   }, [columnPinning])
 
 
+  // Use ref for table to make toggleRowSelection stable
+  const tableRef = useRef(table)
+  tableRef.current = table
+
   const toggleRowSelection = useCallback(
     (rowId: string, event: React.MouseEvent) => {
-      const row = table.getRowModel().rows.find((tableRow) => tableRow.id === rowId)
+      const t = tableRef.current
+      const row = t.getRowModel().rows.find((tableRow) => tableRow.id === rowId)
       if (!row) {
         return
       }
@@ -476,8 +475,8 @@ export function useDynamicTable<TData extends Record<string, any>>({
         startTransition(() => {
           const start = Math.min(lastIndex, rowIndex)
           const end = Math.max(lastIndex, rowIndex)
-          const allRows = table.getRowModel().rows
-          const newSelection: Record<string, boolean> = { ...table.getState().rowSelection }
+          const allRows = t.getRowModel().rows
+          const newSelection: Record<string, boolean> = { ...t.getState().rowSelection }
 
           for (let index = start; index <= end; index += 1) {
             const currentRowId = allRows[index]?.id
@@ -491,14 +490,14 @@ export function useDynamicTable<TData extends Record<string, any>>({
             }
           }
 
-          table.setRowSelection(newSelection)
+          t.setRowSelection(newSelection)
         })
       } else {
         row.toggleSelected(checked)
         setLastSelectedIndex(rowIndex)
       }
     },
-    [getLastSelectedIndex, setLastSelectedIndex, table]
+    [getLastSelectedIndex, setLastSelectedIndex]
   )
 
   const resetViewChanges = useCallback(() => {
@@ -536,12 +535,6 @@ export function useDynamicTable<TData extends Record<string, any>>({
 
   const isBulkMode = enableCheckbox && table.getFilteredSelectedRowModel().rows.length > 0
 
-  // Version number that changes when column layout changes (sizing, visibility, order, pinning)
-  // Used to bust memoization in VirtualTableRow
-  const columnLayoutVersion = useMemo(() => {
-    return Date.now()
-  }, [columnSizing, columnVisibility, columnOrder, columnPinning])
-
   return {
     table,
     views,
@@ -574,10 +567,5 @@ export function useDynamicTable<TData extends Record<string, any>>({
     toggleRowSelection,
     activeDragItems,
     setActiveDragItems,
-    selectedCell,
-    setSelectedCell,
-    editingCell,
-    setEditingCell,
-    columnLayoutVersion,
   }
 }

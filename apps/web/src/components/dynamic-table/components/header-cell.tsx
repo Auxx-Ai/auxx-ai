@@ -29,7 +29,13 @@ import { useTableContext } from '../context/table-context'
 import { EditColumnLabelDialog } from './edit-column-label-dialog'
 import { EditColumnFormattingDialog } from './edit-column-formatting-dialog'
 import type { Header } from '@tanstack/react-table'
-import type { ExtendedColumnDef, TableFilter, ColumnFormatting, FormattableFieldType, FORMATTABLE_FIELD_TYPES } from '../types'
+import type {
+  ExtendedColumnDef,
+  ColumnFormatting,
+  FormattableFieldType,
+  FORMATTABLE_FIELD_TYPES,
+} from '../types'
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
 
 interface HeaderCellProps<TData> {
   header: Header<TData, unknown>
@@ -64,8 +70,8 @@ function HeaderCellOptionsDropdown<TData>({
   canSort: boolean
   canFilter: boolean
   canHide: boolean
-  filters: TableFilter[]
-  setFilters: (filters: TableFilter[]) => void
+  filters: ConditionGroup[]
+  setFilters: (filters: ConditionGroup[]) => void
   columnTypes: Record<string, string>
   headerContent: string
   originalLabel: string
@@ -83,7 +89,8 @@ function HeaderCellOptionsDropdown<TData>({
 
   // Check if this column supports formatting
   const fieldType = columnDef.fieldType
-  const isFormattable = fieldType && ['CURRENCY', 'DATE', 'DATETIME', 'TIME', 'NUMBER'].includes(fieldType)
+  const isFormattable =
+    fieldType && ['CURRENCY', 'DATE', 'DATETIME', 'TIME', 'NUMBER'].includes(fieldType)
 
   return (
     <DropdownMenu>
@@ -162,15 +169,20 @@ function HeaderCellOptionsDropdown<TData>({
         {canFilter && (
           <DropdownMenuItem
             onClick={() => {
-              // Add a new filter for this column
-              const columnType = columnTypes[column.id] || 'text'
-              const newFilter: TableFilter = {
+              // Add a new filter group with a condition for this column
+              const newGroup: ConditionGroup = {
                 id: crypto.randomUUID(),
-                columnId: column.id,
-                operator: 'contains',
-                value: '',
+                logicalOperator: 'AND',
+                conditions: [
+                  {
+                    id: crypto.randomUUID(),
+                    fieldId: column.id,
+                    operator: 'contains',
+                    value: '',
+                  },
+                ],
               }
-              setFilters([...filters, newFilter])
+              setFilters([...filters, newGroup])
             }}>
             <Filter />
             Filter column

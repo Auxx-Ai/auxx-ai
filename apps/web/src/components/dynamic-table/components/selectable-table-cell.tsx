@@ -12,8 +12,9 @@ import { useCallback, useRef } from 'react'
 interface SelectableTableCellProps<TData> {
   cell: Cell<TData, unknown>
   rowId: string
+  /** Column ID for CSS variable width - uses data-col attribute */
+  columnId: string
   className?: string
-  style?: React.CSSProperties
 }
 
 /**
@@ -32,20 +33,19 @@ interface SelectableTableCellProps<TData> {
 function SelectableTableCellInner<TData>({
   cell,
   rowId,
+  columnId,
   className,
-  style,
 }: SelectableTableCellProps<TData>) {
   const { selectedCell, setSelectedCell, editingCell, setEditingCell, cellSelectionConfig } =
     useCellSelection()
 
   const cellRef = useRef<HTMLDivElement>(null)
-  const columnId = cell.column.id
 
   const isSelected = selectedCell?.rowId === rowId && selectedCell?.columnId === columnId
   const isEditing = editingCell?.rowId === rowId && editingCell?.columnId === columnId
 
   // System columns (checkbox) don't support selection
-  const isSystemColumn = cell.column.id === '_checkbox'
+  const isSystemColumn = columnId === '_checkbox'
 
   /** Handle single click - select cell */
   const handleClick = useCallback(
@@ -96,13 +96,13 @@ function SelectableTableCellInner<TData>({
   return (
     <div
       ref={cellRef}
+      data-col={columnId}
       className={cn(
         'group/cell flex items-center h-full relative outline-none',
         isSelected && 'cell-selected',
         isEditing && 'cell-editing',
         className
       )}
-      style={style}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onKeyDown={handleKeyDown}

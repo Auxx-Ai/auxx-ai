@@ -97,36 +97,16 @@ interface TableContextValue<TData = any> {
   setColumnFormatting: (columnId: string, formatting: ColumnFormatting | null) => void
   setPinnedColumn: (columnId: string | null) => void
 
-  // Bulk mode state
-  isBulkMode: boolean
-  getIsBulkMode: () => boolean
-
-  // Column structure version - changes when order/visibility/pinning changes (NOT sizing)
-  // Used to trigger row re-renders when column structure changes
-  columnStructureVersion: number
-
   // Callbacks
   onRowClick?: (row: TData, event: React.MouseEvent, rowId: string, table: Table<TData>) => void
   onImport?: (file: File) => Promise<void>
   importHref?: string
   onRefresh?: () => void
-  bulkActions?: BulkAction<TData>[]
-  onRowSelectionChange?: (selectedRows: Set<string>) => void
   onScrollToBottom?: () => void
-
-  // Row selection utilities
-  toggleRowSelection?: (rowId: string, event: React.MouseEvent) => void
+  bulkActions?: BulkAction<TData>[]
 
   // Utilities
   rowClassName?: (row: TData) => string | undefined
-
-  // Checkbox state - using getters to avoid context re-renders
-  getLastSelectedIndex: () => number | null
-  setLastSelectedIndex: (index: number | null) => void
-
-  // Last clicked row - using getters to avoid context re-renders
-  getLastClickedRowId: () => string | null
-  setLastClickedRowId: (id: string | null) => void
 
   // Footer
   footerElement?: ReactNode

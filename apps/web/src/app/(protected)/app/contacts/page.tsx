@@ -364,6 +364,7 @@ export default function CustomerListPage() {
             <DynamicTable
               data={items}
               className="h-full flex-1"
+              resourceType="contact"
               tableId="contacts"
               bulkActions={bulkActions}
               enableSearch

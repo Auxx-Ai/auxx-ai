@@ -19,8 +19,8 @@ interface VirtualTableRowProps<TData> {
   isLastClicked?: boolean
   /** Pre-computed selection state to avoid context re-renders */
   isSelected?: boolean
-  /** Whether bulk mode is active - passed as prop to avoid context re-renders */
-  isBulkMode?: boolean
+  /** Getter for bulk mode - stable reference to avoid row re-renders */
+  getIsBulkMode?: () => boolean
   /** Whether checkboxes are enabled - passed as prop to avoid context re-renders */
   enableCheckbox?: boolean
   /** Toggle row selection handler - passed as prop to avoid context re-renders */
@@ -37,8 +37,6 @@ interface VirtualTableRowProps<TData> {
   ref?: React.Ref<HTMLDivElement>
   /** Whether cell selection is enabled - passed as prop to avoid context re-renders */
   cellSelectionEnabled?: boolean
-  /** Version that changes when column layout changes - busts memoization */
-  columnLayoutVersion?: number
 }
 
 const CELL_DEFAULT =
@@ -59,7 +57,7 @@ function VirtualTableRowInner<TData>({
   rowClassName,
   isLastClicked = false,
   isSelected = false,
-  isBulkMode = false,
+  getIsBulkMode,
   enableCheckbox = false,
   toggleRowSelection,
   dragAttributes,
@@ -70,6 +68,9 @@ function VirtualTableRowInner<TData>({
   ref,
   cellSelectionEnabled = false,
 }: VirtualTableRowProps<TData>) {
+  // Get bulk mode from getter - called at render time, not passed as prop
+  const isBulkMode = getIsBulkMode?.() ?? false
+
   // Cache visible cells to avoid calling getVisibleCells() twice
   const visibleCells = row.getVisibleCells()
   const pinnedLeftCells = visibleCells.filter((cell) => cell.column.getIsPinned() === 'left')
@@ -88,8 +89,11 @@ function VirtualTableRowInner<TData>({
       return
     }
 
+    // Read bulk mode at click time (not render time) to avoid stale closure
+    const currentIsBulkMode = getIsBulkMode?.() ?? false
+
     // In bulk mode with checkboxes enabled, toggle row selection
-    if (isBulkMode && enableCheckbox) {
+    if (currentIsBulkMode && enableCheckbox) {
       toggleRowSelection?.(row.id, e)
     }
 
@@ -164,7 +168,7 @@ function VirtualTableRowInner<TData>({
         )}
 
         {/* Render left pinned cells */}
-        {pinnedLeftCells.map((cell, index) => (
+        {pinnedLeftCells.map((cell) => (
           <div
             key={cell.id}
             className={cn('sticky z-19')}
@@ -173,7 +177,7 @@ function VirtualTableRowInner<TData>({
               <SelectableTableCell
                 cell={cell}
                 rowId={row.id}
-                style={{ width: cell.column.getSize() }}
+                columnId={cell.column.id}
                 className={cn(
                   CELL_DEFAULT,
                   'backdrop-blur-sm',
@@ -184,27 +188,26 @@ function VirtualTableRowInner<TData>({
             ) : (
               <VirtualTableCell
                 cell={cell}
-                style={{ width: cell.column.getSize() }}
+                columnId={cell.column.id}
                 className={cn(
                   CELL_DEFAULT,
                   'backdrop-blur-sm',
                   isSelected && CELL_SELECTED,
                   isLastClicked && CELL_LAST_CLICKED
                 )}
-                data-index={index}
               />
             )}
           </div>
         ))}
 
         {/* Render non-pinned cells */}
-        {unpinnedCells.map((cell, index) =>
+        {unpinnedCells.map((cell) =>
           cellSelectionEnabled ? (
             <SelectableTableCell
               key={cell.id}
               cell={cell}
               rowId={row.id}
-              style={{ width: cell.column.getSize() }}
+              columnId={cell.column.id}
               className={cn(
                 CELL_DEFAULT,
                 isSelected && CELL_SELECTED,
@@ -215,13 +218,12 @@ function VirtualTableRowInner<TData>({
             <VirtualTableCell
               key={cell.id}
               cell={cell}
-              style={{ width: cell.column.getSize() }}
+              columnId={cell.column.id}
               className={cn(
                 CELL_DEFAULT,
                 isSelected && CELL_SELECTED,
                 isLastClicked && CELL_LAST_CLICKED
               )}
-              data-index={index}
             />
           )
         )}
@@ -244,8 +246,7 @@ function areRowPropsEqual<TData>(
   // Compare selection state (passed as prop)
   if (prevProps.isSelected !== nextProps.isSelected) return false
 
-  // Compare bulk mode state
-  if (prevProps.isBulkMode !== nextProps.isBulkMode) return false
+  // Note: isBulkMode is now accessed via getter, not compared as prop
   if (prevProps.enableCheckbox !== nextProps.enableCheckbox) return false
 
   // Compare last clicked state
@@ -263,11 +264,11 @@ function areRowPropsEqual<TData>(
   // Compare cell selection
   if (prevProps.cellSelectionEnabled !== nextProps.cellSelectionEnabled) return false
 
-  // Compare column layout version - forces re-render when sizing/visibility/order changes
-  if (prevProps.columnLayoutVersion !== nextProps.columnLayoutVersion) return false
-
   return true
 }
 
 /** Memoized VirtualTableRow - only re-renders when props actually change */
-export const VirtualTableRow = memo(VirtualTableRowInner, areRowPropsEqual) as typeof VirtualTableRowInner
+export const VirtualTableRow = memo(
+  VirtualTableRowInner,
+  areRowPropsEqual
+) as typeof VirtualTableRowInner

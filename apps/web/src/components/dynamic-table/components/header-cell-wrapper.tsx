@@ -26,30 +26,29 @@ export function HeaderCellWrapper<TData>({ header }: HeaderCellWrapperProps<TDat
     disabled: isCheckboxColumn,
   })
 
-  const style = { transform: CSS.Transform.toString(transform), transition }
+  // Drag transform style (separate from width which uses CSS variables)
+  const dragStyle = transform ? { transform: CSS.Transform.toString(transform), transition } : {}
 
   return (
     <div
       ref={setNodeRef}
+      data-col={header.column.id}
       style={{
-        ...style,
-        width: header.getSize(),
+        ...dragStyle,
         minWidth: columnDef.minSize,
         maxWidth: columnDef.maxSize,
       }}
       className={cn('relative shrink-0', isDragging && 'opacity-30 z-50')}>
       <div
-        className="group min-w-min py-2 h-full font-inter font-medium"
-        style={{ width: header.getSize() }}
+        className="group min-w-min py-2 h-full font-inter font-medium w-full"
         {...(!isCheckboxColumn ? attributes : {})}
         {...(!isCheckboxColumn ? listeners : {})}
         aria-describedby="header-tooltip">
         <div
           className={cn(
             header.index === 0 ? '' : 'border-l border-foreground-200/80',
-            'pr-3 h-full relative py-1'
-          )}
-          style={{ width: header.getSize() }}>
+            'pr-3 h-full relative py-1 w-full'
+          )}>
           {header.isPlaceholder ? null : <HeaderCell header={header} isDragging={isDragging} />}
         </div>
       </div>

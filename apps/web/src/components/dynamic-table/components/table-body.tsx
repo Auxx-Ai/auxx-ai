@@ -1,7 +1,7 @@
 // apps/web/src/components/dynamic-table/components/table-body.tsx
 'use client'
 
-import { useRef } from 'react'
+import { useRef, useEffect, useMemo } from 'react'
 import { useTableContext } from '../context/table-context'
 import { useCellSelection } from '../context/cell-selection-context'
 import { VirtualTableBody } from './virtual-table-body'
@@ -41,12 +41,34 @@ export function TableBody<TData extends object>({
 
   const { cellSelectionConfig } = useCellSelection()
 
-  // Container ref for virtualization
+  // Container ref for virtualization AND CSS variables
   const containerRef = useRef<HTMLDivElement>(null)
+
+  // Update CSS variables directly on DOM when column sizing changes - bypasses React
+  const columnSizing = table.getState().columnSizing
+  useEffect(() => {
+    if (!containerRef.current) return
+    const style = containerRef.current.style
+    table.getVisibleLeafColumns().forEach((col) => {
+      style.setProperty(`--col-${col.id}-w`, `${col.getSize()}px`)
+    })
+  }, [columnSizing, table])
+
+  // Generate CSS rules once (only changes when column IDs change)
+  const visibleColumns = table.getVisibleLeafColumns()
+  const columnIds = visibleColumns.map((c) => c.id).join(',')
+  const columnStyleRules = useMemo(() => {
+    return visibleColumns
+      .map((c) => `[data-col="${c.id}"] { width: var(--col-${c.id}-w); min-width: var(--col-${c.id}-w); }`)
+      .join('\n')
+  }, [columnIds])
 
   return (
     <div className="">
+      {/* CSS rules for column widths - generated once per column set */}
+      <style>{columnStyleRules}</style>
       <div className="max-w-full pl-0">
+        {/* Container with CSS variables for column widths */}
         <div
           ref={containerRef}
           className="min-w-full"

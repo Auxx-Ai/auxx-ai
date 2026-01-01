@@ -7,11 +7,13 @@ import { type Table } from '@tanstack/react-table'
 import { VirtualTableRow } from './virtual-table-row'
 import { DragDropRow } from './drag-drop-row'
 import { useTableContext } from '../context/table-context'
+import { useRowSelection } from '../context/row-selection-context'
 import { ROW_HEIGHT } from '../utils/constants'
 import { useInView } from 'react-intersection-observer'
 import { useEffect, useRef, useMemo, useLayoutEffect, useCallback, useState } from 'react'
 import { type DragDropConfig } from '../types'
 import { cn } from '@auxx/ui/lib/utils'
+
 interface VirtualTableBodyProps<TData> {
   table: Table<TData>
   containerRef: React.RefObject<HTMLDivElement>
@@ -31,17 +33,17 @@ export function VirtualTableBody<TData>({
   dragDropConfig,
   cellSelectionEnabled = false,
 }: VirtualTableBodyProps<TData>) {
+  const { onRowClick, rowClassName, onScrollToBottom } = useTableContext<TData>()
   const {
-    onRowClick,
-    rowClassName,
-    onScrollToBottom,
-    setLastClickedRowId,
     getLastClickedRowId,
-    isBulkMode,
+    setLastClickedRowId,
+    getIsBulkMode,
     enableCheckbox,
     toggleRowSelection,
-    columnLayoutVersion,
-  } = useTableContext<TData>()
+  } = useRowSelection<TData>()
+
+  // Note: CSS variables for column widths are now set in table-body.tsx
+  // which wraps both headers and body rows
 
   const { rows } = table.getRowModel()
 
@@ -107,16 +109,6 @@ export function VirtualTableBody<TData>({
     }
   }, [scrollContainerRef])
 
-  // Performance-optimized scroll handler using direct DOM manipulation
-  const handleScroll = useCallback(() => {
-    if (!shadowRef.current || !scrollContainerRef.current) return
-
-    const scrollLeft = scrollContainerRef.current.scrollLeft
-    // Calculate opacity: 0 at left edge, full opacity after 50px scroll
-    const opacity = Math.min(scrollLeft / 50, 1)
-    // Direct DOM manipulation to avoid re-renders
-    shadowRef.current.style.opacity = opacity.toString()
-  }, [scrollContainerRef])
 
   // Set up scroll event listener with cleanup
   useLayoutEffect(() => {
@@ -195,7 +187,13 @@ export function VirtualTableBody<TData>({
     overscan: 10, // Increased from 5 for smoother fast scrolling
   })
 
-  // Handle row click - memoized to prevent breaking row memoization
+  // Use refs for stable callbacks - avoid breaking row memoization
+  const tableRef = useRef(table)
+  tableRef.current = table
+  const onRowClickRef = useRef(onRowClick)
+  onRowClickRef.current = onRowClick
+
+  // Handle row click - stable reference via refs
   const handleRowClick = useCallback(
     (row: TData, event: React.MouseEvent, rowId: string) => {
       // Don't trigger row click if clicking on interactive elements
@@ -213,9 +211,9 @@ export function VirtualTableBody<TData>({
       setLastClickedRowId(rowId)
 
       // Call onRowClick with enhanced parameters including table object
-      onRowClick?.(row, event, rowId, table)
+      onRowClickRef.current?.(row, event, rowId, tableRef.current)
     },
-    [setLastClickedRowId, onRowClick, table]
+    [setLastClickedRowId]
   )
 
   return (
@@ -244,12 +242,11 @@ export function VirtualTableBody<TData>({
                 rowClassName={rowClassName}
                 isLastClicked={isLastClicked}
                 isSelected={isSelected}
-                isBulkMode={isBulkMode}
+                getIsBulkMode={getIsBulkMode}
                 enableCheckbox={enableCheckbox}
                 toggleRowSelection={toggleRowSelection}
                 dragDropConfig={dragDropConfig}
                 cellSelectionEnabled={cellSelectionEnabled}
-                columnLayoutVersion={columnLayoutVersion}
               />
             )
           }
@@ -264,11 +261,10 @@ export function VirtualTableBody<TData>({
               rowClassName={rowClassName}
               isLastClicked={isLastClicked}
               isSelected={isSelected}
-              isBulkMode={isBulkMode}
+              getIsBulkMode={getIsBulkMode}
               enableCheckbox={enableCheckbox}
               toggleRowSelection={toggleRowSelection}
               cellSelectionEnabled={cellSelectionEnabled}
-              columnLayoutVersion={columnLayoutVersion}
             />
           )
         })}
@@ -284,7 +280,6 @@ export function VirtualTableBody<TData>({
             className={cn(
               'absolute top-[-40px] left-full bottom-0 w-[1px] ml-[-1px] bg-transparent shadow-[6px_0_16px_4px_rgb(0,0,0,0.2)] dark:shadow-[6px_0_16px_4px_rgb(0,0,0,0.7)] [clip-path:inset(0px_-38px_0px_0px)] transition-opacity duration-200'
             )}
-            // style={{ opacity: 0 }}
           />
         </div>
       </div>

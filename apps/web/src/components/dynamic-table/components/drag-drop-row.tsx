@@ -20,8 +20,8 @@ interface DragDropRowProps<TData> {
   isLastClicked?: boolean
   /** Pre-computed selection state to avoid context re-renders */
   isSelected?: boolean
-  /** Whether bulk mode is active - passed as prop to avoid context re-renders */
-  isBulkMode?: boolean
+  /** Getter for bulk mode - stable reference to avoid row re-renders */
+  getIsBulkMode?: () => boolean
   /** Whether checkboxes are enabled - passed as prop to avoid context re-renders */
   enableCheckbox?: boolean
   /** Toggle row selection handler - passed as prop to avoid context re-renders */
@@ -29,8 +29,6 @@ interface DragDropRowProps<TData> {
   dragDropConfig: DragDropConfig<TData>
   /** Whether cell selection is enabled - passed to VirtualTableRow */
   cellSelectionEnabled?: boolean
-  /** Version that changes when column layout changes - busts memoization */
-  columnLayoutVersion?: number
 }
 
 /**
@@ -44,12 +42,11 @@ export function DragDropRow<TData>({
   rowClassName,
   isLastClicked = false,
   isSelected = false,
-  isBulkMode = false,
+  getIsBulkMode,
   enableCheckbox = false,
   toggleRowSelection,
   dragDropConfig,
   cellSelectionEnabled = false,
-  columnLayoutVersion,
 }: DragDropRowProps<TData>) {
   const { activeDragItems } = useTableContext<TData>()
 
@@ -136,7 +133,7 @@ export function DragDropRow<TData>({
       rowClassName={rowClassName}
       isLastClicked={isLastClicked}
       isSelected={isSelected}
-      isBulkMode={isBulkMode}
+      getIsBulkMode={getIsBulkMode}
       enableCheckbox={enableCheckbox}
       toggleRowSelection={toggleRowSelection}
       // Pass drag attributes to enable dragging from anywhere on the row
@@ -145,7 +142,6 @@ export function DragDropRow<TData>({
       isDropTarget={canAcceptDrop}
       isOver={isOver}
       cellSelectionEnabled={cellSelectionEnabled}
-      columnLayoutVersion={columnLayoutVersion}
     />
   )
 }

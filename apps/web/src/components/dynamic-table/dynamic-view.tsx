@@ -1,7 +1,7 @@
 // apps/web/src/components/dynamic-table/dynamic-view.tsx
 'use client'
 
-import { useMemo, useRef, Children, isValidElement, useState } from 'react'
+import { useMemo, useRef, Children, isValidElement, useState, useCallback, type RefObject } from 'react'
 import { useDynamicTable } from './hooks/use-dynamic-table'
 import { useCellNavigation } from './hooks/use-cell-navigation'
 import { TableToolbar } from './components/table-toolbar'
@@ -9,8 +9,9 @@ import { TableBody } from './components/table-body'
 import { KanbanViewBody } from './components/kanban-view-body'
 import { TableProvider, useTableContext } from './context/table-context'
 import { CellSelectionProvider, useCellSelection } from './context/cell-selection-context'
+import { RowSelectionProvider } from './context/row-selection-context'
 import { cn } from '@auxx/ui/lib/utils'
-import type { DynamicTableProps, ViewType, KanbanViewConfig, ViewConfig } from './types'
+import type { DynamicTableProps, ViewType, KanbanViewConfig, ViewConfig, CellSelectionState } from './types'
 import { Button } from '@auxx/ui/components/button'
 import { X } from 'lucide-react'
 import './styles/table.css'
@@ -173,6 +174,7 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
     onSelectedKanbanCardIdsChange,
     modelType,
     entityDefinitionId,
+    resourceType,
     ...tableProps
   } = props
 
@@ -214,12 +216,11 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
     toggleRowSelection,
     activeDragItems,
     setActiveDragItems,
-    selectedCell,
-    setSelectedCell,
-    editingCell,
-    setEditingCell,
-    columnLayoutVersion,
   } = tableState
+
+  // Cell selection state - kept in DynamicView for CellSelectionContext
+  const [selectedCell, setSelectedCell] = useState<CellSelectionState | null>(null)
+  const [editingCell, setEditingCell] = useState<CellSelectionState | null>(null)
 
   // Internal kanban selection state (used when not controlled)
   const [internalSelectedCardIds, setInternalSelectedCardIds] = useState<Set<string>>(new Set())
@@ -246,6 +247,11 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
       }
     }
   })
+
+  // Getter for isBulkMode - uses ref pattern for truly stable reference
+  const isBulkModeRef = useRef(isBulkMode)
+  isBulkModeRef.current = isBulkMode
+  const getIsBulkMode = useCallback(() => isBulkModeRef.current, [])
 
   // Build context value with all props including kanban
   const contextValue = useMemo(
@@ -274,7 +280,6 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
       onRowClick,
       onImport: tableProps.onImport,
       onRefresh: tableProps.onRefresh,
-      onRowSelectionChange: tableProps.onRowSelectionChange,
       onScrollToBottom: tableProps.onScrollToBottom,
       rowClassName,
       isLoading,
@@ -290,12 +295,6 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
       setColumnFormatting,
       pinnedColumnId,
       setPinnedColumn,
-      getLastSelectedIndex,
-      setLastSelectedIndex,
-      getLastClickedRowId,
-      setLastClickedRowId,
-      isBulkMode,
-      toggleRowSelection,
       footerElement,
       bulkActionBarElement,
       tableToolbarElement,
@@ -315,9 +314,9 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
       onAddCard,
       modelType,
       entityDefinitionId,
+      resourceType,
       selectedKanbanCardIds,
       onSelectedKanbanCardIdsChange: setSelectedKanbanCardIds,
-      columnLayoutVersion,
     }),
     [
       tableInstance,
@@ -360,12 +359,6 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
       setColumnFormatting,
       pinnedColumnId,
       setPinnedColumn,
-      getLastSelectedIndex,
-      setLastSelectedIndex,
-      getLastClickedRowId,
-      setLastClickedRowId,
-      isBulkMode,
-      toggleRowSelection,
       footerElement,
       bulkActionBarElement,
       tableToolbarElement,
@@ -385,9 +378,9 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
       onAddCard,
       modelType,
       entityDefinitionId,
+      resourceType,
       selectedKanbanCardIds,
       setSelectedKanbanCardIds,
-      columnLayoutVersion,
     ]
   )
 
@@ -403,13 +396,43 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
     [selectedCell, setSelectedCell, editingCell, setEditingCell, cellSelection]
   )
 
+  // Row selection context value - separate for performance
+  const rowSelectionContextValue = useMemo(
+    () => ({
+      enableCheckbox,
+      isBulkMode,
+      getIsBulkMode,
+      toggleRowSelection,
+      getLastSelectedIndex,
+      setLastSelectedIndex,
+      getLastClickedRowId,
+      setLastClickedRowId,
+      bulkActions,
+      onRowSelectionChange: tableProps.onRowSelectionChange,
+    }),
+    [
+      enableCheckbox,
+      isBulkMode,
+      getIsBulkMode,
+      toggleRowSelection,
+      getLastSelectedIndex,
+      setLastSelectedIndex,
+      getLastClickedRowId,
+      setLastClickedRowId,
+      bulkActions,
+      tableProps.onRowSelectionChange,
+    ]
+  )
+
   return (
     <TableProvider value={contextValue}>
-      <CellSelectionProvider value={cellSelectionContextValue}>
-        <div className={cn('flex-1', className)}>
-          <DynamicViewInner<TData> />
-        </div>
-      </CellSelectionProvider>
+      <RowSelectionProvider value={rowSelectionContextValue}>
+        <CellSelectionProvider value={cellSelectionContextValue}>
+          <div className={cn('flex-1', className)}>
+            <DynamicViewInner<TData> />
+          </div>
+        </CellSelectionProvider>
+      </RowSelectionProvider>
     </TableProvider>
   )
 }

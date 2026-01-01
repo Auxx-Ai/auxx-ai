@@ -2,14 +2,15 @@
 
 'use client'
 
-import { memo } from 'react'
+import { memo, useEffect, useRef } from 'react'
 import { flexRender, type Cell } from '@tanstack/react-table'
 import { cn } from '@auxx/ui/lib/utils'
 
 interface VirtualTableCellProps<TData> {
   cell: Cell<TData, unknown>
+  /** Column ID for CSS variable width - uses data-col attribute */
+  columnId: string
   className?: string
-  style?: React.CSSProperties
 }
 
 /**
@@ -19,11 +20,30 @@ interface VirtualTableCellProps<TData> {
  * their own padding and layout. This component just provides the outer
  * flex wrapper for positioning.
  *
+ * Width is controlled via CSS variables (--col-{id}-w) set on the parent container.
+ * This eliminates re-renders on column resize.
+ *
  * Memoized to prevent unnecessary re-renders when parent row updates.
  */
-function VirtualTableCellInner<TData>({ cell, className, style }: VirtualTableCellProps<TData>) {
+function VirtualTableCellInner<TData>({ cell, columnId, className }: VirtualTableCellProps<TData>) {
+  const ref = useRef<HTMLDivElement>(null)
+
+  // DEBUG: Flash yellow on re-render to visualize which cells are updating
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+
+    el.style.backgroundColor = 'rgba(255, 200, 0, 0.5)'
+    el.style.transition = 'background-color 0.5s ease-out'
+    const timeout = setTimeout(() => {
+      el.style.backgroundColor = ''
+    }, 100)
+
+    return () => clearTimeout(timeout)
+  })
+
   return (
-    <div className={cn('flex items-center h-full', className)} style={style}>
+    <div ref={ref} data-col={columnId} className={cn('flex items-center h-full', className)}>
       {flexRender(cell.column.columnDef.cell, cell.getContext())}
     </div>
   )
