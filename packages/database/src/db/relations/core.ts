@@ -96,11 +96,6 @@ import {
   Tag,
   TagsOnArticle,
   TagsOnThread,
-  TestCase,
-  TestCaseInSuite,
-  TestResult,
-  TestRun,
-  TestSuite,
   Thread,
   ThreadReadStatus,
   Ticket,
@@ -191,9 +186,6 @@ export const userRelations = relations(User, ({ one, many }) => ({
   sessions: many(session),
   twoFactor: many(TwoFactor),
   tableViews: many(TableView),
-  createdTestCases: many(TestCase),
-  createdTestSuites: many(TestSuite),
-  executedTestRuns: many(TestRun),
   searchHistory: many(SearchHistory),
   createdWorkflows: many(Workflow),
   createdWorkflowApps: many(WorkflowApp),
@@ -287,9 +279,6 @@ export const organizationRelations = relations(Organization, ({ one, many }) => 
   syncJobs: many(SyncJob),
   customFields: many(CustomField),
   tableViews: many(TableView),
-  testCases: many(TestCase),
-  testSuites: many(TestSuite),
-  testRuns: many(TestRun),
   integrationTagLabels: many(IntegrationTagLabel),
   searchHistories: many(SearchHistory),
   loadBalancingConfigs: many(LoadBalancingConfig),
@@ -796,70 +785,6 @@ export const tableViewRelations = relations(TableView, ({ one }) => ({
   user: one(User, {
     fields: [TableView.userId],
     references: [User.id],
-  }),
-}))
-
-export const testCaseRelations = relations(TestCase, ({ one, many }) => ({
-  createdBy: one(User, {
-    fields: [TestCase.createdById],
-    references: [User.id],
-  }),
-  organization: one(Organization, {
-    fields: [TestCase.organizationId],
-    references: [Organization.id],
-  }),
-  testSuites: many(TestCaseInSuite),
-  testResults: many(TestResult),
-}))
-
-export const testSuiteRelations = relations(TestSuite, ({ one, many }) => ({
-  createdBy: one(User, {
-    fields: [TestSuite.createdById],
-    references: [User.id],
-  }),
-  organization: one(Organization, {
-    fields: [TestSuite.organizationId],
-    references: [Organization.id],
-  }),
-  testCases: many(TestCaseInSuite),
-  testRuns: many(TestRun),
-}))
-
-export const testCaseInSuiteRelations = relations(TestCaseInSuite, ({ one }) => ({
-  suite: one(TestSuite, {
-    fields: [TestCaseInSuite.suiteId],
-    references: [TestSuite.id],
-  }),
-  testCase: one(TestCase, {
-    fields: [TestCaseInSuite.testCaseId],
-    references: [TestCase.id],
-  }),
-}))
-
-export const testRunRelations = relations(TestRun, ({ one, many }) => ({
-  executedBy: one(User, {
-    fields: [TestRun.executedById],
-    references: [User.id],
-  }),
-  organization: one(Organization, {
-    fields: [TestRun.organizationId],
-    references: [Organization.id],
-  }),
-  testSuite: one(TestSuite, {
-    fields: [TestRun.suiteId],
-    references: [TestSuite.id],
-  }),
-  testResults: many(TestResult),
-}))
-
-export const testResultRelations = relations(TestResult, ({ one }) => ({
-  testRun: one(TestRun, {
-    fields: [TestResult.runId],
-    references: [TestRun.id],
-  }),
-  testCase: one(TestCase, {
-    fields: [TestResult.testCaseId],
-    references: [TestCase.id],
   }),
 }))
 

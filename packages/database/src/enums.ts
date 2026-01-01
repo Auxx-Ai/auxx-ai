@@ -514,16 +514,6 @@ export const SubscriptionStatusValues = [
 /** Stripe subscription status type */
 export type SubscriptionStatus = (typeof SubscriptionStatusValues)[number]
 
-export const TestCaseStatusValues = ['ACTIVE', 'INACTIVE', 'DRAFT'] as const
-
-export const TestRunStatusValues = [
-  'PENDING',
-  'RUNNING',
-  'COMPLETED',
-  'FAILED',
-  'CANCELLED',
-] as const
-
 export const ThreadStatusValues = [
   'OPEN',
   'ARCHIVED',
@@ -1213,20 +1203,6 @@ export const SubscriptionStatus = {
   CANCELED: 'canceled',
   UNPAID: 'unpaid',
   PAUSED: 'paused',
-} as const
-
-export const TestCaseStatus = {
-  ACTIVE: 'ACTIVE',
-  INACTIVE: 'INACTIVE',
-  DRAFT: 'DRAFT',
-} as const
-
-export const TestRunStatus = {
-  PENDING: 'PENDING',
-  RUNNING: 'RUNNING',
-  COMPLETED: 'COMPLETED',
-  FAILED: 'FAILED',
-  CANCELLED: 'CANCELLED',
 } as const
 
 export const ThreadStatus = {

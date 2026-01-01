@@ -6,43 +6,31 @@ import type { Operator } from '../client'
 import type { EnumValue } from '../../resources/registry/field-types'
 import { BaseType } from '../core/types'
 
+// Import from shared conditions module
+import type {
+  Condition,
+  ConditionGroup as BaseConditionGroup,
+  ConditionValidationResult,
+} from '../../conditions'
+
 const logger = createScopedLogger('base-condition-builder')
 
 /**
- * Generic condition structure used across all builders
+ * Backward-compat alias for Condition
+ * @deprecated Use Condition from @auxx/lib/conditions instead
  */
-export interface GenericCondition {
-  id: string
-  fieldId: string
-  operator: Operator
-  value: string | number | boolean | string[] | any
-  isConstant: boolean
-  logicalOperator?: 'AND' | 'OR'
-  key?: string
-  subConditions?: GenericCondition[]
-  metadata?: Record<string, any>
-  numberVarType?: 'string' | 'number'
-  variableId?: string
-}
+export type GenericCondition = Condition
 
 /**
- * Condition group with logical operator
+ * Re-export ConditionGroup for backward compatibility
  */
-export interface ConditionGroup {
-  id: string
-  conditions: GenericCondition[]
-  logicalOperator: 'AND' | 'OR'
-  metadata?: Record<string, any>
-  case_id?: string
-}
+export type { BaseConditionGroup as ConditionGroup }
 
 /**
- * Validation result
+ * Backward-compat alias for ConditionValidationResult
+ * @deprecated Use ConditionValidationResult from @auxx/lib/conditions instead
  */
-export interface ValidationResult {
-  valid: boolean
-  errors: string[]
-}
+export type ValidationResult = ConditionValidationResult
 
 /**
  * Abstract base class for condition builders

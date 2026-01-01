@@ -62,39 +62,9 @@ export const ticketMergeService = {
 
     // Begin transaction
     return await db.transaction(async (tx: Transaction) => {
-      // Combine ticket information from all tickets
-      const mergedDescription = tickets
-        .map((t) => `--- Ticket ${t.id} ---\n${t.title}\n${t.description || ''}`)
-        .join('\n\n')
-
-      // Create a note in the primary ticket with merged information
-      await tx.insert(schema.TicketNote).values({
-        ticketId: primaryTicketId,
-        authorId: userId,
-        content: `Merged the following tickets into this one:\n${ticketsToMergeIds.join(', ')}\n\nMerged content:\n${mergedDescription}`,
-        isInternal: true as any,
-        updatedAt: new Date(),
-      })
-
-      // Transfer all notes from merged tickets to primary ticket
+      // Transfer data from merged tickets to primary ticket
       for (const ticket of tickets) {
         if (ticket.id !== primaryTicketId) {
-          // Move notes to primary ticket
-          const notes = await tx
-            .select()
-            .from(schema.TicketNote)
-            .where(eq(schema.TicketNote.ticketId, ticket.id))
-          for (const note of notes) {
-            await tx
-              .update(schema.TicketNote)
-              .set({
-                ticketId: primaryTicketId,
-                content: `[From merged ticket ${ticket.id}] ${note.content}`,
-                updatedAt: new Date(),
-              })
-              .where(eq(schema.TicketNote.id, note.id))
-          }
-
           // Add agents from merged tickets to primary (if they're not already assigned)
           const assignments = await tx
             .select()
@@ -154,11 +124,6 @@ export const ticketMergeService = {
         .where(eq(schema.Ticket.id, primaryTicketId))
         .limit(1)
 
-      const notes = await tx
-        .select()
-        .from(schema.TicketNote)
-        .where(eq(schema.TicketNote.ticketId, primaryTicketId))
-
       const assignRows = await tx
         .select({
           id: schema.TicketAssignment.id,
@@ -181,7 +146,6 @@ export const ticketMergeService = {
 
       return {
         ...primary,
-        notes,
         assignments: assignRows.map((a) => ({ ...a })),
         childTickets,
       } as any

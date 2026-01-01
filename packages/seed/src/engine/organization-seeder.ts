@@ -196,17 +196,6 @@ export class OrganizationSeeder {
         )
       )
 
-      console.log('  ↳ Deleting ticket notes...')
-      await db.delete(schema.TicketNote).where(
-        eq(
-          schema.TicketNote.ticketId,
-          db
-            .select({ id: schema.Ticket.id })
-            .from(schema.Ticket)
-            .where(eq(schema.Ticket.organizationId, organizationId))
-        )
-      )
-
       console.log('  ↳ Deleting ticket replies...')
       await db.delete(schema.TicketReply).where(
         eq(

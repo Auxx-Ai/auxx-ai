@@ -419,14 +419,6 @@ export const storageProvider = pgEnum('StorageProvider', [
   'BOX',
   'GENERIC_URL',
 ])
-export const testCaseStatus = pgEnum('TestCaseStatus', ['ACTIVE', 'INACTIVE', 'DRAFT'])
-export const testRunStatus = pgEnum('TestRunStatus', [
-  'PENDING',
-  'RUNNING',
-  'COMPLETED',
-  'FAILED',
-  'CANCELLED',
-])
 export const threadStatus = pgEnum('ThreadStatus', [
   'OPEN',
   'ARCHIVED',

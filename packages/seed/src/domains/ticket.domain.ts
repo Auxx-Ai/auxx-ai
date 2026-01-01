@@ -91,7 +91,6 @@ export class TicketDomain {
 
     // Then seed related entities
     await this.seedTicketReplies(db, schema, organizationId)
-    await this.seedTicketNotes(db, schema, organizationId)
     await this.seedTicketAssignments(db, schema, organizationId)
     await this.seedTicketRelations(db, schema, organizationId)
   }
@@ -264,68 +263,6 @@ export class TicketDomain {
       }
 
       console.log(`✅ Upserted ${replies.length} ticket replies`)
-    }
-  }
-
-  /**
-   * seedTicketNotes generates and inserts ticket note records.
-   * @param db - Drizzle database instance
-   * @param schema - Database schema
-   * @param organizationId - Organization ID to filter tickets
-   */
-  private async seedTicketNotes(db: any, schema: any, organizationId: string): Promise<void> {
-    console.log('📝 Generating ticket notes...')
-
-    const tickets = await db
-      .select({ id: schema.Ticket.id })
-      .from(schema.Ticket)
-      .where(sql`${schema.Ticket.organizationId} = ${organizationId}`)
-
-    if (tickets.length === 0) {
-      console.log('⚠️  No tickets found, skipping note generation')
-      return
-    }
-
-    const notes = []
-
-    tickets.forEach((ticket: any, ticketIndex: number) => {
-      // 60% of tickets have notes, 0-3 notes per ticket
-      if (ticketIndex % 10 < 6) {
-        const noteCount = 1 + (ticketIndex % 3)
-
-        for (let i = 0; i < noteCount; i++) {
-          notes.push({
-            id: createId(),
-            ticketId: ticket.id,
-            content: this.generateNoteContent(i),
-            authorId: this.users[ticketIndex % this.users.length]!,
-            isInternal: true,
-            createdAt: new Date(Date.now() - (noteCount - i) * 14400000), // 4 hours apart
-            updatedAt: new Date(),
-          })
-        }
-      }
-    })
-
-    if (notes.length > 0) {
-      const BATCH_SIZE = 2000
-      console.log(`📦 Inserting ${notes.length} ticket notes...`)
-
-      for (let i = 0; i < notes.length; i += BATCH_SIZE) {
-        const batch = notes.slice(i, i + BATCH_SIZE)
-        await db
-          .insert(schema.TicketNote)
-          .values(batch)
-          .onConflictDoUpdate({
-            target: schema.TicketNote.id,
-            set: {
-              content: sql`excluded.content`,
-              updatedAt: sql`excluded."updatedAt"`,
-            },
-          })
-      }
-
-      console.log(`✅ Upserted ${notes.length} ticket notes`)
     }
   }
 
@@ -721,16 +658,5 @@ export class TicketDomain {
         'Is there anything else I can help you with today?',
       ][index % 5]!
     }
-  }
-
-  /** generateNoteContent creates realistic internal note content. */
-  private generateNoteContent(index: number): string {
-    return [
-      'Customer called for follow-up. Left voicemail.',
-      'Reviewed order history. Customer is a repeat purchaser.',
-      'Escalated to manager for approval.',
-      'Waiting for warehouse confirmation.',
-      'Refund approved and processed.',
-    ][index % 5]!
   }
 }

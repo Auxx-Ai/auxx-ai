@@ -106,15 +106,6 @@ export async function updateMultipleStatus(
           .where(eq(schema.Ticket.id, ticket.id))
       })
     )
-
-    // Create activity log
-    await tx.insert(schema.TicketNote).values({
-      ticketId: tickets[0]!.id,
-      authorId: userId,
-      content: `Status of ${tickets.length} tickets updated to ${status} via bulk update`,
-      isInternal: true,
-      updatedAt: new Date(),
-    } as any)
   })
 
   await Promise.all(
@@ -159,15 +150,6 @@ export async function updateMultiplePriority(
           .where(eq(schema.Ticket.id, id))
       })
     )
-
-    // Create activity log
-    await tx.insert(schema.TicketNote).values({
-      ticketId: tickets[0]!.id,
-      authorId: userId,
-      content: `Priority of ${tickets.length} tickets updated to ${priority} via bulk update`,
-      isInternal: true,
-      updatedAt: new Date(),
-    } as any)
   })
 
   await Promise.all(
@@ -248,15 +230,6 @@ export async function updateMultipleAssignments(
           .where(eq(schema.Ticket.id, ticketId))
       })
     )
-
-    // Create activity log
-    await tx.insert(schema.TicketNote).values({
-      ticketId: tickets[0]!.id,
-      authorId: userId,
-      content: `Assignments of ${tickets.length} tickets updated via bulk update`,
-      isInternal: true,
-      updatedAt: new Date(),
-    } as any)
   })
 }
 
@@ -285,9 +258,6 @@ export async function deleteMultipleTickets(
   // Use a transaction to delete tickets and all related data
   await db.transaction(async (tx) => {
     for (const ticketId of ticketIds) {
-      // Delete ticket notes
-      await tx.delete(schema.TicketNote).where(eq(schema.TicketNote.ticketId, ticketId))
-
       // Delete ticket replies
       await tx.delete(schema.TicketReply).where(eq(schema.TicketReply.ticketId, ticketId))
 

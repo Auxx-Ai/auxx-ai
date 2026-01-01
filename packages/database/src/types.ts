@@ -150,10 +150,6 @@ export type StorageProvider = (typeof Enums.StorageProviderValues)[number]
 
 export type SubscriptionStatus = (typeof Enums.SubscriptionStatusValues)[number]
 
-export type TestCaseStatus = (typeof Enums.TestCaseStatusValues)[number]
-
-export type TestRunStatus = (typeof Enums.TestRunStatusValues)[number]
-
 export type ThreadStatus = (typeof Enums.ThreadStatusValues)[number]
 
 export type ThreadType = (typeof Enums.ThreadTypeValues)[number]

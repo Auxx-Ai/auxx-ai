@@ -200,11 +200,6 @@ export class TicketService {
           with: { agent: { columns: { id: true, name: true, email: true } } },
         },
         createdBy: { columns: { id: true, name: true } },
-        notes: {
-          // Drizzle supports orderBy callback in with relations
-          orderBy: (n, { asc }) => [asc(n.createdAt)],
-          with: { author: { columns: { id: true, name: true } } },
-        },
         childTickets: {
           with: { contact: { columns: { firstName: true, lastName: true } } },
         },
@@ -336,7 +331,6 @@ export class TicketService {
     }
     await this.db.transaction(async (tx) => {
       // Delete related data
-      await tx.delete(schema.TicketNote).where(eq(schema.TicketNote.ticketId, id))
       await tx.delete(schema.TicketReply).where(eq(schema.TicketReply.ticketId, id))
       await tx.delete(schema.TicketAssignment).where(eq(schema.TicketAssignment.ticketId, id))
       await tx
@@ -460,16 +454,7 @@ export class TicketService {
           .insert(schema.TicketAssignment)
           .values(agentIdsToAdd.map((agentId) => ({ ticketId, agentId, updatedAt: new Date() })))
       }
-      // Create activity note
-      if (agentIdsToAdd.length > 0 || assignmentsToRemove.length > 0) {
-        await tx.insert(schema.TicketNote).values({
-          ticketId,
-          authorId: userId,
-          content: 'Ticket assignments updated',
-          isInternal: true,
-          updatedAt: new Date(),
-        } as any)
-      }
+
       const assignments = await tx.query.TicketAssignment.findMany({
         where: (ta, { eq }) => eq(ta.ticketId, ticketId),
         with: { agent: { columns: { id: true, name: true, email: true } } },

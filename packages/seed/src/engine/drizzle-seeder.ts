@@ -343,11 +343,6 @@ export class DrizzleSeeder {
         .delete(schema.TicketAssignment)
         .where(eq(schema.TicketAssignment.organizationId, organizationId))
 
-      console.log('  ↳ Deleting ticket notes...')
-      await this.db
-        .delete(schema.TicketNote)
-        .where(eq(schema.TicketNote.organizationId, organizationId))
-
       console.log('  ↳ Deleting ticket replies...')
       await this.db
         .delete(schema.TicketReply)
