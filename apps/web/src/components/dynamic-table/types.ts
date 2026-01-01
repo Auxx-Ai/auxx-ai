@@ -4,6 +4,7 @@ import { type ColumnDef, type Table as TanstackTable } from '@tanstack/react-tab
 import { type LucideIcon } from 'lucide-react'
 import type { StoreConfig } from '~/components/contacts/drawer/property-provider'
 import type { ModelType, TargetTimeInStatus } from '@auxx/types/custom-field'
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
 
 // Re-export TargetTimeInStatus for backward compatibility
 export type { TargetTimeInStatus }
@@ -112,54 +113,6 @@ export type ExtendedColumnDef<TData = any> = ColumnDef<TData> & {
   defaultFormatting?: Partial<ColumnFormatting>
 }
 
-/**
- * Filter operators for different column types
- */
-export type TextFilterOperator =
-  | 'contains'
-  | 'notContains'
-  | 'is'
-  | 'isNot'
-  | 'isEmpty'
-  | 'isNotEmpty'
-
-export type NumberFilterOperator =
-  | 'equals'
-  | 'notEquals'
-  | 'greaterThan'
-  | 'lessThan'
-  | 'greaterThanOrEqual'
-  | 'lessThanOrEqual'
-  | 'isEmpty'
-  | 'isNotEmpty'
-
-export type DateFilterOperator =
-  | 'is'
-  | 'isNot'
-  | 'before'
-  | 'after'
-  | 'onOrBefore'
-  | 'onOrAfter'
-  | 'isEmpty'
-  | 'isNotEmpty'
-
-export type BooleanFilterOperator = 'is' | 'isNot'
-
-export type FilterOperator =
-  | TextFilterOperator
-  | NumberFilterOperator
-  | DateFilterOperator
-  | BooleanFilterOperator
-
-/**
- * Table filter configuration
- */
-export interface TableFilter {
-  id: string
-  columnId: string
-  operator: FilterOperator
-  value: any
-}
 
 /**
  * Table view configuration
@@ -246,15 +199,22 @@ export interface KanbanViewConfig {
  * View configuration details
  */
 export interface ViewConfig {
-  filters: TableFilter[]
+  /** Filter groups (same type as workflow conditions) */
+  filters: ConditionGroup[]
+  /** Sorting configuration */
   sorting: Array<{ id: string; desc: boolean }>
+  /** Column visibility */
   columnVisibility: Record<string, boolean>
+  /** Column order */
   columnOrder: string[]
+  /** Column sizing */
   columnSizing: Record<string, number>
+  /** Column pinning */
   columnPinning?: { left?: string[]; right?: string[] }
+  /** Column labels */
   columnLabels?: Record<string, string>
+  /** Column formatting */
   columnFormatting?: Record<string, ColumnFormatting>
-
   /** View type (defaults to 'table' for backward compatibility) */
   viewType?: ViewType
   /** Kanban config (only used when viewType === 'kanban') */
@@ -455,28 +415,11 @@ export interface DynamicTableProps<TData = any> {
 
   /** Entity definition ID - required only when modelType is 'entity' */
   entityDefinitionId?: string
+
+  /** Resource type ID for server-side filtering (e.g., 'contact', 'ticket', 'entity_abc123') */
+  resourceType?: string
 }
 
-/**
- * Filter operator configuration
- */
-export interface FilterOperatorConfig {
-  value: FilterOperator
-  label: string
-  requiresValue: boolean
-}
-
-/**
- * Column type configuration
- */
-export interface ColumnTypeConfig {
-  type: ExtendedColumnDef['columnType']
-  operators: FilterOperatorConfig[]
-  defaultOperator: FilterOperator
-  inputType?: 'text' | 'number' | 'date' | 'select' | 'boolean'
-  formatValue?: (value: any) => string
-  parseValue?: (value: string) => any
-}
 
 /**
  * Sort option configuration

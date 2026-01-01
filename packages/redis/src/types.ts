@@ -34,9 +34,13 @@ export interface RedisClient {
   keys(pattern: string): Promise<string[]>
   rpop(key: string): Promise<string | null>
   lpush(key: string, ...values: string[]): Promise<number>
+  rpush(key: string, ...values: string[]): Promise<number>
   llen(key: string): Promise<number>
   ltrim(key: string, start: number, stop: number): Promise<string>
   lrange(key: string, start: number, stop: number): Promise<string[]>
+
+  // Cursor-based iteration (safe for production)
+  scan(cursor: string, ...args: any[]): Promise<[string, string[]]>
 
   // Sorted set operations (Redis 2.0+)
   zadd(key: string, score: number, member: string): Promise<number>

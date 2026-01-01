@@ -7,17 +7,17 @@ import { Upload, RefreshCw } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
 import { useState, useEffect } from 'react'
 import { ViewSelector } from './view-selector'
-import { FilterBuilder } from './filter-builder'
+import { TableFilterBuilder } from './table-filter-builder'
 import { ColumnManager } from './column-manager'
 import { KanbanViewSettings } from './kanban-view-settings'
 import type { ViewConfig, ViewType } from '../../types'
 import { useDebounce } from '~/hooks/use-debounced-value'
 import { useTableContext } from '../../context/table-context'
-import type { ExtendedColumnDef } from '../../types'
 import type { ReactNode } from 'react'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { Tooltip } from '~/components/global/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
+import { useResourceFields } from '~/components/resources/hooks'
 
 interface TableToolbarProps {
   children?: ReactNode
@@ -29,7 +29,6 @@ interface TableToolbarProps {
  */
 export function TableToolbar<TData = any>({ children, className }: TableToolbarProps = {}) {
   const {
-    table,
     views,
     currentView,
     tableId,
@@ -52,10 +51,11 @@ export function TableToolbar<TData = any>({ children, className }: TableToolbarP
     selectFields,
     modelType,
     entityDefinitionId,
+    resourceType,
   } = useTableContext<TData>()
 
-  // Get columns from table instance
-  const columns = table.options.columns as ExtendedColumnDef<TData>[]
+  // Get filterable fields from resource system
+  const { filterableFields } = useResourceFields(resourceType ?? null)
 
   // Determine view type
   const viewType: ViewType = (currentView?.config as ViewConfig)?.viewType ?? 'table'
@@ -95,9 +95,14 @@ export function TableToolbar<TData = any>({ children, className }: TableToolbarP
         entityDefinitionId={entityDefinitionId}
       />
 
-      {/* Filter Button */}
-      {enableFiltering && (
-        <FilterBuilder columns={columns} filters={filters} onFiltersChange={setFilters} />
+      {/* Filter Button - only shown when resourceType is available */}
+      {enableFiltering && resourceType && (
+        <TableFilterBuilder
+          filters={filters}
+          onFiltersChange={setFilters}
+          filterableFields={filterableFields}
+          resourceType={resourceType}
+        />
       )}
 
       {/* Columns/Settings Button - different component for kanban vs table */}

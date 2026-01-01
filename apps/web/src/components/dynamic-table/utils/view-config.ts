@@ -9,11 +9,11 @@ import type {
 } from '@tanstack/react-table'
 import type {
   ExtendedColumnDef,
-  TableFilter,
   ViewConfig,
   ColumnFormatting,
   KanbanViewConfig,
 } from '../types'
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
 
 /**
  * Snapshot of the table state that can be persisted as a view configuration.
@@ -26,7 +26,7 @@ export interface ViewStateSnapshot {
   columnPinning?: ColumnPinningState
   columnLabels?: Record<string, string>
   columnFormatting?: Record<string, ColumnFormatting>
-  filters?: TableFilter[]
+  filters?: ConditionGroup[]
 }
 
 /**
@@ -35,7 +35,7 @@ export interface ViewStateSnapshot {
 export interface ViewDefaults {
   columns: ExtendedColumnDef[]
   enableCheckbox?: boolean
-  filters?: TableFilter[]
+  filters?: ConditionGroup[]
 }
 
 /**
@@ -122,11 +122,22 @@ function computeDefaultColumnPinning(
 }
 
 /**
+ * Clone filter groups to avoid accidental mutations.
+ */
+function cloneFilterGroups(groups: ConditionGroup[]): ConditionGroup[] {
+  return groups.map((group) => ({
+    ...group,
+    conditions: group.conditions.map((condition) => ({ ...condition })),
+    metadata: group.metadata ? { ...group.metadata } : undefined,
+  }))
+}
+
+/**
  * Normalise a view configuration to guarantee all optional keys are populated for comparisons.
  */
 export function normalizeViewConfig(config?: Partial<ViewConfig> | null): ViewConfig {
   return {
-    filters: config?.filters ? config.filters.map((filter) => ({ ...filter })) : [],
+    filters: config?.filters ? cloneFilterGroups(config.filters) : [],
     sorting: config?.sorting ? [...config.sorting] : [],
     columnVisibility: config?.columnVisibility ? { ...config.columnVisibility } : {},
     columnOrder: config?.columnOrder ? [...config.columnOrder] : [],

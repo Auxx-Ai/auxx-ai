@@ -6,3 +6,9 @@ export { useEntityDefinition, useEntityDefinitionById } from './use-entity-defin
 export { useEntityDefinitionMutations } from './use-entity-definition-mutations'
 export { useRelationship } from './use-relationship'
 export { useResourceFields } from './use-resource-fields'
+
+// Record store hooks
+export { useRecordList } from './use-record-list'
+export { useRecord, useIsRecordLoading, useIsRecordPending } from './use-record'
+export { useRecordWithFetch } from './use-record-with-fetch'
+export { useRecordInvalidation } from './use-record-invalidation'

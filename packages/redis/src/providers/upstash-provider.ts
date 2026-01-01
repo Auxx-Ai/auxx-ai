@@ -37,13 +37,21 @@ export function createUpstashClient(): RedisClient {
         return await upstashClient.set(key, value)
       }
 
-      // Handle EX case (expiration in seconds)
-      if (args[0] === 'EX' && typeof args[1] === 'number') {
-        return await upstashClient.set(key, value, { ex: args[1] })
+      // Parse all options from args (handles NX, EX combinations)
+      const options: { nx?: boolean; ex?: number } = {}
+      for (let i = 0; i < args.length; i++) {
+        if (args[i] === 'NX') options.nx = true
+        if (args[i] === 'EX' && typeof args[i + 1] === 'number') {
+          options.ex = args[i + 1]
+          i++ // Skip the number
+        }
       }
 
-      // Handle additional set commands as needed
-      logger.warn(`Upstash set with arguments ${args.join(', ')} may not be fully compatible`)
+      if (Object.keys(options).length > 0) {
+        // NX returns null if key exists, 'OK' if set
+        return await upstashClient.set(key, value, options)
+      }
+
       return await upstashClient.set(key, value)
     },
 
@@ -135,6 +143,15 @@ export function createUpstashClient(): RedisClient {
       }
     },
 
+    rpush: async (key: string, ...values: string[]) => {
+      try {
+        return await upstashClient.rpush(key, ...values)
+      } catch (error) {
+        logger.error('Error rpush to Upstash list', { key, error: (error as Error).message })
+        throw error
+      }
+    },
+
     llen: async (key: string) => {
       try {
         return await upstashClient.llen(key)
@@ -164,6 +181,31 @@ export function createUpstashClient(): RedisClient {
           key,
           error: (error as Error).message,
         })
+        throw error
+      }
+    },
+
+    // Cursor-based iteration
+    scan: async (cursor: string, ...args: any[]) => {
+      try {
+        // Parse args: MATCH pattern COUNT count
+        let match: string | undefined
+        let count: number | undefined
+
+        for (let i = 0; i < args.length; i += 2) {
+          if (args[i] === 'MATCH') match = args[i + 1]
+          if (args[i] === 'COUNT') count = args[i + 1]
+        }
+
+        const result = await upstashClient.scan(Number(cursor), {
+          match,
+          count,
+        })
+
+        // Upstash returns [cursor, keys] - cursor is a number, convert to string
+        return [String(result[0]), result[1]]
+      } catch (error) {
+        logger.error('Error scanning keys in Upstash', { error: (error as Error).message })
         throw error
       }
     },

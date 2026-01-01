@@ -4,8 +4,9 @@
 
 import { createContext, useContext, type ReactNode } from 'react'
 import type { Table } from '@tanstack/react-table'
-import type { TableView, TableFilter, BulkAction, DragDropConfig, ColumnFormatting } from '../types'
+import type { TableView, BulkAction, DragDropConfig, ColumnFormatting } from '../types'
 import type { ModelType, SelectOptionColor } from '@auxx/types/custom-field'
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
 
 /** Select field for kanban grouping */
 interface SelectField {
@@ -56,6 +57,9 @@ interface TableContextValue<TData = any> {
   /** Entity definition ID - required only when modelType is 'entity' */
   entityDefinitionId?: string
 
+  /** Resource type ID for server-side filtering (e.g., 'contact', 'ticket', 'entity_abc123') */
+  resourceType?: string
+
   // Kanban callbacks
   /** Callback when kanban card is clicked */
   onCardClick?: (card: TData) => void
@@ -79,7 +83,7 @@ interface TableContextValue<TData = any> {
   markViewClean: () => void
   isLoading: boolean
   searchQuery: string
-  filters: TableFilter[]
+  filters: ConditionGroup[]
   columnTypes: Record<string, string>
   columnLabels: Record<string, string>
   columnFormatting: Record<string, ColumnFormatting>
@@ -88,17 +92,18 @@ interface TableContextValue<TData = any> {
   // Actions
   setSearchQuery: (query: string) => void
   setActiveView: (viewId: string | null) => void
-  setFilters: (filters: TableFilter[]) => void
+  setFilters: (filters: ConditionGroup[]) => void
   setColumnLabel: (columnId: string, label: string | null) => void
   setColumnFormatting: (columnId: string, formatting: ColumnFormatting | null) => void
   setPinnedColumn: (columnId: string | null) => void
 
   // Bulk mode state
   isBulkMode: boolean
+  getIsBulkMode: () => boolean
 
-  // Column layout version - changes when column sizing/visibility/order changes
-  // Used to bust VirtualTableRow memoization
-  columnLayoutVersion: number
+  // Column structure version - changes when order/visibility/pinning changes (NOT sizing)
+  // Used to trigger row re-renders when column structure changes
+  columnStructureVersion: number
 
   // Callbacks
   onRowClick?: (row: TData, event: React.MouseEvent, rowId: string, table: Table<TData>) => void

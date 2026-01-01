@@ -6,6 +6,7 @@ import { createTRPCRouter, protectedProcedure, adminProcedure } from '~/server/a
 import type { ViewConfig } from '~/components/dynamic-table/types'
 import { CustomFieldService } from '@auxx/lib/custom-fields'
 import { ModelTypeValues } from '@auxx/types/custom-field'
+import { conditionGroupSchema } from '@auxx/lib/conditions'
 import {
   listViews,
   listAllViews,
@@ -37,9 +38,7 @@ const kanbanConfigSchema = z.object({
 
 /** Zod schema for view configuration */
 const viewConfigSchema = z.object({
-  filters: z.array(
-    z.object({ id: z.string(), columnId: z.string(), operator: z.string(), value: z.any() })
-  ),
+  filters: z.array(conditionGroupSchema),
   sorting: z.array(z.object({ id: z.string(), desc: z.boolean() })),
   columnVisibility: z.record(z.string(), z.boolean()),
   columnOrder: z.array(z.string()),

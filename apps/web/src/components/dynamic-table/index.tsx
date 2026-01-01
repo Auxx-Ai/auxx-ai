@@ -5,20 +5,12 @@
 export type {
   DynamicTableProps,
   ExtendedColumnDef,
-  TableFilter,
   TableView,
   ViewConfig,
   ViewType,
   KanbanViewConfig,
   BulkAction,
   RowSelectionFeatures,
-  FilterOperator,
-  TextFilterOperator,
-  NumberFilterOperator,
-  DateFilterOperator,
-  BooleanFilterOperator,
-  ColumnTypeConfig,
-  FilterOperatorConfig,
   SortOption,
   CellAction,
   ViewAction,
@@ -32,13 +24,14 @@ export type {
   FormattableFieldType,
 } from './types'
 
+// Re-export ConditionGroup for filter types (new filter system)
+export type { ConditionGroup } from '@auxx/lib/conditions/client'
+
 // DynamicView is the single entry point - DynamicTable is an alias for backwards compatibility
 export { DynamicView } from './dynamic-view'
 export { DynamicView as DynamicTable } from './dynamic-view'
 
 export {
-  FILTER_OPERATORS,
-  COLUMN_TYPE_CONFIGS,
   SORT_OPTIONS,
   COLUMN_TYPE_ICONS,
   ROW_HEIGHT,

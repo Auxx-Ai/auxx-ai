@@ -4,7 +4,7 @@
 
 import { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react'
 import { api } from '~/trpc/react'
-import { getRelationshipStoreState, useRelationshipStore } from '../store'
+import { getRelationshipStoreState, useRelationshipStore, getRecordStoreState } from '../store'
 import type { Resource, CustomResource } from '@auxx/lib/resources/client'
 import { isCustomResource } from '@auxx/lib/resources/client'
 
@@ -148,4 +148,13 @@ export function useResourceProvider() {
   const ctx = useContext(ResourceContext)
   if (!ctx) throw new Error('useResourceProvider must be used within ResourceProvider')
   return ctx
+}
+
+/**
+ * Clear all resource-related caches.
+ * Call on logout or organization switch.
+ */
+export function clearResourceCaches() {
+  getRelationshipStoreState().clearAll()
+  getRecordStoreState().clearAll()
 }

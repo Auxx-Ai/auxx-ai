@@ -20,8 +20,8 @@ export function CheckboxHeaderCell<TData>({ header }: CheckboxHeaderCellProps<TD
 
   return (
     <div
+      data-col={header.column.id}
       style={{
-        width: header.getSize(),
         minWidth: header.column.columnDef.minSize,
         maxWidth: header.column.columnDef.maxSize,
         ...(isPinned && { position: 'sticky', left: header.column.getStart('left'), zIndex: 20 }),

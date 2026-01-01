@@ -114,10 +114,14 @@ export function createIORedisClient(provider: 'aws' | 'hosted'): RedisClient {
     keys: async (pattern: string) => await client.keys(pattern),
     rpop: async (key: string) => await client.rpop(key),
     lpush: async (key: string, ...values: string[]) => await client.lpush(key, ...values),
+    rpush: async (key: string, ...values: string[]) => await client.rpush(key, ...values),
     llen: async (key: string) => await client.llen(key),
     ltrim: async (key: string, start: number, stop: number) => await client.ltrim(key, start, stop),
     lrange: async (key: string, start: number, stop: number) =>
       await client.lrange(key, start, stop),
+
+    // Cursor-based iteration
+    scan: async (cursor: string, ...args: any[]) => await client.scan(cursor, ...args),
 
     // Sorted set operations (fully supported by IORedis)
     zadd: async (key: string, ...args: any[]) => {

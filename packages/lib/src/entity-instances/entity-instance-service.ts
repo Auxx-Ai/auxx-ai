@@ -14,6 +14,7 @@ import { database } from '@auxx/database'
 import { getCustomFields, checkUniqueValue } from '@auxx/services/custom-fields'
 import { publisher } from '../events/publisher'
 import { CommentService } from '../comments'
+import { invalidateSnapshots } from '../snapshot'
 
 /**
  * Helper to unwrap neverthrow Result and throw on error
@@ -57,16 +58,38 @@ export class EntityInstanceService {
   }
 
   /**
+   * Invalidate query snapshots for an entity type
+   * Called after mutations to ensure filtered views are refreshed
+   */
+  private async invalidateEntitySnapshots(entitySlug: string): Promise<void> {
+    try {
+      await invalidateSnapshots({
+        organizationId: this.organizationId,
+        resourceType: `entity_${entitySlug}`,
+      })
+    } catch {
+      // Snapshot invalidation is non-critical, don't fail the mutation
+    }
+  }
+
+  /**
    * Create a new entity instance
    * Field values should be set separately using CustomFieldValue service
    */
   async create(entityDefinitionId: string) {
+    const entitySlug = await this.getEntitySlug(entityDefinitionId)
+
     const result = await createEntityInstance({
       entityDefinitionId,
       organizationId: this.organizationId,
       createdById: this.userId,
     })
-    return unwrapResult(result)
+    const instance = unwrapResult(result)
+
+    // Invalidate snapshots for this entity type
+    await this.invalidateEntitySnapshots(entitySlug)
+
+    return instance
   }
 
   /**
@@ -124,6 +147,9 @@ export class EntityInstanceService {
     })
     const archived = unwrapResult(result)
 
+    // Invalidate snapshots for this entity type
+    await this.invalidateEntitySnapshots(entitySlug)
+
     // Publish delete event (soft delete)
     publisher.publishLater({
       type: 'entity:deleted',
@@ -158,6 +184,9 @@ export class EntityInstanceService {
       data: { archivedAt: null },
     })
     const restored = unwrapResult(result)
+
+    // Invalidate snapshots for this entity type
+    await this.invalidateEntitySnapshots(entitySlug)
 
     // Publish update event with restored flag
     publisher.publishLater({
@@ -197,6 +226,9 @@ export class EntityInstanceService {
       organizationId: this.organizationId,
     })
     const deleted = unwrapResult(result)
+
+    // Invalidate snapshots for this entity type
+    await this.invalidateEntitySnapshots(entitySlug)
 
     // Publish delete event (hard delete)
     publisher.publishLater({
@@ -321,6 +353,9 @@ export class EntityInstanceService {
       }
     }
 
+    // Invalidate snapshots for this entity type
+    await this.invalidateEntitySnapshots(entitySlug)
+
     // Publish event AFTER all operations complete
     publisher.publishLater({
       type: 'entity:created',
@@ -378,6 +413,9 @@ export class EntityInstanceService {
         })
       }
     }
+
+    // Invalidate snapshots for this entity type
+    await this.invalidateEntitySnapshots(entitySlug)
 
     // Publish event AFTER update completes
     publisher.publishLater({

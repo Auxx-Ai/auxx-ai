@@ -7,7 +7,18 @@ import {
   ResourcePickerService,
   ResourceRegistryService,
   RESOURCE_TABLE_REGISTRY,
+  RESOURCE_TABLE_MAP,
+  type TableId,
 } from '@auxx/lib/resources'
+import { conditionGroupSchema, type ConditionGroup } from '@auxx/lib/conditions'
+import { getOrCreateSnapshot, getSnapshotChunk, invalidateSnapshots } from '@auxx/lib/snapshot'
+import {
+  systemConditionBuilder,
+  entityConditionBuilder,
+  type EntityQueryContext,
+} from '@auxx/lib/workflow-engine'
+import { type Database, schema } from '@auxx/database'
+import { eq, and } from 'drizzle-orm'
 
 /**
  * Validate resource ID - accepts both system TableId and custom entity ID (entity_xxx)
@@ -182,4 +193,225 @@ export const resourceRouter = createTRPCRouter({
         })
       }
     }),
+
+  /**
+   * List resource IDs with server-side filtering (Query Snapshot pattern)
+   * Returns cached snapshot IDs for efficient pagination
+   */
+  listFiltered: protectedProcedure
+    .input(
+      z.object({
+        /** Resource type: 'contact', 'ticket', 'entity_xxx' */
+        tableId: z.string(),
+        /** Filter groups (optional) */
+        filters: z.array(conditionGroupSchema).optional(),
+        /** Sort configuration (optional) */
+        sorting: z
+          .array(
+            z.object({
+              id: z.string(),
+              desc: z.boolean(),
+            })
+          )
+          .optional(),
+        /** Existing snapshot ID for pagination */
+        snapshotId: z.string().optional(),
+        /** Offset within snapshot */
+        offset: z.number().min(0).default(0),
+        /** Limit per request */
+        limit: z.number().min(1).max(500).default(100),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+
+      // If snapshotId provided, fetch chunk from cache
+      if (input.snapshotId) {
+        const chunk = await getSnapshotChunk({
+          snapshotId: input.snapshotId,
+          offset: input.offset,
+          limit: input.limit,
+        })
+
+        if (!chunk) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Filter snapshot expired, please refresh',
+          })
+        }
+
+        return {
+          snapshotId: input.snapshotId,
+          ids: chunk.ids,
+          total: chunk.total,
+          hasMore: input.offset + chunk.ids.length < chunk.total,
+        }
+      }
+
+      // No snapshotId - create new snapshot
+      const result = await getOrCreateSnapshot({
+        organizationId,
+        resourceType: input.tableId,
+        filters: (input.filters ?? []) as ConditionGroup[],
+        sorting: input.sorting ?? [],
+        executeQuery: async () => {
+          // Route to appropriate query function
+          if (input.tableId.startsWith('entity_')) {
+            return queryEntityInstanceIds({
+              db: ctx.db,
+              entityDefinitionId: input.tableId.replace('entity_', ''),
+              organizationId,
+              filters: (input.filters ?? []) as ConditionGroup[],
+              sorting: input.sorting ?? [],
+            })
+          }
+
+          return querySystemResourceIds({
+            db: ctx.db,
+            tableId: input.tableId as TableId,
+            organizationId,
+            filters: (input.filters ?? []) as ConditionGroup[],
+            sorting: input.sorting ?? [],
+          })
+        },
+      })
+
+      // Return first chunk
+      const ids = result.ids.slice(input.offset, input.offset + input.limit)
+
+      return {
+        snapshotId: result.snapshotId,
+        ids,
+        total: result.total,
+        hasMore: input.offset + ids.length < result.total,
+        fromCache: result.fromCache,
+      }
+    }),
 })
+
+// ─────────────────────────────────────────────────────────────────
+// QUERY HELPER FUNCTIONS
+// ─────────────────────────────────────────────────────────────────
+
+/**
+ * Query entity instance IDs using EntityConditionBuilder
+ */
+async function queryEntityInstanceIds(params: {
+  db: Database
+  entityDefinitionId: string
+  organizationId: string
+  filters: ConditionGroup[]
+  sorting: Array<{ id: string; desc: boolean }>
+}): Promise<string[]> {
+  const { db, entityDefinitionId, organizationId, filters, sorting } = params
+
+  // Get fields for this entity via ResourceRegistryService
+  const registryService = new ResourceRegistryService(organizationId, db)
+  const fields = await registryService.getFieldsForResource(`entity_${entityDefinitionId}`)
+
+  // Build WHERE clause using existing EntityConditionBuilder
+  const context: EntityQueryContext = {
+    fields,
+    outerTable: schema.EntityInstance,
+  }
+
+  const whereClause = entityConditionBuilder.buildGroupedQuery(filters, context)
+
+  // Build ORDER BY
+  const orderByClauses =
+    sorting.length > 0
+      ? entityConditionBuilder.buildOrderBySql(
+          sorting[0].id,
+          sorting[0].desc ? 'desc' : 'asc',
+          context
+        )
+      : undefined
+
+  // Execute query
+  let query = db
+    .select({ id: schema.EntityInstance.id })
+    .from(schema.EntityInstance)
+    .where(
+      and(
+        eq(schema.EntityInstance.entityDefinitionId, entityDefinitionId),
+        eq(schema.EntityInstance.organizationId, organizationId),
+        whereClause
+      )
+    )
+    .$dynamic()
+
+  if (orderByClauses) {
+    query = query.orderBy(...orderByClauses)
+  }
+
+  const results = await query
+  return results.map((r) => r.id)
+}
+
+/**
+ * Query system resource IDs using SystemConditionBuilder
+ */
+async function querySystemResourceIds(params: {
+  db: Database
+  tableId: TableId
+  organizationId: string
+  filters: ConditionGroup[]
+  sorting: Array<{ id: string; desc: boolean }>
+}): Promise<string[]> {
+  const { db, tableId, organizationId, filters, sorting } = params
+
+  // Build WHERE clause using existing SystemConditionBuilder
+  const whereClause = systemConditionBuilder.buildGroupedQuery(filters, tableId)
+
+  // Build ORDER BY
+  const orderByClauses =
+    sorting.length > 0
+      ? systemConditionBuilder.buildOrderBySql(
+          sorting[0].id,
+          sorting[0].desc ? 'desc' : 'asc',
+          tableId
+        )
+      : undefined
+
+  // Get the table schema
+  const tableSchema = getTableSchema(tableId)
+  if (!tableSchema) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: `Unknown table: ${tableId}` })
+  }
+
+  // Execute query
+  let query = db
+    .select({ id: tableSchema.id })
+    .from(tableSchema)
+    .where(and(eq(tableSchema.organizationId, organizationId), whereClause))
+    .$dynamic()
+
+  if (orderByClauses) {
+    query = query.orderBy(...orderByClauses)
+  }
+
+  const results = await query
+  return results.map((r) => r.id)
+}
+
+/**
+ * Get Drizzle table schema for a system resource
+ */
+function getTableSchema(tableId: TableId) {
+  const tableInfo = RESOURCE_TABLE_MAP[tableId]
+  if (!tableInfo) return undefined
+
+  const tableMap: Record<string, any> = {
+    Contact: schema.Contact,
+    Ticket: schema.Ticket,
+    Inbox: schema.Inbox,
+    User: schema.User,
+    Thread: schema.Thread,
+    Message: schema.Message,
+    Participant: schema.Participant,
+    Dataset: schema.Dataset,
+    Part: schema.Part,
+  }
+
+  return tableMap[tableInfo.dbName]
+}
