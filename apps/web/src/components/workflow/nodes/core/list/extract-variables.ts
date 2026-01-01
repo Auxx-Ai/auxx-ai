@@ -2,7 +2,7 @@
 
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
 import type { ListNodeData } from './types'
-import type { GenericCondition } from '~/components/workflow/ui/conditions/types'
+import type { Condition } from '~/components/conditions'
 
 /**
  * Extract variables from list node configuration
@@ -47,7 +47,7 @@ function extractFilterVariables(
 ): void {
   const conditions = data.filterConfig?.conditions || []
 
-  conditions.forEach((condition: GenericCondition) => {
+  conditions.forEach((condition: Condition) => {
     // Extract from fieldId
     if (condition.fieldId && typeof condition.fieldId === 'string') {
       extractVarIdsFromString(condition.fieldId).forEach((id) => variableIds.add(id))

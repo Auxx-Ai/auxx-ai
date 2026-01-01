@@ -1,11 +1,11 @@
-// apps/web/src/components/workflow/ui/conditions/condition-context.tsx
+// apps/web/src/components/conditions/condition-context.tsx
 
 'use client'
 
 import React, { createContext, useContext, useCallback, useMemo } from 'react'
 import { produce } from 'immer'
 import type {
-  GenericCondition,
+  Condition,
   ConditionGroup,
   ConditionGroupMetadata,
   ConditionSystemConfig,
@@ -23,21 +23,13 @@ const ConditionContext = createContext<ConditionContextValue | null>(null)
  */
 interface ConditionProviderProps {
   children: React.ReactNode
-
-  // Core data
-  conditions: GenericCondition[]
+  conditions: Condition[]
   groups?: ConditionGroup[]
   config: ConditionSystemConfig
-
-  // Callbacks for updates
-  onConditionsChange: (conditions: GenericCondition[]) => void
+  onConditionsChange: (conditions: Condition[]) => void
   onGroupsChange?: (groups: ConditionGroup[]) => void
-
-  // Additional context
   nodeId?: string
   readOnly?: boolean
-
-  // Field and operator resolution
   getAvailableFields?: () => FieldDefinition[]
   getFieldDefinition?: (fieldId: string) => FieldDefinition | undefined
 }
@@ -67,7 +59,6 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
       return config.fields
     }
 
-    // For dynamic fields (variable-based systems), this should be provided
     return []
   }, [config.fields, getAvailableFields])
 
@@ -95,22 +86,19 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
       const availableOperators = getOperatorsForFieldType(fieldDef.type)
       const defaultOperator = availableOperators[0]?.key || 'equals'
 
-      const newCondition: GenericCondition = {
+      const newCondition: Condition = {
         id: generateId(),
         fieldId,
         operator: defaultOperator,
         value: '',
-        isConstant: true, // Default to constant mode (VarEditor default)
-        // Set variableId for backward compatibility with if-else
+        isConstant: true,
         variableId: config.mode === 'variable' ? fieldId : undefined,
       }
 
       if (groupId && onGroupsChange) {
-        // Add to specific group
         const updatedGroups = produce(groups, (draft) => {
           const group = draft.find((g) => g.id === groupId)
           if (group) {
-            // Set logical operator for non-first conditions
             if (group.conditions.length > 0) {
               newCondition.logicalOperator = group.logicalOperator || 'AND'
             }
@@ -119,9 +107,7 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
         })
         onGroupsChange(updatedGroups)
       } else {
-        // Add to flat condition list
         const updatedConditions = produce(conditions, (draft) => {
-          // Set logical operator for non-first conditions
           if (draft.length > 0) {
             newCondition.logicalOperator = 'AND'
           }
@@ -134,9 +120,8 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
   )
 
   const updateCondition = useCallback(
-    (id: string, updates: Partial<GenericCondition>, groupId?: string) => {
+    (id: string, updates: Partial<Condition>, groupId?: string) => {
       if (groupId && onGroupsChange) {
-        // Update condition in specific group
         const updatedGroups = produce(groups, (draft) => {
           const group = draft.find((g) => g.id === groupId)
           if (group) {
@@ -144,7 +129,6 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
             if (condition) {
               Object.assign(condition, updates)
 
-              // Handle backward compatibility
               if (updates.fieldId && config.mode === 'variable') {
                 condition.variableId = updates.fieldId
               }
@@ -153,13 +137,11 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
         })
         onGroupsChange(updatedGroups)
       } else {
-        // Update condition in flat list
         const updatedConditions = produce(conditions, (draft) => {
           const condition = draft.find((c) => c.id === id)
           if (condition) {
             Object.assign(condition, updates)
 
-            // Handle backward compatibility
             if (updates.fieldId && config.mode === 'variable') {
               condition.variableId = updates.fieldId
             }
@@ -174,13 +156,11 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
   const removeCondition = useCallback(
     (id: string, groupId?: string) => {
       if (groupId && onGroupsChange) {
-        // Remove from specific group
         const updatedGroups = produce(groups, (draft) => {
           const group = draft.find((g) => g.id === groupId)
           if (group) {
             group.conditions = group.conditions.filter((c) => c.id !== id)
 
-            // Clean up logical operators for remaining conditions
             if (group.conditions.length > 0) {
               group.conditions[0]!.logicalOperator = undefined
             }
@@ -188,19 +168,15 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
         })
         onGroupsChange(updatedGroups)
       } else {
-        // Remove from flat list
         const updatedConditions = produce(conditions, (draft) => {
-          // Find and remove the condition by index (proper draft mutation)
           const index = draft.findIndex((c) => c.id === id)
           if (index !== -1) {
             draft.splice(index, 1)
           }
 
-          // Clean up logical operators for remaining conditions
           if (draft.length > 0 && draft[0]) {
             draft[0].logicalOperator = undefined
           }
-          // No return - just mutate draft
         })
         onConditionsChange(updatedConditions)
       }
@@ -256,7 +232,6 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
         if (group) {
           group.logicalOperator = group.logicalOperator === 'AND' ? 'OR' : 'AND'
 
-          // Update all conditions in the group with the new operator
           group.conditions.forEach((condition, index) => {
             if (index > 0) {
               condition.logicalOperator = group.logicalOperator
@@ -286,7 +261,6 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
 
       onGroupsChange(updatedGroups)
 
-      // Call custom callback if provided
       if (metadata.name !== undefined && config.onGroupNameChange) {
         config.onGroupNameChange(groupId, metadata.name)
       }
@@ -294,7 +268,6 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
     [groups, onGroupsChange, config]
   )
 
-  // Toggle group collapse state
   const toggleGroupCollapse = useCallback(
     (groupId: string) => {
       if (!onGroupsChange) return
@@ -308,7 +281,6 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
           }
           group.metadata.collapsed = newCollapsed
 
-          // Call custom callback if provided
           if (config.onGroupCollapse) {
             config.onGroupCollapse(groupId, newCollapsed)
           }
@@ -320,12 +292,10 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
     [groups, onGroupsChange, config]
   )
 
-  // Reorder groups (for drag-and-drop)
   const reorderGroups = useCallback(
     (groupIds: string[]) => {
       if (!onGroupsChange) return
 
-      // Create a new array with groups in the specified order
       const reorderedGroups = groupIds
         .map((id) => groups.find((g) => g.id === id))
         .filter((g): g is ConditionGroup => g !== undefined)
@@ -336,7 +306,6 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
 
       onGroupsChange(reorderedGroups)
 
-      // Call custom callback if provided
       if (config.onGroupReorder) {
         config.onGroupReorder(groupIds)
       }
@@ -344,7 +313,6 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
     [groups, onGroupsChange, config]
   )
 
-  // Helper to renumber all groups based on current count
   const renumberGroups = useCallback(
     (groupList: ConditionGroup[]): ConditionGroup[] => {
       const defaultName = config.defaultGroupName || 'Group'
@@ -361,7 +329,6 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
     [config]
   )
 
-  // Enhanced addGroup with metadata support
   const addGroupEnhanced = useCallback(
     (metadata?: Partial<ConditionGroupMetadata>) => {
       if (!onGroupsChange) return
@@ -396,14 +363,12 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
       const fieldDef = resolveFieldDefinition(fieldId)
       if (!fieldDef) return []
 
-      // If field has specific operators defined, use those
       if (fieldDef.operators && fieldDef.operators.length > 0) {
         return fieldDef.operators
           .map((opKey) => getOperatorDefinition(opKey))
           .filter((op): op is OperatorDefinition => op !== undefined)
       }
 
-      // Otherwise, use operators based on field type
       return getOperatorsForFieldType(fieldDef.type)
     },
     [resolveFieldDefinition]
@@ -411,12 +376,11 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
 
   // Validation functions
   const validateCondition = useCallback(
-    (condition: GenericCondition): boolean => {
+    (condition: Condition): boolean => {
       if (config.validateCondition) {
         return config.validateCondition(condition)
       }
 
-      // Basic validation
       if (!condition.fieldId || !condition.operator) {
         return false
       }
@@ -432,10 +396,8 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
   )
 
   const validateAllConditions = useCallback((): boolean => {
-    // Validate flat conditions
     const flatConditionsValid = conditions.every(validateCondition)
 
-    // Validate grouped conditions
     const groupedConditionsValid = groups.every((group) =>
       group.conditions.every(validateCondition)
     )
@@ -443,14 +405,12 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
     return flatConditionsValid && groupedConditionsValid
   }, [conditions, groups, validateCondition])
 
-  // Enhanced validateGroup
   const validateGroup = useCallback(
     (group: ConditionGroup): boolean => {
       if (config.validateGroup) {
         return config.validateGroup(group)
       }
 
-      // Basic validation: group must have at least one valid condition
       if (group.conditions.length === 0) {
         return false
       }
@@ -463,37 +423,26 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
   // Context value
   const contextValue = useMemo(
     (): ConditionContextValue => ({
-      // State
       conditions,
       groups,
       config,
       readOnly,
       nodeId,
-
-      // Core operations
       addCondition,
       updateCondition,
       removeCondition,
-
-      // Group operations
       addGroup: config.showGrouping ? addGroupEnhanced : undefined,
       removeGroup: config.showGrouping ? removeGroup : undefined,
       updateGroup: config.showGrouping ? updateGroup : undefined,
       toggleGroupLogicalOperator: config.showGrouping ? toggleGroupLogicalOperator : undefined,
-
-      // Enhanced group operations
       updateGroupMetadata:
         config.allowGroupNaming || config.allowGroupCollapse ? updateGroupMetadata : undefined,
       toggleGroupCollapse: config.allowGroupCollapse ? toggleGroupCollapse : undefined,
       reorderGroups: config.allowGroupReordering ? reorderGroups : undefined,
       validateGroup,
-
-      // Field and operator resolution
       getFieldDefinition: resolveFieldDefinition,
       getAvailableFields: resolveAvailableFields,
       getAvailableOperators,
-
-      // Validation
       validateCondition,
       validateAllConditions,
     }),

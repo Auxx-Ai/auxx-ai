@@ -19,11 +19,11 @@ import Field from '~/components/workflow/ui/field'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import { getFieldOperators, BaseType } from '@auxx/lib/workflow-engine/client'
 import { getFindNodeOutputVariables } from './output-variables'
-import { ConditionProvider, ConditionContainer } from '~/components/workflow/ui/conditions'
+import { ConditionProvider, ConditionContainer } from '~/components/conditions'
 import type {
   ConditionGroup,
   ConditionSystemConfig,
-} from '~/components/workflow/ui/conditions/types'
+} from '~/components/conditions'
 import { useFindGroups } from './hooks/use-find-groups'
 import {
   VarEditor,

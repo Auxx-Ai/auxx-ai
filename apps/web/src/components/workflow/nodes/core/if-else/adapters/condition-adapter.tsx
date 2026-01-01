@@ -5,8 +5,8 @@ import { generateId } from '@auxx/lib/utils'
 import type {
   ConditionGroup,
   ConditionSystemConfig,
-  GenericCondition,
-} from '~/components/workflow/ui/conditions/types'
+  Condition,
+} from '~/components/conditions'
 import type { IfElseCase, IfElseCondition, IfElseNodeData } from '../types'
 
 interface UseIfElseConditionAdapterProps {
@@ -33,7 +33,7 @@ export const useIfElseConditionAdapter = ({
       return {
         id: ifElseCase.id,
         conditions: ifElseCase.conditions.map(
-          (condition): GenericCondition => ({
+          (condition): Condition => ({
             id: condition.id,
             fieldId: condition.variableId || '',
             operator: condition.comparison_operator || 'is',

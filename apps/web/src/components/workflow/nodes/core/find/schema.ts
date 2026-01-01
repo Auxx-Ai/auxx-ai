@@ -7,7 +7,7 @@ import { validateFindNodeConfig } from './validation'
 import { getFindNodeOutputVariables } from './output-variables'
 import { FindPanel } from './panel'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
-import type { GenericCondition, ConditionGroup } from '~/components/workflow/ui/conditions/types'
+import type { Condition, ConditionGroup } from '~/components/conditions'
 
 /**
  * Extract variables from find node filter conditions
@@ -18,7 +18,7 @@ export function extractFindVariables(data: Partial<FindNodeData>): string[] {
 
   // Extract from flat conditions (backward compatibility)
   if (data.conditions && Array.isArray(data.conditions)) {
-    data.conditions.forEach((condition: GenericCondition) => {
+    data.conditions.forEach((condition: Condition) => {
       // Add variableId if present
       if (condition.variableId) {
         variableIds.add(condition.variableId)
@@ -34,7 +34,7 @@ export function extractFindVariables(data: Partial<FindNodeData>): string[] {
   // Extract from condition groups
   if (data.conditionGroups && Array.isArray(data.conditionGroups)) {
     data.conditionGroups.forEach((group: ConditionGroup) => {
-      group.conditions?.forEach((condition: GenericCondition) => {
+      group.conditions?.forEach((condition: Condition) => {
         // Add variableId if present
         if (condition.variableId) {
           variableIds.add(condition.variableId)

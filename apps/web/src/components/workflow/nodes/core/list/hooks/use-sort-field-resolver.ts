@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import { useFilterFieldResolver } from './use-filter-field-resolver'
 import { BaseType, RESOURCE_FIELD_REGISTRY, type TableId } from '@auxx/lib/workflow-engine/client'
-import type { FieldDefinition } from '~/components/workflow/ui/conditions/types'
+import type { FieldDefinition } from '~/components/conditions'
 
 /**
  * Sortable field types (direct)

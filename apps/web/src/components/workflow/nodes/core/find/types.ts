@@ -3,7 +3,7 @@ import { z } from 'zod'
 import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
 import type { ExecutionResult } from '~/components/workflow/types'
 import { NodeType } from '~/components/workflow/types/node-types'
-import type { GenericCondition, ConditionGroup } from '~/components/workflow/ui/conditions/types'
+import type { Condition, ConditionGroup } from '~/components/conditions'
 
 /**
  * Node data for find nodes (flattened structure)
@@ -22,7 +22,7 @@ export interface FindNodeData extends BaseNodeData {
   // Find-specific configuration
   resourceType: string // Dynamic selection (contact, ticket, entity_vendors, etc.)
   findMode: 'findOne' | 'findMany'
-  conditions: GenericCondition[] // For backward compatibility
+  conditions: Condition[] // For backward compatibility
   conditionGroups: ConditionGroup[] // Primary grouping system
 
   // Advanced settings

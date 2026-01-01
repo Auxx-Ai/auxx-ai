@@ -1,4 +1,4 @@
-// apps/web/src/components/workflow/ui/conditions/components/sortable-condition-group.tsx
+// apps/web/src/components/conditions/components/sortable-condition-group.tsx
 
 'use client'
 
@@ -19,7 +19,6 @@ interface SortableConditionGroupProps {
 
 /**
  * Sortable wrapper for ConditionGroup component
- * Based on proven pattern from if-else/condition-wrap.tsx
  */
 const SortableConditionGroup = ({
   group,

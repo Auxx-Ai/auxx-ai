@@ -6,7 +6,7 @@ import {
   createFindNodeDefaultData,
 } from './types'
 import { FIND_RESOURCE_CONFIGS, getOperatorsForType, isCustomResourceId } from '@auxx/lib/workflow-engine/client'
-import { validateCondition } from '~/components/workflow/ui/conditions/utils'
+import { validateCondition } from '~/components/conditions'
 
 /**
  * Validation function following the same pattern as other nodes

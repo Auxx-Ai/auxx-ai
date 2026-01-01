@@ -1,11 +1,11 @@
-// apps/web/src/components/workflow/ui/conditions/components/field-selector.tsx
+// apps/web/src/components/conditions/components/field-selector.tsx
 
 'use client'
 
 import { Variable } from 'lucide-react'
 import { useConditionContext } from '../condition-context'
 import VariableInput from '~/components/workflow/ui/variables/variable-input'
-import { VarTypeIcon } from '../../../utils/icon-helper'
+import { VarTypeIcon } from '~/components/workflow/utils/icon-helper'
 import {
   Select,
   SelectContent,

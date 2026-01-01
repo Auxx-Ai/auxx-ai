@@ -1,4 +1,4 @@
-// apps/web/src/components/workflow/ui/conditions/components/condition-operator.tsx
+// apps/web/src/components/conditions/components/condition-operator.tsx
 
 'use client'
 

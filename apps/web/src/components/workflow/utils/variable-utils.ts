@@ -5,7 +5,7 @@ import type {
   FieldReferenceMetadata,
 } from '~/components/workflow/types/variable-types'
 import type { FlowNode } from '~/components/workflow/types/node-base'
-import type { FieldDefinition } from '~/components/workflow/ui/conditions/types'
+import type { FieldDefinition } from '~/components/conditions'
 import {
   RESOURCE_FIELD_REGISTRY,
   RESOURCE_TABLE_MAP,

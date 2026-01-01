@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react'
 import { useAvailableVariables } from '~/components/workflow/hooks'
-import type { FieldDefinition } from '~/components/workflow/ui/conditions/types'
+import type { FieldDefinition } from '~/components/conditions'
 import {
   BaseType,
   getOperatorsForType,

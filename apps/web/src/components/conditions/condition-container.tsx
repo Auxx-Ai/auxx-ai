@@ -1,4 +1,4 @@
-// apps/web/src/components/workflow/ui/conditions/condition-container.tsx
+// apps/web/src/components/conditions/condition-container.tsx
 
 'use client'
 
@@ -57,7 +57,7 @@ const ConditionContainer = ({
   const useGrouping = config.showGrouping && showGrouping
   const enableDnD = config.allowGroupReordering && !readOnly
 
-  // DnD sensors (from if-else pattern)
+  // DnD sensors
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -96,12 +96,10 @@ const ConditionContainer = ({
     setActiveGroupId(null)
   }, [])
 
-  // Get active group for drag overlay
   const activeGroup = groups.find((g) => g.id === activeGroupId)
 
   return (
     <div className={cn('space-y-4', className)}>
-      {/* Header */}
       {(title || description) && (
         <div>
           {title && <h3 className="text-sm font-medium text-foreground mb-1">{title}</h3>}
@@ -109,9 +107,7 @@ const ConditionContainer = ({
         </div>
       )}
 
-      {/* Conditions content */}
       <div className="space-y-3">
-        {/* Grouped conditions with DnD */}
         {useGrouping && groups.length > 0 && enableDnD && (
           <DndContext
             sensors={sensors}
@@ -150,7 +146,6 @@ const ConditionContainer = ({
           </DndContext>
         )}
 
-        {/* Grouped conditions without DnD */}
         {useGrouping && groups.length > 0 && !enableDnD && (
           <div className="space-y-2">
             {groups.map((group) => (
@@ -167,27 +162,22 @@ const ConditionContainer = ({
           </div>
         )}
 
-        {/* Flat conditions */}
         {!useGrouping && conditions.length > 0 && (
           <div className="flex flex-col gap-2 p-3 pe-1">
             <ConditionList conditions={conditions} />
           </div>
         )}
 
-        {/* Empty state */}
         {!hasConditions && (
           <div className="flex items-center justify-center  h-[49px] text-sm text-muted-foreground">
             {emptyStateText}
           </div>
         )}
 
-        {/* Add controls */}
         {showAddButton && !readOnly && (
           <div className="flex gap-2">
-            {/* Add condition button */}
             {!useGrouping && <ConditionAdd disabled={readOnly} buttonText="Add Condition" />}
 
-            {/* Add group button */}
             {useGrouping && addGroup && (
               <Button size="sm" variant="outline" disabled={readOnly} onClick={() => addGroup()}>
                 <Plus />

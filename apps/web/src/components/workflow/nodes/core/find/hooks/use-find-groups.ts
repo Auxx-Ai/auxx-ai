@@ -2,7 +2,7 @@
 
 import { useCallback } from 'react'
 import { v4 as generateId } from 'uuid'
-import type { ConditionGroup, GenericCondition } from '~/components/workflow/ui/conditions/types'
+import type { ConditionGroup, Condition } from '~/components/conditions'
 import type { FindNodeData } from '../types'
 
 /**
@@ -92,7 +92,7 @@ export const useFindGroups = (
       const group = nodeData.conditionGroups?.find((g) => g.id === groupId)
       if (!group) return
 
-      const newCondition: GenericCondition = {
+      const newCondition: Condition = {
         id: generateId(),
         fieldId,
         operator: 'contains', // Default operator
@@ -107,7 +107,7 @@ export const useFindGroups = (
   )
 
   const updateConditionInGroup = useCallback(
-    (groupId: string, conditionId: string, updates: Partial<GenericCondition>) => {
+    (groupId: string, conditionId: string, updates: Partial<Condition>) => {
       const group = nodeData.conditionGroups?.find((g) => g.id === groupId)
       if (!group) return
 

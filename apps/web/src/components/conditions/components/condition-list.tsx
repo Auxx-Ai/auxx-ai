@@ -1,4 +1,4 @@
-// apps/web/src/components/workflow/ui/conditions/components/condition-list.tsx
+// apps/web/src/components/conditions/components/condition-list.tsx
 
 'use client'
 
@@ -7,10 +7,10 @@ import { useCallback, useMemo } from 'react'
 import { cn } from '@auxx/ui/lib/utils'
 import { useConditionContext } from '../condition-context'
 import ConditionItem from './condition-item'
-import type { GenericCondition } from '../types'
+import type { Condition } from '../types'
 
 type ConditionListProps = {
-  conditions: GenericCondition[]
+  conditions: Condition[]
   groupId?: string
   isSubVariable?: boolean
   className?: string
@@ -18,7 +18,6 @@ type ConditionListProps = {
 
 /**
  * Generic condition list component that displays conditions with logical operators
- * Maintains the same styling as the original if-else condition-list
  */
 const ConditionList = ({
   conditions,
@@ -29,28 +28,23 @@ const ConditionList = ({
   const { readOnly, config, updateCondition, groups, toggleGroupLogicalOperator } =
     useConditionContext()
 
-  // Determine if we're using groups (either this list is in a group, or grouping is enabled)
   const isInGroup = Boolean(groupId || (config.showGrouping && groups.length > 0))
 
-  // Get the logical operator for this group
   const logicalOperator = useMemo(() => {
     if (groupId) {
       const group = groups.find((g) => g.id === groupId)
       return group?.logicalOperator || 'AND'
     }
 
-    // For flat conditions, use the first condition's logical operator
     return conditions.length > 1 ? conditions[1]?.logicalOperator || 'AND' : 'AND'
   }, [groupId, groups, conditions])
 
   const toggleLogicalOperator = useCallback(() => {
     if (groupId && config.showGrouping && toggleGroupLogicalOperator) {
-      // Toggle group logical operator using context function
       toggleGroupLogicalOperator(groupId)
       return
     }
 
-    // Toggle individual condition logical operators
     const newOperator = logicalOperator === 'AND' ? 'OR' : 'AND'
 
     conditions.forEach((condition, index) => {
@@ -87,10 +81,8 @@ const ConditionList = ({
       className={cn(
         'relative',
         isInGroup ? 'pl-[70px]' : 'pl-[30px]',
-        // (isSubVariable || conditions.length > 1) && 'pl-[60px]',
         className
       )}>
-      {/* Logical operator controls */}
       {conditions.length > 1 && config.showLogicalOperators && (
         <div
           className={cn(
@@ -104,7 +96,6 @@ const ConditionList = ({
               'absolute bottom-4  top-4 w-2.5 rounded-l-[8px] border border-r-0 border-border',
               isInGroup ? 'left-[56px]' : 'left-[16px]'
             )}></div>
-          {/* <div className="absolute right-0 top-1/2 h-[29px] w-4 -translate-y-1/2 bg-background"></div> */}
           {!readOnly && (
             <div
               className="absolute right-1 top-1/2 flex h-[21px] -translate-y-1/2 cursor-pointer select-none items-center rounded-md border-[0.5px] border-border bg-secondary px-1 text-[10px] font-semibold text-secondary-foreground shadow-xs"
@@ -121,7 +112,6 @@ const ConditionList = ({
         </div>
       )}
 
-      {/* Condition items */}
       {conditions.map((condition) => (
         <ConditionItem
           key={condition.id}

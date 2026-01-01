@@ -24,6 +24,8 @@
     "./chat": "./src/chat/index.ts",
     "./chat/types": "./src/chat/types.ts",
     "./comments": "./src/comments/index.ts",
+    "./conditions": "./src/conditions/index.ts",
+    "./conditions/client": "./src/conditions/client.ts",
     "./constants/*": "./src/constants/*",
     "./contacts": "./src/contacts/index.ts",
     "./custom-fields": "./src/custom-fields/index.ts",

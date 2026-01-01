@@ -1,4 +1,4 @@
-// apps/web/src/components/workflow/ui/conditions/components/condition-add.tsx
+// apps/web/src/components/conditions/components/condition-add.tsx
 
 'use client'
 
@@ -84,11 +84,7 @@ const ConditionAdd = memo(
           value=""
           disabled={disabled || availableFields.length === 0}>
           <SelectTrigger
-            className={cn(
-              'w-auto rounded-lg',
-              // 'text-xs font-medium w-auto bg-background border-input shadow-xs hover:bg-accent hover:text-accent-foreground',
-              className
-            )}
+            className={cn('w-auto rounded-lg', className)}
             variant="outline"
             size="sm">
             <div className="flex items-center gap-1 [&>svg]:size-4">

@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/nodes/core/list/hooks/use-filter-conditions.ts
 
 import { useCallback } from 'react'
-import type { GenericCondition } from '~/components/workflow/ui/conditions/types'
+import type { Condition } from '~/components/conditions'
 import type { ListNodeData } from '../types'
 
 /**
@@ -22,7 +22,7 @@ export function useFilterConditions(
    * Handler to update the filter conditions
    */
   const handleConditionsChange = useCallback(
-    (conditions: GenericCondition[]) => {
+    (conditions: Condition[]) => {
       setNodeData({
         ...nodeData,
         filterConfig: {

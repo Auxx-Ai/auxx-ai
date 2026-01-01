@@ -9,9 +9,9 @@ import { computeListOutputVariables } from './output-variables'
 import { extractListVariables } from './extract-variables'
 
 /**
- * Zod schema for GenericCondition (modern ConditionProvider format)
+ * Zod schema for Condition (modern ConditionProvider format)
  */
-const genericConditionSchema = z.object({
+const conditionSchema = z.object({
   id: z.string(),
   fieldId: z.string().min(1, 'Field is required'),
   operator: z.string().min(1, 'Operator is required'), // Operator enum from engine
@@ -25,7 +25,7 @@ const genericConditionSchema = z.object({
  * Zod schema for filter configuration (modern ConditionProvider format)
  */
 const filterConfigSchema = z.object({
-  conditions: z.array(genericConditionSchema),
+  conditions: z.array(conditionSchema),
 })
 
 /**

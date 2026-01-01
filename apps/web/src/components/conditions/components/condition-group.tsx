@@ -1,4 +1,4 @@
-// apps/web/src/components/workflow/ui/conditions/components/condition-group.tsx
+// apps/web/src/components/conditions/components/condition-group.tsx
 
 'use client'
 
@@ -48,7 +48,6 @@ const ConditionGroup = ({
   const hasConditions = group.conditions.length > 0
   const hasMultipleConditions = group.conditions.length > 1
 
-  // Handlers
   const handleRemove = () => {
     if (onRemove) {
       onRemove()
@@ -99,8 +98,6 @@ const ConditionGroup = ({
           'min-h-[40px] ps-1 pe-1 py-1',
           className
         )}>
-        {/* Group Header */}
-        {/* Drag Handle */}
         {showDragHandle && !readOnly && (
           <button
             className="left-1 top-3 absolute cursor-grab touch-none text-muted-foreground hover:text-foreground active:cursor-grabbing"
@@ -110,18 +107,6 @@ const ConditionGroup = ({
           </button>
         )}
 
-        {/* Collapse Button */}
-        {/* {allowCollapse && hasConditions && (
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={handleToggleCollapse}
-          className="h-6 w-6 p-0 mt-1.5">
-          {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-        </Button>
-      )} */}
-
-        {/* Group Name/Label */}
         {showNameInput ? (
           isEditingName ? (
             <Input
@@ -153,10 +138,9 @@ const ConditionGroup = ({
           <div
             className={cn(
               'absolute left-4 text-[13px] font-semibold leading-4 text-muted-foreground',
-              !showSubtext || group?.metadata.subtext == '' ? 'top-2.5' : 'top-1'
+              !showSubtext || group?.metadata?.subtext == '' ? 'top-2.5' : 'top-1'
             )}>
             {group.metadata?.name || config.defaultGroupName || 'Group'}
-            {/* Subtext */}
             {showSubtext && group.metadata?.subtext && (
               <div className="text-[10px] font-medium text-muted-foreground">
                 {group.metadata.subtext}
@@ -165,7 +149,6 @@ const ConditionGroup = ({
           </div>
         )}
 
-        {/* Condition List (hidden when collapsed) */}
         {!isCollapsed && (
           <>
             {hasConditions && (
@@ -174,15 +157,8 @@ const ConditionGroup = ({
               </div>
             )}
 
-            {/* Add Condition Button */}
-            <div
-              className={cn(
-                'flex items-center justify-between pr-[1px]',
-                // group.conditions.length !== 1 && 'pl-[60px]'
-                'pl-[70px]'
-              )}>
+            <div className={cn('flex items-center justify-between pr-[1px]', 'pl-[70px]')}>
               <ConditionAdd groupId={group.id} disabled={readOnly} />
-              {/* Remove Button */}
               {showRemoveButton && !readOnly && (
                 <Button
                   size="sm"
@@ -197,8 +173,6 @@ const ConditionGroup = ({
             </div>
           </>
         )}
-
-        {/* Group Separator */}
       </div>
       <div className="mx-3 my-2 h-[1px] bg-primary-300/30"></div>
     </>

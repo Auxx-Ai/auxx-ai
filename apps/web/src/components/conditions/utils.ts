@@ -1,12 +1,6 @@
-// apps/web/src/components/workflow/ui/conditions/utils.ts
+// apps/web/src/components/conditions/utils.ts
 
-import type {
-  GenericCondition,
-  ConditionGroup,
-  FieldDefinition,
-  OperatorDefinition,
-  ConditionSystemConfig,
-} from './types'
+import type { Condition, ConditionGroup, FieldDefinition, OperatorDefinition } from './types'
 import { STANDARD_OPERATORS } from './types'
 import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
 import { BaseType } from '@auxx/lib/workflow-engine/types'
@@ -20,7 +14,7 @@ export const convertVariableToFieldDefinition = (variable: UnifiedVariable): Fie
     id: variable.id,
     label: variable.label || variable.id,
     type: variable.type,
-    operators: getOperatorsForType(variable.type), // ✅ Use TYPE_OPERATOR_MAP
+    operators: getOperatorsForType(variable.type),
     variable,
     placeholder: `Select ${variable.label || 'variable'}`,
     description: variable.description,
@@ -60,7 +54,6 @@ export const doesOperatorRequireValue = (operator: string): boolean => {
 export const getDefaultOperatorForType = (fieldType: BaseType): string => {
   const operators = getOperatorsForType(fieldType)
 
-  // Prefer common operators based on type
   switch (fieldType) {
     case BaseType.STRING:
     case BaseType.EMAIL:
@@ -83,29 +76,25 @@ export const getDefaultOperatorForType = (fieldType: BaseType): string => {
  * Validate a condition based on its configuration
  */
 export const validateCondition = (
-  condition: GenericCondition,
+  condition: Condition,
   fieldDefinition?: FieldDefinition
 ): { isValid: boolean; errors: string[] } => {
   const errors: string[] = []
 
-  // Check if field is selected
   if (!condition.fieldId) {
     errors.push('Field is required')
   }
 
-  // Check if operator is selected
   if (!condition.operator) {
     errors.push('Operator is required')
   }
 
-  // Check if value is required and provided
   if (condition.operator && doesOperatorRequireValue(condition.operator)) {
     if (condition.value === '' || condition.value === null || condition.value === undefined) {
       errors.push('Value is required for this operator')
     }
   }
 
-  // Type-specific validation
   if (
     fieldDefinition &&
     condition.value !== '' &&
@@ -172,7 +161,7 @@ export const validateConditionGroup = (
 export const createDefaultCondition = (
   fieldId: string,
   fieldDefinition?: FieldDefinition
-): Omit<GenericCondition, 'id'> => {
+): Omit<Condition, 'id'> => {
   const fieldType = fieldDefinition?.type || 'any'
   const defaultOperator = getDefaultOperatorForType(fieldType)
 
@@ -180,7 +169,7 @@ export const createDefaultCondition = (
     fieldId,
     operator: defaultOperator,
     value: '',
-    variableId: fieldId, // For backward compatibility
+    variableId: fieldId,
   }
 }
 
@@ -197,56 +186,20 @@ export const createDefaultConditionGroup = (): Omit<ConditionGroup, 'id'> => {
 /**
  * Clean up condition values based on operator changes
  */
-export const cleanupConditionValue = (condition: GenericCondition, newOperator: string): any => {
+export const cleanupConditionValue = (condition: Condition, newOperator: string): any => {
   const operatorDef = STANDARD_OPERATORS[newOperator]
 
   if (!operatorDef || !operatorDef.requiresValue) {
     return ''
   }
 
-  // Keep existing value if operator still requires value
   return condition.value
-}
-
-/**
- * Convert between different condition data formats for backward compatibility
- */
-export const convertLegacyCondition = (legacyCondition: any): GenericCondition => {
-  return {
-    id: legacyCondition.id,
-    fieldId: legacyCondition.variableId || legacyCondition.fieldId,
-    operator: legacyCondition.comparison_operator || legacyCondition.operator,
-    value: legacyCondition.value,
-    logicalOperator: legacyCondition.logicalOperator,
-    key: legacyCondition.key,
-    subConditions: legacyCondition.subConditions,
-    metadata: legacyCondition.metadata,
-    numberVarType: legacyCondition.numberVarType,
-    variableId: legacyCondition.variableId,
-  }
-}
-
-/**
- * Convert generic condition back to legacy format
- */
-export const convertToLegacyCondition = (condition: GenericCondition): any => {
-  return {
-    id: condition.id,
-    variableId: condition.variableId || condition.fieldId,
-    comparison_operator: condition.operator,
-    value: condition.value,
-    logicalOperator: condition.logicalOperator,
-    key: condition.key,
-    subConditions: condition.subConditions,
-    metadata: condition.metadata,
-    numberVarType: condition.numberVarType,
-  }
 }
 
 /**
  * Deep clone a condition to prevent mutation issues
  */
-export const cloneCondition = (condition: GenericCondition): GenericCondition => {
+export const cloneCondition = (condition: Condition): Condition => {
   return JSON.parse(JSON.stringify(condition))
 }
 
@@ -258,9 +211,9 @@ export const cloneConditionGroup = (group: ConditionGroup): ConditionGroup => {
 }
 
 /**
- * Check if two conditions are equal (useful for optimization)
+ * Check if two conditions are equal
  */
-export const areConditionsEqual = (a: GenericCondition, b: GenericCondition): boolean => {
+export const areConditionsEqual = (a: Condition, b: Condition): boolean => {
   return JSON.stringify(a) === JSON.stringify(b)
 }
 
@@ -268,7 +221,7 @@ export const areConditionsEqual = (a: GenericCondition, b: GenericCondition): bo
  * Generate a human-readable description of a condition
  */
 export const describeCondition = (
-  condition: GenericCondition,
+  condition: Condition,
   fieldDefinition?: FieldDefinition
 ): string => {
   const fieldName = fieldDefinition?.label || condition.fieldId

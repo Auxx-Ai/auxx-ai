@@ -3,8 +3,8 @@
 'use client'
 
 import React, { useMemo } from 'react'
-import { ConditionProvider, ConditionContainer } from '~/components/workflow/ui/conditions'
-import type { ConditionSystemConfig } from '~/components/workflow/ui/conditions/types'
+import { ConditionProvider, ConditionContainer } from '~/components/conditions'
+import type { ConditionSystemConfig } from '~/components/conditions'
 import { useFilterFieldResolver, useFilterConditions } from '../hooks'
 import type { ListNodeData } from '../types'
 

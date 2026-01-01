@@ -1,4 +1,4 @@
-// apps/web/src/components/workflow/ui/conditions/components/condition-item.tsx
+// apps/web/src/components/conditions/components/condition-item.tsx
 
 'use client'
 
@@ -15,7 +15,6 @@ import type { ConditionItemProps, Operator } from '../types'
 
 /**
  * Generic condition item component that works with both if-else and find systems
- * Maintains the same styling as the original if-else condition-item
  */
 const ConditionItem = ({
   condition,
@@ -58,13 +57,11 @@ const ConditionItem = ({
       const newFieldDef = getFieldDefinition(fieldId)
       if (!newFieldDef) return
 
-      // Reset operator and value when field changes
       const firstOperator = newFieldDef.operators?.[0] || 'equals'
       handleUpdate({
         fieldId,
         operator: firstOperator,
         value: '',
-        // Update variableId for backward compatibility
         variableId: config.mode === 'variable' ? fieldId : condition.variableId,
       })
     },
@@ -76,24 +73,15 @@ const ConditionItem = ({
       const oldOperator = condition.operator
       let newValue = condition.value
 
-      // Reset value for operators that don't need one
       if (
         ['isEmpty', 'isNotEmpty', 'empty', 'not empty', 'exists', 'not exists'].includes(operator)
       ) {
         newValue = ''
-      }
-      // Handle switching FROM multiple mode TO single mode
-      else if (['in', 'not in'].includes(oldOperator) && !['in', 'not in'].includes(operator)) {
-        // Switching from MULTIPLE to SINGLE mode
-        // Take first value from array, or empty string if array is empty
+      } else if (['in', 'not in'].includes(oldOperator) && !['in', 'not in'].includes(operator)) {
         if (Array.isArray(newValue)) {
           newValue = newValue.length > 0 && newValue[0] ? newValue[0] : ''
         }
-      }
-      // Handle switching FROM single mode TO multiple mode
-      else if (!['in', 'not in'].includes(oldOperator) && ['in', 'not in'].includes(operator)) {
-        // Switching from SINGLE to MULTIPLE mode
-        // Wrap single value in array
+      } else if (!['in', 'not in'].includes(oldOperator) && ['in', 'not in'].includes(operator)) {
         if (!Array.isArray(newValue)) {
           newValue = newValue ? [newValue] : ['']
         }
@@ -122,7 +110,6 @@ const ConditionItem = ({
           'grow rounded-xl bg-primary-200/30 border',
           isHovered && 'bg-destructive/10 border-destructive/20'
         )}>
-        {/* Main condition row */}
         <div className="flex items-center p-1">
           <div className="w-0 grow">
             <FieldSelector
@@ -144,7 +131,6 @@ const ConditionItem = ({
           />
         </div>
 
-        {/* Value input section */}
         {fieldDef && operatorRequiresValue(condition.operator) && (
           <div
             className={cn(
@@ -165,7 +151,6 @@ const ConditionItem = ({
         )}
       </div>
 
-      {/* Remove button */}
       {showRemoveButton && !readOnly && (
         <Button
           className="ml-1"

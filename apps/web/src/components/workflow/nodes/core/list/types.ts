@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/nodes/core/list/types.ts
 
 import type { BaseNodeData, SpecificNode } from '~/components/workflow/types'
-import type { GenericCondition } from '~/components/workflow/ui/conditions/types'
+import type { Condition } from '~/components/conditions'
 
 /**
  * Available list operations
@@ -37,7 +37,7 @@ export type JoinType = 'concat' | 'merge' | 'zip' | 'cross'
  * Filter configuration using modern ConditionProvider system
  */
 export interface FilterConfig {
-  conditions: GenericCondition[]
+  conditions: Condition[]
 }
 
 /**
