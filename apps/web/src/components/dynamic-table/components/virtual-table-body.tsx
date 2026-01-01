@@ -109,7 +109,6 @@ export function VirtualTableBody<TData>({
     }
   }, [scrollContainerRef])
 
-
   // Set up scroll event listener with cleanup
   useLayoutEffect(() => {
     let scrollContainer: HTMLElement | null = null
@@ -215,7 +214,6 @@ export function VirtualTableBody<TData>({
     },
     [setLastClickedRowId]
   )
-
   return (
     <>
       <div

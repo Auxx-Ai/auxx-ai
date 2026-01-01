@@ -71,7 +71,7 @@ export function DragDropRow<TData>({
     listeners,
     setNodeRef: setDragRef,
     transform,
-    transition,
+    // transition,
     isDragging,
   } = useDraggable({
     id: `row-${row.id}`,
@@ -106,7 +106,7 @@ export function DragDropRow<TData>({
   let dragStyle = transform
     ? {
         transform: CSS.Transform.toString(transform),
-        transition,
+        // transition,
         opacity: isDragging ? 0.5 : 1,
         zIndex: isDragging ? 1000 : 'auto',
       }

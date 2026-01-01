@@ -268,7 +268,4 @@ function areRowPropsEqual<TData>(
 }
 
 /** Memoized VirtualTableRow - only re-renders when props actually change */
-export const VirtualTableRow = memo(
-  VirtualTableRowInner,
-  areRowPropsEqual
-) as typeof VirtualTableRowInner
+export const VirtualTableRow = memo(VirtualTableRowInner) as typeof VirtualTableRowInner

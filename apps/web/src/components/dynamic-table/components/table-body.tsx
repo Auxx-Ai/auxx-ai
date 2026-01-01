@@ -30,21 +30,19 @@ export function TableBody<TData extends object>({
   hideToolbar,
   scrollContainerRef,
 }: TableBodyProps) {
-  const {
-    table,
-    isLoadingViews,
-    isLoading,
-    headerActions,
-    dragDropConfig,
-    emptyState,
-  } = useTableContext<TData>()
+  const { table, isLoadingViews, isLoading, headerActions, dragDropConfig, emptyState } =
+    useTableContext<TData>()
 
   const { cellSelectionConfig } = useCellSelection()
 
   // Container ref for virtualization AND CSS variables
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Update CSS variables directly on DOM when column sizing changes - bypasses React
+  // Generate column IDs string first - used as dependency for CSS variables
+  const visibleColumns = table.getVisibleLeafColumns()
+  const columnIds = visibleColumns.map((c) => c.id).join(',')
+
+  // Update CSS variables directly on DOM when columns or sizing changes
   const columnSizing = table.getState().columnSizing
   useEffect(() => {
     if (!containerRef.current) return
@@ -52,14 +50,13 @@ export function TableBody<TData extends object>({
     table.getVisibleLeafColumns().forEach((col) => {
       style.setProperty(`--col-${col.id}-w`, `${col.getSize()}px`)
     })
-  }, [columnSizing, table])
-
-  // Generate CSS rules once (only changes when column IDs change)
-  const visibleColumns = table.getVisibleLeafColumns()
-  const columnIds = visibleColumns.map((c) => c.id).join(',')
+  }, [columnSizing, columnIds, table])
   const columnStyleRules = useMemo(() => {
     return visibleColumns
-      .map((c) => `[data-col="${c.id}"] { width: var(--col-${c.id}-w); min-width: var(--col-${c.id}-w); }`)
+      .map(
+        (c) =>
+          `[data-col="${c.id}"] { width: var(--col-${c.id}-w); min-width: var(--col-${c.id}-w); }`
+      )
       .join('\n')
   }, [columnIds])
 
@@ -74,7 +71,7 @@ export function TableBody<TData extends object>({
           className="min-w-full"
           style={{ width: `${table.getTotalSize()}px` }}>
           {/* Table Header with Column DndContext */}
-          <ColumnDndProvider table={table}>
+          <ColumnDndProvider table={table} visibleColumns={visibleColumns}>
             <div
               className={cn(
                 'sticky z-21 min-w-full from-white to-white/50 bg-gradient-to-b dark:from-primary-100 dark:to-primary-100/50 backdrop-blur border-b border-primary-200/50',
@@ -168,9 +165,7 @@ export function TableBody<TData extends object>({
           <div className="inset-0 absolute flex flex-1 min-h-0 flex-col">{emptyState}</div>
         ) : (
           <div className="flex min-w-full items-stretch border-b border-primary-200/50">
-            <div
-              className="px-3 py-12 text-center text-muted-foreground"
-              style={{ width: '100%' }}>
+            <div className="px-3 py-12 text-center text-muted-foreground" style={{ width: '100%' }}>
               No results.
             </div>
           </div>

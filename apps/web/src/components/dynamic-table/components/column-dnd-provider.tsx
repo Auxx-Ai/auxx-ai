@@ -20,19 +20,25 @@ import {
   sortableKeyboardCoordinates,
   horizontalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import type { Table } from '@tanstack/react-table'
+import type { Table, Column } from '@tanstack/react-table'
 import type { ExtendedColumnDef } from '../types'
 
 interface ColumnDndProviderProps<TData> {
   table: Table<TData>
   children: React.ReactNode
+  /** Visible columns from table - passed from parent to ensure sync */
+  visibleColumns: Column<TData, unknown>[]
 }
 
 /**
  * DndContext specifically for column reordering functionality
  * Handles only header column drag-and-drop operations
  */
-export function ColumnDndProvider<TData>({ table, children }: ColumnDndProviderProps<TData>) {
+export function ColumnDndProvider<TData>({
+  table,
+  children,
+  visibleColumns,
+}: ColumnDndProviderProps<TData>) {
   const [activeColumnId, setActiveColumnId] = useState<string | null>(null)
 
   // Column-specific sensors with smaller activation distance for headers
@@ -41,10 +47,8 @@ export function ColumnDndProvider<TData>({ table, children }: ColumnDndProviderP
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
-  // Get column order - must use columnOrder from state for correct drag behavior
-  const columnOrder = table.getState().columnOrder
-  const allColumns = table.getAllColumns()
-  const orderedColumnIds = columnOrder.length > 0 ? columnOrder : allColumns.map((col) => col.id)
+  // Get column IDs from visible columns - always in sync
+  const orderedColumnIds = visibleColumns.map((col) => col.id)
 
   // Handle column drag start
   const handleColumnDragStart = useCallback((event: DragStartEvent) => {
@@ -55,7 +59,6 @@ export function ColumnDndProvider<TData>({ table, children }: ColumnDndProviderP
   const handleColumnDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event
-
       if (!over || active.id === over.id) {
         setActiveColumnId(null)
         return
@@ -74,11 +77,9 @@ export function ColumnDndProvider<TData>({ table, children }: ColumnDndProviderP
     },
     [orderedColumnIds, table]
   )
-
   // Get active column for drag overlay
   const activeColumn = activeColumnId ? table.getColumn(activeColumnId) : null
   const activeColumnDef = activeColumn?.columnDef as ExtendedColumnDef | undefined
-
   return (
     <DndContext
       sensors={sensors}
