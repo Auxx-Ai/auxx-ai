@@ -42,15 +42,28 @@ export function VirtualTableBody<TData>({
     toggleRowSelection,
   } = useRowSelection<TData>()
 
-  // Note: CSS variables for column widths are now set in table-body.tsx
-  // which wraps both headers and body rows
-
   const { rows } = table.getRowModel()
 
-  // Intersection observer for bottom detection - trigger 500px before bottom for early prefetch
+  // Compute column signature - changes when column config changes
+  const columnSignature = useMemo(() => {
+    const { columnPinning, columnVisibility, columnOrder } = table.getState()
+    const visibleColumnIds = table.getVisibleLeafColumns().map((c) => c.id)
+    return JSON.stringify({
+      pinning: columnPinning,
+      visibility: columnVisibility,
+      order: columnOrder,
+      ids: visibleColumnIds,
+    })
+  }, [
+    table.getState().columnPinning,
+    table.getState().columnVisibility,
+    table.getState().columnOrder,
+    table.getVisibleLeafColumns().length,
+  ])
+
+  // Intersection observer for bottom detection
   const { ref: bottomRef, inView } = useInView({ threshold: 0, rootMargin: '500px' })
 
-  // Call onScrollToBottom when the bottom element is in view
   useEffect(() => {
     if (inView && onScrollToBottom) {
       onScrollToBottom()
@@ -61,32 +74,25 @@ export function VirtualTableBody<TData>({
   const shadowLeftPosition = useMemo(() => {
     const leftPinnedColumns = table.getAllColumns().filter((col) => col.getIsPinned() === 'left')
     if (leftPinnedColumns.length === 0) return 0
-
-    // Get the rightmost edge of the last pinned column
     const lastPinnedColumn = leftPinnedColumns[leftPinnedColumns.length - 1]
     return lastPinnedColumn!.getStart('left') + lastPinnedColumn!.getSize()
   }, [table, table.getState().columnPinning, table.getState().columnSizing])
 
-  // Set CSS variable for scroll-margin-left (used by keyboard navigation)
+  // Set CSS variable for scroll-margin-left
   useEffect(() => {
     if (scrollContainerRef.current) {
       scrollContainerRef.current.style.setProperty('--pinned-left-width', `${shadowLeftPosition}px`)
     }
   }, [shadowLeftPosition, scrollContainerRef])
 
-  // Ref for direct DOM manipulation of shadow element
   const shadowRef = useRef<HTMLDivElement>(null)
-
-  // Track component visibility
   const [isVisible, setIsVisible] = useState(true)
 
-  // Detect visibility changes (tab switches, etc.)
   useEffect(() => {
     const handleVisibilityChange = () => {
       setIsVisible(!document.hidden)
     }
 
-    // Also use intersection observer as backup for tab switching
     const observer = new IntersectionObserver(
       ([entry]) => {
         setIsVisible(entry!.isIntersecting)
@@ -109,23 +115,16 @@ export function VirtualTableBody<TData>({
     }
   }, [scrollContainerRef])
 
-  // Set up scroll event listener with cleanup
   useLayoutEffect(() => {
     let scrollContainer: HTMLElement | null = null
     let cleanupFn: (() => void) | null = null
 
-    // Small delay to ensure DOM is ready after tab switch
     const timeoutId = setTimeout(() => {
-      // Find the scroll container - it's the element with overflow-auto class
-
-      // First try the ref
       if (scrollContainerRef.current) {
         scrollContainer = scrollContainerRef.current
       } else {
-        // Fallback: find the scroll container by class
         const container = containerRef.current
         if (container) {
-          // Look for the parent with overflow-auto class
           let parent = container.closest('.overflow-auto')
           if (parent instanceof HTMLElement) {
             scrollContainer = parent
@@ -137,7 +136,6 @@ export function VirtualTableBody<TData>({
         return
       }
 
-      // Initial opacity calculation
       const initialHandleScroll = () => {
         if (!shadowRef.current || !scrollContainer) return
         const scrollLeft = scrollContainer.scrollLeft
@@ -152,19 +150,14 @@ export function VirtualTableBody<TData>({
         shadowRef.current.style.opacity = opacity.toString()
       }
 
-      // Set initial state
       initialHandleScroll()
-
-      // Add the scroll listener
       scrollContainer.addEventListener('scroll', scrollHandler, { passive: true })
 
-      // Store cleanup function
       cleanupFn = () => {
         scrollContainer?.removeEventListener('scroll', scrollHandler)
       }
-    }, 50) // Small delay to ensure DOM is ready
+    }, 50)
 
-    // Cleanup
     return () => {
       clearTimeout(timeoutId)
       if (cleanupFn) {
@@ -173,29 +166,24 @@ export function VirtualTableBody<TData>({
     }
   }, [scrollContainerRef, containerRef, rows.length, shadowLeftPosition, isVisible])
 
-  // Important: Keep the row virtualizer in the lowest component possible to avoid unnecessary re-renders
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     estimateSize: () => ROW_HEIGHT,
     getScrollElement: () => containerRef.current,
-    // Measure dynamic row height, except in firefox because it measures table border height incorrectly
     measureElement:
       typeof window !== 'undefined' && navigator.userAgent.indexOf('Firefox') === -1
         ? (element) => element?.getBoundingClientRect().height
         : undefined,
-    overscan: 10, // Increased from 5 for smoother fast scrolling
+    overscan: 10,
   })
 
-  // Use refs for stable callbacks - avoid breaking row memoization
   const tableRef = useRef(table)
   tableRef.current = table
   const onRowClickRef = useRef(onRowClick)
   onRowClickRef.current = onRowClick
 
-  // Handle row click - stable reference via refs
   const handleRowClick = useCallback(
     (row: TData, event: React.MouseEvent, rowId: string) => {
-      // Don't trigger row click if clicking on interactive elements
       const target = event.target as HTMLElement
       if (
         target.closest('button') ||
@@ -206,20 +194,18 @@ export function VirtualTableBody<TData>({
         return
       }
 
-      // Track the last clicked row
       setLastClickedRowId(rowId)
-
-      // Call onRowClick with enhanced parameters including table object
       onRowClickRef.current?.(row, event, rowId, tableRef.current)
     },
     [setLastClickedRowId]
   )
+
   return (
     <>
       <div
         style={{
-          height: `${rowVirtualizer.getTotalSize()}px`, // tells scrollbar how big the table is
-          position: 'relative', // needed for absolute positioning of rows
+          height: `${rowVirtualizer.getTotalSize()}px`,
+          position: 'relative',
         }}>
         {rowVirtualizer.getVirtualItems().map((virtualRow) => {
           const row = rows[virtualRow.index]
@@ -228,7 +214,6 @@ export function VirtualTableBody<TData>({
           const isLastClicked = row.id === getLastClickedRowId()
           const isSelected = row.getIsSelected()
 
-          // Use DragDropRow if drag-and-drop is enabled
           if (dragDropConfig?.enabled) {
             return (
               <DragDropRow
@@ -245,6 +230,7 @@ export function VirtualTableBody<TData>({
                 toggleRowSelection={toggleRowSelection}
                 dragDropConfig={dragDropConfig}
                 cellSelectionEnabled={cellSelectionEnabled}
+                columnSignature={columnSignature}
               />
             )
           }
@@ -263,6 +249,7 @@ export function VirtualTableBody<TData>({
               enableCheckbox={enableCheckbox}
               toggleRowSelection={toggleRowSelection}
               cellSelectionEnabled={cellSelectionEnabled}
+              columnSignature={columnSignature}
             />
           )
         })}
@@ -281,7 +268,6 @@ export function VirtualTableBody<TData>({
           />
         </div>
       </div>
-      {/* Sentinel element for bottom detection */}
       <div ref={bottomRef} style={{ height: 1 }} />
     </>
   )
