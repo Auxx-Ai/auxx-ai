@@ -10,14 +10,7 @@ import { Button } from '@auxx/ui/components/button'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
-import {
-  OverflowTabsList,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from '@auxx/ui/components/tabs'
-import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { OverflowTabsList, Tabs, TabsContent } from '@auxx/ui/components/tabs'
 import { CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { Input } from '@auxx/ui/components/input'
 import {
@@ -37,8 +30,6 @@ import {
   Ticket as TicketIcon,
   Flag,
   CircleDot,
-  Hash,
-  HouseIcon,
   User,
   Merge,
   Link as LinkIcon,
@@ -57,7 +48,6 @@ import {
   TicketTypeBadge,
 } from '~/components/tickets/ticket-badges'
 import { getFullName, getInitials } from '@auxx/lib/utils'
-import { ContactHoverCard } from '~/components/contacts/contact-hover-card'
 import { Avatar, AvatarFallback } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import type { Ticket } from './ticket-provider'
@@ -545,7 +535,10 @@ export function TicketDetailDrawer({ ticket, open, onOpenChange }: TicketDetailD
           </div>
 
           {/* Tabs */}
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
+          <Tabs
+            value={activeTab}
+            onValueChange={setActiveTab}
+            className="flex-1 flex flex-col min-h-0">
             <OverflowTabsList
               tabs={[
                 { value: 'overview', label: 'Overview', icon: TicketIcon },

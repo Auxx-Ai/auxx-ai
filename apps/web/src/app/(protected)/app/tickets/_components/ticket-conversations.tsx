@@ -5,7 +5,7 @@
 import { MessagesSquare } from 'lucide-react'
 import { EmptyState } from '~/components/global/empty-state'
 import { api } from '~/trpc/react'
-import { TicketConversationsList } from './ticket-conversations-list'
+import { TicketReplyItem } from './ticket-reply-item'
 import TicketReplyBoxWithProvider from './ticket-reply-box'
 import type { RouterOutputs } from '~/trpc/react'
 
@@ -17,13 +17,11 @@ interface TicketConversationsProps {
 
 /** Main container component for the Conversations tab */
 export function TicketConversations({ ticketId, ticket }: TicketConversationsProps) {
-  // Fetch replies using tRPC
   const { data: repliesData, isLoading } = api.ticket.getReplies.useQuery(
     { ticketId },
     { enabled: !!ticketId }
   )
 
-  // Loading state
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full w-full">
@@ -49,7 +47,6 @@ export function TicketConversations({ ticketId, ticket }: TicketConversationsPro
         </h2>
       </div>
 
-      {/* Conversations content area */}
       {!hasReplies ? (
         <EmptyState
           icon={MessagesSquare}
@@ -58,18 +55,21 @@ export function TicketConversations({ ticketId, ticket }: TicketConversationsPro
           description="Send your first reply to start the conversation"
         />
       ) : (
-        <div className="flex-1 overflow-y-auto pt-0 p-4 h-full">
-          <TicketConversationsList ticketId={ticketId} initialReplies={replies} />
+        <div className="flex-1 overflow-y-auto pt-0 p-4 h-full space-y-0">
+          {replies.map((reply, index) => (
+            <TicketReplyItem
+              key={reply.id}
+              reply={reply}
+              isLast={index === replies.length - 1}
+            />
+          ))}
         </div>
       )}
 
-      {/* Reply Composer - always visible at bottom */}
       <div className="px-4 pt-2 shrink-0">
         <TicketReplyBoxWithProvider
           ticket={ticket}
-          onSuccess={() => {
-            // tRPC will handle cache invalidation automatically
-          }}
+          onSuccess={() => {}}
         />
       </div>
     </div>

@@ -9,11 +9,19 @@ import { DynamicTable, createCustomFieldColumns } from '~/components/dynamic-tab
 import type { ExtendedColumnDef } from '~/components/dynamic-table'
 import type { VisibilityState } from '@tanstack/react-table'
 import { EmptyState } from '~/components/global/empty-state'
-import { Ticket as TicketIcon, Plus, Trash2, Users, CircleDot, Flag, Filter, Play } from 'lucide-react'
+import {
+  Ticket as TicketIcon,
+  Plus,
+  Trash2,
+  Users,
+  CircleDot,
+  Flag,
+  Filter,
+  Play,
+} from 'lucide-react'
 import { useTicketProvider } from './ticket-provider'
 import { TicketDetailDrawer } from './ticket-detail-drawer'
 import { createTicketColumns } from './ticket-columns'
-import { TicketFilterBar } from './ticket-filter-bar'
 import type { Ticket } from './ticket-provider'
 import { useConfirm } from '~/hooks/use-confirm'
 import { toastSuccess, toastError } from '@auxx/ui/components/toast'
@@ -83,7 +91,7 @@ export function TicketManagement({ onTicketSelect }: TicketManagementProps = {})
 
   // Get custom fields from ResourceProvider (single source of truth)
   const { resources } = useAllResources()
-  const customFieldsRef = useRef<typeof resources[0]['fields']>([])
+  const customFieldsRef = useRef<(typeof resources)[0]['fields']>([])
   const customFields = useMemo(() => {
     const ticketResource = resources.find((r) => r.id === 'ticket')
     if (!ticketResource) return customFieldsRef.current
@@ -129,14 +137,17 @@ export function TicketManagement({ onTicketSelect }: TicketManagementProps = {})
   }, [inView, hasNextPage, isFetchingNextPage, fetchNextPage])
 
   // Handle ticket actions
-  const handleViewDetails = useCallback((ticket: Ticket) => {
-    if (onTicketSelect) {
-      onTicketSelect(ticket)
-    } else {
-      setSelectedTicket(ticket)
-      setDetailDrawerOpen(true)
-    }
-  }, [onTicketSelect])
+  const handleViewDetails = useCallback(
+    (ticket: Ticket) => {
+      if (onTicketSelect) {
+        onTicketSelect(ticket)
+      } else {
+        setSelectedTicket(ticket)
+        setDetailDrawerOpen(true)
+      }
+    },
+    [onTicketSelect]
+  )
 
   const handleEdit = useCallback(
     (ticket: Ticket) => {
@@ -268,17 +279,29 @@ export function TicketManagement({ onTicketSelect }: TicketManagementProps = {})
     const actionsColumn = standardColumns[standardColumns.length - 1]!
     const otherColumns = standardColumns.slice(0, -1)
     return [...otherColumns, ...customCols, actionsColumn] as ExtendedColumnDef<Ticket>[]
-  }, [handleViewDetails, handleEdit, handleDelete, handleAssign, handleReply, customFields, getValue, isValueLoading])
+  }, [
+    handleViewDetails,
+    handleEdit,
+    handleDelete,
+    handleAssign,
+    handleReply,
+    customFields,
+    getValue,
+    isValueLoading,
+  ])
 
   // Handle row click - open drawer instead of navigating
-  const handleRowClick = useCallback((ticket: Ticket) => {
-    if (onTicketSelect) {
-      onTicketSelect(ticket)
-    } else {
-      setSelectedTicket(ticket)
-      setDetailDrawerOpen(true)
-    }
-  }, [onTicketSelect])
+  const handleRowClick = useCallback(
+    (ticket: Ticket) => {
+      if (onTicketSelect) {
+        onTicketSelect(ticket)
+      } else {
+        setSelectedTicket(ticket)
+        setDetailDrawerOpen(true)
+      }
+    },
+    [onTicketSelect]
+  )
 
   // Handle export
   const handleExport = useCallback(() => {
@@ -319,16 +342,6 @@ export function TicketManagement({ onTicketSelect }: TicketManagementProps = {})
         searchPlaceholder="Search tickets..."
         searchKeys={['number', 'title', 'description']}
         onColumnVisibilityChange={setColumnVisibility}
-        customFilter={
-          showFilter ? (
-            <TicketFilterBar
-              filterValue={ticketFilter}
-              onFilterChange={setTicketFilter}
-              tickets={tickets}
-              totalTickets={totalTickets}
-            />
-          ) : undefined
-        }
         emptyState={
           <EmptyState
             icon={TicketIcon}

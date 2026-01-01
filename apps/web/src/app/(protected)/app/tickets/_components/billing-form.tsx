@@ -1,7 +1,7 @@
 // components/tickets/ticket-forms/billing-form.tsx
 'use client'
 
-import { UseFormReturn } from 'react-hook-form'
+import { type UseFormReturn } from 'react-hook-form'
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@auxx/ui/components/form'
 import { Input } from '@auxx/ui/components/input'
 import { Textarea } from '@auxx/ui/components/textarea'
@@ -43,12 +43,12 @@ export function BillingForm({ form }: BillingFormProps) {
                 <PopoverTrigger asChild>
                   <FormControl>
                     <Button
-                      variant={'outline-solid'}
+                      variant="outline"
                       className={`w-full pl-3 text-left font-normal ${
                         !field.value ? 'text-muted-foreground' : ''
                       }`}>
                       {field.value ? format(field.value, 'PPP') : <span>Pick a date</span>}
-                      <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                      <CalendarIcon className="ml-auto opacity-50" />
                     </Button>
                   </FormControl>
                 </PopoverTrigger>
