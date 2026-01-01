@@ -8,8 +8,6 @@ import {
   CustomerGroup,
   CustomerGroupMember,
   CustomerSource,
-  EmailOrderReference,
-  EmailProductReference,
   FulfillmentTracking,
   Invoice,
   Message,
@@ -161,7 +159,6 @@ export const orderRelations = relations(Order, ({ one, many }) => ({
   fulfillments: many(OrderFulfillment),
   trackings: many(FulfillmentTracking),
   tickets: many(Ticket),
-  emailReferences: many(EmailOrderReference),
 }))
 
 export const addressRelations = relations(Address, ({ one, many }) => ({
@@ -233,7 +230,6 @@ export const productRelations = relations(Product, ({ one, many }) => ({
   variants: many(ProductVariant),
   media: many(ProductMedia),
   options: many(ProductOption),
-  emailReferences: many(EmailProductReference),
 }))
 
 export const productVariantRelations = relations(ProductVariant, ({ one }) => ({

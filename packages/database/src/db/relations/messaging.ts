@@ -9,10 +9,7 @@ import {
   ChatWidget,
   Comment,
   EmailAttachment,
-  EmailCategory,
   EmailEmbedding,
-  EmailOrderReference,
-  EmailProductReference,
   Group,
   Inbox,
   InboxGroupAccess,
@@ -25,11 +22,9 @@ import {
   Message,
   MessageParticipant,
   OperatingHours,
-  Order,
   Organization,
   OrganizationMember,
   Participant,
-  Product,
   PromptHistory,
   Signature,
   Tag,
@@ -183,17 +178,6 @@ export const messageRelations = relations(Message, ({ one, many }) => ({
   }),
   participants: many(MessageParticipant),
   attachments: many(EmailAttachment),
-  orderReferences: many(EmailOrderReference),
-  productReferences: many(EmailProductReference),
-}))
-
-
-
-export const emailCategoryRelations = relations(EmailCategory, ({ one }) => ({
-  organization: one(Organization, {
-    fields: [EmailCategory.organizationId],
-    references: [Organization.id],
-  }),
 }))
 
 export const messageParticipantRelations = relations(MessageParticipant, ({ one }) => ({
@@ -291,29 +275,6 @@ export const chatAttachmentRelations = relations(ChatAttachment, ({ one }) => ({
 
 
 
-
-
-export const emailOrderReferenceRelations = relations(EmailOrderReference, ({ one }) => ({
-  message: one(Message, {
-    fields: [EmailOrderReference.messageId],
-    references: [Message.id],
-  }),
-  order: one(Order, {
-    fields: [EmailOrderReference.orderId],
-    references: [Order.id],
-  }),
-}))
-
-export const emailProductReferenceRelations = relations(EmailProductReference, ({ one }) => ({
-  message: one(Message, {
-    fields: [EmailProductReference.messageId],
-    references: [Message.id],
-  }),
-  product: one(Product, {
-    fields: [EmailProductReference.productId],
-    references: [Product.id],
-  }),
-}))
 
 
 export const labelsOnThreadRelations = relations(LabelsOnThread, ({ one }) => ({

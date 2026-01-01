@@ -23,7 +23,6 @@ import { ticketAgentRouter } from './routers/ticketAgent'
 import { integrationRouter } from './routers/integration'
 import { googleOAuthRouter } from './routers/googleOAuth'
 import { ticketSequenceRouter } from './routers/ticketSequence'
-import { ticketViewsRouter } from './routers/ticketView'
 import { mailDomainsRouter } from './routers/mailDomain'
 import { emailTemplateRouter } from './routers/emailTemplate'
 import { contactRouter } from './routers/contact'
@@ -132,7 +131,6 @@ export const appRouter = createTRPCRouter({
   ticket: ticketRouter,
   ticketAgent: ticketAgentRouter,
   ticketSequence: ticketSequenceRouter,
-  ticketView: ticketViewsRouter,
   timeline: timelineRouter,
   user: userRouter,
   vendorPart: vendorPartRouter,

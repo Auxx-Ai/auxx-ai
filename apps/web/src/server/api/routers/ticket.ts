@@ -211,91 +211,6 @@ export const ticketRouter = createTRPCRouter({
       return ticket
     }),
 
-  // Add a note to a ticket
-  addNote: protectedProcedure
-    .input(
-      z.object({
-        ticketId: z.string(),
-        content: z.string().min(1),
-        isInternal: z.boolean().default(false),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const { ticketId, content, isInternal } = input
-      const { organizationId, userId } = ctx.session
-
-      const authorId = ctx.session.user.id
-
-      const ticket = await ctx.db.query.Ticket.findFirst({
-        columns: { id: true },
-        where: (ticket, { eq }) =>
-          and(eq(ticket.id, ticketId), eq(ticket.organizationId, organizationId)),
-      })
-
-      if (!ticket) {
-        throw new Error('Ticket not found')
-      }
-
-      const [insertedNote] = await ctx.db
-        .insert(schema.TicketNote)
-        .values({ content, isInternal, authorId, ticketId, updatedAt: new Date() })
-        .returning()
-
-      const noteWithAuthor = await ctx.db.query.TicketNote.findFirst({
-        where: (note, { eq }) => eq(note.id, insertedNote.id),
-        with: {
-          author: { columns: { id: true, name: true } },
-        },
-      })
-
-      // Update the ticket's updatedAt timestamp
-      await ctx.db
-        .update(schema.Ticket)
-        .set({ updatedAt: new Date() })
-        .where(eq(schema.Ticket.id, ticketId))
-
-      if (!noteWithAuthor) {
-        throw new Error('Failed to create note')
-      }
-
-      const { author, ...noteData } = noteWithAuthor
-
-      return {
-        ...noteData,
-        author: author ?? null,
-      }
-    }),
-
-  // Delete a note
-  deleteNote: protectedProcedure
-    .input(z.object({ noteId: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      const { noteId } = input
-      const { organizationId } = ctx.session
-
-      const note = await ctx.db.query.TicketNote.findFirst({
-        columns: { id: true, ticketId: true },
-        where: (note, { eq }) => eq(note.id, noteId),
-        with: {
-          ticket: { columns: { organizationId: true } },
-        },
-      })
-
-      if (!note || note.ticket?.organizationId !== organizationId) {
-        throw new Error('Note not found')
-      }
-
-      await ctx.db.delete(schema.TicketNote).where(eq(schema.TicketNote.id, noteId))
-
-      // Update the ticket's updatedAt timestamp
-      await ctx.db
-        .update(schema.Ticket)
-        .set({ updatedAt: new Date() })
-        .where(eq(schema.Ticket.id, note.ticketId))
-
-      return true
-    }),
-
   // Get tickets by contact ID
   byContactId: protectedProcedure
     .input(
@@ -348,7 +263,6 @@ export const ticketRouter = createTRPCRouter({
       const ticketIds = rows.map((ticket) => ticket.id)
 
       let repliesCountMap: Record<string, number> = {}
-      let notesCountMap: Record<string, number> = {}
 
       if (ticketIds.length > 0) {
         const replyCounts = await ctx.db
@@ -360,16 +274,6 @@ export const ticketRouter = createTRPCRouter({
         repliesCountMap = Object.fromEntries(
           replyCounts.map(({ ticketId, value }) => [ticketId, Number(value)])
         )
-
-        const noteCounts = await ctx.db
-          .select({ ticketId: schema.TicketNote.ticketId, value: count() })
-          .from(schema.TicketNote)
-          .where(inArray(schema.TicketNote.ticketId, ticketIds))
-          .groupBy(schema.TicketNote.ticketId)
-
-        notesCountMap = Object.fromEntries(
-          noteCounts.map(({ ticketId, value }) => [ticketId, Number(value)])
-        )
       }
 
       const tickets = rows.map(({ contact, assignments, ...ticket }) => ({
@@ -378,7 +282,6 @@ export const ticketRouter = createTRPCRouter({
         assignments,
         _count: {
           replies: repliesCountMap[ticket.id] ?? 0,
-          notes: notesCountMap[ticket.id] ?? 0,
         },
       }))
 

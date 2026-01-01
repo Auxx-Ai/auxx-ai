@@ -30,7 +30,6 @@ import {
   Document,
   DocumentSegment,
   EmailAttachment,
-  EmailCategory,
   EmailEmbedding,
   EmailTemplate,
   embedding_jobs,
@@ -106,11 +105,9 @@ import {
   ThreadReadStatus,
   Ticket,
   TicketAssignment,
-  TicketNote,
   TicketRelation,
   TicketReply,
   TicketSequence,
-  TicketView,
   TwoFactor,
   UploadSession,
   User,
@@ -164,8 +161,6 @@ export const userRelations = relations(User, ({ one, many }) => ({
   parts: many(Part),
   ticketReplies: many(TicketReply),
   createdTickets: many(Ticket),
-  views: many(TicketView),
-  ticketNotes: many(TicketNote),
   ticketAssignments: many(TicketAssignment),
   avatarAsset: one(MediaAsset, {
     fields: [User.avatarAssetId],
@@ -252,7 +247,6 @@ export const organizationRelations = relations(Organization, ({ one, many }) => 
   signatures: many(Signature),
   embedding_jobs: many(embedding_jobs),
   emails: many(Message),
-  emailCategories: many(EmailCategory),
   orders: many(Order),
   threads: many(Thread),
   products: many(Product),
@@ -277,7 +271,6 @@ export const organizationRelations = relations(Organization, ({ one, many }) => 
   ticketSequences: many(TicketSequence),
   tickets: many(Ticket),
   knowledgeBases: many(KnowledgeBase),
-  ticketViews: many(TicketView),
   mailDomains: many(MailDomain),
   emailTemplates: many(EmailTemplate),
   snippetFolders: many(SnippetFolder),
@@ -454,7 +447,6 @@ export const embeddingsRelations = relations(embeddings, ({ one }) => ({
   }),
 }))
 
-
 export const emailAttachmentRelations = relations(EmailAttachment, ({ one }) => ({
   mediaAsset: one(MediaAsset, {
     fields: [EmailAttachment.mediaAssetId],
@@ -593,7 +585,6 @@ export const ticketRelations = relations(Ticket, ({ one, many }) => ({
     fields: [Ticket.shopifyCustomerId],
     references: [shopify_customers.id],
   }),
-  notes: many(TicketNote),
   assignments: many(TicketAssignment),
   comments: many(Comment),
 }))
@@ -608,28 +599,6 @@ export const ticketRelationRelations = relations(TicketRelation, ({ one }) => ({
     fields: [TicketRelation.ticketId],
     references: [Ticket.id],
     relationName: 'ticketRelation_ticketId_ticket_id',
-  }),
-}))
-
-export const ticketViewRelations = relations(TicketView, ({ one }) => ({
-  organization: one(Organization, {
-    fields: [TicketView.organizationId],
-    references: [Organization.id],
-  }),
-  user: one(User, {
-    fields: [TicketView.userId],
-    references: [User.id],
-  }),
-}))
-
-export const ticketNoteRelations = relations(TicketNote, ({ one }) => ({
-  author: one(User, {
-    fields: [TicketNote.authorId],
-    references: [User.id],
-  }),
-  ticket: one(Ticket, {
-    fields: [TicketNote.ticketId],
-    references: [Ticket.id],
   }),
 }))
 

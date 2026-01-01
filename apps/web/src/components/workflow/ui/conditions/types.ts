@@ -6,28 +6,17 @@ import type { ReactNode } from 'react'
 import { BaseType } from '@auxx/lib/workflow-engine/types'
 import type { Operator } from '@auxx/lib/workflow-engine/client'
 
+// Import from shared conditions module - single source of truth
+import type {
+  Condition,
+  ConditionGroup as BaseConditionGroup,
+} from '@auxx/lib/conditions/client'
+
 /**
- * Base condition interface that can accommodate both if-else and find use cases
+ * Re-export Condition as GenericCondition for backward compatibility
+ * @deprecated Use Condition from @auxx/lib/conditions/client instead
  */
-export interface GenericCondition {
-  id: string
-  fieldId: string // Can be variableId for if-else, field key for find
-  operator: Operator
-  value: string | number | boolean | string[] | TiptapJSON | any
-  isConstant: boolean // Track constant vs variable mode from VarEditor
-  logicalOperator?: 'AND' | 'OR'
-
-  // Extended properties for advanced use cases
-  key?: string // For sub-variables in if-else
-  subConditions?: GenericCondition[]
-  metadata?: Record<string, any>
-
-  // Type information for backward compatibility
-  numberVarType?: 'string' | 'number'
-
-  // Legacy support
-  variableId?: string // Alias for fieldId for if-else compatibility
-}
+export type GenericCondition = Condition
 
 /**
  * Group metadata for naming, descriptions, and UI state
@@ -49,22 +38,19 @@ export interface ConditionGroupMetadata {
 
 /**
  * Enhanced group of conditions with metadata
+ * Extends the base ConditionGroup from @auxx/lib/conditions
  */
-export interface ConditionGroup {
-  id: string
-  conditions: GenericCondition[]
-  logicalOperator: 'AND' | 'OR'
-
-  // Optional metadata (defaults to empty object)
+export interface ConditionGroup extends Omit<BaseConditionGroup, 'metadata'> {
+  // Override metadata with extended type
   metadata?: ConditionGroupMetadata
-
-  // Optional order for sorting
-  order?: number
 
   // Validation state (computed, not persisted)
   isValid?: boolean
   validationErrors?: string[]
 }
+
+// Re-export base types for convenience
+export type { Condition } from '@auxx/lib/conditions/client'
 
 /**
  * Field definition for condition system
