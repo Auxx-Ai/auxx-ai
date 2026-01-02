@@ -179,7 +179,12 @@ const ConditionContainer = ({
             {!useGrouping && <ConditionAdd disabled={readOnly} buttonText="Add Condition" />}
 
             {useGrouping && addGroup && (
-              <Button size="sm" variant="outline" disabled={readOnly} onClick={() => addGroup()}>
+              <Button
+                data-field="add-group"
+                size="sm"
+                variant="outline"
+                disabled={readOnly}
+                onClick={() => addGroup()}>
                 <Plus />
                 {config.addGroupButtonText || 'Add Group'}
               </Button>

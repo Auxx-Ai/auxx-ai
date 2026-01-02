@@ -143,6 +143,19 @@ const timingMiddleware = t.middleware(async ({ next, path }) => {
   const end = Date.now()
   console.log(`[TRPC] ${path} took ${end - start}ms to execute`)
 
+  // Log errors with full details for debugging
+  if (!result.ok) {
+    const error = result.error
+    console.error(`❌ tRPC failed on ${path}:`, error.message)
+    if (error.cause) {
+      console.error(`   Cause:`, error.cause)
+    }
+    // Log Zod validation errors in detail
+    if (error.cause instanceof ZodError) {
+      console.error(`   Zod issues:`, JSON.stringify(error.cause.issues, null, 2))
+    }
+  }
+
   return result
 })
 

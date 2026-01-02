@@ -102,6 +102,7 @@ export function TableToolbar<TData = any>({ children, className }: TableToolbarP
           onFiltersChange={setFilters}
           filterableFields={filterableFields}
           resourceType={resourceType}
+          hasActiveView={!!currentView}
         />
       )}
 

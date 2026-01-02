@@ -27,6 +27,9 @@ export type {
 // Re-export ConditionGroup for filter types (new filter system)
 export type { ConditionGroup } from '@auxx/lib/conditions/client'
 
+// Export view config schema (for programmatic validation)
+export { viewConfigSchema } from '@auxx/lib/conditions'
+
 // DynamicView is the single entry point - DynamicTable is an alias for backwards compatibility
 export { DynamicView } from './dynamic-view'
 export { DynamicView as DynamicTable } from './dynamic-view'
@@ -35,10 +38,15 @@ export {
   SORT_OPTIONS,
   COLUMN_TYPE_ICONS,
   ROW_HEIGHT,
+  TOOLBAR_HEIGHT,
+  HEADER_HEIGHT,
+  CHECKBOX_WIDTH,
+  ACTIONS_WIDTH,
   DEFAULT_COLUMN_WIDTHS,
 } from './utils/constants'
 
 export { useDynamicTable } from './hooks/use-dynamic-table'
+export { useCombinedFilters } from './hooks/use-combined-filters'
 export { useTableContext } from './context/table-context'
 export { useCellSelection } from './context/cell-selection-context'
 export { DynamicTableFooter, DefaultFooterContent } from './components/dynamic-table-footer'
@@ -53,6 +61,8 @@ export { CopyableLinkCell } from './components/copyable-link-cell'
 // New components from the refactor
 export { TableBody } from './components/table-body'
 export { KanbanViewBody } from './components/kanban-view-body'
+export { TableContentSkeleton } from './components/table-content-skeleton'
+export { ToolbarSkeleton } from './components/toolbar-skeleton'
 
 // Cell renderers and utilities
 export {

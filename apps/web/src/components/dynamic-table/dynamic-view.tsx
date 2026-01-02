@@ -8,9 +8,12 @@ import { TableToolbar } from './components/table-toolbar'
 import { TableBody } from './components/table-body'
 import { KanbanViewBody } from './components/kanban-view-body'
 import { FloatingBulkActionBar } from './components/floating-bulk-action-bar'
+import { TableContentSkeleton } from './components/table-content-skeleton'
+import { ToolbarSkeleton } from './components/toolbar-skeleton'
 import { TableProvider, useTableContext } from './context/table-context'
 import { CellSelectionProvider, useCellSelection } from './context/cell-selection-context'
 import { RowSelectionProvider } from './context/row-selection-context'
+import { useViewStoreInitialized } from './stores/view-store'
 import { cn } from '@auxx/ui/lib/utils'
 import type { DynamicTableProps, ViewType, KanbanViewConfig, ViewConfig, CellSelectionState } from './types'
 import { Button } from '@auxx/ui/components/button'
@@ -29,6 +32,8 @@ function DynamicViewInner<TData extends object>() {
     showFooter = false,
     hideToolbar = false,
     enableBulkActions,
+    enableCheckbox,
+    enableSearch,
     bulkActions = [],
     footerElement,
     bulkActionBarElement,
@@ -36,6 +41,9 @@ function DynamicViewInner<TData extends object>() {
     currentView,
     selectFields,
   } = useTableContext<TData>()
+
+  // View store initialization state
+  const isViewsLoaded = useViewStoreInitialized()
 
   // Cell selection from separate context for performance
   const { selectedCell, setSelectedCell, editingCell, setEditingCell, cellSelectionConfig } =
@@ -74,72 +82,92 @@ function DynamicViewInner<TData extends object>() {
   // Check if kanban view is valid (has required config)
   const isKanbanView = viewType === 'kanban' && !!groupByField
 
+  // Determine if we have any data
+  const rowCount = table.getRowModel().rows.length
+  const hasData = rowCount > 0
+
+  // Unified initial loading state:
+  // - Views not loaded yet, OR
+  // - Loading data AND no existing data to show
+  const isInitialLoading = !isViewsLoaded || (isLoading && !hasData)
+
   return (
     <div ref={scrollContainerRef} className="flex flex-col relative h-full flex-1 overflow-auto">
-      {/* Toolbar or Bulk Actions Bar - shown for both table and kanban views */}
+      {/* Toolbar - always renders structure, content may be skeleton */}
       {!hideToolbar && (
         <div className="sticky top-0 z-20 bg-background left-0">
-          {showBulkActionsBar
-            ? bulkActionBarElement || (
-                <div className="">
-                  <div className="flex @container/controls items-row items-center gap-1.5 py-2 px-3 bg-background overflow-hidden">
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="info"
-                        size="sm"
-                        onClick={() => table.toggleAllRowsSelected(false)}>
-                        <X />
-                        {selectedRows.length} selected
-                      </Button>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {bulkActions.map((action) => {
-                        const Icon = action.icon
-                        const isDisabled = action.disabled?.(selectedRows.map((r) => r.original))
-                        const isHidden = action.hidden?.(selectedRows.map((r) => r.original))
+          {showBulkActionsBar ? (
+            bulkActionBarElement || (
+              <div className="">
+                <div className="flex @container/controls items-row items-center gap-1.5 py-2 px-3 bg-background overflow-hidden">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="info"
+                      size="sm"
+                      onClick={() => table.toggleAllRowsSelected(false)}>
+                      <X />
+                      {selectedRows.length} selected
+                    </Button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {bulkActions.map((action) => {
+                      const Icon = action.icon
+                      const isDisabled = action.disabled?.(selectedRows.map((r) => r.original))
+                      const isHidden = action.hidden?.(selectedRows.map((r) => r.original))
 
-                        if (isHidden) return null
+                      if (isHidden) return null
 
-                        return (
-                          <Button
-                            key={action.label}
-                            onClick={() => action.action(selectedRows.map((r) => r.original))}
-                            disabled={isDisabled}
-                            size="sm"
-                            variant={action.variant || 'default'}>
-                            {Icon && <Icon />}
-                            {action.label}
-                          </Button>
-                        )
-                      })}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => table.resetRowSelection()}>
-                        Cancel
-                      </Button>
-                    </div>
+                      return (
+                        <Button
+                          key={action.label}
+                          onClick={() => action.action(selectedRows.map((r) => r.original))}
+                          disabled={isDisabled}
+                          size="sm"
+                          variant={action.variant || 'default'}>
+                          {Icon && <Icon />}
+                          {action.label}
+                        </Button>
+                      )
+                    })}
+                    <Button variant="outline" size="sm" onClick={() => table.resetRowSelection()}>
+                      Cancel
+                    </Button>
                   </div>
                 </div>
-              )
-            : tableToolbarElement || <TableToolbar />}
+              </div>
+            )
+          ) : isViewsLoaded ? (
+            tableToolbarElement || <TableToolbar />
+          ) : (
+            <ToolbarSkeleton showSearch={enableSearch} />
+          )}
         </div>
       )}
 
-      {/* View content - either table or kanban */}
-      {isKanbanView ? (
+      {/* Content - skeleton or real table */}
+      {isInitialLoading ? (
+        <TableContentSkeleton rowCount={12} showCheckbox={enableCheckbox} columnCount={5} />
+      ) : isKanbanView ? (
         <KanbanViewBody />
       ) : (
         <>
-        <TableBody hideToolbar={hideToolbar} scrollContainerRef={scrollContainerRef} />
-        <div className="grow"></div>
+          <TableBody hideToolbar={hideToolbar} scrollContainerRef={scrollContainerRef} />
+          <div className="grow" />
         </>
       )}
 
-      
+      {/* Inline loading indicator for subsequent loads (filter changes, etc.) */}
+      {!isInitialLoading && isLoading && hasData && (
+        <div className="absolute inset-0 bg-background/50 flex items-center justify-center pointer-events-none z-10">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground bg-background px-3 py-2 rounded-md shadow-sm">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <span>Loading...</span>
+          </div>
+        </div>
+      )}
 
-      {/* Footer */}
-      {footerElement && footerElement}
+      {/* Footer - only show when loaded */}
+      {!isInitialLoading && footerElement}
 
       {/* Floating Bulk Action Bar - rendered via portal, shown alongside inline bar */}
       {showBulkActionsBar && bulkActions.length > 0 && !bulkActionBarElement && (

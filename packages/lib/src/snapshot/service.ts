@@ -14,7 +14,7 @@ import type {
 import type { ConditionGroup } from '../conditions'
 
 /** TTL for snapshots in seconds */
-const SNAPSHOT_TTL_SECONDS = 300 // 5 minutes
+const SNAPSHOT_TTL_SECONDS = 900 // 15 minutes
 
 /** Lock TTL in seconds */
 const LOCK_TTL_SECONDS = 30
@@ -151,6 +151,7 @@ export async function getOrCreateSnapshot(input: GetOrCreateSnapshotInput): Prom
 /**
  * Get a chunk of IDs from an existing snapshot
  * Returns null if snapshot doesn't exist or expired
+ * Extends TTL on access (sliding window) to keep active sessions alive
  */
 export async function getSnapshotChunk(
   input: GetSnapshotChunkInput
@@ -158,7 +159,8 @@ export async function getSnapshotChunk(
   const client = await getClient()
 
   // Look up the cache keys from snapshot ID
-  const lookupData = await client.get(buildSnapshotKey(input.snapshotId))
+  const lookupKey = buildSnapshotKey(input.snapshotId)
+  const lookupData = await client.get(lookupKey)
   if (!lookupData) return null
 
   const { cacheKey, idsKey } = JSON.parse(lookupData)
@@ -171,6 +173,13 @@ export async function getSnapshotChunk(
 
   // Get the requested slice using Redis LRANGE (0-indexed, inclusive end)
   const ids = await client.lrange(idsKey, input.offset, input.offset + input.limit - 1)
+
+  // Extend TTL on access (sliding window) - keeps active sessions alive
+  await Promise.all([
+    client.expire(cacheKey, SNAPSHOT_TTL_SECONDS),
+    client.expire(idsKey, SNAPSHOT_TTL_SECONDS),
+    client.expire(lookupKey, SNAPSHOT_TTL_SECONDS),
+  ])
 
   return {
     ids,

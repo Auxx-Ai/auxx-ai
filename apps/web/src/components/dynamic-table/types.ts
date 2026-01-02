@@ -10,48 +10,20 @@ import type { ConditionGroup } from '@auxx/lib/conditions/client'
 export type { TargetTimeInStatus }
 
 // ============================================================================
-// COLUMN FORMATTING TYPES
+// COLUMN FORMATTING & VIEW CONFIG TYPES (from schema - single source of truth)
 // ============================================================================
 
-/**
- * Currency formatting options for column display override
- */
-export interface CurrencyColumnFormatting {
-  type: 'currency'
-  currencyCode?: string
-  decimalPlaces?: 'two-places' | 'no-decimal'
-  displayType?: 'symbol' | 'name' | 'code'
-  groups?: 'default' | 'no-groups'
-}
-
-/**
- * Date formatting options for column display override
- */
-export interface DateColumnFormatting {
-  type: 'date'
-  format?: 'short' | 'medium' | 'long' | 'relative' | 'iso'
-  includeTime?: boolean
-}
-
-/**
- * Number formatting options for column display override
- */
-export interface NumberColumnFormatting {
-  type: 'number'
-  decimalPlaces?: number
-  useGrouping?: boolean
-  displayAs?: 'number' | 'percentage' | 'compact' | 'bytes'
-  prefix?: string
-  suffix?: string
-}
-
-/**
- * Union type for all column formatting options
- */
-export type ColumnFormatting =
-  | CurrencyColumnFormatting
-  | DateColumnFormatting
-  | NumberColumnFormatting
+// Re-export types from schema (inferred from Zod = always in sync with validation)
+export type {
+  CurrencyColumnFormatting,
+  DateColumnFormatting,
+  NumberColumnFormatting,
+  ColumnFormatting,
+  KanbanColumnSettings,
+  KanbanViewConfig,
+  ViewConfig,
+  ViewType,
+} from '@auxx/lib/conditions'
 
 /**
  * Field types that support formatting
@@ -129,20 +101,11 @@ export interface TableView {
 }
 
 // ============================================================================
-// VIEW TYPE AND KANBAN CONFIGURATION
+// KANBAN UI TYPES (not in schema - UI-only)
 // ============================================================================
 
 /** Column ID for items without a status value */
 export const NO_STATUS_COLUMN_ID = '__no_status__'
-
-/** View type - table or kanban */
-export type ViewType = 'table' | 'kanban'
-
-/** Per-column view settings (stored in view config) */
-export interface KanbanColumnSettings {
-  /** Hide this column in the current view */
-  isVisible?: boolean // defaults to true if undefined
-}
 
 /** Generic row data for kanban cards */
 export interface KanbanRow {
@@ -178,48 +141,6 @@ export interface KanbanCustomField {
 
 /** Drag item type for kanban DnD */
 export type KanbanDragItemType = 'card' | 'column'
-
-/** Kanban-specific configuration */
-export interface KanbanViewConfig {
-  /** ID of the SINGLE_SELECT custom field used for columns */
-  groupByFieldId: string
-  /** Column order (option IDs from the SINGLE_SELECT field) */
-  columnOrder?: string[]
-  /** Collapsed columns */
-  collapsedColumns?: string[]
-  /** Card display settings - field IDs to show on cards */
-  cardFields?: string[]
-  /** Primary display field ID (for card title) */
-  primaryFieldId?: string
-  /** Column-specific view settings keyed by column value */
-  columnSettings?: Record<string, KanbanColumnSettings>
-}
-
-/**
- * View configuration details
- */
-export interface ViewConfig {
-  /** Filter groups (same type as workflow conditions) */
-  filters: ConditionGroup[]
-  /** Sorting configuration */
-  sorting: Array<{ id: string; desc: boolean }>
-  /** Column visibility */
-  columnVisibility: Record<string, boolean>
-  /** Column order */
-  columnOrder: string[]
-  /** Column sizing */
-  columnSizing: Record<string, number>
-  /** Column pinning */
-  columnPinning?: { left?: string[]; right?: string[] }
-  /** Column labels */
-  columnLabels?: Record<string, string>
-  /** Column formatting */
-  columnFormatting?: Record<string, ColumnFormatting>
-  /** View type (defaults to 'table' for backward compatibility) */
-  viewType?: ViewType
-  /** Kanban config (only used when viewType === 'kanban') */
-  kanban?: KanbanViewConfig
-}
 
 /**
  * Bulk action configuration

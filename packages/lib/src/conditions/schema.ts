@@ -4,6 +4,7 @@ import { z } from 'zod'
 
 /**
  * Zod schema for Condition
+ * Uses z.lazy() for recursive subConditions reference
  */
 export const conditionSchema: z.ZodType<any> = z.lazy(() =>
   z.object({
@@ -15,7 +16,7 @@ export const conditionSchema: z.ZodType<any> = z.lazy(() =>
     isConstant: z.boolean().optional(),
     key: z.string().optional(),
     subConditions: z.array(conditionSchema).optional(),
-    metadata: z.record(z.any()).optional(),
+    metadata: z.record(z.string(), z.any()).optional(),
     numberVarType: z.enum(['string', 'number']).optional(),
     variableId: z.string().optional(),
   })
@@ -28,7 +29,7 @@ export const conditionGroupSchema = z.object({
   id: z.string(),
   conditions: z.array(conditionSchema),
   logicalOperator: z.enum(['AND', 'OR']),
-  metadata: z.record(z.any()).optional(),
+  metadata: z.record(z.string(), z.any()).optional(),
   order: z.number().optional(),
   case_id: z.string().optional(),
 })

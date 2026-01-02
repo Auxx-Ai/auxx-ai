@@ -2,7 +2,7 @@
 
 'use client'
 
-import React, { useMemo, useCallback } from 'react'
+import React, { useMemo, useCallback, useState, useRef } from 'react'
 import { Filter, X } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
 import { Badge } from '@auxx/ui/components/badge'
@@ -32,6 +32,8 @@ interface TableFilterBuilderProps {
   resourceType: string
   /** Disabled state */
   disabled?: boolean
+  /** Whether a view is currently selected (filters require a view to persist) */
+  hasActiveView?: boolean
 }
 
 /**
@@ -46,8 +48,39 @@ export function TableFilterBuilder({
   filterableFields,
   resourceType,
   disabled = false,
+  hasActiveView = true,
 }: TableFilterBuilderProps) {
-  const [isOpen, setIsOpen] = React.useState(false)
+  const [isOpen, setIsOpen] = useState(false)
+  const isDisabled = disabled || !hasActiveView
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BUFFERED STATE PATTERN
+  // Keep local draft while editing, only commit when popover closes
+  // ═══════════════════════════════════════════════════════════════════════════
+  const [draftFilters, setDraftFilters] = useState<ConditionGroup[]>([])
+  const isDraftInitialized = useRef(false)
+
+  /** Handle popover open/close - sync draft state */
+  const handleOpenChange = useCallback(
+    (open: boolean) => {
+      if (open) {
+        // Opening: copy current filters to draft
+        setDraftFilters(filters)
+        isDraftInitialized.current = true
+      } else if (isDraftInitialized.current) {
+        // Closing: commit draft to parent (triggers save)
+        onFiltersChange(draftFilters)
+        isDraftInitialized.current = false
+      }
+      setIsOpen(open)
+    },
+    [filters, draftFilters, onFiltersChange]
+  )
+
+  /** Update draft (no save until close) */
+  const handleDraftChange = useCallback((groups: ConditionGroup[]) => {
+    setDraftFilters(groups)
+  }, [])
 
   // Convert ResourceField[] to FieldDefinition[]
   // Pattern from: workflow/nodes/core/find/panel.tsx
@@ -88,20 +121,39 @@ export function TableFilterBuilder({
     [fieldDefinitions]
   )
 
-  const totalConditions = filters.reduce((sum, g) => sum + g.conditions.length, 0)
+  // Use draft when popover is open, otherwise show committed filters
+  const displayFilters = isOpen ? draftFilters : filters
+  const totalConditions = displayFilters.reduce((sum, g) => sum + g.conditions.length, 0)
   const hasFilters = totalConditions > 0
 
+  /** Clear all filters and close popover */
   const handleClearAll = useCallback(() => {
+    setDraftFilters([])
     onFiltersChange([])
+    isDraftInitialized.current = false
     setIsOpen(false)
   }, [onFiltersChange])
 
+  // When no view is selected, show disabled button with tooltip
+  if (!hasActiveView) {
+    return (
+      <Tooltip content="Select or create a view to use filters">
+        <div>
+          <Button variant="ghost" size="sm" disabled>
+            <Filter />
+            <span className="hidden @lg/controls:block">Filter</span>
+          </Button>
+        </div>
+      </Tooltip>
+    )
+  }
+
   return (
-    <Popover open={isOpen} onOpenChange={setIsOpen}>
+    <Popover open={isOpen} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <div>
           <Tooltip content="Filter rows">
-            <Button variant="ghost" size="sm" disabled={disabled}>
+            <Button variant="ghost" size="sm" disabled={isDisabled}>
               <Filter />
               <span className="hidden @lg/controls:block">Filter</span>
               {hasFilters && (
@@ -114,25 +166,17 @@ export function TableFilterBuilder({
         </div>
       </PopoverTrigger>
 
-      <PopoverContent className="w-[400px] max-h-[500px] overflow-auto p-1" align="start">
-        <div className="space-y-4">
-          <div className="flex items-center justify-between ps-2">
-            <h4 className="font-medium text-sm">Filters</h4>
-            {hasFilters && (
-              <Button variant="ghost" size="sm" onClick={handleClearAll}>
-                <X className="mr-1" />
-                Clear all
-              </Button>
-            )}
-          </div>
-
+      <PopoverContent
+        className="w-[400px] max-h-[500px] overflow-auto px-1 pt-1 pb-2"
+        align="start">
+        <div className="space-y-2 [&_[data-field=add-group]]:ms-1 [&_[data-field=group-condition]:last-child_[data-field=group-divider]]:hidden">
           <ConditionProvider
             conditions={EMPTY_CONDITIONS}
-            groups={filters}
+            groups={draftFilters}
             config={config}
-            readOnly={disabled}
+            readOnly={isDisabled}
             onConditionsChange={() => {}}
-            onGroupsChange={onFiltersChange}
+            onGroupsChange={handleDraftChange}
             getAvailableFields={() => fieldDefinitions}
             getFieldDefinition={(id) => fieldDefinitions.find((f) => f.id === id)}>
             <ConditionContainer emptyStateText="Add a filter to start" showAddButton showGrouping />

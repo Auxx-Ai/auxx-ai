@@ -2,7 +2,7 @@
 'use client'
 import { useMemo, useState, useCallback, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { type SortingState, type VisibilityState } from '@tanstack/react-table'
+import { type VisibilityState } from '@tanstack/react-table'
 import { Button } from '@auxx/ui/components/button'
 import { Plus, Ban, UserPlus, Users, Trash2, Play } from 'lucide-react'
 import NewCustomerForm from './_components/new-customer-form'
@@ -18,6 +18,8 @@ import {
   DynamicTableFooter,
   createCustomFieldColumns,
 } from '~/components/dynamic-table'
+import { useCombinedFilters } from '~/components/dynamic-table/hooks/use-combined-filters'
+import { useActiveViewConfig } from '~/components/dynamic-table/stores/view-store'
 import type { ExtendedColumnDef } from '~/components/dynamic-table'
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
 import { EmptyState } from '~/components/global/empty-state'
@@ -39,12 +41,17 @@ import {
   type ContactColumnActions,
 } from './_components/contact-columns'
 import type { ConditionGroup, Condition } from '@auxx/lib/conditions/client'
-import { generateId } from '@auxx/lib/utils'
+
+/** Stable filter IDs to prevent reference changes */
+const SEARCH_FILTER_ID = 'page-search-filter'
+const STATUS_FILTER_ID = 'page-status-filter'
+const TABLE_ID = 'contacts'
 
 /**
- * Build filter condition groups from contact filter params
+ * Page-level filters (search bar, status dropdown).
+ * Uses stable IDs to prevent unnecessary re-fetches.
  */
-function buildContactFilters(params: {
+function buildPageFilters(params: {
   search?: string
   status?: CustomerStatus | 'ALL'
 }): ConditionGroup[] | undefined {
@@ -52,12 +59,12 @@ function buildContactFilters(params: {
 
   if (params.search) {
     const searchConditions: Condition[] = [
-      { id: generateId(), fieldId: 'firstName', operator: 'contains', value: params.search },
-      { id: generateId(), fieldId: 'lastName', operator: 'contains', value: params.search },
-      { id: generateId(), fieldId: 'email', operator: 'contains', value: params.search },
+      { id: `${SEARCH_FILTER_ID}-fn`, fieldId: 'firstName', operator: 'contains', value: params.search },
+      { id: `${SEARCH_FILTER_ID}-ln`, fieldId: 'lastName', operator: 'contains', value: params.search },
+      { id: `${SEARCH_FILTER_ID}-em`, fieldId: 'email', operator: 'contains', value: params.search },
     ]
     groups.push({
-      id: generateId(),
+      id: SEARCH_FILTER_ID,
       logicalOperator: 'OR',
       conditions: searchConditions,
     })
@@ -65,10 +72,10 @@ function buildContactFilters(params: {
 
   if (params.status && params.status !== 'ALL') {
     groups.push({
-      id: generateId(),
+      id: STATUS_FILTER_ID,
       logicalOperator: 'AND',
       conditions: [
-        { id: generateId(), fieldId: 'status', operator: 'is', value: params.status },
+        { id: `${STATUS_FILTER_ID}-0`, fieldId: 'status', operator: 'is', value: params.status },
       ],
     })
   }
@@ -99,8 +106,6 @@ export default function CustomerListPage() {
     (searchParams.get('status') as CustomerStatus) || 'ALL'
   )
   const [groupFilter, setGroupFilter] = useState(searchParams.get('group') || '')
-  // State for sorting
-  const [sorting, setSorting] = useState<SortingState>([])
   // Contact drawer state - synced with URL for refresh persistence
   const [selectedContactId, setSelectedContactId] = useQueryState(
     'c',
@@ -123,17 +128,31 @@ export default function CustomerListPage() {
   // Use simple state for selected customer IDs
   const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([])
 
-  // Build filters from search/status params
-  const filters = useMemo(
-    () => buildContactFilters({ search: debouncedSearch, status }),
+  // ══════════════════════════════════════════════════════════════════════════
+  // VIEW STORE INTEGRATION
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // Get merged view config (saved + pending) from view store
+  const viewConfig = useActiveViewConfig(TABLE_ID)
+
+  // Build page-level filters with stable IDs
+  const pageFilters = useMemo(
+    () => buildPageFilters({ search: debouncedSearch, status }),
     [debouncedSearch, status]
   )
 
-  // Build sorting config
-  const sortingConfig = useMemo(
-    () => (sorting.length > 0 ? [{ id: sorting[0]!.id, desc: sorting[0]!.desc }] : undefined),
-    [sorting]
-  )
+  // Merge view filters with page filters
+  const combinedFilters = useCombinedFilters({ viewConfig, pageFilters })
+
+  // Get sorting from view config (already merged saved + pending)
+  const viewSorting = useMemo(() => {
+    const sorting = viewConfig?.sorting
+    return sorting?.length ? sorting : undefined
+  }, [viewConfig?.sorting])
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // DATA FETCHING
+  // ══════════════════════════════════════════════════════════════════════════
 
   // Query contacts using unified record list
   const {
@@ -146,10 +165,9 @@ export default function CustomerListPage() {
     refresh: refetch,
   } = useRecordList<Contact>({
     resourceType: 'contact',
-    filters,
-    sorting: sortingConfig,
+    filters: combinedFilters,
+    sorting: viewSorting,
     limit: PAGE_SIZE,
-    // Note: groupId filtering not yet supported via conditions
   })
 
   // Column visibility state for syncer
@@ -407,13 +425,13 @@ export default function CustomerListPage() {
               data={items}
               className="h-full flex-1"
               resourceType="contact"
-              tableId="contacts"
+              tableId={TABLE_ID}
               bulkActions={bulkActions}
               enableSearch
               columns={columns}
               enableSorting
               enableFiltering
-              isLoading={isLoading}
+              isLoading={isLoading || isLoadingRecords}
               onRowSelectionChange={handleRowSelectionChange}
               onScrollToBottom={handleScrollToBottom}
               showRowNumbers={false}

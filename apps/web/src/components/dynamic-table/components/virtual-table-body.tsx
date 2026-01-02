@@ -263,7 +263,7 @@ export function VirtualTableBody<TData>({
           <div
             ref={shadowRef}
             className={cn(
-              'absolute top-[-40px] left-full bottom-0 w-[1px] ml-[-1px] bg-transparent shadow-[6px_0_16px_4px_rgb(0,0,0,0.2)] dark:shadow-[6px_0_16px_4px_rgb(0,0,0,0.7)] [clip-path:inset(0px_-38px_0px_0px)] transition-opacity duration-200'
+              'absolute top-[-40px] left-full bottom-0 w-[1px] ml-[-1px] bg-transparent shadow-[6px_0_16px_4px_rgb(0,0,0,0.2)] dark:shadow-[6px_0_16px_4px_rgb(0,0,0,0.9)] [clip-path:inset(0px_-38px_0px_0px)] transition-opacity duration-200'
             )}
           />
         </div>

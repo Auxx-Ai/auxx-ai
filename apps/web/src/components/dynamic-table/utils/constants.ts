@@ -60,6 +60,26 @@ export const COLUMN_TYPE_ICONS = {
 export const ROW_HEIGHT = 38
 
 /**
+ * Toolbar height (py-2 + content height)
+ */
+export const TOOLBAR_HEIGHT = 44
+
+/**
+ * Header row height
+ */
+export const HEADER_HEIGHT = 40
+
+/**
+ * Checkbox column width
+ */
+export const CHECKBOX_WIDTH = 40
+
+/**
+ * Actions column width
+ */
+export const ACTIONS_WIDTH = 70
+
+/**
  * Default column widths
  */
 export const DEFAULT_COLUMN_WIDTHS = {

@@ -60,6 +60,7 @@ export function useDynamicTable<TData extends Record<string, any>>({
   const hasUnsavedChanges = useViewStore((state) => state.hasUnsavedChanges)
   const isSaving = useViewStore((state) => state.isSaving)
   const resetToSaved = useViewStore((state) => state.resetToSaved)
+  const setActiveViewInStore = useViewStore((state) => state.setActiveView)
 
   const currentView = useMemo(() => {
     if (!urlState.v) {
@@ -67,6 +68,14 @@ export function useDynamicTable<TData extends Record<string, any>>({
     }
     return views.find((view) => view.id === urlState.v) ?? null
   }, [urlState.v, views])
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SYNC URL VIEW ID TO STORE
+  // This ensures useActiveViewConfig() returns the correct config
+  // ═══════════════════════════════════════════════════════════════════════════
+  useEffect(() => {
+    setActiveViewInStore(tableId, urlState.v ?? null)
+  }, [tableId, urlState.v, setActiveViewInStore])
 
   // Initialize persistence (triggers auto-save on changes)
   useViewStorePersistence(currentView?.id ?? null, tableId)

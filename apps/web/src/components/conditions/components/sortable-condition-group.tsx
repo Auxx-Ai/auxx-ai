@@ -25,14 +25,7 @@ const SortableConditionGroup = ({
   disabled,
   ...groupProps
 }: SortableConditionGroupProps) => {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: group.id,
     disabled,
   })
@@ -43,7 +36,7 @@ const SortableConditionGroup = ({
   }
 
   return (
-    <div ref={setNodeRef} style={style}>
+    <div data-field="group-condition" ref={setNodeRef} style={style}>
       <ConditionGroup
         group={group}
         showDragHandle={!disabled}

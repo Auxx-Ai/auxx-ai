@@ -174,7 +174,7 @@ const ConditionGroup = ({
           </>
         )}
       </div>
-      <div className="mx-3 my-2 h-[1px] bg-primary-300/30"></div>
+      <div data-field="group-divider" className="mx-3 my-2 h-[1px] bg-primary-300/30"></div>
     </>
   )
 }

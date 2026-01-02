@@ -3,10 +3,9 @@
 import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure, adminProcedure } from '~/server/api/trpc'
-import type { ViewConfig } from '~/components/dynamic-table/types'
+import { viewConfigSchema, type ViewConfig } from '@auxx/lib/conditions'
 import { CustomFieldService } from '@auxx/lib/custom-fields'
 import { ModelTypeValues } from '@auxx/types/custom-field'
-import { conditionGroupSchema } from '@auxx/lib/conditions'
 import {
   listViews,
   listAllViews,
@@ -20,40 +19,6 @@ import {
 
 /** Schema for model type validation */
 const modelTypeSchema = z.enum(ModelTypeValues)
-
-/** Schema for kanban column settings (per-column view settings) */
-const kanbanColumnSettingsSchema = z.object({
-  isVisible: z.boolean().optional(),
-})
-
-/** Zod schema for kanban configuration */
-const kanbanConfigSchema = z.object({
-  groupByFieldId: z.string(),
-  columnOrder: z.array(z.string()).optional(),
-  collapsedColumns: z.array(z.string()).optional(),
-  cardFields: z.array(z.string()).optional(),
-  primaryFieldId: z.string().optional(),
-  columnSettings: z.record(z.string(), kanbanColumnSettingsSchema).optional(),
-})
-
-/** Zod schema for view configuration */
-const viewConfigSchema = z.object({
-  filters: z.array(conditionGroupSchema),
-  sorting: z.array(z.object({ id: z.string(), desc: z.boolean() })),
-  columnVisibility: z.record(z.string(), z.boolean()),
-  columnOrder: z.array(z.string()),
-  columnSizing: z.record(z.string(), z.number()),
-  columnPinning: z
-    .object({
-      left: z.array(z.string()).optional(),
-      right: z.array(z.string()).optional(),
-    })
-    .optional(),
-  columnLabels: z.record(z.string(), z.string()).optional(),
-  rowHeight: z.enum(['compact', 'normal', 'spacious']).optional(),
-  viewType: z.enum(['table', 'kanban']).optional().default('table'),
-  kanban: kanbanConfigSchema.optional(),
-})
 
 /**
  * Map service error codes to TRPCError
