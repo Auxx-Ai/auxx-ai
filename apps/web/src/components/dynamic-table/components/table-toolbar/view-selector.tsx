@@ -58,6 +58,7 @@ import { api } from '~/trpc/react'
 import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 import type { TableView, ViewAction, ViewConfig } from '../../types'
 import { cn } from '@auxx/ui/lib/utils'
+import { incrementTitle } from '@auxx/lib/utils'
 import { Tooltip } from '~/components/global/tooltip'
 import type { ModelType } from '@auxx/types/custom-field'
 import { useViewStore } from '../../stores/view-store'
@@ -225,9 +226,13 @@ export function ViewSelector({
   }
 
   const handleCreateView = async () => {
-    if (!newViewName.trim()) return
     // For kanban, need either a selected field or a new field name
     if (viewType === 'kanban' && !selectedFieldId && !newFieldName.trim()) return
+
+    // Generate name if not provided
+    const existingNames = new Set(views.map((v) => v.name))
+    const baseTitle = viewType === 'kanban' ? 'Kanban View' : 'Table View'
+    const viewName = newViewName.trim() || incrementTitle(baseTitle, existingNames)
 
     const config: ViewConfig = {
       filters: [],
@@ -256,7 +261,7 @@ export function ViewSelector({
 
     const newView = await createView.mutateAsync({
       tableId,
-      name: newViewName,
+      name: viewName,
       config,
       newField,
     })
@@ -468,14 +473,14 @@ export function ViewSelector({
           <div className="space-y-4">
             {/* View name input */}
             <div className="flex flex-col space-y-2">
-              <Label htmlFor="view-name">Name</Label>
+              <Label htmlFor="view-name">Name (Optional)</Label>
               <Input
                 id="view-name"
                 value={newViewName}
                 onChange={(e) => setNewViewName(e.target.value)}
-                placeholder="My custom view"
+                placeholder="View name..."
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && newViewName.trim()) {
+                  if (e.key === 'Enter') {
                     handleCreateView()
                   }
                 }}
@@ -583,7 +588,6 @@ export function ViewSelector({
               loading={createView.isPending}
               loadingText="Creating..."
               disabled={
-                !newViewName.trim() ||
                 createView.isPending ||
                 (viewType === 'kanban' && !selectedFieldId && !newFieldName.trim())
               }>

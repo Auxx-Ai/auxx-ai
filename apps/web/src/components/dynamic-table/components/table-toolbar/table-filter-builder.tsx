@@ -114,9 +114,9 @@ export function TableFilterBuilder({
         </div>
       </PopoverTrigger>
 
-      <PopoverContent className="w-[600px] max-h-[500px] overflow-auto p-4" align="start">
+      <PopoverContent className="w-[400px] max-h-[500px] overflow-auto p-1" align="start">
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between ps-2">
             <h4 className="font-medium text-sm">Filters</h4>
             {hasFilters && (
               <Button variant="ghost" size="sm" onClick={handleClearAll}>
@@ -134,13 +134,8 @@ export function TableFilterBuilder({
             onConditionsChange={() => {}}
             onGroupsChange={onFiltersChange}
             getAvailableFields={() => fieldDefinitions}
-            getFieldDefinition={(id) => fieldDefinitions.find((f) => f.id === id)}
-          >
-            <ConditionContainer
-              emptyStateText="Add a filter to start"
-              showAddButton
-              showGrouping
-            />
+            getFieldDefinition={(id) => fieldDefinitions.find((f) => f.id === id)}>
+            <ConditionContainer emptyStateText="Add a filter to start" showAddButton showGrouping />
           </ConditionProvider>
         </div>
       </PopoverContent>
