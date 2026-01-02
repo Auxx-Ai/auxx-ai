@@ -47,6 +47,9 @@ export interface MultiRelationInputProps {
 
   /** Allow multiple selections (default: true) */
   multi?: boolean
+
+  /** IDs to exclude from search results */
+  excludeIds?: string[]
 }
 
 /**
@@ -64,6 +67,7 @@ export function MultiRelationInput({
   className,
   maxDisplayItems = 3,
   multi = true,
+  excludeIds = [],
 }: MultiRelationInputProps) {
   const [open, setOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -81,6 +85,12 @@ export function MultiRelationInput({
     {
       enabled: open,
     }
+  )
+
+  // Filter out excluded IDs from search results
+  const filteredItems = useMemo(
+    () => (searchResults?.items || []).filter((item) => !excludeIds.includes(item.id)),
+    [searchResults, excludeIds]
   )
 
   /**
@@ -186,7 +196,7 @@ export function MultiRelationInput({
               <>
                 <CommandEmpty>No results found.</CommandEmpty>
                 <CommandGroup>
-                  {searchResults?.items.map((item) => (
+                  {filteredItems.map((item) => (
                     <CommandItem
                       key={item.id}
                       value={item.id}

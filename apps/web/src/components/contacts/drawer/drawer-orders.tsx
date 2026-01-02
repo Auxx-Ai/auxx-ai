@@ -1,18 +1,16 @@
-import { Plus, ShoppingBag } from 'lucide-react'
-import { useRouter } from 'next/navigation'
+// ~/components/contacts/drawer/drawer-orders.tsx
+import { ShoppingBag } from 'lucide-react'
 import React, { useState } from 'react'
 import NoShopifyIntegration from '~/app/(protected)/app/shopify/_components/no-shopify-integration'
 import { EmptyState } from '~/components/global/empty-state'
-import CreateOrderDialog from '~/components/orders/create-order-dialog'
 import OrderRow from '~/components/orders/order-row'
-import CreateTicketDialog from '~/components/tickets/create-ticket-dialog'
 import { Button } from '@auxx/ui/components/button'
 import { api } from '~/trpc/react'
 
 type Props = { contactId: string }
 
+/** DrawerOrders component - displays orders from Shopify for a contact */
 function DrawerOrders({ contactId }: Props) {
-  const router = useRouter()
   const [page, setPage] = useState(1)
   const pageSize = 10
 
@@ -65,15 +63,7 @@ function DrawerOrders({ contactId }: Props) {
         <EmptyState
           icon={ShoppingBag}
           title="No orders found"
-          description="Create a new order for this contact"
-          button={
-            <CreateOrderDialog contactId={contactId}>
-              <Button variant="outline" size="sm">
-                <Plus />
-                Create Order
-              </Button>
-            </CreateOrderDialog>
-          }
+          description="This customer has no orders from Shopify yet."
         />
       </div>
     )
@@ -86,12 +76,6 @@ function DrawerOrders({ contactId }: Props) {
           <ShoppingBag className="h-5 w-5 text-muted-foreground/50" />
           Orders
         </h2>
-        <CreateTicketDialog contactId={contactId}>
-          <Button variant="outline" size="sm">
-            <Plus />
-            Create Order
-          </Button>
-        </CreateTicketDialog>
       </div>
       <div className="space-y-4 m-4 border rounded-md bg-white dark:bg-muted/10">
         {data?.orders.map((order) => (

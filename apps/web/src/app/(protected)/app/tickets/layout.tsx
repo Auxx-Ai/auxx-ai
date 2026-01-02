@@ -2,9 +2,9 @@
 
 'use client'
 
-import { ChartColumn, Mail, Settings, Plus, Tags } from 'lucide-react'
+import { ChartColumn, Settings, Plus, Tags } from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
-import { parseAsStringLiteral, useQueryState } from 'nuqs'
+import { parseAsBoolean, parseAsStringLiteral, useQueryState } from 'nuqs'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -20,7 +20,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { TicketProvider, useTicketProvider } from './_components/ticket-provider'
 
 /** Ticket tab types for navigation */
 type TicketTab = 'list' | 'dashboard' | 'settings'
@@ -31,11 +30,14 @@ export type DashboardPeriod = (typeof PERIOD_OPTIONS)[number]
 
 /**
  * Header component with RadioTab navigation for tickets section
+ * Uses URL query state directly for create dialog (no TicketProvider)
  */
 function TicketsLayoutHeader() {
   const pathname = usePathname()
   const router = useRouter()
-  const { setCreateDialogOpen } = useTicketProvider()
+
+  // Create dialog state via URL query param
+  const [, setCreateDialogOpen] = useQueryState('create', parseAsBoolean.withDefault(false))
 
   // Dashboard period state (shared via URL)
   const [period, setPeriod] = useQueryState(
@@ -127,6 +129,8 @@ function TicketsLayoutHeader() {
  * Shared layout for tickets section with conditional rendering
  * - For tabbed pages (list, dashboard, settings): renders MainPage with RadioTab header
  * - For detail/create pages: renders children only (they have their own layout)
+ *
+ * Note: TicketProvider has been removed - data is now managed by useRecordList
  */
 export default function TicketsLayout({
   children,
@@ -148,22 +152,20 @@ export default function TicketsLayout({
   // For detail/create/import pages, just render children (they have their own layout)
   if (isDetailOrSpecialPage) {
     return (
-      <TicketProvider>
+      <>
         {children}
         {modal}
-      </TicketProvider>
+      </>
     )
   }
 
   // For tabbed pages, render with shared header
   // Note: MainPageContent is rendered by child pages to support docking
   return (
-    <TicketProvider>
-      <MainPage>
-        <TicketsLayoutHeader />
-        {children}
-      </MainPage>
+    <MainPage>
+      <TicketsLayoutHeader />
+      {children}
       {modal}
-    </TicketProvider>
+    </MainPage>
   )
 }

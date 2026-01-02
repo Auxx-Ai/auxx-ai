@@ -77,6 +77,24 @@ export const RESOURCE_DISPLAY_CONFIG: Record<TableId, ResourceDisplayConfig> = {
     defaultSortField: 'createdAt',
     defaultSortDirection: 'desc',
     orgScopingStrategy: 'direct', // Has organizationId column
+    withRelations: {
+      contact: {
+        columns: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          phone: true,
+        },
+      },
+      assignments: {
+        with: {
+          agent: {
+            columns: { id: true, name: true, email: true },
+          },
+        },
+      },
+    },
   },
 
   contact: {
@@ -89,6 +107,14 @@ export const RESOURCE_DISPLAY_CONFIG: Record<TableId, ResourceDisplayConfig> = {
     defaultSortField: 'updatedAt',
     defaultSortDirection: 'desc',
     orgScopingStrategy: 'direct', // Has organizationId column
+    withRelations: {
+      customerSources: {
+        columns: { id: true, source: true, email: true, sourceId: true },
+      },
+      customerGroups: {
+        with: { customerGroup: true },
+      },
+    },
   },
 
   // User table requires join through OrganizationMember

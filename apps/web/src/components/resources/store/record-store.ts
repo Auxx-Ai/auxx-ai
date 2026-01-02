@@ -246,7 +246,9 @@ export const useRecordStore = create<RecordStoreState>()(
         const existingTimer = get().batchTimers.get(resourceType)
         if (!existingTimer) {
           const timer = setTimeout(() => {
-            get().batchTimers.delete(resourceType)
+            set((state) => {
+              state.batchTimers.delete(resourceType)
+            })
             // Provider will pick up via subscription
           }, BATCH_DELAY)
 

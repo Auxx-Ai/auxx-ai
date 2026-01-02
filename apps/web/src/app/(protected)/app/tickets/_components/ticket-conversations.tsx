@@ -7,12 +7,12 @@ import { EmptyState } from '~/components/global/empty-state'
 import { api } from '~/trpc/react'
 import { TicketReplyItem } from './ticket-reply-item'
 import TicketReplyBoxWithProvider from './ticket-reply-box'
-import type { RouterOutputs } from '~/trpc/react'
+import type { Ticket } from './ticket-types'
 
 /** Props for TicketConversations component */
 interface TicketConversationsProps {
   ticketId: string
-  ticket: RouterOutputs['ticket']['byId']
+  ticket: Ticket
 }
 
 /** Main container component for the Conversations tab */
@@ -68,7 +68,7 @@ export function TicketConversations({ ticketId, ticket }: TicketConversationsPro
 
       <div className="px-4 pt-2 shrink-0">
         <TicketReplyBoxWithProvider
-          ticket={ticket}
+          ticket={ticket as any}
           onSuccess={() => {}}
         />
       </div>

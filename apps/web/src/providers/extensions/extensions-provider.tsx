@@ -16,7 +16,10 @@ import { useDehydratedOrganizationId } from '~/providers/dehydrated-state-provid
 import { api } from '~/trpc/react'
 import { toastError } from '@auxx/ui/components/toast'
 import { ConnectionExpiredDialog } from '~/components/apps/connection-expired-dialog'
-import { connectionExpiredEmitter, type ConnectionExpiredEvent } from '~/lib/extensions/connection-expired-emitter'
+import {
+  connectionExpiredEmitter,
+  type ConnectionExpiredEvent,
+} from '~/lib/extensions/connection-expired-emitter'
 
 /**
  * Props for ExtensionsProvider
@@ -102,7 +105,7 @@ export function ExtensionsProvider({ children }: ExtensionsProviderProps) {
           !error &&
           organizationId &&
           installations.map((installation) => {
-            const isDevLoggingEnabled = installation.installationType === 'development'
+            const isDevLoggingEnabled = false //installation.installationType === 'development'
 
             return (
               <Fragment key={installation.installationId}>

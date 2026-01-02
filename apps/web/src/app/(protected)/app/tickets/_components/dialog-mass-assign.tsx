@@ -1,3 +1,5 @@
+// apps/web/src/app/(protected)/app/tickets/_components/dialog-mass-assign.tsx
+
 'use client'
 
 import { useState } from 'react'
@@ -22,6 +24,7 @@ import {
 import { Badge } from '@auxx/ui/components/badge'
 import { X } from 'lucide-react'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { useRecordInvalidation } from '~/components/resources'
 
 interface MassAssignDialogProps {
   open: boolean
@@ -37,6 +40,7 @@ export function MassAssignDialog({
   onSuccess,
 }: MassAssignDialogProps) {
   const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>([])
+  const { onBulkUpdated } = useRecordInvalidation()
 
   // Get available agents
   const { data: agents, isLoading: agentsLoading } = api.ticketAgent.getAvailableAgents.useQuery(
@@ -46,10 +50,11 @@ export function MassAssignDialog({
       enabled: open, // Only fetch when dialog is open
     }
   )
-  // console.log(ticketIds)
+
   const updateAssignmentMutation = api.ticket.updateMultipleAssignments.useMutation({
     onSuccess: () => {
       toastSuccess({ title: `Successfully assigned ${ticketIds.length} ticket(s)` })
+      onBulkUpdated('ticket', ticketIds)
       onSuccess()
       onOpenChange(false)
       setSelectedAgentIds([]) // Reset selection on success

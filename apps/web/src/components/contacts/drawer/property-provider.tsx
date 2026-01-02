@@ -133,34 +133,56 @@ function extractData(val: any): any {
 }
 
 /**
+ * Normalize a value for comparison purposes.
+ * Treats empty strings, null, and undefined as equivalent "empty" values.
+ */
+function normalizeForComparison(val: any): any {
+  if (val === null || val === undefined) return null
+  if (typeof val === 'string' && val.trim() === '') return null
+  return val
+}
+
+/**
  * Check if a value has changed compared to another value
  * Handles arrays, objects, and primitives
+ * Treats empty strings and null/undefined as equivalent (no change)
  */
 function hasValueChanged(newValue: any, originalVal: any): boolean {
-  if (newValue === originalVal) return false
-  if (newValue === null || originalVal === null) return newValue !== originalVal
-  if (newValue === undefined || originalVal === undefined) return true
+  // Normalize both values - empty strings are treated as null
+  const normalizedNew = normalizeForComparison(newValue)
+  const normalizedOrig = normalizeForComparison(originalVal)
+
+  // If both are null/empty, no change
+  if (normalizedNew === null && normalizedOrig === null) return false
+
+  // If one is null and other isn't, that's a change
+  if (normalizedNew === null || normalizedOrig === null) return true
+
+  // Same reference
+  if (normalizedNew === normalizedOrig) return false
 
   // Handle arrays (like multi-select values)
-  if (Array.isArray(newValue) && Array.isArray(originalVal)) {
-    if (newValue.length !== originalVal.length) return true
-    const sortedNew = [...newValue].sort()
-    const sortedOrig = [...originalVal].sort()
+  if (Array.isArray(normalizedNew) && Array.isArray(normalizedOrig)) {
+    if (normalizedNew.length !== normalizedOrig.length) return true
+    // Empty arrays are equal
+    if (normalizedNew.length === 0) return false
+    const sortedNew = [...normalizedNew].sort()
+    const sortedOrig = [...normalizedOrig].sort()
     return JSON.stringify(sortedNew) !== JSON.stringify(sortedOrig)
   }
 
   // Handle objects (like structured address)
   if (
-    typeof newValue === 'object' &&
-    typeof originalVal === 'object' &&
-    !Array.isArray(newValue) &&
-    !Array.isArray(originalVal)
+    typeof normalizedNew === 'object' &&
+    typeof normalizedOrig === 'object' &&
+    !Array.isArray(normalizedNew) &&
+    !Array.isArray(normalizedOrig)
   ) {
-    return JSON.stringify(newValue) !== JSON.stringify(originalVal)
+    return JSON.stringify(normalizedNew) !== JSON.stringify(normalizedOrig)
   }
 
   // Handle primitive values
-  return String(newValue) !== String(originalVal)
+  return String(normalizedNew) !== String(normalizedOrig)
 }
 
 export function PropertyProvider({

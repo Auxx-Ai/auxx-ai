@@ -23,6 +23,7 @@ import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { DrawerHeader } from '@auxx/ui/components/drawer'
 import { OverflowTabsList, Tabs, TabsContent } from '@auxx/ui/components/tabs'
 import { api } from '~/trpc/react'
+import { useRecordWithFetch } from '~/components/resources'
 import { useQueryState } from 'nuqs'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import EntityFields from '../../fields/entity-fields'
@@ -90,10 +91,24 @@ export function ContactDrawer({
     setFocusComposerTrigger((prev) => prev + 1)
   }, [activeTab, setActiveTab])
 
-  const { data: contact } = api.contact.getById.useQuery(
+  // Try record cache first (populated by batch fetcher when list loads)
+  const { record: cachedContact, isLoading: isCacheLoading } = useRecordWithFetch({
+    resourceType: 'contact',
+    id: contactId,
+    enabled: !!open && !!contactId,
+  })
+
+  // Fall back to API if not in cache (for fields not included in batch fetch)
+  const { data: apiContact } = api.contact.getById.useQuery(
     { id: contactId! },
-    { enabled: !!open && !!contactId }
+    {
+      enabled: !!open && !!contactId && !cachedContact,
+      staleTime: 30_000,
+    }
   )
+
+  // Use cached contact if available, otherwise fall back to API response
+  const contact = cachedContact ?? apiContact
 
   // Memoize the createdAt text to avoid recalculating on every render
   const createdAtText = React.useMemo(

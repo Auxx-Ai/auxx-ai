@@ -5,6 +5,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react'
 import { api } from '~/trpc/react'
 import { getRelationshipStoreState, useRelationshipStore, getRecordStoreState } from '../store'
+import { useRecordBatchFetcher } from '../hooks/use-record-batch-fetcher'
 import type { Resource, CustomResource } from '@auxx/lib/resources/client'
 import { isCustomResource } from '@auxx/lib/resources/client'
 
@@ -40,6 +41,10 @@ const MAX_RELATIONSHIP_BATCH = 100
  * 2. Relationship Items - ResourcePickerItem objects (batch fetched on demand)
  */
 export function ResourceProvider({ children }: { children: React.ReactNode }) {
+  // === RECORD BATCH FETCHING ===
+  // Subscribes to record store and fetches batched records on demand
+  useRecordBatchFetcher()
+
   // === PRELOADED: RESOURCES (with fields embedded) ===
   const resourcesQuery = api.resource.getAllResourceTypes.useQuery(undefined, {
     staleTime: 5 * 60 * 1000,
@@ -155,6 +160,6 @@ export function useResourceProvider() {
  * Call on logout or organization switch.
  */
 export function clearResourceCaches() {
-  getRelationshipStoreState().clearAll()
+  getRelationshipStoreState().reset()
   getRecordStoreState().clearAll()
 }

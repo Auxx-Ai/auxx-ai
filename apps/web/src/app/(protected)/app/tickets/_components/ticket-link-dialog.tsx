@@ -1,7 +1,7 @@
 // apps/web/src/app/(protected)/app/tickets/_components/ticket-link-dialog.tsx
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -13,22 +13,14 @@ import {
 } from '@auxx/ui/components/dialog'
 import { Button } from '@auxx/ui/components/button'
 import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@auxx/ui/components/command'
-import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { cn } from '@auxx/ui/lib/utils'
 import { api } from '~/trpc/react'
+import { MultiRelationInput } from '~/components/shared/multi-relation-input'
 
 /**
  * Relation types with human-readable labels
@@ -56,6 +48,7 @@ interface TicketLinkDialogProps {
 
 /**
  * TicketLinkDialog component - allows linking tickets with different relation types
+ * Uses MultiRelationInput to fetch and select tickets internally
  */
 export function TicketLinkDialog({
   ticketId,
@@ -69,31 +62,20 @@ export function TicketLinkDialog({
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null)
   const [relationType, setRelationType] = useState<string>('RELATED')
 
-  // Sync internal state with external open prop
-  useEffect(() => {
-    if (open !== undefined) {
-      setIsOpen(open)
-    }
-  }, [open])
+  // Use controlled or uncontrolled open state
+  const dialogOpen = open ?? isOpen
+  const setDialogOpen = onOpenChange ?? setIsOpen
 
-  // Handle open change
-  const handleOpenChange = (newOpen: boolean) => {
-    setIsOpen(newOpen)
-    onOpenChange?.(newOpen)
-  }
-
-  // Get all tickets for selection
-  const { data: allTicketsData } = api.ticket.all.useQuery({})
-
-  // Filter out the current ticket and already related tickets
-  const availableTickets = (allTicketsData?.tickets || []).filter(
-    (t) => t.id !== ticketId && !relatedTicketIds.includes(t.id)
+  // Combine current ticket + already related into excludeIds
+  const excludeIds = useMemo(
+    () => [ticketId, ...relatedTicketIds],
+    [ticketId, relatedTicketIds]
   )
 
   // Mutation to add a relation
   const addRelationMutation = api.ticket.addRelation.useMutation({
     onSuccess: () => {
-      handleOpenChange(false)
+      setDialogOpen(false)
       setSelectedTicketId(null)
       setRelationType('RELATED')
       onSuccess?.()
@@ -114,7 +96,7 @@ export function TicketLinkDialog({
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+    <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
       {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <DialogContent size="sm">
         <DialogHeader className="mb-4">
@@ -141,37 +123,19 @@ export function TicketLinkDialog({
 
           <div className="space-y-1 flex flex-col">
             <label className="text-sm font-medium">Select ticket</label>
-            <Command className="rounded-md border">
-              <CommandInput placeholder="Search tickets..." />
-              <CommandList>
-                <CommandEmpty>No tickets found.</CommandEmpty>
-                <CommandGroup>
-                  {availableTickets.map((t) => (
-                    <CommandItem
-                      key={t.id}
-                      value={t.id}
-                      onSelect={() => setSelectedTicketId(t.id)}
-                      className={cn(
-                        'flex items-center justify-between',
-                        selectedTicketId === t.id && 'bg-accent'
-                      )}>
-                      <div>
-                        <span className="mr-2 font-mono text-xs text-muted-foreground">
-                          {t.number}
-                        </span>
-                        <span>{t.title}</span>
-                      </div>
-                      {selectedTicketId === t.id && <span className="text-blue-500">✓</span>}
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              </CommandList>
-            </Command>
+            <MultiRelationInput
+              resourceId="ticket"
+              value={selectedTicketId ? [selectedTicketId] : []}
+              onChange={(ids) => setSelectedTicketId(ids[0] || null)}
+              excludeIds={excludeIds}
+              placeholder="Search tickets..."
+              multi={false}
+            />
           </div>
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" size="sm" onClick={() => handleOpenChange(false)}>
+          <Button variant="ghost" size="sm" onClick={() => setDialogOpen(false)}>
             Cancel
           </Button>
           <Button

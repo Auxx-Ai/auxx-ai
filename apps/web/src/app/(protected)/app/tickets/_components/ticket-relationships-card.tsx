@@ -8,7 +8,7 @@ import { ArrowUpRight, Link as LinkIcon, X } from 'lucide-react'
 import Link from 'next/link'
 import { api } from '~/trpc/react'
 import { TicketLinkDialog } from './ticket-link-dialog'
-import type { Ticket } from './ticket-provider'
+import type { Ticket } from './ticket-types'
 
 /**
  * Relation types with human-readable labels

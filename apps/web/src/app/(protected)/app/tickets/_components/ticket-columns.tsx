@@ -35,7 +35,155 @@ import {
 } from '~/components/tickets/ticket-badges'
 import { getFullName } from '@auxx/lib/utils'
 import { ContactHoverCard } from '~/components/contacts/contact-hover-card'
-import type { Ticket } from './ticket-provider'
+import { useTableContext } from '~/components/dynamic-table'
+import type { Ticket } from './ticket-types'
+
+/**
+ * Type cell component - can access table context for inline editing
+ */
+function TicketTypeCell({ ticket }: { ticket: Ticket }) {
+  const { table } = useTableContext<Ticket>()
+  const closed = ticket.status === 'CLOSED'
+
+  // TODO: Add inline editing via dropdown using table context
+  return (
+    <FormattedCell
+      value={null}
+      fieldType="ITEMS"
+      columnId="type"
+      items={[{ id: ticket.type }]}
+      renderItem={() => <TicketTypeBadge type={ticket.type} closed={closed} />}
+    />
+  )
+}
+
+/**
+ * Status cell component - can access table context for inline editing
+ */
+function TicketStatusCell({ ticket }: { ticket: Ticket }) {
+  const { table } = useTableContext<Ticket>()
+  const closed = ticket.status === 'CLOSED'
+
+  // TODO: Add inline editing via dropdown using table context
+  return (
+    <FormattedCell
+      value={null}
+      fieldType="ITEMS"
+      columnId="status"
+      items={[{ id: ticket.status }]}
+      renderItem={() => <TicketStatusBadge status={ticket.status} closed={closed} />}
+    />
+  )
+}
+
+/**
+ * Priority cell component - can access table context for inline editing
+ */
+function TicketPriorityCell({ ticket }: { ticket: Ticket }) {
+  const { table } = useTableContext<Ticket>()
+  const closed = ticket.status === 'CLOSED'
+
+  // TODO: Add inline editing via dropdown using table context
+  return (
+    <FormattedCell
+      value={null}
+      fieldType="ITEMS"
+      columnId="priority"
+      items={[{ id: ticket.priority }]}
+      renderItem={() => <TicketPriorityBadge priority={ticket.priority} closed={closed} />}
+    />
+  )
+}
+
+/**
+ * Contact cell component - can access table context for inline editing
+ */
+function TicketContactCell({ ticket }: { ticket: Ticket }) {
+  const { table } = useTableContext<Ticket>()
+  const contact = ticket.contact
+
+  // TODO: Add inline editing via contact picker using table context
+  return (
+    <CellPadding>
+      <ContactHoverCard contact={contact}>
+        <div className="cursor-pointer hover:underline text-sm">
+          <div className="font-medium">{getFullName(contact)}</div>
+        </div>
+      </ContactHoverCard>
+    </CellPadding>
+  )
+}
+
+/**
+ * Due date cell component - can access table context for inline editing
+ */
+function TicketDueDateCell({ ticket }: { ticket: Ticket }) {
+  const { table } = useTableContext<Ticket>()
+  const { text, isOverdue, isDueToday } = formatDueDate(ticket.dueDate)
+  const isClosed = ticket.status === 'CLOSED'
+
+  // TODO: Add inline editing via date picker using table context
+  return (
+    <CellPadding
+      className={
+        isClosed
+          ? 'text-muted-foreground'
+          : isOverdue
+            ? 'text-destructive font-medium'
+            : isDueToday
+              ? 'text-warning font-medium'
+              : 'text-muted-foreground'
+      }>
+      <span className="text-sm">{text}</span>
+    </CellPadding>
+  )
+}
+
+/**
+ * Assignments cell component - can access table context for inline editing
+ */
+function TicketAssignmentsCell({
+  ticket,
+  onAssign,
+}: {
+  ticket: Ticket
+  onAssign?: (ticket: Ticket) => void
+}) {
+  const { table } = useTableContext<Ticket>()
+  const assignments = ticket.assignments
+
+  // TODO: Add inline editing via agent picker using table context
+  if (assignments.length === 0) {
+    return (
+      <CellPadding>
+        <Button
+          variant="ghost"
+          size="xs"
+          onClick={(e) => {
+            e.stopPropagation()
+            onAssign?.(ticket)
+          }}>
+          <User />
+          Unassigned
+        </Button>
+      </CellPadding>
+    )
+  }
+
+  return (
+    <CellPadding>
+      <div className="space-y-0.5">
+        {assignments.map((assignment) => (
+          <div key={assignment.id} className="text-sm">
+            <span className="font-medium">
+              {assignment.agent.name || assignment.agent.email.split('@')[0]}
+            </span>
+          </div>
+        ))}
+      </div>
+    </CellPadding>
+  )
+}
 
 /**
  * Formats a due date into a human-readable relative string
@@ -203,18 +351,7 @@ export function createTicketColumns({
     {
       accessorKey: 'contact',
       header: 'Customer',
-      cell: ({ row }) => {
-        const contact = row.original.contact
-        return (
-          <CellPadding>
-            <ContactHoverCard contact={contact}>
-              <div className="cursor-pointer hover:underline text-sm">
-                <div className="font-medium">{getFullName(contact)}</div>
-              </div>
-            </ContactHoverCard>
-          </CellPadding>
-        )
-      },
+      cell: ({ row }) => <TicketContactCell ticket={row.original} />,
       size: 200,
       enableSorting: false,
       icon: User,
@@ -222,19 +359,7 @@ export function createTicketColumns({
     {
       accessorKey: 'type',
       header: 'Type',
-      cell: ({ row }) => {
-        const type = row.getValue('type') as string
-        const closed = row.original.status === 'CLOSED'
-        return (
-          <FormattedCell
-            value={null}
-            fieldType="ITEMS"
-            columnId="type"
-            items={[{ id: type }]}
-            renderItem={() => <TicketTypeBadge type={type} closed={closed} />}
-          />
-        )
-      },
+      cell: ({ row }) => <TicketTypeCell ticket={row.original} />,
       size: 130,
       enableSorting: true,
       icon: Bookmark,
@@ -242,19 +367,7 @@ export function createTicketColumns({
     {
       accessorKey: 'status',
       header: 'Status',
-      cell: ({ row }) => {
-        const status = row.getValue('status') as string
-        const closed = row.original.status === 'CLOSED'
-        return (
-          <FormattedCell
-            value={null}
-            fieldType="ITEMS"
-            columnId="status"
-            items={[{ id: status }]}
-            renderItem={() => <TicketStatusBadge status={status} closed={closed} />}
-          />
-        )
-      },
+      cell: ({ row }) => <TicketStatusCell ticket={row.original} />,
       size: 150,
       enableSorting: true,
       icon: Tag,
@@ -262,19 +375,7 @@ export function createTicketColumns({
     {
       accessorKey: 'priority',
       header: 'Priority',
-      cell: ({ row }) => {
-        const priority = row.getValue('priority') as string
-        const closed = row.original.status === 'CLOSED'
-        return (
-          <FormattedCell
-            value={null}
-            fieldType="ITEMS"
-            columnId="priority"
-            items={[{ id: priority }]}
-            renderItem={() => <TicketPriorityBadge priority={priority} closed={closed} />}
-          />
-        )
-      },
+      cell: ({ row }) => <TicketPriorityCell ticket={row.original} />,
       size: 120,
       enableSorting: true,
       icon: CircleAlert,
@@ -282,25 +383,7 @@ export function createTicketColumns({
     {
       accessorKey: 'dueDate',
       header: 'Due Date',
-      cell: ({ row }) => {
-        const { text, isOverdue, isDueToday } = formatDueDate(row.original.dueDate)
-        const isClosed = row.original.status === 'CLOSED'
-
-        return (
-          <CellPadding
-            className={
-              isClosed
-                ? 'text-muted-foreground'
-                : isOverdue
-                  ? 'text-destructive font-medium'
-                  : isDueToday
-                    ? 'text-warning font-medium'
-                    : 'text-muted-foreground'
-            }>
-            <span className="text-sm">{text}</span>
-          </CellPadding>
-        )
-      },
+      cell: ({ row }) => <TicketDueDateCell ticket={row.original} />,
       size: 130,
       enableSorting: true,
       icon: CalendarClock,
@@ -309,39 +392,7 @@ export function createTicketColumns({
     {
       accessorKey: 'assignments',
       header: 'Assigned To',
-      cell: ({ row }) => {
-        const assignments = row.original.assignments
-        if (assignments.length === 0) {
-          return (
-            <CellPadding>
-              <Button
-                variant="ghost"
-                size="xs"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onAssign?.(row.original)
-                }}>
-                <User />
-                Unassigned
-              </Button>
-            </CellPadding>
-          )
-        }
-
-        return (
-          <CellPadding>
-            <div className="space-y-0.5">
-              {assignments.map((assignment) => (
-                <div key={assignment.id} className="text-sm">
-                  <span className="font-medium">
-                    {assignment.agent.name || assignment.agent.email.split('@')[0]}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </CellPadding>
-        )
-      },
+      cell: ({ row }) => <TicketAssignmentsCell ticket={row.original} onAssign={onAssign} />,
       size: 180,
       enableSorting: false,
       icon: User,

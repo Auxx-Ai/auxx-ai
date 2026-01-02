@@ -13,6 +13,7 @@ import { useDockStore } from '~/stores/dock-store'
 import { OverflowTabsList, Tabs, TabsContent } from '@auxx/ui/components/tabs'
 import { CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { Input } from '@auxx/ui/components/input'
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import {
   Calendar,
   Clock,
@@ -50,7 +51,9 @@ import {
 import { getFullName, getInitials } from '@auxx/lib/utils'
 import { Avatar, AvatarFallback } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
-import type { Ticket } from './ticket-provider'
+import { useRecordWithFetch } from '~/components/resources'
+import { useTicketMutations } from './use-ticket-mutations'
+import type { Ticket } from './ticket-types'
 import { useRouter } from 'next/navigation'
 import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -67,9 +70,10 @@ import { TicketConversations } from './ticket-conversations'
 import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button'
 import { TimelineTab } from '~/components/timeline'
 import { EntityIcon } from '~/components/pickers/icon-picker'
+import TicketFormDialog from './ticket-form-dialog'
 
 interface TicketDetailDrawerProps {
-  ticket: Ticket
+  ticketId: string | null
   open: boolean
   onOpenChange: (open: boolean) => void
 }
@@ -150,70 +154,77 @@ function CustomerCard({ contact, onViewProfile, className }: CustomerCardProps) 
   )
 }
 
-export function TicketDetailDrawer({ ticket, open, onOpenChange }: TicketDetailDrawerProps) {
+/**
+ * Loading skeleton for drawer content
+ */
+function DrawerSkeleton() {
+  return (
+    <div className="flex-1 overflow-y-auto min-h-0 flex flex-col rounded-t-xl p-4 space-y-4">
+      <div className="flex items-center gap-2">
+        <Skeleton className="h-6 w-16" />
+        <Skeleton className="h-6 flex-1" />
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <Skeleton className="h-24" />
+        <Skeleton className="h-24" />
+        <Skeleton className="h-24" />
+        <Skeleton className="h-24" />
+      </div>
+      <Skeleton className="h-8 w-full" />
+      <Skeleton className="h-64" />
+    </div>
+  )
+}
+
+export function TicketDetailDrawer({ ticketId, open, onOpenChange }: TicketDetailDrawerProps) {
   const router = useRouter()
   const isDocked = useEffectiveDockState()
   const dockedWidth = useDockStore((state) => state.dockedWidth)
   const setDockedWidth = useDockStore((state) => state.setDockedWidth)
   const [activeTab, setActiveTab] = useState('overview')
-  const [editingTitle, setEditingTitle] = useState(ticket.title || '')
-  const [isRenaming, setIsRenaming] = useState(false)
-  const [originalTitle, setOriginalTitle] = useState(ticket.title || '')
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [confirm, ConfirmDialog] = useConfirm()
+
+  // Cache-first: instant if opened from table
+  const { record: ticket, isLoading } = useRecordWithFetch<Ticket>({
+    resourceType: 'ticket',
+    id: ticketId,
+    enabled: !!open && !!ticketId,
+  })
+
+  // State for title editing
+  const [editingTitle, setEditingTitle] = useState('')
+  const [isRenaming, setIsRenaming] = useState(false)
+  const [originalTitle, setOriginalTitle] = useState('')
 
   // Reset editing title when ticket changes
   useEffect(() => {
-    setEditingTitle(ticket.title || '')
-    setOriginalTitle(ticket.title || '')
-  }, [ticket.title])
+    if (ticket) {
+      setEditingTitle(ticket.title || '')
+      setOriginalTitle(ticket.title || '')
+    }
+  }, [ticket?.title])
 
   // Get utils for cache invalidation
   const utils = api.useUtils()
 
-  // Fetch all tickets for merge dialog
-  const { data: ticketsData } = api.ticket.all.useQuery({})
-  const tickets = ticketsData?.tickets || []
+  // Mutations via centralized hook
+  const { deleteTicket, updateTicket } = useTicketMutations({
+    onSuccess: () => {
+      // Drawer stays open, record will update via cache
+    },
+  })
 
   // Fetch ticket with relationships for link dialog
   const { data: ticketWithRelations, refetch: refetchTicket } = api.ticket.byId.useQuery(
-    { id: ticket.id },
-    { refetchOnWindowFocus: false, retry: 1 }
+    { id: ticketId! },
+    { enabled: !!open && !!ticketId, refetchOnWindowFocus: false, retry: 1 }
   )
   const relatedTicketIds =
     ticketWithRelations?.relatedTickets.map((r: any) => r.relatedTicketId) || []
 
-  // Delete mutation
-  const deleteTicket = api.ticket.deleteTicket.useMutation({
-    onSuccess: () => {
-      onOpenChange(false)
-      utils.ticket.list.invalidate()
-    },
-    onError: (error) => {
-      toastError({
-        title: 'Failed to delete ticket',
-        description: error.message,
-      })
-    },
-  })
-
-  // Update title mutation
-  const updateTicket = api.ticket.update.useMutation({
-    onSuccess: () => {
-      setIsRenaming(false)
-      utils.ticket.list.invalidate()
-    },
-    onError: (error: unknown) => {
-      const message = error instanceof Error ? error.message : ''
-      setEditingTitle(originalTitle)
-      setIsRenaming(false)
-      toastError({
-        title: 'Failed to rename ticket',
-        description: message,
-      })
-    },
-  })
-
   const handleRename = async () => {
+    if (!ticket) return
     const trimmedTitle = editingTitle.trim()
 
     if (!trimmedTitle) {
@@ -232,10 +243,16 @@ export function TicketDetailDrawer({ ticket, open, onOpenChange }: TicketDetailD
 
     setOriginalTitle(ticket.title || '')
     setIsRenaming(true)
-    updateTicket.mutateAsync({
-      id: ticket.id,
-      title: trimmedTitle,
-    })
+    try {
+      await updateTicket.mutateAsync({
+        id: ticket.id,
+        title: trimmedTitle,
+      })
+      setIsRenaming(false)
+    } catch {
+      setEditingTitle(originalTitle)
+      setIsRenaming(false)
+    }
   }
 
   const handleTitleBlur = () => {
@@ -254,20 +271,23 @@ export function TicketDetailDrawer({ ticket, open, onOpenChange }: TicketDetailD
   }
 
   const handleOpenInNewTab = useCallback(() => {
+    if (!ticket) return
     window.open(`/app/tickets/${ticket.id}`, '_blank')
-  }, [ticket.id])
+  }, [ticket?.id])
 
   const handleEdit = useCallback(() => {
-    router.push(`/app/tickets/${ticket.id}/edit`)
-    onOpenChange(false)
-  }, [ticket.id, router, onOpenChange])
+    if (!ticket) return
+    setEditDialogOpen(true)
+  }, [ticket])
 
   const handleReply = useCallback(() => {
+    if (!ticket) return
     router.push(`/app/tickets/${ticket.id}#reply`)
     onOpenChange(false)
-  }, [ticket.id, router, onOpenChange])
+  }, [ticket?.id, router, onOpenChange])
 
   const handleDelete = useCallback(async () => {
+    if (!ticket) return
     const confirmed = await confirm({
       title: 'Delete Ticket',
       description: `Are you sure you want to delete ticket #${ticket.number}? This action cannot be undone.`,
@@ -277,9 +297,10 @@ export function TicketDetailDrawer({ ticket, open, onOpenChange }: TicketDetailD
     })
 
     if (confirmed) {
-      deleteTicket.mutate({ ticketId: ticket.id })
+      await deleteTicket.mutateAsync({ ticketId: ticket.id })
+      onOpenChange(false)
     }
-  }, [confirm, deleteTicket, ticket.id, ticket.number])
+  }, [confirm, deleteTicket, ticket, onOpenChange])
 
   const handleArchive = useCallback(() => {
     toastSuccess({
@@ -293,7 +314,28 @@ export function TicketDetailDrawer({ ticket, open, onOpenChange }: TicketDetailD
     onOpenChange(false)
   }, [onOpenChange])
 
-  if (!ticket) return null
+  // Early returns for invalid states
+  if (!open || !ticketId) return null
+
+  // Loading state
+  if (isLoading || !ticket) {
+    return (
+      <>
+        <DockableDrawer
+          open={open}
+          onOpenChange={onOpenChange}
+          isDocked={isDocked}
+          width={dockedWidth}
+          onWidthChange={setDockedWidth}
+          minWidth={350}
+          maxWidth={600}
+          title="Loading ticket...">
+          <DrawerSkeleton />
+        </DockableDrawer>
+        <ConfirmDialog />
+      </>
+    )
+  }
 
   return (
     <>
@@ -395,7 +437,6 @@ export function TicketDetailDrawer({ ticket, open, onOpenChange }: TicketDetailD
                     <DropdownMenuSeparator />
 
                     <TicketMergeDialog
-                      tickets={tickets}
                       primaryTicketId={ticket.id}
                       onMergeComplete={() => {
                         utils.ticket.list.invalidate()
@@ -598,6 +639,16 @@ export function TicketDetailDrawer({ ticket, open, onOpenChange }: TicketDetailD
           </Tabs>
         </div>
       </DockableDrawer>
+
+      {/* Edit Ticket Dialog */}
+      <TicketFormDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        ticket={ticket}
+        isEditing
+        onSuccess={() => setEditDialogOpen(false)}
+      />
+
       <ConfirmDialog />
     </>
   )

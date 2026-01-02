@@ -4,7 +4,7 @@ import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { createScopedLogger } from '@auxx/logger'
 import { database, schema } from '@auxx/database'
-import { OrganizationMemberStatus, SnippetSharingType } from '@auxx/database/enums'
+import { SnippetSharingType } from '@auxx/database/enums'
 import {
   and,
   or,
@@ -313,8 +313,8 @@ export const snippetsRouter = createTRPCRouter({
                   with: {
                     members: {
                       where: and(
-                        eq(schema.OrganizationMember.userId, userId),
-                        eq(schema.OrganizationMember.status, OrganizationMemberStatus.ACTIVE)
+                        eq(schema.GroupMember.userId, userId),
+                        eq(schema.GroupMember.isActive, true)
                       ),
                     },
                   },

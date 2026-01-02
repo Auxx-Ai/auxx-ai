@@ -197,6 +197,8 @@ export const resourceRouter = createTRPCRouter({
   /**
    * List resource IDs with server-side filtering (Query Snapshot pattern)
    * Returns cached snapshot IDs for efficient pagination
+   *
+   * Supports tRPC infinite query via typed cursor object
    */
   listFiltered: protectedProcedure
     .input(
@@ -214,22 +216,29 @@ export const resourceRouter = createTRPCRouter({
             })
           )
           .optional(),
-        /** Existing snapshot ID for pagination */
-        snapshotId: z.string().optional(),
-        /** Offset within snapshot */
-        offset: z.number().min(0).default(0),
         /** Limit per request */
         limit: z.number().min(1).max(500).default(100),
+        /** Cursor for infinite query pagination (typed object) */
+        cursor: z
+          .object({
+            snapshotId: z.string(),
+            offset: z.number(),
+          })
+          .optional(),
       })
     )
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
 
-      // If snapshotId provided, fetch chunk from cache
-      if (input.snapshotId) {
+      // Extract pagination from cursor if provided
+      const snapshotId = input.cursor?.snapshotId
+      const offset = input.cursor?.offset ?? 0
+
+      // If snapshotId provided via cursor, fetch chunk from cache
+      if (snapshotId) {
         const chunk = await getSnapshotChunk({
-          snapshotId: input.snapshotId,
-          offset: input.offset,
+          snapshotId,
+          offset,
           limit: input.limit,
         })
 
@@ -241,10 +250,10 @@ export const resourceRouter = createTRPCRouter({
         }
 
         return {
-          snapshotId: input.snapshotId,
+          snapshotId,
           ids: chunk.ids,
           total: chunk.total,
-          hasMore: input.offset + chunk.ids.length < chunk.total,
+          hasMore: offset + chunk.ids.length < chunk.total,
         }
       }
 
@@ -277,13 +286,13 @@ export const resourceRouter = createTRPCRouter({
       })
 
       // Return first chunk
-      const ids = result.ids.slice(input.offset, input.offset + input.limit)
+      const ids = result.ids.slice(offset, offset + input.limit)
 
       return {
         snapshotId: result.snapshotId,
         ids,
         total: result.total,
-        hasMore: input.offset + ids.length < result.total,
+        hasMore: offset + ids.length < result.total,
         fromCache: result.fromCache,
       }
     }),

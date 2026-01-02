@@ -8,18 +8,24 @@ import { api } from '~/trpc/react'
 
 type Props = { contactId: string }
 
+/** DrawerTickets component - displays tickets for a contact */
 function DrawerTickets({ contactId }: Props) {
   const [page, setPage] = useState(1)
   const pageSize = 10
+  const utils = api.useUtils()
 
   // Query tickets for this customer
   const { data, isLoading } = api.ticket.byContactId.useQuery(
     { contactId, page, pageSize },
     {
-      // Ensure we have the data even if it's 0 tickets
       enabled: !!contactId,
     }
   )
+
+  // Refetch tickets when a new one is created
+  const handleTicketCreated = () => {
+    utils.ticket.byContactId.invalidate({ contactId })
+  }
   function handleViewTicket(ticketId: string) {
     // Navigate to ticket page
     window.location.href = `/app/tickets/${ticketId}`
@@ -45,7 +51,7 @@ function DrawerTickets({ contactId }: Props) {
           title="Create a ticket"
           description="Create a ticket for this contact"
           button={
-            <CreateTicketDialog contactId={contactId}>
+            <CreateTicketDialog contactId={contactId} onSuccess={handleTicketCreated}>
               <Button variant="outline" size="sm">
                 <Plus />
                 Create Ticket
@@ -64,7 +70,7 @@ function DrawerTickets({ contactId }: Props) {
           <TicketIcon className="size-5 text-muted-foreground/50" />
           Tickets
         </h2>
-        <CreateTicketDialog contactId={contactId}>
+        <CreateTicketDialog contactId={contactId} onSuccess={handleTicketCreated}>
           <Button variant="outline" size="sm">
             <Plus />
             Create Ticket

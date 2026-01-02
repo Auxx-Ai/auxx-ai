@@ -1,7 +1,7 @@
 // ~/app/(protected)/app/contacts/_components/use-contact-mutations.tsx
 import { api } from '~/trpc/react'
-import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { useRouter } from 'next/navigation'
+import { toastError } from '@auxx/ui/components/toast'
+import { useRecordInvalidation } from '~/components/resources'
 
 interface UseContactMutationsOptions {
   onSuccess?: () => void
@@ -14,16 +14,14 @@ interface UseContactMutationsOptions {
  * @returns Object containing all mutation functions
  */
 export function useContactMutations(options?: UseContactMutationsOptions) {
-  const router = useRouter()
   const utils = api.useUtils()
+  const { onRecordUpdated, onRecordDeleted, onBulkUpdated, onBulkDeleted, onRecordCreated } =
+    useRecordInvalidation()
 
   // Mark contact as spam mutation
   const markAsSpam = api.contact.markAsSpam.useMutation({
-    onSuccess: () => {
-      toastSuccess({
-        title: 'Contact marked as spam',
-        description: 'The contact has been marked as spam successfully',
-      })
+    onSuccess: (_, { id }) => {
+      onRecordUpdated('contact', id)
       utils.contact.getAll.invalidate()
       options?.onSuccess?.()
     },
@@ -38,11 +36,8 @@ export function useContactMutations(options?: UseContactMutationsOptions) {
 
   // Bulk mark contacts as spam mutation
   const bulkMarkAsSpam = api.contact.bulkMarkAsSpam.useMutation({
-    onSuccess: (data) => {
-      toastSuccess({
-        title: 'Contacts marked as spam',
-        description: `${data.count} contact${data.count > 1 ? 's have' : ' has'} been marked as spam successfully`,
-      })
+    onSuccess: (data, { ids }) => {
+      onBulkUpdated('contact', ids)
       utils.contact.getAll.invalidate()
       options?.onSuccess?.()
     },
@@ -57,11 +52,8 @@ export function useContactMutations(options?: UseContactMutationsOptions) {
 
   // Delete contact mutation
   const deleteContact = api.contact.deleteContact.useMutation({
-    onSuccess: () => {
-      toastSuccess({
-        title: 'Contact deleted',
-        description: 'The contact has been deleted successfully',
-      })
+    onSuccess: (_, { id }) => {
+      onRecordDeleted('contact', id)
       utils.contact.getAll.invalidate()
       options?.onSuccess?.()
     },
@@ -76,11 +68,8 @@ export function useContactMutations(options?: UseContactMutationsOptions) {
 
   // Bulk delete contacts mutation
   const bulkDeleteContacts = api.contact.bulkDelete.useMutation({
-    onSuccess: (data) => {
-      toastSuccess({
-        title: 'Contacts deleted',
-        description: `${data.count} contact${data.count > 1 ? 's' : ''} deleted successfully`,
-      })
+    onSuccess: (_, { ids }) => {
+      onBulkDeleted('contact', ids)
       utils.contact.getAll.invalidate()
       options?.onSuccess?.()
     },
@@ -96,10 +85,7 @@ export function useContactMutations(options?: UseContactMutationsOptions) {
   // Create contact mutation
   const createContact = api.contact.create.useMutation({
     onSuccess: () => {
-      toastSuccess({
-        title: 'Contact created',
-        description: 'New contact has been created successfully',
-      })
+      onRecordCreated('contact')
       utils.contact.getAll.invalidate()
       options?.onSuccess?.()
     },
@@ -114,11 +100,8 @@ export function useContactMutations(options?: UseContactMutationsOptions) {
 
   // Update contact mutation
   const updateContact = api.contact.update.useMutation({
-    onSuccess: () => {
-      toastSuccess({
-        title: 'Contact updated',
-        description: 'Contact has been updated successfully',
-      })
+    onSuccess: (_, { id }) => {
+      onRecordUpdated('contact', id)
       utils.contact.getAll.invalidate()
       utils.contact.getById.invalidate()
       options?.onSuccess?.()
@@ -135,10 +118,7 @@ export function useContactMutations(options?: UseContactMutationsOptions) {
   // Merge contacts mutation
   const mergeContacts = api.contact.mergeCustomers.useMutation({
     onSuccess: () => {
-      toastSuccess({
-        title: 'Contacts merged',
-        description: 'Contacts have been merged successfully',
-      })
+      onRecordCreated('contact') // Invalidate lists since contacts were merged
       utils.contact.getAll.invalidate()
       options?.onSuccess?.()
     },
@@ -153,11 +133,8 @@ export function useContactMutations(options?: UseContactMutationsOptions) {
 
   // Add contacts to group mutation
   const addToGroup = api.contact.addToGroup.useMutation({
-    onSuccess: () => {
-      toastSuccess({
-        title: 'Added to group',
-        description: 'Contacts have been added to the group successfully',
-      })
+    onSuccess: (_, { contactIds }) => {
+      onBulkUpdated('contact', contactIds)
       utils.contact.getAll.invalidate()
       utils.contact.getGroups.invalidate()
       options?.onSuccess?.()
@@ -173,11 +150,8 @@ export function useContactMutations(options?: UseContactMutationsOptions) {
 
   // Remove contacts from group mutation
   const removeFromGroup = api.contact.removeFromGroup.useMutation({
-    onSuccess: () => {
-      toastSuccess({
-        title: 'Removed from group',
-        description: 'Contacts have been removed from the group successfully',
-      })
+    onSuccess: (_, { contactIds }) => {
+      onBulkUpdated('contact', contactIds)
       utils.contact.getAll.invalidate()
       utils.contact.getGroups.invalidate()
       options?.onSuccess?.()
@@ -194,10 +168,6 @@ export function useContactMutations(options?: UseContactMutationsOptions) {
   // Create group mutation
   const createGroup = api.contact.createGroup.useMutation({
     onSuccess: () => {
-      toastSuccess({
-        title: 'Group created',
-        description: 'New group has been created successfully',
-      })
       utils.contact.getGroups.invalidate()
       options?.onSuccess?.()
     },
@@ -213,10 +183,6 @@ export function useContactMutations(options?: UseContactMutationsOptions) {
   // Update group mutation
   const updateGroup = api.contact.updateGroup.useMutation({
     onSuccess: () => {
-      toastSuccess({
-        title: 'Group updated',
-        description: 'Group has been updated successfully',
-      })
       utils.contact.getGroups.invalidate()
       options?.onSuccess?.()
     },

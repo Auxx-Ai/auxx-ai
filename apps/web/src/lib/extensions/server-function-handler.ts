@@ -41,20 +41,14 @@ export function setupServerFunctionHandler(
   messageClient: MessageClient,
   context: ServerFunctionContext
 ): () => void {
-  console.log('[ServerFunctionHandler] Setting up handler for', context.appId)
-
   const unsubscribe = messageClient.listenForRequest(
     'run-server-function',
     async (data: { moduleHash: string; args: string }): Promise<ServerExecutionResult> => {
-      console.log('[ServerFunctionHandler] Received request:', data.moduleHash)
-
       try {
         // Make HTTP POST to API
         const endpoint =
           `${context.apiUrl}/organizations/${context.organizationHandle}` +
           `/apps/${context.appId}/installations/${context.appInstallationId}/execute-server-function`
-
-        console.log('[ServerFunctionHandler] Calling API:', endpoint)
 
         const response = await fetch(endpoint, {
           method: 'POST',
@@ -75,7 +69,6 @@ export function setupServerFunctionHandler(
 
           // Show toast to user
           if (response.status === 401) {
-            console.log('[ServerFunctionHandler] Showing auth toast')
             toastError({
               title: 'Authentication required',
               description: 'Please sign in to use this extension feature',
@@ -88,9 +81,7 @@ export function setupServerFunctionHandler(
             let errorData
             try {
               errorData = await response.json()
-            } catch (e) {
-              console.log('[ServerFunctionHandler] Failed to parse 403 response:', e)
-            }
+            } catch (e) {}
 
             // Check if it's a CONNECTION_REQUIRED error
             if (errorData?.error?.code === 'CONNECTION_REQUIRED') {
@@ -98,8 +89,6 @@ export function setupServerFunctionHandler(
 
               // Check if this is an expired connection vs missing connection
               const isExpired = errorData.error.message?.toLowerCase().includes('expired')
-
-              console.log('[ServerFunctionHandler] Connection required:', { scope, isExpired })
 
               if (isExpired && context.connectionDefinition) {
                 // Emit event for expired connection to show inline relogin dialog
@@ -114,7 +103,7 @@ export function setupServerFunctionHandler(
                   pendingCall: {
                     moduleHash: data.moduleHash,
                     args: data.args,
-                  }
+                  },
                 })
 
                 return { error: 'connection-expired-awaiting-reauth' }
@@ -136,7 +125,6 @@ export function setupServerFunctionHandler(
             }
 
             // Generic 403 - access denied
-            console.log('[ServerFunctionHandler] Showing access denied toast')
             toastError({
               title: 'Access denied',
               description: 'You do not have permission to use this extension feature',
@@ -148,15 +136,11 @@ export function setupServerFunctionHandler(
           let errorMessage = 'Server function execution failed'
           try {
             const errorData = await response.json()
-            console.log('[ServerFunctionHandler] Error data from Lambda:', errorData)
             if (errorData.error?.message) {
               errorMessage = errorData.error.message
             }
-          } catch (e) {
-            console.log('[ServerFunctionHandler] Failed to parse error response:', e)
-          }
+          } catch (e) {}
 
-          console.log('[ServerFunctionHandler] Showing error toast:', errorMessage)
           toastError({
             title: 'Server function failed',
             description: errorMessage,
@@ -166,8 +150,6 @@ export function setupServerFunctionHandler(
 
         // Parse response
         const result = await response.json()
-
-        console.log('[ServerFunctionHandler] API response:', result)
 
         // Response format: { execution_result: any }
         // Convert to runtime format: { value: { value: string } }
@@ -184,28 +166,16 @@ export function setupServerFunctionHandler(
 
         // Handle API errors
         if (result.error) {
-          // Log detailed error for debugging
-          console.error('[ServerFunctionHandler] Server function error:', {
-            message: result.error.message,
-            code: result.error.code,
-            details: result.error.details,
-          })
-
           // Show toast to user with validation details if available
           if (result.error.code === 'VALIDATION_ERROR' && result.error.details) {
             const fieldErrors = result.error.details
               .map((d: any) => `${d.field}: ${d.message}`)
               .join(', ')
-            console.log('[ServerFunctionHandler] Showing validation error toast:', fieldErrors)
             toastError({
               title: 'Validation failed',
               description: `Server function validation failed: ${fieldErrors}`,
             })
           } else {
-            console.log(
-              '[ServerFunctionHandler] Showing server function error toast:',
-              result.error.message
-            )
             toastError({
               title: 'Server function error',
               description:
@@ -226,10 +196,6 @@ export function setupServerFunctionHandler(
 
         return { error: 'unexpected-transport-error' }
       } catch (error: any) {
-        console.error('[ServerFunctionHandler] Execution error:', error)
-
-        // Show generic error toast for unexpected errors
-        console.log('[ServerFunctionHandler] Showing unexpected error toast')
         toastError({
           title: 'Failed to execute server function',
           description: 'An unexpected error occurred. Please try again.',

@@ -101,10 +101,12 @@ function getStatusDisplay(status: string) {
   }
 }
 
+/** TicketRow component - displays a ticket card that navigates to the ticket drawer */
 function TicketRow({ ticket, className }: Props) {
   const router = useRouter()
   const handleViewTicket = (ticketId: string) => {
-    router.push(`/app/tickets/${ticketId}`)
+    // Navigate to tickets page with drawer open via URL param
+    router.push(`/app/tickets?t=${ticketId}`)
   }
 
   const priorityDisplay = getPriorityDisplay(ticket.priority)

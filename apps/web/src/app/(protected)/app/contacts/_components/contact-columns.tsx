@@ -38,7 +38,8 @@ export type Contact = {
   firstName: string | null
   lastName: string | null
   email: string | null
-  createdAt: string | null
+  createdAt: string
+  updatedAt: string
   phone: string | null
   status: CustomerStatus
   customerSources: {

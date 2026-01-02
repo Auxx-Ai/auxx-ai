@@ -1,6 +1,6 @@
-'use client'
-
 // apps/web/src/app/(protected)/app/tickets/_components/dialog-mass-priority.tsx
+
+'use client'
 
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { api } from '~/trpc/react'
+import { useRecordInvalidation } from '~/components/resources'
 
 // Supported ticket priorities presented in the selector
 const ticketPriorityOptions = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] as const
@@ -60,6 +61,8 @@ export function MassPriorityDialog({
   ticketIds,
   onSuccess,
 }: MassPriorityDialogProps) {
+  const { onBulkUpdated } = useRecordInvalidation()
+
   const form = useForm<MassPriorityFormValues>({
     resolver: zodResolver(massPrioritySchema),
     defaultValues: { priority: undefined } as Partial<MassPriorityFormValues>,
@@ -68,6 +71,7 @@ export function MassPriorityDialog({
   const updatePriority = api.ticket.updateMultiplePriority.useMutation({
     onSuccess: () => {
       toastSuccess({ title: `Successfully updated ${ticketIds.length} ticket(s) priority` })
+      onBulkUpdated('ticket', ticketIds)
       form.reset()
       onSuccess()
       onOpenChange(false)

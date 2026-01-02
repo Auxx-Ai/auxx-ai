@@ -2,16 +2,17 @@
 
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useCallback } from 'react'
+import { parseAsString, useQueryState } from 'nuqs'
 import { MainPageContent } from '@auxx/ui/components/main-page'
 import { TicketManagement } from './_components/ticket-management'
 import { TicketDetailDrawer } from './_components/ticket-detail-drawer'
-import type { Ticket } from './_components/ticket-provider'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
 
 /**
- * Tickets list page - displays ticket management table with drawer support
+ * Tickets list page
+ * Uses URL state for drawer (e.g., /app/tickets?t=ticketId)
  */
 export default function TicketsListPage() {
   const isDocked = useEffectiveDockState()
@@ -20,27 +21,34 @@ export default function TicketsListPage() {
   const minWidth = useDockStore((state) => state.minWidth)
   const maxWidth = useDockStore((state) => state.maxWidth)
 
-  // Drawer state managed at page level for docking support
-  const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null)
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false)
+  // Ticket drawer state - synced with URL for deep linking
+  const [selectedTicketId, setSelectedTicketId] = useQueryState(
+    't',
+    parseAsString.withDefault('')
+  )
 
-  /** Handle ticket selection from TicketManagement */
-  const handleTicketSelect = useCallback((ticket: Ticket) => {
-    setSelectedTicket(ticket)
-    setIsDrawerOpen(true)
-  }, [])
+  // Derive drawer open state from whether a ticket is selected
+  const isDrawerOpen = !!selectedTicketId
+  const handleDrawerOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) setSelectedTicketId(null)
+    },
+    [setSelectedTicketId]
+  )
 
-  /** Handle drawer open state change */
-  const handleDrawerOpenChange = useCallback((open: boolean) => {
-    setIsDrawerOpen(open)
-    if (!open) setSelectedTicket(null)
-  }, [])
+  // Handle ticket selection - updates URL
+  const handleTicketSelect = useCallback(
+    (ticketId: string) => {
+      setSelectedTicketId(ticketId)
+    },
+    [setSelectedTicketId]
+  )
 
   // Build docked panel content (only when docked mode is active)
   const dockedPanel =
-    isDocked && isDrawerOpen && selectedTicket ? (
+    isDocked && isDrawerOpen && selectedTicketId ? (
       <TicketDetailDrawer
-        ticket={selectedTicket}
+        ticketId={selectedTicketId}
         open={isDrawerOpen}
         onOpenChange={handleDrawerOpenChange}
       />
@@ -58,9 +66,9 @@ export default function TicketsListPage() {
       </MainPageContent>
 
       {/* Overlay drawer - only when NOT docked */}
-      {!isDocked && selectedTicket && (
+      {!isDocked && selectedTicketId && (
         <TicketDetailDrawer
-          ticket={selectedTicket}
+          ticketId={selectedTicketId}
           open={isDrawerOpen}
           onOpenChange={handleDrawerOpenChange}
         />

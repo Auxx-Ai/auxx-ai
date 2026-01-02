@@ -28,9 +28,13 @@ interface UseRecordListOptions {
   enabled?: boolean
 }
 
-interface UseRecordListResult {
+interface UseRecordListResult<T = RecordMeta> {
   /** Record IDs for current page - rows use useRecord(id) individually */
   recordIds: string[]
+  /** Resolved items from record store (may be partial while loading) */
+  items: T[]
+  /** True if records are still being fetched */
+  isLoadingRecords: boolean
   /** The list key (for cache reference) */
   listKey: string
   /** Total matching count */
@@ -52,30 +56,11 @@ interface UseRecordListResult {
 }
 
 /**
- * Encode pagination cursor from snapshotId and offset
- */
-function encodeCursor(snapshotId: string, offset: number): string {
-  return `${snapshotId}:${offset}`
-}
-
-/**
- * Decode pagination cursor to snapshotId and offset
- */
-function decodeCursor(cursor: string): { snapshotId: string; offset: number } | null {
-  const colonIndex = cursor.lastIndexOf(':')
-  if (colonIndex === -1) return null
-  const snapshotId = cursor.slice(0, colonIndex)
-  const offset = parseInt(cursor.slice(colonIndex + 1), 10)
-  if (isNaN(offset)) return null
-  return { snapshotId, offset }
-}
-
-/**
  * Hook to fetch and cache a filtered/sorted list of record IDs.
  * Returns record IDs - each row should use useRecord(id) for its data.
  *
  * Uses useInfiniteQuery for cursor-based pagination with server-side snapshots.
- * The snapshot is created on first fetch and encoded in the cursor for consistency.
+ * The cursor is a typed object { snapshotId, offset } for type safety.
  *
  * This pattern enables row-level reactivity:
  * - Only the row whose record changed will re-render
@@ -83,13 +68,13 @@ function decodeCursor(cursor: string): { snapshotId: string; offset: number } | 
  *
  * IMPORTANT: Do NOT pass [] or {} as defaults - use undefined instead.
  */
-export function useRecordList({
+export function useRecordList<T extends RecordMeta = RecordMeta>({
   resourceType,
   filters,
   sorting,
   limit = 50,
   enabled = true,
-}: UseRecordListOptions): UseRecordListResult {
+}: UseRecordListOptions): UseRecordListResult<T> {
   // Use stable empty defaults to prevent infinite loops
   const stableFilters = filters ?? EMPTY_FILTERS
   const stableSorting = sorting ?? EMPTY_SORTING
@@ -111,13 +96,22 @@ export function useRecordList({
 
   // Select action functions (stable references)
   const setList = useRecordStore((s) => s.setList)
-  const appendToList = useRecordStore((s) => s.appendToList)
 
   // ─── INFINITE QUERY ────────────────────────────────────────────────
-  // Uses cursor-based pagination. Server creates snapshot on first call,
-  // encodes snapshotId + offset in cursor for subsequent pages.
+  // Uses cursor-based pagination with typed cursor object { snapshotId, offset }
 
   const shouldFetch = enabled && !cachedList
+
+  // Stable query input to prevent infinite loops
+  const queryInput = useMemo(
+    () => ({
+      tableId: resourceType,
+      filters: stableFilters.length > 0 ? stableFilters : undefined,
+      sorting: stableSorting.length > 0 ? stableSorting : undefined,
+      limit,
+    }),
+    [resourceType, stableFilters, stableSorting, limit]
+  )
 
   const {
     data,
@@ -126,39 +120,36 @@ export function useRecordList({
     hasNextPage,
     fetchNextPage: fetchNextPageRaw,
     refetch,
-  } = api.resource.listFiltered.useInfiniteQuery(
-    {
-      tableId: resourceType,
-      filters: stableFilters.length > 0 ? stableFilters : undefined,
-      sorting: stableSorting.length > 0 ? stableSorting : undefined,
-      limit,
+  } = api.resource.listFiltered.useInfiniteQuery(queryInput, {
+    enabled: shouldFetch,
+    staleTime: 30_000,
+    getNextPageParam: (lastPage, allPages) => {
+      if (!lastPage.hasMore || !lastPage.snapshotId) return undefined
+      // Calculate total IDs fetched so far across all pages
+      const totalFetched = allPages.reduce((sum, page) => sum + page.ids.length, 0)
+      return { snapshotId: lastPage.snapshotId, offset: totalFetched }
     },
-    {
-      enabled: shouldFetch,
-      staleTime: 30_000,
-      getNextPageParam: (lastPage) => {
-        if (!lastPage.hasMore || !lastPage.snapshotId) return undefined
-        // Calculate next offset based on current data
-        const nextOffset = (lastPage as any).currentOffset ?? 0
-        return encodeCursor(lastPage.snapshotId, nextOffset + lastPage.ids.length)
-      },
-      // Transform input for subsequent pages
-      queryFn: undefined, // Let tRPC handle it
-    }
-  )
+  })
 
-  // ─── SYNC TO STORE ─────────────────────────────────────────────────
-  // Store flattened results for list cache
+  // Get request action for batch fetching
+  const requestRecord = useRecordStore((s) => s.requestRecord)
 
+  // ─── SYNC TO STORE + QUEUE RECORD FETCHES ────────────────────────
   useEffect(() => {
     if (!data?.pages?.length) return
 
-    // Flatten all pages into IDs
+    // Flatten all pages into IDs with deduplication (preserves order)
+    const seenIds = new Set<string>()
     const allIds: string[] = []
 
     for (const page of data.pages) {
       if (page.ids) {
-        allIds.push(...page.ids)
+        for (const id of page.ids) {
+          if (!seenIds.has(id)) {
+            seenIds.add(id)
+            allIds.push(id)
+          }
+        }
       }
     }
 
@@ -170,11 +161,8 @@ export function useRecordList({
 
     const lastPage = data.pages[data.pages.length - 1]
 
-    // Calculate next cursor for store
-    let nextCursor: string | null = null
-    if (lastPage?.hasMore && lastPage.snapshotId) {
-      nextCursor = encodeCursor(lastPage.snapshotId, allIds.length)
-    }
+    // Store uses nextCursor to track if more pages exist (value doesn't matter, just presence)
+    const nextCursor = lastPage?.hasMore ? 'more' : null
 
     setList(listKey, {
       ids: allIds,
@@ -182,7 +170,15 @@ export function useRecordList({
       fetchedAt: Date.now(),
       nextCursor,
     })
-  }, [data, listKey, setList])
+
+    // Queue record fetches for IDs not in cache
+    const recordCache = useRecordStore.getState().records[resourceType]
+    for (const id of allIds) {
+      if (!recordCache?.has(id)) {
+        requestRecord(resourceType, id)
+      }
+    }
+  }, [data, listKey, setList, resourceType, requestRecord])
 
   // ─── FETCH NEXT PAGE ────────────────────────────────────────────────
 
@@ -201,14 +197,43 @@ export function useRecordList({
   }, [listKey, refetch])
 
   // ─── RETURN ────────────────────────────────────────────────────────
-  // Return IDs only - rows subscribe individually via useRecord
+  // Return IDs and resolved items from record store
 
   // Prefer cached data if available
-  const recordIds = cachedList?.ids ?? (data?.pages?.flatMap((p) => p.ids) || EMPTY_IDS)
+  const recordIds = cachedList?.ids ?? (data?.pages?.flatMap((p: { ids: string[] }) => p.ids) || EMPTY_IDS)
   const total = cachedList?.total ?? data?.pages?.[data.pages.length - 1]?.total ?? 0
+
+  // ─── RESOLVE ITEMS FROM RECORD STORE ─────────────────────────────────
+  // Subscribe to record cache for this resource type
+  const recordCache = useRecordStore((s) => s.records[resourceType])
+  const loadingIds = useRecordStore((s) => s.loadingIds.get(resourceType))
+  const pendingIds = useRecordStore((s) => s.pendingFetchIds.get(resourceType))
+
+  // Resolve items from cache - filter out undefined (not yet loaded)
+  const items = useMemo(() => {
+    if (!recordCache) return [] as T[]
+    return recordIds
+      .map((id: string) => recordCache.get(id) as T | undefined)
+      .filter((item: T | undefined): item is T => item !== undefined)
+  }, [recordCache, recordIds])
+
+  // Check if any records are still loading
+  const isLoadingRecords = useMemo(() => {
+    if (!recordIds.length) return false
+    // Records are loading if we have fewer items than IDs, and some are pending/loading
+    if (items.length < recordIds.length) {
+      const hasLoading = recordIds.some(
+        (id: string) => loadingIds?.has(id) || pendingIds?.has(id)
+      )
+      return hasLoading
+    }
+    return false
+  }, [recordIds, items.length, loadingIds, pendingIds])
 
   return {
     recordIds,
+    items,
+    isLoadingRecords,
     listKey,
     total,
     isLoading: shouldFetch && isLoading,

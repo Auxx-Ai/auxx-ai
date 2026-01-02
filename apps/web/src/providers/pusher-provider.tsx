@@ -65,9 +65,6 @@ export const PusherProvider: React.FC<PusherProviderProps> = ({ children }) => {
     }
 
     // --- 3. Initialize Pusher ---
-    console.log(
-      `[PusherProvider] Initializing Pusher client for org: ${organizationId}, user: ${user?.id}`
-    )
 
     if (!PUSHER_APP_KEY) {
       console.error('[PusherProvider] Error: NEXT_PUBLIC_PUSHER_KEY is not configured.')
@@ -87,7 +84,6 @@ export const PusherProvider: React.FC<PusherProviderProps> = ({ children }) => {
 
     // --- 4. Bind Connection Listeners ---
     const handleConnect = () => {
-      console.log('[PusherProvider] Pusher connected successfully.')
       setIsPusherConnected(true) // Update state for consumers
 
       // --- Subscribe and Bind Event Handlers (ONLY after connection) ---

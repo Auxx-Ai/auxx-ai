@@ -1,3 +1,5 @@
+// apps/web/src/app/(protected)/app/tickets/_components/dialog-mass-deleting.tsx
+
 'use client'
 
 import {
@@ -12,8 +14,8 @@ import { Button } from '@auxx/ui/components/button'
 import { api } from '~/trpc/react'
 import { AlertTriangle } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
-
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { useRecordInvalidation } from '~/components/resources'
 
 interface MassDeleteDialogProps {
   open: boolean
@@ -28,9 +30,12 @@ export function MassDeleteDialog({
   ticketIds,
   onSuccess,
 }: MassDeleteDialogProps) {
+  const { onBulkDeleted } = useRecordInvalidation()
+
   const deleteTickets = api.ticket.deleteMultipleTickets.useMutation({
     onSuccess: () => {
       toastSuccess({ title: `Successfully deleted ${ticketIds.length} ticket(s)` })
+      onBulkDeleted('ticket', ticketIds)
       onSuccess()
       onOpenChange(false)
     },

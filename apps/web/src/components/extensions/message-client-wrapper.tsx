@@ -59,15 +59,17 @@ export function MessageClientWrapper({
   // Stabilize connectionDefinition object to prevent re-initialization
   const stableConnectionDef = useMemo(
     () => connectionDefinition,
-    [connectionDefinition?.label, connectionDefinition?.global, connectionDefinition?.connectionType]
+    [
+      connectionDefinition?.label,
+      connectionDefinition?.global,
+      connectionDefinition?.connectionType,
+    ]
   )
 
   useEffect(() => {
     // Create MessageClient
     const client = new MessageClient(appId, appInstallationId, apiUrl)
     messageClientRef.current = client
-
-    console.log(`[MessageClientWrapper] Created client for ${appTitle}`)
 
     // Set up server function handler
     const unsubscribeServerFunction = setupServerFunctionHandler(client, {
@@ -90,8 +92,6 @@ export function MessageClientWrapper({
         // Get bundle URL (API will redirect to S3 presigned URL)
         const bundleUrl = `${apiUrl}/organizations/${orgHandle}/apps/${appId}/installations/${appInstallationId}/bundle`
 
-        console.log(`[MessageClientWrapper] Loading runtime for ${appTitle}`)
-
         // Initialize with context (passed to platform runtime via URL params)
         await client.initialize(bundleUrl, {
           organizationId,
@@ -104,11 +104,8 @@ export function MessageClientWrapper({
           isDevelopment: nodeEnv === 'development',
         })
 
-        console.log(`[MessageClientWrapper] Runtime loaded for ${appTitle}`)
-
         // Register with AppStore ONLY after bundle is ready
         store.setMessageClient({ appId, appInstallationId, messageClient: client })
-        console.log(`[MessageClientWrapper] Registered ready client for ${appTitle}`)
       } catch (error) {
         console.error(`[MessageClientWrapper] Failed to load runtime for ${appTitle}:`, error)
         store.reportRenderError({
@@ -123,8 +120,6 @@ export function MessageClientWrapper({
 
     // Cleanup on unmount
     return () => {
-      console.log(`[MessageClientWrapper] Cleaning up client for ${appTitle}`)
-
       // Call all cleanup functions
       cleanupRef.current.forEach((cleanup) => cleanup())
       cleanupRef.current = []

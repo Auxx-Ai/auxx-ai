@@ -1,3 +1,5 @@
+// apps/web/src/app/(protected)/app/tickets/_components/dialog-mass-status.tsx
+
 'use client'
 
 import { useState } from 'react'
@@ -19,6 +21,7 @@ import {
 } from '@auxx/ui/components/select'
 import { api } from '~/trpc/react'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { useRecordInvalidation } from '~/components/resources'
 
 // Enum values
 const TicketStatus = {
@@ -45,10 +48,12 @@ export function MassStatusDialog({
   onSuccess,
 }: MassStatusDialogProps) {
   const [status, setStatus] = useState<string>('')
+  const { onBulkUpdated } = useRecordInvalidation()
 
   const updateStatus = api.ticket.updateMultipleStatus.useMutation({
     onSuccess: () => {
       toastSuccess({ title: `Successfully updated ${ticketIds.length} ticket(s) status` })
+      onBulkUpdated('ticket', ticketIds)
       onSuccess()
       onOpenChange(false)
     },

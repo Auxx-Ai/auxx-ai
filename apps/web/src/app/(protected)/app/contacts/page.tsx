@@ -2,7 +2,6 @@
 'use client'
 import { useMemo, useState, useCallback, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { api } from '~/trpc/react'
 import { type SortingState, type VisibilityState } from '@tanstack/react-table'
 import { Button } from '@auxx/ui/components/button'
 import { Plus, Ban, UserPlus, Users, Trash2, Play } from 'lucide-react'
@@ -11,7 +10,6 @@ import { useContactMutations } from './_components/use-contact-mutations'
 import { useConfirm } from '~/hooks/use-confirm'
 import CustomerMergeDialog from './_components/customer-merge-dialog'
 import GroupManagementDialog from './_components/groups/group-management-dialog'
-import { keepPreviousData } from '@tanstack/react-query'
 import { ContactDrawer } from '~/components/contacts/drawer/contact-drawer'
 import { parseAsBoolean, parseAsString, useQueryState } from 'nuqs'
 import { useDebouncedValue } from '~/hooks/use-debounced-value'
@@ -23,7 +21,7 @@ import {
 import type { ExtendedColumnDef } from '~/components/dynamic-table'
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
 import { EmptyState } from '~/components/global/empty-state'
-import { useAllResources } from '~/components/resources'
+import { useAllResources, useRecordList } from '~/components/resources'
 import { useCustomFieldValueSyncer } from '~/hooks/use-custom-field-value-syncer'
 import {
   MainPage,
@@ -40,6 +38,43 @@ import {
   type Contact,
   type ContactColumnActions,
 } from './_components/contact-columns'
+import type { ConditionGroup, Condition } from '@auxx/lib/conditions/client'
+import { generateId } from '@auxx/lib/utils'
+
+/**
+ * Build filter condition groups from contact filter params
+ */
+function buildContactFilters(params: {
+  search?: string
+  status?: CustomerStatus | 'ALL'
+}): ConditionGroup[] | undefined {
+  const groups: ConditionGroup[] = []
+
+  if (params.search) {
+    const searchConditions: Condition[] = [
+      { id: generateId(), fieldId: 'firstName', operator: 'contains', value: params.search },
+      { id: generateId(), fieldId: 'lastName', operator: 'contains', value: params.search },
+      { id: generateId(), fieldId: 'email', operator: 'contains', value: params.search },
+    ]
+    groups.push({
+      id: generateId(),
+      logicalOperator: 'OR',
+      conditions: searchConditions,
+    })
+  }
+
+  if (params.status && params.status !== 'ALL') {
+    groups.push({
+      id: generateId(),
+      logicalOperator: 'AND',
+      conditions: [
+        { id: generateId(), fieldId: 'status', operator: 'is', value: params.status },
+      ],
+    })
+  }
+
+  return groups.length > 0 ? groups : undefined
+}
 
 const PAGE_SIZE = 100
 export default function CustomerListPage() {
@@ -87,28 +122,35 @@ export default function CustomerListPage() {
   const [confirmDelete, ConfirmDeleteDialog] = useConfirm()
   // Use simple state for selected customer IDs
   const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([])
-  // Query customers data (without embedded custom field values - syncer handles values)
-  const { data, isLoading, isFetchingNextPage, refetch, hasNextPage, fetchNextPage } =
-    api.contact.getAll.useInfiniteQuery(
-      {
-        limit: PAGE_SIZE,
-        search: debouncedSearch || undefined,
-        status: status !== 'ALL' ? status : undefined,
-        groupId: groupFilter || undefined,
-        sortField: sorting && sorting.length > 0 ? sorting[0]!.id : undefined,
-        sortDirection:
-          sorting && sorting.length > 0 ? (sorting[0]!.desc ? 'desc' : 'asc') : undefined,
-        // Removed: includeCustomFields - syncer handles values on-demand
-        // Removed: cursor - handled by tRPC's getNextPageParam
-      },
-      {
-        placeholderData: keepPreviousData,
-        getNextPageParam: (lastPage) => lastPage?.nextCursor || null, // Fetch nextCursor for pagination
-      }
-    )
-  const items = useMemo<Contact[]>(() => {
-    return data?.pages?.flatMap((page) => page.items) ?? []
-  }, [data])
+
+  // Build filters from search/status params
+  const filters = useMemo(
+    () => buildContactFilters({ search: debouncedSearch, status }),
+    [debouncedSearch, status]
+  )
+
+  // Build sorting config
+  const sortingConfig = useMemo(
+    () => (sorting.length > 0 ? [{ id: sorting[0]!.id, desc: sorting[0]!.desc }] : undefined),
+    [sorting]
+  )
+
+  // Query contacts using unified record list
+  const {
+    items,
+    isLoading,
+    isLoadingRecords,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+    refresh: refetch,
+  } = useRecordList<Contact>({
+    resourceType: 'contact',
+    filters,
+    sorting: sortingConfig,
+    limit: PAGE_SIZE,
+    // Note: groupId filtering not yet supported via conditions
+  })
 
   // Column visibility state for syncer
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})

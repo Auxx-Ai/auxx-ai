@@ -121,7 +121,11 @@ export class AppStore {
     renderErrored: new EventBroker<{ appId: string; appInstallationId: string; error: Error }>(),
     dialogOpened: new EventBroker<{ appId: string; appInstallationId: string; dialogId: string }>(),
     dialogClosed: new EventBroker<{ appId: string; appInstallationId: string; dialogId: string }>(),
-    dialogUpdated: new EventBroker<{ appId: string; appInstallationId: string; dialogId: string }>(),
+    dialogUpdated: new EventBroker<{
+      appId: string
+      appInstallationId: string
+      dialogId: string
+    }>(),
   }
 
   constructor() {
@@ -145,7 +149,6 @@ export class AppStore {
     const key = this._getKey(appId, appInstallationId)
     this._messageClients.set(key, messageClient)
     this.events.messageClientChanged.trigger({ appId, appInstallationId })
-    console.log(`[AppStore] MessageClient registered for ${appId}:${appInstallationId}`)
   }
 
   /**
@@ -230,13 +233,6 @@ export class AppStore {
     this._surfacesVersion++
 
     this.events.surfacesChanged.trigger({ appId, appInstallationId })
-
-    console.log(`[AppStore] Surfaces registered for ${appId}:${appInstallationId}`, {
-      types: Object.keys(processed),
-      counts: Object.fromEntries(
-        Object.entries(processed).map(([type, items]) => [type, items?.length || 0])
-      ),
-    })
   }
 
   /**
@@ -349,8 +345,6 @@ export class AppStore {
 
     const triggerId = this._nextTriggerId++
 
-    console.log(`[AppStore] Triggering surface ${surfaceType}:${surfaceId} (trigger #${triggerId})`)
-
     // Send message to extension
     messageClient.sendMessage('trigger-surface', {
       surfaceType,
@@ -385,13 +379,11 @@ export class AppStore {
     const promise = this._triggerPromises.get(triggerId)
 
     if (!promise) {
-      console.warn(`[AppStore] Trigger #${triggerId} not found (already completed or timed out)`)
       return
     }
 
     this._triggerPromises.delete(triggerId)
     promise.resolve(result)
-    console.log(`[AppStore] Trigger #${triggerId} completed`)
   }
 
   /**
@@ -401,13 +393,11 @@ export class AppStore {
     const promise = this._triggerPromises.get(triggerId)
 
     if (!promise) {
-      console.warn(`[AppStore] Trigger #${triggerId} not found (already completed or timed out)`)
       return
     }
 
     this._triggerPromises.delete(triggerId)
     promise.reject(new Error(error))
-    console.log(`[AppStore] Trigger #${triggerId} failed:`, error)
   }
 
   // === Assets ===
@@ -426,7 +416,6 @@ export class AppStore {
   }): void {
     const key = this._getKey(appId, appInstallationId)
     this._assets.set(key, assets)
-    console.log(`[AppStore] ${assets.length} assets registered for ${appId}:${appInstallationId}`)
   }
 
   /**
@@ -454,7 +443,6 @@ export class AppStore {
     const key = this._getKey(appId, appInstallationId)
     this._renders.set(key, { children })
     this.events.rendered.trigger({ appId, appInstallationId })
-    console.log(`[AppStore] Render updated for ${appId}:${appInstallationId}`)
   }
 
   /**
@@ -484,7 +472,6 @@ export class AppStore {
     error: Error
   }): void {
     this.events.renderErrored.trigger({ appId, appInstallationId, error })
-    console.error(`[AppStore] Render error in ${appId}:${appInstallationId}:`, error)
   }
 
   // === Surface Predicates ===
@@ -540,7 +527,6 @@ export class AppStore {
     try {
       return predicate(context)
     } catch (error) {
-      console.error(`[AppStore] Predicate evaluation error for ${predicateId}:`, error)
       return false
     }
   }
@@ -556,7 +542,7 @@ export class AppStore {
     dialogId,
     title,
     size,
-    component
+    component,
   }: {
     appId: string
     appInstallationId: string
@@ -567,8 +553,6 @@ export class AppStore {
   }): void {
     const key = this._getKey(appId, appInstallationId)
 
-    console.log(`[AppStore] Opening dialog: ${dialogId} for ${key}`)
-
     this._dialogs.set(dialogId, {
       id: dialogId,
       appId,
@@ -576,7 +560,7 @@ export class AppStore {
       title,
       size,
       component,
-      isOpen: true
+      isOpen: true,
     })
 
     this.events.dialogOpened.trigger({ appId, appInstallationId, dialogId })
@@ -589,11 +573,8 @@ export class AppStore {
     const dialog = this._dialogs.get(dialogId)
 
     if (!dialog) {
-      console.warn(`[AppStore] Dialog not found: ${dialogId}`)
       return
     }
-
-    console.log(`[AppStore] Closing dialog: ${dialogId}`)
 
     dialog.isOpen = false
     this._dialogs.delete(dialogId)
@@ -601,35 +582,26 @@ export class AppStore {
     this.events.dialogClosed.trigger({
       appId: dialog.appId,
       appInstallationId: dialog.appInstallationId,
-      dialogId
+      dialogId,
     })
   }
 
   /**
    * Update a dialog's component (for React state updates)
    */
-  updateDialog({
-    dialogId,
-    component
-  }: {
-    dialogId: string
-    component: any
-  }): void {
+  updateDialog({ dialogId, component }: { dialogId: string; component: any }): void {
     const dialog = this._dialogs.get(dialogId)
 
     if (!dialog || !dialog.isOpen) {
-      console.warn(`[AppStore] Cannot update dialog: ${dialogId} (not open)`)
       return
     }
-
-    console.log(`[AppStore] Updating dialog: ${dialogId}`)
 
     dialog.component = component
 
     this.events.dialogUpdated.trigger({
       appId: dialog.appId,
       appInstallationId: dialog.appInstallationId,
-      dialogId
+      dialogId,
     })
   }
 
@@ -650,7 +622,7 @@ export class AppStore {
    */
   getDialogs({
     appId,
-    appInstallationId
+    appInstallationId,
   }: {
     appId: string
     appInstallationId: string
