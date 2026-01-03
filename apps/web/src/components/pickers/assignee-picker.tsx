@@ -18,7 +18,7 @@ import {
   CommandList,
   CommandSeparator,
 } from '@auxx/ui/components/command'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@auxx/ui/components/form'
 import { type Control } from 'react-hook-form'
 import { useDebounce } from '~/hooks/use-debounced-value'
@@ -50,6 +50,8 @@ export interface AssigneePickerProps {
   side?: 'top' | 'right' | 'bottom' | 'left' // Side for the popover
   sideOffset?: number // Offset for the popover
   style?: React.CSSProperties // Style for the popover content
+  /** External anchor ref - popover anchors to this element instead of trigger */
+  anchorRef?: React.RefObject<HTMLElement | null>
 }
 
 export function AssigneePicker({
@@ -69,6 +71,7 @@ export function AssigneePicker({
   align = 'start',
   side = 'bottom',
   sideOffset = 5,
+  anchorRef,
   ...props
 }: AssigneePickerProps) {
   // Internal state
@@ -291,8 +294,27 @@ export function AssigneePicker({
 
   return (
     <Popover open={isOpen} onOpenChange={handleOpenChange}>
-      <PopoverTrigger asChild>{triggerElement}</PopoverTrigger>
-      <PopoverContent className="p-0" align={align} side={side} sideOffset={sideOffset} {...props}>
+      {/* Use external anchor if provided, otherwise use trigger */}
+      {anchorRef ? (
+        <PopoverAnchor virtualRef={anchorRef} />
+      ) : (
+        <PopoverTrigger asChild>{triggerElement}</PopoverTrigger>
+      )}
+      <PopoverContent
+        className="p-0"
+        align={align}
+        side={side}
+        sideOffset={sideOffset}
+        onOpenAutoFocus={(e) => {
+          // Prevent focus issues when using anchorRef
+          if (anchorRef) e.preventDefault()
+        }}
+        onFocusOutside={(e) => {
+          // Prevent closing on focus changes when using anchorRef
+          if (anchorRef) e.preventDefault()
+        }}
+        {...props}
+      >
         <Command shouldFilter={false}>
           <CommandInput
             placeholder="Search team members..."

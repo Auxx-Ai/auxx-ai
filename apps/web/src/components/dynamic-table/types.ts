@@ -146,6 +146,8 @@ export type KanbanDragItemType = 'card' | 'column'
  * Bulk action configuration
  */
 export interface BulkAction<TData = any> {
+  /** Unique identifier for the action */
+  id?: string
   /** Action label */
   label: string
   /** Action icon */

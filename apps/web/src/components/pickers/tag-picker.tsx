@@ -2,7 +2,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { PopoverContent } from '@auxx/ui/components/popover'
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import {
   Command,
   CommandInput,
@@ -41,8 +41,8 @@ type TagNavigationItem = NavigationItem & Tag
  * Props for the TagPicker component
  */
 interface TagPickerProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
   selectedTags: string[]
   onChange: (selectedTags: string[]) => void
   allowMultiple?: boolean
@@ -53,6 +53,10 @@ interface TagPickerProps {
   side?: 'top' | 'right' | 'bottom' | 'left'
   sideOffset?: number
   style?: React.CSSProperties
+  /** Trigger element - if provided, renders as popover trigger */
+  children?: React.ReactNode
+  /** External anchor ref - popover anchors to this element instead of trigger */
+  anchorRef?: React.RefObject<HTMLElement | null>
 }
 
 /**
@@ -325,11 +329,27 @@ export function TagPicker({
   onlyLeafSelection = true,
   className,
   align = 'end',
+  children,
+  anchorRef,
   ...props
 }: TagPickerProps) {
   const selectedTags = selectedTagsProp ?? []
+  const [isOpen, setIsOpen] = useState(open ?? false)
   const [search, setSearch] = useState('')
   const contentRef = useRef<HTMLDivElement>(null)
+
+  // Sync with controlled open prop
+  useEffect(() => {
+    if (open !== undefined) {
+      setIsOpen(open)
+    }
+  }, [open])
+
+  /** Handle open state changes */
+  const handleOpenChange = (newOpen: boolean) => {
+    setIsOpen(newOpen)
+    onOpenChange?.(newOpen)
+  }
 
   // Fetch tag hierarchy
   const { data: tagHierarchy, isLoading: isLoadingHierarchy } = api.tag.getHierarchy.useQuery(
@@ -346,33 +366,50 @@ export function TagPicker({
 
   // Reset search when popover closes
   useEffect(() => {
-    if (!open) {
+    if (!isOpen) {
       setSearch('')
     }
-  }, [open])
+  }, [isOpen])
 
   const isLoading = isLoadingHierarchy || isLoadingTags
 
   return (
-    <PopoverContent
-      className={cn('w-[300px] p-0', className)}
-      ref={contentRef}
-      align={align}
-      {...props}>
-      <CommandNavigation<TagNavigationItem> isGlobalSearch={!!search}>
-        <TagPickerContent
-          selectedTags={selectedTags}
-          onChange={onChange}
-          onOpenChange={onOpenChange}
-          allowMultiple={allowMultiple}
-          onlyLeafSelection={onlyLeafSelection}
-          search={search}
-          setSearch={setSearch}
-          tagHierarchy={tagHierarchy}
-          allTags={allTags}
-          isLoading={isLoading}
-        />
-      </CommandNavigation>
-    </PopoverContent>
+    <Popover open={isOpen} onOpenChange={handleOpenChange}>
+      {/* Use external anchor if provided, otherwise use trigger */}
+      {anchorRef ? (
+        <PopoverAnchor virtualRef={anchorRef} />
+      ) : children ? (
+        <PopoverTrigger asChild>{children}</PopoverTrigger>
+      ) : null}
+      <PopoverContent
+        className={cn('w-[300px] p-0', className)}
+        ref={contentRef}
+        align={align}
+        onOpenAutoFocus={(e) => {
+          // Prevent focus issues when using anchorRef
+          if (anchorRef) e.preventDefault()
+        }}
+        onFocusOutside={(e) => {
+          // Prevent closing on focus changes when using anchorRef
+          if (anchorRef) e.preventDefault()
+        }}
+        {...props}
+      >
+        <CommandNavigation<TagNavigationItem> isGlobalSearch={!!search}>
+          <TagPickerContent
+            selectedTags={selectedTags}
+            onChange={onChange}
+            onOpenChange={handleOpenChange}
+            allowMultiple={allowMultiple}
+            onlyLeafSelection={onlyLeafSelection}
+            search={search}
+            setSearch={setSearch}
+            tagHierarchy={tagHierarchy}
+            allTags={allTags}
+            isLoading={isLoading}
+          />
+        </CommandNavigation>
+      </PopoverContent>
+    </Popover>
   )
 }

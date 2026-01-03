@@ -1,15 +1,8 @@
 // apps/web/src/components/dynamic-table/components/floating-bulk-action-bar.tsx
 'use client'
 
-import {
-  ActionBar,
-  ActionBarActionItem,
-  ActionBarActions,
-  ActionBarClose,
-  ActionBarContent,
-  ActionBarText,
-} from '@auxx/ui/components/action-bar'
-import { Button } from '@auxx/ui/components/button'
+import { useMemo } from 'react'
+import { ActionBar, type ActionBarAction } from '@auxx/ui/components/action-bar'
 import type { Row } from '@tanstack/react-table'
 import type { BulkAction } from '../types'
 
@@ -36,41 +29,32 @@ export function FloatingBulkActionBar<TData>({
   onClearSelection,
 }: FloatingBulkActionBarProps<TData>) {
   const isOpen = selectedRows.length > 0
+  const rowData = useMemo(() => selectedRows.map(r => r.original), [selectedRows])
+
+  // Convert BulkAction[] to ActionBarAction[]
+  const actions: ActionBarAction[] = useMemo(() => {
+    return bulkActions
+      .filter(action => !action.hidden?.(rowData))
+      .map(action => ({
+        id: action.id ?? action.label,
+        label: action.label,
+        icon: action.icon,
+        onClick: () => action.action(rowData),
+        disabled: action.disabled?.(rowData),
+        variant: action.variant || 'outline',
+      }))
+  }, [bulkActions, rowData])
 
   return (
     <ActionBar
       open={isOpen}
-      onOpenChange={(open) => {
-        if (!open) onClearSelection()
-      }}
-      duration={Infinity}>
-      <ActionBarContent>
-        <ActionBarText count={selectedRows.length} label="selected" />
-        <ActionBarActions>
-          {bulkActions.map((action) => {
-            const Icon = action.icon
-            const isDisabled = action.disabled?.(selectedRows.map((r) => r.original))
-            const isHidden = action.hidden?.(selectedRows.map((r) => r.original))
-
-            if (isHidden) return null
-
-            return (
-              <ActionBarActionItem key={action.label} asChild>
-                <Button
-                  onClick={() => action.action(selectedRows.map((r) => r.original))}
-                  disabled={isDisabled}
-                  size="sm"
-                  variant={action.variant || 'outline'}>
-                  {Icon && <Icon />}
-                  {action.label}
-                </Button>
-              </ActionBarActionItem>
-            )
-          })}
-        </ActionBarActions>
-      </ActionBarContent>
-      <ActionBarClose />
-    </ActionBar>
+      onOpenChange={open => { if (!open) onClearSelection() }}
+      duration={Infinity}
+      selectedCount={selectedRows.length}
+      selectedLabel="selected"
+      actions={actions}
+      showClose
+    />
   )
 }
 

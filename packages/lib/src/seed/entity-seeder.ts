@@ -1,8 +1,8 @@
 // packages/lib/src/seed/entity-seeder.ts
 
 import { type Database, schema } from '@auxx/database'
-import { createId } from '@paralleldrive/cuid2'
 import { createScopedLogger } from '@auxx/logger'
+import { generateId } from '../utils'
 
 const logger = createScopedLogger('entity-seeder')
 
@@ -44,14 +44,20 @@ interface SystemEntityDef {
  * Generate a stable option ID
  */
 function optId(): string {
-  return `opt_${createId()}`
+  return generateId('opt')
 }
 
 /**
  * Contact system fields
  */
 const CONTACT_FIELDS: SystemFieldDef[] = [
-  { name: 'Email', type: 'EMAIL', systemAttribute: 'primary_email', required: true, isUnique: true },
+  {
+    name: 'Email',
+    type: 'EMAIL',
+    systemAttribute: 'primary_email',
+    required: true,
+    isUnique: true,
+  },
   { name: 'First Name', type: 'TEXT', systemAttribute: 'first_name' },
   { name: 'Last Name', type: 'TEXT', systemAttribute: 'last_name' },
   { name: 'Phone', type: 'PHONE_INTL', systemAttribute: 'phone' },
@@ -242,52 +248,54 @@ export class EntitySeeder {
    * Seed a single system entity and its fields
    */
   private async seedEntity(entityDef: SystemEntityDef): Promise<void> {
-    const now = new Date()
+    await this.db.transaction(async (tx) => {
+      // Create EntityDefinition
+      const [createdDef] = await tx
+        .insert(schema.EntityDefinition)
+        .values({
+          organizationId: this.organizationId,
+          entityType: entityDef.entityType,
+          apiSlug: entityDef.apiSlug,
+          singular: entityDef.singular,
+          plural: entityDef.plural,
+          icon: entityDef.icon,
+          color: entityDef.color,
+        })
+        .returning()
 
-    // Create EntityDefinition
-    const [createdDef] = await this.db
-      .insert(schema.EntityDefinition)
-      .values({
+      if (!createdDef) {
+        throw new Error(`Failed to create EntityDefinition for ${entityDef.entityType}`)
+      }
+
+      logger.info(`Created EntityDefinition: ${entityDef.entityType}`, {
         organizationId: this.organizationId,
-        entityType: entityDef.entityType,
-        apiSlug: entityDef.apiSlug,
-        singular: entityDef.singular,
-        plural: entityDef.plural,
-        icon: entityDef.icon,
-        color: entityDef.color,
-        updatedAt: now,
+        entityDefinitionId: createdDef.id,
       })
-      .returning()
 
-    logger.info(`Created EntityDefinition: ${entityDef.entityType}`, {
-      organizationId: this.organizationId,
-      entityDefinitionId: createdDef.id,
-    })
+      // Create CustomFields
+      const fieldValues = entityDef.fields.map((field, index) => ({
+        organizationId: this.organizationId,
+        entityDefinitionId: createdDef.id,
+        name: field.name,
+        type: field.type,
+        systemAttribute: field.systemAttribute,
+        required: field.required ?? false,
+        isUnique: field.isUnique ?? false,
+        isCreatable: field.isCreatable ?? true,
+        isUpdatable: field.isUpdatable ?? true,
+        isComputed: field.isComputed ?? false,
+        isSortable: field.isSortable ?? true,
+        isFilterable: field.isFilterable ?? true,
+        options: field.options ?? null,
+        position: field.position ?? index,
+      }))
 
-    // Create CustomFields
-    const fieldValues = entityDef.fields.map((field, index) => ({
-      organizationId: this.organizationId,
-      entityDefinitionId: createdDef.id,
-      name: field.name,
-      type: field.type,
-      systemAttribute: field.systemAttribute,
-      required: field.required ?? false,
-      isUnique: field.isUnique ?? false,
-      isCreatable: field.isCreatable ?? true,
-      isUpdatable: field.isUpdatable ?? true,
-      isComputed: field.isComputed ?? false,
-      isSortable: field.isSortable ?? true,
-      isFilterable: field.isFilterable ?? true,
-      options: field.options ?? null,
-      position: field.position ?? index,
-      updatedAt: now,
-    }))
+      await tx.insert(schema.CustomField).values(fieldValues)
 
-    await this.db.insert(schema.CustomField).values(fieldValues)
-
-    logger.info(`Created ${fieldValues.length} CustomFields for ${entityDef.entityType}`, {
-      organizationId: this.organizationId,
-      entityDefinitionId: createdDef.id,
+      logger.info(`Created ${fieldValues.length} CustomFields for ${entityDef.entityType}`, {
+        organizationId: this.organizationId,
+        entityDefinitionId: createdDef.id,
+      })
     })
   }
 }
