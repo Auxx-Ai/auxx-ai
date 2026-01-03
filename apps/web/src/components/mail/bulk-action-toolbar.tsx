@@ -2,7 +2,7 @@
 // --- START OF FILE ~/components/mail/bulk-action-toolbar.tsx ---
 'use client'
 
-import React, { useState, useCallback, useRef } from 'react'
+import React, { useCallback, useRef, useState } from 'react'
 import { Button } from '@auxx/ui/components/button'
 import { api } from '~/trpc/react'
 import {
@@ -42,11 +42,12 @@ import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-t
  * Props for the BulkActionToolbar component.
  */
 interface BulkActionToolbarProps {
+  /** Controls visibility of the action bar with enter/exit animation. */
+  open?: boolean
   /** Array of selected thread IDs for bulk actions. */
   selectedThreadIds: string[]
   /** Callback function to clear the current selection. */
   onClearSelection: () => void
-  // refreshData prop is removed as we now use context-based invalidation
 }
 
 /**
@@ -55,6 +56,7 @@ interface BulkActionToolbarProps {
  * It uses MailFilterContext to correctly invalidate relevant thread lists.
  */
 export default function BulkActionToolbar({
+  open = true,
   selectedThreadIds,
   onClearSelection,
 }: BulkActionToolbarProps) {
@@ -63,7 +65,6 @@ export default function BulkActionToolbar({
   const currentFilter = useMailFilter()
   const { contextType, contextId, statusSlug, searchQuery } = currentFilter
   const [confirm, ConfirmDialog] = useConfirm()
-  const [isShowActionBar, setIsShowActionBar] = useState(true)
   // State for controlling the TagPicker popover
   const [tagPickerOpen, setTagPickerOpen] = useState(false)
   // State for controlling the Workflow dialog
@@ -265,15 +266,11 @@ export default function BulkActionToolbar({
 
   return (
     <div className="flex h-full w-full items-center justify-center">
-      {/* <Button onClick={() => setIsShowActionBar((prev) => !prev)}>Toggle</Button> */}
       <ConfirmDialog />
       <ActionBar
-        open={isShowActionBar}
-        onOpenChange={(open) => {
-          setIsShowActionBar(open)
-          if (!open) {
-            onClearSelection()
-          }
+        open={open}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) onClearSelection()
         }}>
         <ActionBarContent>
           <ActionBarText count={selectedThreadIds.length} label="items selected" />

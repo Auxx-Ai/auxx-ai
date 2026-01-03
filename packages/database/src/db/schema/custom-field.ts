@@ -52,6 +52,25 @@ export const CustomField = pgTable(
     }),
     /** Whether this field must contain unique values within its scope */
     isUnique: boolean().default(false).notNull(),
+
+    // ========================================
+    // Field capability flags
+    // ========================================
+
+    /** Whether this field can be set during entity creation (default: true) */
+    isCreatable: boolean().default(true).notNull(),
+
+    /** Whether this field can be modified after creation (default: true) */
+    isUpdatable: boolean().default(true).notNull(),
+
+    /** Whether this field is computed/derived and cannot be directly set (default: false) */
+    isComputed: boolean().default(false).notNull(),
+
+    /** Whether this field can be used for sorting (default: true) */
+    isSortable: boolean().default(true).notNull(),
+
+    /** Whether this field can be used in filters (default: true) */
+    isFilterable: boolean().default(true).notNull(),
   },
   (table) => [
     index('CustomField_modelType_idx').using('btree', table.modelType.asc().nullsLast()),

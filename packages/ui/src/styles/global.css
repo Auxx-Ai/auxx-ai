@@ -69,6 +69,69 @@
   }
 }
 
+/* ActionBar View Transition Animations */
+@keyframes action-bar-enter-bottom {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes action-bar-exit-bottom {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+
+@keyframes action-bar-enter-top {
+  from {
+    opacity: 0;
+    transform: translateY(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes action-bar-exit-top {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-16px);
+  }
+}
+
+/* View transition styles for action-bar (bottom position - default) */
+::view-transition-old(action-bar-bottom) {
+  animation: action-bar-exit-bottom 200ms ease-out forwards;
+}
+
+::view-transition-new(action-bar-bottom) {
+  animation: action-bar-enter-bottom 200ms ease-out forwards;
+}
+
+/* View transition styles for action-bar (top position) */
+::view-transition-old(action-bar-top) {
+  animation: action-bar-exit-top 200ms ease-out forwards;
+}
+
+::view-transition-new(action-bar-top) {
+  animation: action-bar-enter-top 200ms ease-out forwards;
+}
+
 :root {
   /* --text-sm: 0.5rem; */
   /* --background: 255 255 255;

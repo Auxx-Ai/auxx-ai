@@ -9,7 +9,9 @@ import {
   DynamicTable,
   DynamicTableFooter,
   createCustomFieldColumns,
+  useCombinedFilters,
 } from '~/components/dynamic-table'
+import { useActiveViewConfig } from '~/components/dynamic-table/stores/view-store'
 import type { ExtendedColumnDef } from '~/components/dynamic-table'
 import type { VisibilityState } from '@tanstack/react-table'
 import { EmptyState } from '~/components/global/empty-state'
@@ -60,7 +62,28 @@ export function TicketManagement({
     onCreateDialogChange?.(createDialogOpen ?? false)
   }, [createDialogOpen, onCreateDialogChange])
 
-  // Use unified record list hook - no custom filters, use DynamicTable's built-in filtering
+  // ══════════════════════════════════════════════════════════════════════════
+  // VIEW STORE INTEGRATION
+  // ══════════════════════════════════════════════════════════════════════════
+
+  const TABLE_ID = 'tickets'
+
+  // Get merged view config (saved + pending) from view store
+  const viewConfig = useActiveViewConfig(TABLE_ID)
+
+  // Merge view filters with page filters (no page-level filters for tickets currently)
+  const combinedFilters = useCombinedFilters({ viewConfig, pageFilters: undefined })
+
+  // Get sorting from view config
+  const viewSorting = useMemo(() => {
+    const sorting = viewConfig?.sorting
+    return sorting?.length ? sorting : undefined
+  }, [viewConfig?.sorting])
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // DATA FETCHING
+  // ══════════════════════════════════════════════════════════════════════════
+
   const {
     items: tickets,
     isLoading: isTicketsLoading,
@@ -70,6 +93,8 @@ export function TicketManagement({
     refresh: refetchTickets,
   } = useRecordList<Ticket>({
     resourceType: 'ticket',
+    filters: combinedFilters,
+    sorting: viewSorting,
     limit: PAGE_SIZE,
   })
 
@@ -282,7 +307,7 @@ export function TicketManagement({
   return (
     <>
       <DynamicTable<Ticket>
-        tableId="tickets"
+        tableId={TABLE_ID}
         resourceType="ticket"
         className="h-full"
         columns={columns}

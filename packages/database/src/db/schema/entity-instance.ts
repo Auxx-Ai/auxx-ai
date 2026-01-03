@@ -1,7 +1,7 @@
 // packages/database/src/db/schema/entity-instance.ts
 // Drizzle table for EntityInstance
 
-import { pgTable, index, text, timestamp, type AnyPgColumn, sql } from './_shared'
+import { pgTable, index, text, timestamp, jsonb, type AnyPgColumn, sql } from './_shared'
 import { createId } from '@paralleldrive/cuid2'
 import { Organization } from './organization'
 import { EntityDefinition } from './entity-definition'
@@ -50,6 +50,19 @@ export const EntityInstance = pgTable(
       onUpdate: 'cascade',
       onDelete: 'set null',
     }),
+
+    /** Denormalized primary display field value for fast sorting/display */
+    displayName: text(),
+
+    /** Combined searchable text from key fields (for full-text search) */
+    searchText: text(),
+
+    /**
+     * Generic metadata JSONB for system-managed fields.
+     * Structure varies by entityType - typing enforced at service layer.
+     * @see packages/lib/src/entity-instances/metadata-types.ts
+     */
+    metadata: jsonb(),
   },
   (table) => [
     // Index for entity definition lookups
@@ -70,6 +83,13 @@ export const EntityInstance = pgTable(
       table.organizationId.asc().nullsLast(),
       table.entityDefinitionId.asc().nullsLast()
     ),
+    // Index for display name sorting
+    index('EntityInstance_displayName_idx').using('btree', table.displayName.asc().nullsLast()),
+    // Note: GIN index for searchText full-text search should be added via raw SQL:
+    // CREATE INDEX "EntityInstance_search_idx" ON "EntityInstance" USING gin (to_tsvector('english', COALESCE("searchText", '')));
+    // Note: Partial indexes on metadata fields should be added via raw SQL:
+    // CREATE UNIQUE INDEX "EntityInstance_mailgunMessageId_key" ON "EntityInstance" (("metadata"->>'mailgunMessageId')) WHERE "metadata"->>'mailgunMessageId' IS NOT NULL;
+    // CREATE INDEX "EntityInstance_internalReference_idx" ON "EntityInstance" (("metadata"->>'internalReference')) WHERE "metadata"->>'internalReference' IS NOT NULL;
   ]
 )
 

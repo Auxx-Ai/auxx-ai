@@ -157,6 +157,7 @@ export * from './oauth-access-token'
 export * from './oauth-consent'
 export * from './entity-definition'
 export * from './entity-instance'
+export * from './field-value'
 export * from './system-model-default'
 
 // Import tables

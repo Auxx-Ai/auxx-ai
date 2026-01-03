@@ -1,4 +1,4 @@
-// apps/web/src/components/ui/action-bar.tsx
+// packages/ui/src/components/action-bar.tsx
 'use client'
 
 import * as React from 'react'
@@ -17,7 +17,10 @@ import {
 } from '@auxx/ui/components/tooltip'
 import { Badge } from '@auxx/ui/components/badge'
 
-// Internal context for ActionBar to pass onClose to children
+/** Animation duration in milliseconds (matches CSS) */
+const ANIMATION_DURATION = 200
+
+/** Internal context for ActionBar to pass onClose to children */
 interface ActionBarInternalContextValue {
   onClose?: () => void
 }
@@ -26,7 +29,7 @@ const ActionBarInternalContext = React.createContext<ActionBarInternalContextVal
   undefined
 )
 
-// ActionBar variants
+/** ActionBar variants */
 const actionBarVariants = cva('flex flex-row justify-start items-center gap-12 w-full', {
   variants: {
     variant: {
@@ -45,7 +48,7 @@ const actionBarVariants = cva('flex flex-row justify-start items-center gap-12 w
   },
 })
 
-// Position classes for ActionBar placement
+/** Position classes for ActionBar placement */
 const positionClasses = {
   'top-left': 'top-4 left-4',
   'top-center': 'top-4 left-1/2 -translate-x-1/2',
@@ -55,25 +58,17 @@ const positionClasses = {
   'bottom-right': 'bottom-4 right-4',
 } as const
 
-// Animation classes based on position
-const getAnimationClasses = (position: keyof typeof positionClasses, state: string) => {
+/** Returns animation styles for visibility and slide */
+const getAnimationStyles = (
+  position: keyof typeof positionClasses,
+  isVisible: boolean
+): React.CSSProperties => {
   const isBottom = position.startsWith('bottom')
-  const isTop = position.startsWith('top')
-
-  if (state === 'entering') {
-    if (isBottom) {
-      return 'animate-in fade-in slide-in-from-bottom duration-300'
-    } else if (isTop) {
-      return 'animate-in fade-in slide-in-from-top duration-300'
-    }
-  } else if (state === 'exiting') {
-    if (isBottom) {
-      return 'animate-out fade-out slide-out-to-bottom duration-300'
-    } else if (isTop) {
-      return 'animate-out fade-out slide-out-to-top duration-300'
-    }
+  return {
+    transition: `opacity ${ANIMATION_DURATION}ms ease-out, transform ${ANIMATION_DURATION}ms ease-out`,
+    opacity: isVisible ? 1 : 0,
+    transform: isVisible ? 'translateY(0)' : `translateY(${isBottom ? '16px' : '-16px'})`,
   }
-  return ''
 }
 
 export interface ActionBarProps
@@ -86,7 +81,8 @@ export interface ActionBarProps
 }
 
 /**
- * Root ActionBar component with portal rendering and animations
+ * Root ActionBar component with portal rendering and CSS transition animations.
+ * Uses timeout-based unmounting for reliable exit animations.
  */
 const ActionBar = ({
   className,
@@ -99,45 +95,45 @@ const ActionBar = ({
   children,
   ...props
 }: ActionBarProps) => {
-  const [animationState, setAnimationState] = React.useState<
-    'hidden' | 'entering' | 'visible' | 'exiting'
-  >('hidden')
   const [shouldRender, setShouldRender] = React.useState(false)
-  const timerRef = React.useRef<NodeJS.Timeout | undefined>(undefined)
-  const containerRef = React.useRef<HTMLDivElement>(null)
+  const [isVisible, setIsVisible] = React.useState(false)
+  const autoDismissRef = React.useRef<NodeJS.Timeout | undefined>(undefined)
+  const exitTimeoutRef = React.useRef<NodeJS.Timeout | undefined>(undefined)
 
-  // Handle open/close with animation states
+  // Handle mounting and visibility transitions
   React.useEffect(() => {
-    if (open && !shouldRender) {
+    if (open) {
+      // Clear any pending exit timeout
+      if (exitTimeoutRef.current) {
+        clearTimeout(exitTimeoutRef.current)
+        exitTimeoutRef.current = undefined
+      }
+      // Mount immediately, then trigger animation on next frame
       setShouldRender(true)
-      // Use requestAnimationFrame to ensure DOM is ready before animation
       requestAnimationFrame(() => {
-        setAnimationState('entering')
+        requestAnimationFrame(() => {
+          setIsVisible(true)
+        })
       })
-    } else if (!open && shouldRender) {
-      setAnimationState('exiting')
+    } else if (shouldRender) {
+      // Start exit animation
+      setIsVisible(false)
+      // Unmount after animation completes
+      exitTimeoutRef.current = setTimeout(() => {
+        setShouldRender(false)
+      }, ANIMATION_DURATION)
     }
   }, [open, shouldRender])
-
-  // Handle animation end
-  const handleAnimationEnd = React.useCallback(() => {
-    if (animationState === 'entering') {
-      setAnimationState('visible')
-    } else if (animationState === 'exiting') {
-      setShouldRender(false)
-      setAnimationState('hidden')
-    }
-  }, [animationState])
 
   // Auto-dismiss timer
   React.useEffect(() => {
     if (open && duration && duration !== Infinity) {
-      timerRef.current = setTimeout(() => {
+      autoDismissRef.current = setTimeout(() => {
         onOpenChange?.(false)
       }, duration)
       return () => {
-        if (timerRef.current) {
-          clearTimeout(timerRef.current)
+        if (autoDismissRef.current) {
+          clearTimeout(autoDismissRef.current)
         }
       }
     }
@@ -146,9 +142,8 @@ const ActionBar = ({
   // Cleanup on unmount
   React.useEffect(() => {
     return () => {
-      if (timerRef.current) {
-        clearTimeout(timerRef.current)
-      }
+      if (autoDismissRef.current) clearTimeout(autoDismissRef.current)
+      if (exitTimeoutRef.current) clearTimeout(exitTimeoutRef.current)
     }
   }, [])
 
@@ -159,27 +154,23 @@ const ActionBar = ({
   )
 
   if (!shouldRender) return null
-
-  // Check if document is available (for SSR compatibility)
   if (typeof document === 'undefined') return null
 
   return ReactDOM.createPortal(
-    <div
-      ref={containerRef}
-      className={cn(
-        'fixed z-20',
-        positionClasses[position],
-        'backdrop-blur-sm border border-border shadow-lg rounded-2xl ps-2 py-1 pe-1 bg-transparent',
-        getAnimationClasses(position, animationState),
-        variant === 'destructive' &&
-          'border-destructive bg-destructive text-destructive-foreground',
-        className
-      )}
-      onAnimationEnd={handleAnimationEnd}
-      {...props}>
-      <ActionBarInternalContext.Provider value={contextValue}>
-        <div className={cn(actionBarVariants({ variant, size }))}>{children}</div>
-      </ActionBarInternalContext.Provider>
+    <div className={cn('fixed z-20', positionClasses[position])}>
+      <div
+        className={cn(
+          'backdrop-blur-sm border border-border shadow-lg rounded-2xl ps-2 py-1 pe-1 bg-transparent',
+          variant === 'destructive' &&
+            'border-destructive bg-destructive text-destructive-foreground',
+          className
+        )}
+        style={getAnimationStyles(position, isVisible)}
+        {...props}>
+        <ActionBarInternalContext.Provider value={contextValue}>
+          <div className={cn(actionBarVariants({ variant, size }))}>{children}</div>
+        </ActionBarInternalContext.Provider>
+      </div>
     </div>,
     document.body
   )
@@ -230,7 +221,7 @@ const ActionBarText = ({
     return (
       <div className={cn('flex items-center gap-2', className)} {...props}>
         {count !== undefined && (
-          <Badge variant="default" size="sm">
+          <Badge variant="pill" size="sm" className="min-w-6 items-center justify-center">
             {count}
           </Badge>
         )}

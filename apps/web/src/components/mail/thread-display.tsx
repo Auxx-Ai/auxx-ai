@@ -42,18 +42,17 @@ export function ThreadDisplay() {
     // refetch()
   }
 
+  const showBulkToolbar = selectedThreads.length > 1 || viewMode === 'edit'
+
   return (
     <div className="flex h-full flex-col flex-1">
-      {selectedThreads.length > 1 || viewMode === 'edit' ? (
-        <BulkActionToolbar
-          selectedThreadIds={selectedThreads}
-          onClearSelection={clearSelection}
-          refreshData={refetch}
-          contextType={contextType}
-          contextId={contextId}
-          statusSlug={statusSlug}
-        />
-      ) : (
+      {/* Always render, visibility controlled by open prop for exit animation */}
+      <BulkActionToolbar
+        open={showBulkToolbar}
+        selectedThreadIds={selectedThreads}
+        onClearSelection={clearSelection}
+      />
+      {!showBulkToolbar && (
         <>
           {thread ? (
             // Note: messageType is computed at API boundary from integration.provider
@@ -96,3 +95,4 @@ export function ThreadDisplay() {
     </div>
   )
 }
+

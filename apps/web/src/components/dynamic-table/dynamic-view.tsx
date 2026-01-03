@@ -1,7 +1,7 @@
 // apps/web/src/components/dynamic-table/dynamic-view.tsx
 'use client'
 
-import { useMemo, useRef, Children, isValidElement, useState, useCallback, type RefObject } from 'react'
+import { useMemo, useRef, Children, isValidElement, useState, useCallback } from 'react'
 import { useDynamicTable } from './hooks/use-dynamic-table'
 import { useCellNavigation } from './hooks/use-cell-navigation'
 import { TableToolbar } from './components/table-toolbar'
@@ -169,8 +169,8 @@ function DynamicViewInner<TData extends object>() {
       {/* Footer - only show when loaded */}
       {!isInitialLoading && footerElement}
 
-      {/* Floating Bulk Action Bar - rendered via portal, shown alongside inline bar */}
-      {showBulkActionsBar && bulkActions.length > 0 && !bulkActionBarElement && (
+      {/* Floating Bulk Action Bar - always rendered, visibility controlled by open prop */}
+      {bulkActions.length > 0 && !bulkActionBarElement && (
         <FloatingBulkActionBar
           selectedRows={selectedRows}
           bulkActions={bulkActions}
