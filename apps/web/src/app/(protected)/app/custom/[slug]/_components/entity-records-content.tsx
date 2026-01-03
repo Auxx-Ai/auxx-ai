@@ -49,8 +49,10 @@ import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
 import { useCustomFieldValueSyncer } from '~/hooks/use-custom-field-value-syncer'
-import { useCustomFieldValueStore, buildValueKey } from '~/stores/custom-field-value-store'
+import { useCustomFieldValueStore } from '~/stores/custom-field-value-store'
 import { useSaveFieldValue } from '~/hooks/use-save-field-value'
+import { getDisplayValue } from '@auxx/lib/field-values/client'
+import type { TypedFieldValue } from '@auxx/types/field-value'
 import type { EntityRow } from './types'
 
 /**
@@ -78,7 +80,16 @@ function PrimaryDisplayCell({
   onArchive,
   onDelete,
 }: PrimaryDisplayCellProps) {
-  const displayValue = value != null ? String(value) : null
+  // Extract display string from TypedFieldValue or raw value
+  const displayValue = (() => {
+    if (value == null) return null
+    // Handle TypedFieldValue from store
+    if (typeof value === 'object' && 'type' in value) {
+      return getDisplayValue(value as TypedFieldValue) || null
+    }
+    // Handle raw value (fallback)
+    return String(value)
+  })()
 
   return (
     <div className="flex items-center justify-between w-full pl-3 pr-2 text-sm group/primary">
@@ -253,33 +264,9 @@ export function EntityRecordsContent() {
     enabled: !!entityDefinitionId && customFields.length > 0,
   })
 
-  // Get store setValues for hydration
-  const setValues = useCustomFieldValueStore((s) => s.setValues)
-
-  // Hydrate store with values from API response
-  // This ensures values are available immediately without waiting for syncer fetch
-  useEffect(() => {
-    if (!entityDefinitionId || rawInstances.length === 0) return
-
-    const entries: Array<{ key: string; value: unknown }> = []
-    for (const instance of rawInstances) {
-      for (const v of instance.values) {
-        // Unwrap {data: ...} wrapper if present
-        const rawValue =
-          v.value && typeof v.value === 'object' && 'data' in (v.value as object)
-            ? (v.value as { data: unknown }).data
-            : v.value
-        entries.push({
-          key: buildValueKey('entity', instance.id, v.fieldId, entityDefinitionId),
-          value: rawValue,
-        })
-      }
-    }
-
-    if (entries.length > 0) {
-      setValues(entries)
-    }
-  }, [rawInstances, entityDefinitionId, setValues])
+  // Note: Store hydration is handled by useCustomFieldValueSyncer
+  // which calls batchGetValues and returns properly formatted TypedFieldValue.
+  // This eliminates the need for manual row-to-TypedFieldValue conversion here.
 
   /**
    * Sync selectedInstance with fresh data when instances changes

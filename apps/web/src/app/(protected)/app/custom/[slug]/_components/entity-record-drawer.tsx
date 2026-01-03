@@ -19,6 +19,8 @@ import EntityRecordOverview from './entity-record-overview'
 import DrawerComments from '~/components/global/comments/drawer-comments'
 import { TimelineTab } from '~/components/timeline'
 import { createCustomEntityType } from '@auxx/lib/timeline/client'
+import { getDisplayValue } from '@auxx/lib/field-values/client'
+import type { TypedFieldValue } from '@auxx/types/field-value'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
@@ -101,6 +103,7 @@ export function EntityRecordDrawer({
 
   /**
    * Get display name using primaryDisplayField from resource
+   * Values are now TypedFieldValue format (not legacy { data: x })
    */
   const displayName = React.useMemo(() => {
     if (!instance?._originalValues) return null
@@ -110,33 +113,26 @@ export function EntityRecordDrawer({
     if (primaryFieldId) {
       const primaryValue = instance._originalValues.find((v) => v.fieldId === primaryFieldId)
       if (primaryValue?.value) {
-        const rawValue = primaryValue.value
-        return typeof rawValue === 'object' && rawValue !== null && 'data' in rawValue
-          ? String((rawValue as { data: unknown }).data)
-          : String(rawValue)
+        // Value is TypedFieldValue - use getDisplayValue
+        const display = getDisplayValue(primaryValue.value as TypedFieldValue)
+        if (display) return display
       }
     }
 
     // Fallback: use first non-empty value
     const firstValue = instance._originalValues.find((v) => {
-      const val = v.value
-      if (!val) return false
-      if (typeof val === 'object' && val !== null && 'data' in val) {
-        const data = (val as { data: unknown }).data
-        return data != null && data !== ''
-      }
-      return val != null && val !== ''
+      if (!v.value) return false
+      const display = getDisplayValue(v.value as TypedFieldValue)
+      return display != null && display !== ''
     })
     if (!firstValue) return null
 
-    const raw = firstValue.value
-    return typeof raw === 'object' && raw !== null && 'data' in raw
-      ? String((raw as { data: unknown }).data)
-      : String(raw)
+    return getDisplayValue(firstValue.value as TypedFieldValue)
   }, [instance?._originalValues, resource?.display.primaryDisplayField?.id])
 
   /**
    * Get secondary display value (optional subtitle)
+   * Values are now TypedFieldValue format (not legacy { data: x })
    */
   const secondaryDisplay = React.useMemo(() => {
     const secondaryFieldId = resource?.display.secondaryDisplayField?.id
@@ -145,10 +141,7 @@ export function EntityRecordDrawer({
     const secondaryValue = instance._originalValues.find((v) => v.fieldId === secondaryFieldId)
     if (!secondaryValue?.value) return null
 
-    const rawValue = secondaryValue.value
-    return typeof rawValue === 'object' && rawValue !== null && 'data' in rawValue
-      ? String((rawValue as { data: unknown }).data)
-      : String(rawValue)
+    return getDisplayValue(secondaryValue.value as TypedFieldValue)
   }, [instance?._originalValues, resource?.display.secondaryDisplayField?.id])
 
   // Memoize the createdAt text to avoid recalculating on every render

@@ -170,43 +170,6 @@ export function convertToTypedInput(
 }
 
 /**
- * Convert TypedFieldValue back to legacy { data: x } format.
- * Used for backward compatibility during migration.
- */
-export function typedValueToLegacy(
-  typedValue: TypedFieldValue | TypedFieldValue[] | null
-): { data: unknown } {
-  if (typedValue === null) {
-    return { data: null }
-  }
-
-  if (Array.isArray(typedValue)) {
-    // Multi-value: extract all values
-    const values = typedValue.map((v) => {
-      switch (v.type) {
-        case 'option':
-          return v.optionId
-        case 'relationship':
-          return v.relatedEntityId
-        default:
-          return 'value' in v ? v.value : null
-      }
-    })
-    return { data: values }
-  }
-
-  // Single value
-  switch (typedValue.type) {
-    case 'option':
-      return { data: typedValue.optionId }
-    case 'relationship':
-      return { data: typedValue.relatedEntityId }
-    default:
-      return { data: 'value' in typedValue ? typedValue.value : null }
-  }
-}
-
-/**
  * Extract the display value from a TypedFieldValue.
  * Returns a string suitable for display.
  */
@@ -230,8 +193,17 @@ export function getDisplayValue(
       return String(typedValue.value)
     case 'boolean':
       return typedValue.value ? 'Yes' : 'No'
-    case 'json':
+    case 'json': {
+      // Handle NAME field compound value { firstName, lastName }
+      const jsonVal = typedValue.value as Record<string, unknown>
+      if (jsonVal && typeof jsonVal === 'object' && ('firstName' in jsonVal || 'lastName' in jsonVal)) {
+        const firstName = (jsonVal.firstName as string) ?? ''
+        const lastName = (jsonVal.lastName as string) ?? ''
+        return [firstName, lastName].filter(Boolean).join(' ').trim() || ''
+      }
+      // Fallback to JSON string for other json values
       return JSON.stringify(typedValue.value)
+    }
     case 'option':
       // Use denormalized label if available, otherwise look up in options
       if (typedValue.label) {

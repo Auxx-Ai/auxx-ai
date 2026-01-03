@@ -1,7 +1,7 @@
 // packages/services/src/custom-fields/find-by-unique-value.ts
 
 import { database, schema } from '@auxx/database'
-import { eq, and, sql } from 'drizzle-orm'
+import { eq, and, or, sql } from 'drizzle-orm'
 import { ok, type Result } from 'neverthrow'
 
 /**
@@ -38,6 +38,7 @@ function normalizeValueForComparison(value: unknown): string | null {
 
 /**
  * Find a record by its unique custom field value.
+ * Uses the FieldValue table with typed columns.
  * Used by data import to match existing records.
  *
  * @param input - Search parameters
@@ -55,20 +56,28 @@ export async function findByUniqueValue(
 
   let entityId: string | null = null
 
+  // Build the value match condition - check text and number columns
+  // (unique fields are typically TEXT, EMAIL, NUMBER, etc.)
+  const valueMatchCondition = or(
+    eq(schema.FieldValue.valueText, valueStr),
+    // For numbers, try parsing the string
+    !isNaN(parseFloat(valueStr)) ? eq(schema.FieldValue.valueNumber, parseFloat(valueStr)) : sql`false`
+  )
+
   if (modelType === 'entity' && entityDefinitionId) {
     const result = await database
-      .select({ entityId: schema.CustomFieldValue.entityId })
-      .from(schema.CustomFieldValue)
+      .select({ entityId: schema.FieldValue.entityId })
+      .from(schema.FieldValue)
       .innerJoin(
         schema.EntityInstance,
-        eq(schema.CustomFieldValue.entityId, schema.EntityInstance.id)
+        eq(schema.FieldValue.entityId, schema.EntityInstance.id)
       )
       .where(
         and(
-          eq(schema.CustomFieldValue.fieldId, fieldId),
+          eq(schema.FieldValue.fieldId, fieldId),
+          eq(schema.FieldValue.organizationId, organizationId),
           eq(schema.EntityInstance.entityDefinitionId, entityDefinitionId),
-          eq(schema.EntityInstance.organizationId, organizationId),
-          sql`${schema.CustomFieldValue.value}->>'data' = ${valueStr}`
+          valueMatchCondition
         )
       )
       .limit(1)
@@ -76,14 +85,14 @@ export async function findByUniqueValue(
     entityId = result[0]?.entityId ?? null
   } else if (modelType === 'contact') {
     const result = await database
-      .select({ entityId: schema.CustomFieldValue.entityId })
-      .from(schema.CustomFieldValue)
-      .innerJoin(schema.Contact, eq(schema.CustomFieldValue.entityId, schema.Contact.id))
+      .select({ entityId: schema.FieldValue.entityId })
+      .from(schema.FieldValue)
+      .innerJoin(schema.Contact, eq(schema.FieldValue.entityId, schema.Contact.id))
       .where(
         and(
-          eq(schema.CustomFieldValue.fieldId, fieldId),
-          eq(schema.Contact.organizationId, organizationId),
-          sql`${schema.CustomFieldValue.value}->>'data' = ${valueStr}`
+          eq(schema.FieldValue.fieldId, fieldId),
+          eq(schema.FieldValue.organizationId, organizationId),
+          valueMatchCondition
         )
       )
       .limit(1)
@@ -91,14 +100,14 @@ export async function findByUniqueValue(
     entityId = result[0]?.entityId ?? null
   } else if (modelType === 'ticket') {
     const result = await database
-      .select({ entityId: schema.CustomFieldValue.entityId })
-      .from(schema.CustomFieldValue)
-      .innerJoin(schema.Ticket, eq(schema.CustomFieldValue.entityId, schema.Ticket.id))
+      .select({ entityId: schema.FieldValue.entityId })
+      .from(schema.FieldValue)
+      .innerJoin(schema.Ticket, eq(schema.FieldValue.entityId, schema.Ticket.id))
       .where(
         and(
-          eq(schema.CustomFieldValue.fieldId, fieldId),
-          eq(schema.Ticket.organizationId, organizationId),
-          sql`${schema.CustomFieldValue.value}->>'data' = ${valueStr}`
+          eq(schema.FieldValue.fieldId, fieldId),
+          eq(schema.FieldValue.organizationId, organizationId),
+          valueMatchCondition
         )
       )
       .limit(1)

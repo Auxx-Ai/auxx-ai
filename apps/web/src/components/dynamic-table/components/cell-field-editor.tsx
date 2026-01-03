@@ -50,11 +50,10 @@ export function CellFieldEditor({
   }, [cellSelectionConfig, rowId])
 
   // Create mutation function that PropertyProvider expects (legacy path when no storeConfig)
+  // PropertyProvider now passes raw values directly (no { data: x } wrapping)
   const handleMutate = useCallback(
-    async (newValue: any) => {
-      // PropertyProvider wraps values as { data: value }
-      const actualValue = newValue?.data ?? newValue
-      await cellSelectionConfig.onCellValueChange?.(rowId, columnId, actualValue)
+    async (rawValue: any) => {
+      await cellSelectionConfig.onCellValueChange?.(rowId, columnId, rawValue)
     },
     [rowId, columnId, cellSelectionConfig]
   )
@@ -69,7 +68,7 @@ export function CellFieldEditor({
     <PropertyProvider
       providerId={`cell-${rowId}-${columnId}`}
       field={field}
-      value={!storeConfig ? { data: initialValue } : undefined}
+      value={!storeConfig ? initialValue : undefined}
       mutate={!storeConfig ? handleMutate : undefined}
       loading={false}
       storeConfig={storeConfig}>

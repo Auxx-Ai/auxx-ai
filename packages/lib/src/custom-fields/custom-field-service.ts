@@ -19,11 +19,7 @@ import { isBuiltInField, getBuiltInFieldHandler } from './built-in-fields'
 import { publisher } from '../events'
 import type { ContactFieldUpdatedEvent } from '../events/types'
 import type { SelectOption, CurrencyOptions, FileOptions } from '@auxx/services/custom-fields'
-import {
-  FieldValueService,
-  convertToTypedInput,
-  typedValueToLegacy,
-} from '../field-values'
+import { FieldValueService, convertToTypedInput } from '../field-values'
 import { checkUniqueValueTyped } from './check-unique-value-typed'
 
 /**
@@ -177,12 +173,12 @@ export class CustomFieldService {
       modelType: modelType as 'contact' | 'ticket' | 'thread' | 'entity',
     })
 
-    // Convert to legacy format for backward compatibility
+    // Return TypedFieldValue directly (no legacy conversion)
     return values.map((v) => ({
       id: v.id,
       entityId: v.entityId,
       fieldId: v.fieldId,
-      value: typedValueToLegacy(v.value),
+      value: v.value,
       createdAt: v.createdAt,
       updatedAt: v.updatedAt,
       field: v.field,
@@ -265,20 +261,19 @@ export class CustomFieldService {
 
     // Get old value for event
     const oldTypedValue = await fieldValueService.getValue({ entityId, fieldId })
-    const oldValue = typedValueToLegacy(oldTypedValue)
 
-    // Set the new value
-    const result = await fieldValueService.setValue({
+    // Set the new value using setValueWithType (since we already have field info)
+    const result = await fieldValueService.setValueWithType({
       entityId,
       fieldId,
       fieldType: field.type,
       value: typedValue,
     })
 
-    // Convert result to legacy format
-    const legacyValue = typedValueToLegacy(result.length > 0 ? result[0]! : null)
+    // Get the result value (TypedFieldValue)
+    const resultValue = result.length > 0 ? result[0]! : null
 
-    // Publish event for contacts
+    // Publish event for contacts (using TypedFieldValue directly)
     if (modelType === ModelTypes.CONTACT && this.userId) {
       await publisher.publishLater({
         type: 'contact:field:updated',
@@ -289,8 +284,8 @@ export class CustomFieldService {
           fieldId: field.id,
           fieldName: field.name,
           fieldType: field.type,
-          oldValue,
-          newValue: legacyValue,
+          oldValue: oldTypedValue,
+          newValue: resultValue,
         },
       } as ContactFieldUpdatedEvent)
     }
@@ -299,7 +294,7 @@ export class CustomFieldService {
       id: result[0]?.id ?? '',
       entityId,
       fieldId,
-      value: legacyValue,
+      value: resultValue,
     }
   }
 

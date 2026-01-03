@@ -63,14 +63,14 @@ export async function deleteCustomField(input: DeleteCustomFieldInput) {
   // Delete in transaction
   const deleteResult = await fromDatabase(
     database.transaction(async (tx) => {
-      // Delete values for primary field
-      await tx.delete(schema.CustomFieldValue).where(eq(schema.CustomFieldValue.fieldId, id))
+      // Delete values for primary field from FieldValue table
+      await tx.delete(schema.FieldValue).where(eq(schema.FieldValue.fieldId, id))
 
       // If relationship field with inverse, also delete inverse values and field
       if (inverseFieldId) {
         await tx
-          .delete(schema.CustomFieldValue)
-          .where(eq(schema.CustomFieldValue.fieldId, inverseFieldId))
+          .delete(schema.FieldValue)
+          .where(eq(schema.FieldValue.fieldId, inverseFieldId))
 
         await tx
           .delete(schema.CustomField)

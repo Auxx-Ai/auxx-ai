@@ -116,9 +116,7 @@ export function SortablePropertyRow({
     OriginalIcon = fieldTypeOptions.find((opt) => opt.value === field.type)?.icon
   }
 
-  // Wrap value for PropertyProvider if needed
-  const wrappedValue =
-    value && typeof value === 'object' && 'data' in value ? value : { data: value }
+  // Value should be TypedFieldValue directly (no legacy { data: x } wrapping)
 
   // In edit mode with sortable fields: show simplified row with drag handle, name, and delete button
   if (isEditMode && isSortable) {
@@ -178,7 +176,7 @@ export function SortablePropertyRow({
         registerClose={registerClose}
         unregisterClose={unregisterClose}
         field={{ ...field, icon: OriginalIcon }}
-        value={!storeConfig ? wrappedValue : undefined}
+        value={!storeConfig ? value : undefined}
         mutate={mutate}
         loading={loading}
         storeConfig={storeConfig}>

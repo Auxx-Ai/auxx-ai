@@ -109,7 +109,7 @@ export function useCustomFieldValueSyncer(
   }, [enabled, visibleFieldIds, rowIds, resourceType, entityDefId, values, isKeyLoading])
 
   // Mutation for batch fetching
-  const batchFetch = api.customField.batchGetValues.useMutation()
+  const batchFetch = api.fieldValue.batchGet.useMutation()
 
   // Debounced fetch trigger
   useEffect(() => {

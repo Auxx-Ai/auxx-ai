@@ -44,6 +44,19 @@ import {
 import { useSaveFieldValue } from '~/hooks/use-save-field-value'
 import { useCustomField } from '~/components/custom-fields/hooks/use-custom-field'
 import { toastError } from '@auxx/ui/components/toast'
+import { extractValue, type TypedFieldValue } from '@auxx/types/field-value'
+
+/**
+ * Extract raw value from TypedFieldValue or return value as-is.
+ * Used for column grouping and drag operations.
+ */
+function extractRawValue(value: unknown): unknown {
+  if (value == null) return null
+  if (typeof value === 'object' && 'type' in (value as Record<string, unknown>)) {
+    return extractValue(value as TypedFieldValue)
+  }
+  return value
+}
 
 
 /** Props for KanbanView component */
@@ -389,10 +402,11 @@ export function KanbanView<TData extends KanbanRow>({
     // Add "No Status" column for items without a value
     grouped[NO_STATUS_COLUMN_ID] = []
 
-    // Group items
+    // Group items - extract raw value from TypedFieldValue for column matching
     data.forEach((item) => {
       const fieldValue = getValue(item.id, config.groupByFieldId)
-      const columnId = fieldValue ? String(fieldValue) : NO_STATUS_COLUMN_ID
+      const rawValue = extractRawValue(fieldValue)
+      const columnId = rawValue ? String(rawValue) : NO_STATUS_COLUMN_ID
 
       if (grouped[columnId]) {
         grouped[columnId].push(item)
@@ -429,7 +443,7 @@ export function KanbanView<TData extends KanbanRow>({
       } else {
         const card = data.find((d) => d.id === active.id)
         if (card) {
-          const sourceColumnId = String(getValue(card.id, config.groupByFieldId) ?? NO_STATUS_COLUMN_ID)
+          const sourceColumnId = String(extractRawValue(getValue(card.id, config.groupByFieldId)) ?? NO_STATUS_COLUMN_ID)
 
           // If dragged card is selected, drag all selected cards
           // Otherwise, just drag the single card
@@ -498,7 +512,7 @@ export function KanbanView<TData extends KanbanRow>({
 
         // Filter cards that need moving (not already in target column)
         const cardsToMove = draggedCards.filter((card) => {
-          const currentValue = getValue(card.id, config.groupByFieldId)
+          const currentValue = extractRawValue(getValue(card.id, config.groupByFieldId))
           const currentColumnId = currentValue ? String(currentValue) : NO_STATUS_COLUMN_ID
           return currentColumnId !== targetColumnId
         })

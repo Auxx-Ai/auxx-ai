@@ -36,8 +36,8 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
   const rollbackOptimistic = useCustomFieldValueStore((s) => s.rollbackOptimistic)
 
   // Mutations
-  const mutation = api.customField.setValue.useMutation()
-  const bulkMutation = api.customField.bulkSetValues.useMutation()
+  const mutation = api.fieldValue.set.useMutation()
+  const bulkMutation = api.fieldValue.setBulk.useMutation()
 
   /**
    * Extract raw value from TypedFieldValue for API calls.

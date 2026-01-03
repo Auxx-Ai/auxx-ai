@@ -1,13 +1,10 @@
 // packages/lib/src/field-values/index.ts
 
 export { FieldValueService } from './field-value-service'
-export {
-  convertToTypedInput,
-  typedValueToLegacy,
-  getDisplayValue,
-} from './value-converter'
+export { convertToTypedInput, getDisplayValue } from './value-converter'
 export type {
   SetValueInput,
+  SetValueWithTypeInput,
   AddValueInput,
   GetValueInput,
   GetValuesWithFieldsInput,

@@ -17,7 +17,7 @@ export const FIELD_TYPE_TO_VALUE_TYPE = {
   [FieldType.EMAIL]: 'text',
   [FieldType.URL]: 'text',
   [FieldType.PHONE_INTL]: 'text',
-  [FieldType.NAME]: 'text',
+  [FieldType.NAME]: 'json', // Compound field: { firstName, lastName }
   [FieldType.NUMBER]: 'number',
   [FieldType.CURRENCY]: 'number',
   [FieldType.CHECKBOX]: 'boolean',
@@ -45,7 +45,7 @@ export const FIELD_TYPE_TO_COLUMN = {
   [FieldType.EMAIL]: 'valueText',
   [FieldType.URL]: 'valueText',
   [FieldType.PHONE_INTL]: 'valueText',
-  [FieldType.NAME]: 'valueText',
+  [FieldType.NAME]: 'valueJson', // Compound field: { firstName, lastName }
   [FieldType.NUMBER]: 'valueNumber',
   [FieldType.CURRENCY]: 'valueNumber',
   [FieldType.CHECKBOX]: 'valueBoolean',

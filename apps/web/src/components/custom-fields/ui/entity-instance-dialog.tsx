@@ -128,9 +128,9 @@ export function EntityInstanceDialog({
       if (editingInstance?.values) {
         // Edit mode: populate from existing values
         for (const fv of editingInstance.values) {
-          // Unwrap the { data: value } format
-          const unwrapped = unwrapFieldValue(fv.value)
-          initValues[fv.fieldId] = unwrapped
+          // Extract raw value from TypedFieldValue
+          const rawValue = extractRawValue(fv.value)
+          initValues[fv.fieldId] = rawValue
         }
       } else {
         // Create mode: use default values
@@ -156,7 +156,7 @@ export function EntityInstanceDialog({
   })
 
   // Batch set field values mutation
-  const setFieldValues = api.customField.setValues.useMutation({
+  const setFieldValues = api.fieldValue.setMany.useMutation({
     onError: (error) => {
       toastError({ title: 'Failed to save values', description: error.message })
     },
@@ -312,12 +312,27 @@ export function EntityInstanceDialog({
 }
 
 /**
- * Unwrap field value from { data: value } format
- * CustomFieldValue stores values as { data: <actual_value> }
+ * Extract raw value from TypedFieldValue.
+ * Values are now TypedFieldValue format (not legacy { data: x })
  */
-function unwrapFieldValue(value: unknown): any {
-  if (value && typeof value === 'object' && 'data' in value) {
-    return (value as { data: unknown }).data
+function extractRawValue(value: unknown): any {
+  if (value === null || value === undefined) return null
+
+  // Handle TypedFieldValue array (multi-select, tags)
+  if (Array.isArray(value)) {
+    return value.map((v: any) => {
+      if (v && typeof v === 'object' && 'type' in v) {
+        return v.optionId ?? v.relatedEntityId ?? v.value
+      }
+      return v
+    })
   }
+
+  // Handle single TypedFieldValue
+  if (typeof value === 'object' && 'type' in value) {
+    const tv = value as { type: string; value?: any; optionId?: string; relatedEntityId?: string }
+    return tv.optionId ?? tv.relatedEntityId ?? tv.value
+  }
+
   return value
 }

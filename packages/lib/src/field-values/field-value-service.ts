@@ -3,15 +3,28 @@
 import { database, schema, type Database } from '@auxx/database'
 import { and, eq, inArray, asc } from 'drizzle-orm'
 import { generateKeyBetween } from '../utils/fractional-indexing'
-import { generateId } from '../utils/generateId'
 import {
   type TypedFieldValue,
   type TypedFieldValueInput,
+  type SelectOption,
   getValueType,
   isMultiValueFieldType,
 } from '@auxx/types'
+import {
+  getFieldWithDefinition,
+  getExistingFieldValue,
+  insertFieldValue,
+  batchInsertFieldValues,
+  updateFieldValue,
+  deleteFieldValues,
+  updateEntityDisplayName,
+  type FieldWithDefinition,
+  type FieldValueRow as ServiceFieldValueRow,
+} from '@auxx/services'
+import { convertToTypedInput, getDisplayValue } from './value-converter'
 import type {
   SetValueInput,
+  SetValueWithTypeInput,
   AddValueInput,
   GetValueInput,
   GetValuesWithFieldsInput,
@@ -27,9 +40,17 @@ import type {
 /**
  * Service for managing typed field values in the FieldValue table.
  * Replaces the old CustomFieldValue JSONB storage with typed column storage.
+ *
+ * Key improvements:
+ * - Caches CustomField lookups within service instance
+ * - Uses UPDATE for single-value fields instead of DELETE+INSERT
+ * - Automatically updates EntityInstance.displayName when primary display field changes
  */
 export class FieldValueService {
   private db: Database
+
+  /** Cache for CustomField lookups (keyed by fieldId) */
+  private fieldCache: Map<string, FieldWithDefinition> = new Map()
 
   constructor(
     private readonly organizationId: string,
@@ -44,11 +65,61 @@ export class FieldValueService {
   // ─────────────────────────────────────────────────────────────
 
   /**
-   * Set field value (replaces existing for single-value, replaces all for multi-value).
-   * This is the main method for setting values - handles both insert and update.
+   * Set field value with smart strategy based on field type.
+   * - Fetches CustomField to determine type (with caching)
+   * - Single-value fields: UPDATE if exists, INSERT if not
+   * - Multi-value fields: DELETE all + INSERT all
+   * - Updates displayName if field is primaryDisplayFieldId
+   *
+   * @param params - Entity ID, field ID, and raw value (any type)
+   * @returns Array of TypedFieldValue after operation
    */
   async setValue(params: SetValueInput): Promise<TypedFieldValue[]> {
+    const { entityId, fieldId, value } = params
+
+    // 1. Get field definition (cached)
+    const field = await this.getField(fieldId)
+
+    // 2. Convert raw value to typed input using field type
+    const typedInput = convertToTypedInput(
+      value,
+      field.type,
+      field.options as SelectOption[] | undefined
+    )
+
+    // Handle null/delete case
+    if (typedInput === null) {
+      await this.deleteValue({ entityId, fieldId })
+      await this.maybeUpdateDisplayName(entityId, field, null)
+      return []
+    }
+
+    // 3. Determine strategy and execute
+    let result: TypedFieldValue[]
+
+    if (isMultiValueFieldType(field.type)) {
+      // Multi-value: DELETE all + INSERT all
+      result = await this.setMultiValue(entityId, fieldId, field.type, typedInput)
+    } else {
+      // Single-value: UPSERT (UPDATE or INSERT)
+      result = await this.setSingleValue(entityId, fieldId, field.type, typedInput)
+    }
+
+    // 4. Update displayName if this is the primary display field
+    await this.maybeUpdateDisplayName(entityId, field, typedInput)
+
+    return result
+  }
+
+  /**
+   * Set field value when caller already has field type info.
+   * Still fetches field definition (cached) to update displayName if needed.
+   */
+  async setValueWithType(params: SetValueWithTypeInput): Promise<TypedFieldValue[]> {
     const { entityId, fieldId, fieldType, value } = params
+
+    // Get field definition for displayName update (cached)
+    const field = await this.getField(fieldId)
 
     // Delete existing values for this entityId + fieldId
     await this.db
@@ -63,12 +134,14 @@ export class FieldValueService {
 
     // If value is null, we're done (deletion)
     if (value === null) {
+      await this.maybeUpdateDisplayName(entityId, field, null)
       return []
     }
 
     // Handle array of values (multi-value fields)
     const values = Array.isArray(value) ? value : [value]
     if (values.length === 0) {
+      await this.maybeUpdateDisplayName(entityId, field, null)
       return []
     }
 
@@ -84,7 +157,12 @@ export class FieldValueService {
       .values(insertRows)
       .returning()
 
-    return inserted.map((row) => this.rowToTypedValue(row as unknown as FieldValueRow, fieldType))
+    const result = inserted.map((row) => this.rowToTypedValue(row as unknown as FieldValueRow, fieldType))
+
+    // Update displayName if this is the primary display field
+    await this.maybeUpdateDisplayName(entityId, field, value)
+
+    return result
   }
 
   /**
@@ -406,11 +484,234 @@ export class FieldValueService {
   }
 
   // ─────────────────────────────────────────────────────────────
-  // PRIVATE HELPERS
+  // PRIVATE HELPERS - SMART VALUE SETTING
   // ─────────────────────────────────────────────────────────────
 
   /**
-   * Build a FieldValue insert row from typed input.
+   * Get CustomField with EntityDefinition (cached within service instance).
+   */
+  private async getField(fieldId: string): Promise<FieldWithDefinition> {
+    const cached = this.fieldCache.get(fieldId)
+    if (cached) return cached
+
+    const result = await getFieldWithDefinition({
+      fieldId,
+      organizationId: this.organizationId,
+    })
+
+    if (result.isErr()) {
+      throw new Error(result.error.message)
+    }
+
+    this.fieldCache.set(fieldId, result.value)
+    return result.value
+  }
+
+  /**
+   * Update EntityInstance.displayName if field is primaryDisplayFieldId.
+   */
+  private async maybeUpdateDisplayName(
+    entityId: string,
+    field: FieldWithDefinition,
+    value: TypedFieldValueInput | TypedFieldValueInput[] | null
+  ): Promise<void> {
+    const entityDef = field.entityDefinition
+    if (!entityDef || entityDef.primaryDisplayFieldId !== field.id) {
+      return
+    }
+
+    // Convert TypedFieldValueInput to TypedFieldValue for getDisplayValue
+    // (getDisplayValue expects full TypedFieldValue with base fields)
+    let displayValue: TypedFieldValue | TypedFieldValue[] | null = null
+    if (value) {
+      const toTypedValue = (input: TypedFieldValueInput): TypedFieldValue => ({
+        ...input,
+        id: '',
+        entityId,
+        fieldId: field.id,
+        sortKey: '',
+        createdAt: '',
+        updatedAt: '',
+      } as TypedFieldValue)
+
+      displayValue = Array.isArray(value)
+        ? value.map(toTypedValue)
+        : toTypedValue(value)
+    }
+
+    const displayName = getDisplayValue(displayValue, field.options as SelectOption[] | undefined)
+
+    await updateEntityDisplayName({
+      entityId,
+      organizationId: this.organizationId,
+      displayName: displayName || null,
+    })
+  }
+
+  /**
+   * Set single-value field using UPSERT strategy.
+   * Checks if row exists, then UPDATE or INSERT.
+   */
+  private async setSingleValue(
+    entityId: string,
+    fieldId: string,
+    fieldType: string,
+    value: TypedFieldValueInput | TypedFieldValueInput[]
+  ): Promise<TypedFieldValue[]> {
+    const singleValue = Array.isArray(value) ? value[0] : value
+    if (!singleValue) return []
+
+    // Check if row exists
+    const existingResult = await getExistingFieldValue({
+      entityId,
+      fieldId,
+      organizationId: this.organizationId,
+    })
+
+    if (existingResult.isErr()) {
+      throw new Error(existingResult.error.message)
+    }
+
+    const existing = existingResult.value
+
+    if (existing) {
+      // UPDATE existing row
+      const updateData = this.buildUpdateData(fieldType, singleValue)
+      const updatedResult = await updateFieldValue({
+        id: existing.id,
+        organizationId: this.organizationId,
+        ...updateData,
+      })
+
+      if (updatedResult.isErr()) {
+        throw new Error(updatedResult.error.message)
+      }
+
+      return [this.rowToTypedValue(updatedResult.value as unknown as FieldValueRow, fieldType)]
+    } else {
+      // INSERT new row
+      const insertData = this.buildInsertData(fieldType, singleValue)
+      const insertedResult = await insertFieldValue({
+        entityId,
+        fieldId,
+        organizationId: this.organizationId,
+        sortKey: generateKeyBetween(null, null),
+        ...insertData,
+      })
+
+      if (insertedResult.isErr()) {
+        throw new Error(insertedResult.error.message)
+      }
+
+      return [this.rowToTypedValue(insertedResult.value as unknown as FieldValueRow, fieldType)]
+    }
+  }
+
+  /**
+   * Set multi-value field using DELETE+INSERT strategy.
+   */
+  private async setMultiValue(
+    entityId: string,
+    fieldId: string,
+    fieldType: string,
+    value: TypedFieldValueInput | TypedFieldValueInput[]
+  ): Promise<TypedFieldValue[]> {
+    const values = Array.isArray(value) ? value : [value]
+
+    // DELETE all existing
+    const deleteResult = await deleteFieldValues({
+      entityId,
+      fieldId,
+      organizationId: this.organizationId,
+    })
+
+    if (deleteResult.isErr()) {
+      throw new Error(deleteResult.error.message)
+    }
+
+    if (values.length === 0) return []
+
+    // Build insert rows with sortKeys
+    const insertInputs = values.map((v, index) => ({
+      entityId,
+      fieldId,
+      organizationId: this.organizationId,
+      sortKey: generateKeyBetween(index === 0 ? null : `a${index - 1}`, null),
+      ...this.buildInsertData(fieldType, v),
+    }))
+
+    const insertedResult = await batchInsertFieldValues(insertInputs)
+
+    if (insertedResult.isErr()) {
+      throw new Error(insertedResult.error.message)
+    }
+
+    return insertedResult.value.map((row) =>
+      this.rowToTypedValue(row as unknown as FieldValueRow, fieldType)
+    )
+  }
+
+  /**
+   * Build insert data from typed value input (for service layer).
+   */
+  private buildInsertData(
+    fieldType: string,
+    value: TypedFieldValueInput
+  ): {
+    valueText?: string | null
+    valueNumber?: number | null
+    valueBoolean?: boolean | null
+    valueDate?: string | null
+    valueJson?: unknown | null
+    optionId?: string | null
+    relatedEntityId?: string | null
+  } {
+    switch (value.type) {
+      case 'text':
+        return { valueText: value.value }
+      case 'number':
+        return { valueNumber: value.value }
+      case 'boolean':
+        return { valueBoolean: value.value }
+      case 'date':
+        return {
+          valueDate: value.value instanceof Date ? value.value.toISOString() : value.value,
+        }
+      case 'json':
+        return { valueJson: value.value }
+      case 'option':
+        return { optionId: value.optionId }
+      case 'relationship':
+        return { relatedEntityId: value.relatedEntityId }
+    }
+  }
+
+  /**
+   * Build update data from typed value input (for service layer).
+   */
+  private buildUpdateData(
+    fieldType: string,
+    value: TypedFieldValueInput
+  ): {
+    valueText?: string | null
+    valueNumber?: number | null
+    valueBoolean?: boolean | null
+    valueDate?: string | null
+    valueJson?: unknown | null
+    optionId?: string | null
+    relatedEntityId?: string | null
+  } {
+    // Same structure as insert data
+    return this.buildInsertData(fieldType, value)
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // PRIVATE HELPERS - ROW BUILDING
+  // ─────────────────────────────────────────────────────────────
+
+  /**
+   * Build a FieldValue insert row from typed input (for direct DB insert).
+   * Note: id, createdAt, updatedAt are auto-generated by the database.
    */
   private buildInsertRow(
     entityId: string,
@@ -419,15 +720,11 @@ export class FieldValueService {
     value: TypedFieldValueInput,
     sortKey: string
   ) {
-    const now = new Date().toISOString()
     const base = {
-      id: generateId(),
       organizationId: this.organizationId,
       entityId,
       fieldId,
       sortKey,
-      createdAt: now,
-      updatedAt: now,
       valueText: null as string | null,
       valueNumber: null as number | null,
       valueBoolean: null as boolean | null,

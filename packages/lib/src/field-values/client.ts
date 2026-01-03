@@ -13,9 +13,106 @@ import type {
   RelationshipFieldValue,
 } from '@auxx/types/field-value'
 import type { SelectOption } from '@auxx/types/custom-field'
+import { getValueType } from '@auxx/types'
 
 // Re-export converter utilities for client use
-export { typedValueToLegacy, getDisplayValue } from './value-converter'
+export { convertToTypedInput, getDisplayValue } from './value-converter'
+
+// =============================================================================
+// RAW ROW CONVERSION (for use with FieldValue table rows)
+// =============================================================================
+
+/**
+ * FieldValue row structure from database (matches FieldValue schema).
+ */
+export interface FieldValueRow {
+  id: string
+  entityId: string
+  fieldId: string
+  valueText: string | null
+  valueNumber: number | null
+  valueBoolean: boolean | null
+  valueDate: string | null
+  valueJson: unknown
+  optionId: string | null
+  relatedEntityId: string | null
+  sortKey: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+/**
+ * Convert a raw FieldValue row to TypedFieldValue.
+ * Used when loading from database relations (e.g., EntityInstance.typedValues).
+ */
+export function rowToTypedValue(row: FieldValueRow, fieldType: string): TypedFieldValue {
+  const base = {
+    id: row.id,
+    entityId: row.entityId,
+    fieldId: row.fieldId,
+    sortKey: row.sortKey,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  }
+
+  const valueType = getValueType(fieldType)
+
+  switch (valueType) {
+    case 'text':
+      return { ...base, type: 'text', value: row.valueText ?? '' }
+    case 'number':
+      return { ...base, type: 'number', value: row.valueNumber ?? 0 }
+    case 'boolean':
+      return { ...base, type: 'boolean', value: row.valueBoolean ?? false }
+    case 'date':
+      return { ...base, type: 'date', value: row.valueDate ?? '' }
+    case 'json':
+      return { ...base, type: 'json', value: (row.valueJson as Record<string, unknown>) ?? {} }
+    case 'option':
+      return { ...base, type: 'option', optionId: row.optionId ?? '' }
+    case 'relationship':
+      return { ...base, type: 'relationship', relatedEntityId: row.relatedEntityId ?? '' }
+    default:
+      return { ...base, type: 'text', value: row.valueText ?? '' }
+  }
+}
+
+/**
+ * Infer TypedFieldValue from a raw FieldValue row by checking which column is populated.
+ * Used when field type is not available (e.g., from Drizzle relations without joins).
+ */
+export function inferTypedValueFromRow(row: FieldValueRow): TypedFieldValue {
+  const base = {
+    id: row.id,
+    entityId: row.entityId,
+    fieldId: row.fieldId,
+    sortKey: row.sortKey,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  }
+
+  // Check which column is populated and infer type
+  if (row.optionId != null) {
+    return { ...base, type: 'option', optionId: row.optionId }
+  }
+  if (row.relatedEntityId != null) {
+    return { ...base, type: 'relationship', relatedEntityId: row.relatedEntityId }
+  }
+  if (row.valueBoolean != null) {
+    return { ...base, type: 'boolean', value: row.valueBoolean }
+  }
+  if (row.valueNumber != null) {
+    return { ...base, type: 'number', value: row.valueNumber }
+  }
+  if (row.valueDate != null) {
+    return { ...base, type: 'date', value: row.valueDate }
+  }
+  if (row.valueJson != null) {
+    return { ...base, type: 'json', value: row.valueJson as Record<string, unknown> }
+  }
+  // Default to text
+  return { ...base, type: 'text', value: row.valueText ?? '' }
+}
 
 // =============================================================================
 // CLIENT-SPECIFIC HELPERS

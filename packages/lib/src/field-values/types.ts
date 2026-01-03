@@ -6,8 +6,24 @@ import type { TypedFieldValue, TypedFieldValueInput } from '@auxx/types'
 // SERVICE INPUT TYPES
 // =============================================================================
 
-/** Input for setting a single field value */
+/**
+ * Input for setting a single field value.
+ * The service will fetch the CustomField to determine the type and convert the value.
+ * Automatically updates EntityInstance.displayName if this is the primary display field.
+ */
 export interface SetValueInput {
+  entityId: string
+  fieldId: string
+  /** Raw value - service will convert based on field type */
+  value: unknown
+}
+
+/**
+ * Input for setting a field value when caller already has field type info.
+ * Skips CustomField lookup for better performance.
+ * Does NOT update displayName - caller is responsible for that.
+ */
+export interface SetValueWithTypeInput {
   entityId: string
   fieldId: string
   fieldType: string

@@ -44,8 +44,11 @@ import {
   useCustomFieldValueStore,
   buildValueKey,
   type ResourceType,
+  type StoredFieldValue,
 } from '~/stores/custom-field-value-store'
 import type { StoreConfig } from './property-provider'
+import type { TypedFieldValue } from '@auxx/types/field-value'
+import { convertToTypedInput } from '@auxx/lib/field-values/client'
 
 /**
  * Transform ResourceField to CustomField format for EntityFields compatibility
@@ -172,9 +175,11 @@ function EntityFields({
   // Get store actions for hydration
   const setValues = useCustomFieldValueStore((s) => s.setValues)
 
-  // State management
-  const [fieldValues, setFieldValues] = useState<Record<string, any>>({})
-  const [builtInValues, setBuiltInValues] = useState<Record<string, any>>({})
+  // State management - stores TypedFieldValue with optional valueId for linking attachments
+  const [fieldValues, setFieldValues] = useState<
+    Record<string, { valueId?: string; value: StoredFieldValue }>
+  >({})
+  const [builtInValues, setBuiltInValues] = useState<Record<string, StoredFieldValue>>({})
   const [errors, setErrors] = useState<Record<string, string | null>>({})
   const [isValid, setIsValid] = useState(true)
   const closeHandlersRef = useRef<Record<string, () => void>>({})
@@ -257,7 +262,7 @@ function EntityFields({
     data: fetchedValues,
     refetch: refetchValues,
     isLoading: valuesLoading,
-  } = api.customField.getValues.useQuery(
+  } = api.fieldValue.getAll.useQuery(
     { entityId: entityId || '', modelType },
     { enabled: !!entityId && !isEntityInstance && !preloadedValues }
   )
@@ -266,7 +271,7 @@ function EntityFields({
   const values = preloadedValues ?? fetchedValues
 
   // Unified mutation for both built-in and custom fields
-  const setValueMutation = api.customField.setValue.useMutation({
+  const setValueMutation = api.fieldValue.set.useMutation({
     onSuccess: () => {
       // For non-entity instances, refetch entity and values
       // if (!isEntityInstance) {
@@ -285,7 +290,7 @@ function EntityFields({
   useEffect(() => {
     if (isEntityInstance || !entity || !config) return
 
-    const builtInValueMap: Record<string, any> = {}
+    const builtInValueMap: Record<string, StoredFieldValue> = {}
 
     config.builtInFields.forEach((field) => {
       let rawValue = (entity as any)[field.id]
@@ -307,7 +312,9 @@ function EntityFields({
         })
       }
 
-      builtInValueMap[field.id] = { data: rawValue }
+      // Convert raw value to TypedFieldValue
+      const typedValue = convertToTypedInput(rawValue, field.type, field.options?.options)
+      builtInValueMap[field.id] = typedValue as StoredFieldValue
     })
 
     setBuiltInValues(builtInValueMap)
@@ -317,24 +324,21 @@ function EntityFields({
   // Also hydrate the global store for bi-directional sync with table
   useEffect(() => {
     if (values && entityId) {
-      const valueMap: Record<string, any> = {}
-      const storeEntries: Array<{ key: string; value: unknown }> = []
+      const valueMap: Record<string, { valueId?: string; value: StoredFieldValue }> = {}
+      const storeEntries: Array<{ key: string; value: StoredFieldValue }> = []
 
       values.forEach((value: any) => {
-        // Database stores values wrapped in {data: actualValue}, unwrap for UI
-        const rawValue =
-          value.value && typeof value.value === 'object' && 'data' in value.value
-            ? (value.value as { data: unknown }).data
-            : value.value
+        // Value is now TypedFieldValue directly (no legacy unwrapping)
+        const typedValue = value.value as StoredFieldValue
 
         valueMap[value.fieldId] = {
           valueId: value.id, // CustomFieldValue.id for linking attachments
-          data: rawValue, // The actual value data (unwrapped)
+          value: typedValue, // TypedFieldValue directly
         }
-        // Build entry for store hydration (use unwrapped value for consistency with saves)
+        // Build entry for store hydration
         storeEntries.push({
           key: buildValueKey(resourceType, entityId, value.fieldId, entityDefinitionId),
-          value: rawValue,
+          value: typedValue,
         })
       })
 
@@ -365,14 +369,11 @@ function EntityFields({
     let formValid = true
 
     fields.forEach((field: any) => {
-      const fieldValue = fieldValues[field.id]
-      // Extract the value from the wrapped data structure if needed
-      const value =
-        fieldValue && typeof fieldValue === 'object' && 'data' in fieldValue
-          ? fieldValue.data
-          : fieldValue || field.defaultValue || ''
+      const fieldEntry = fieldValues[field.id]
+      // Extract TypedFieldValue from the new structure { valueId, value: TypedFieldValue }
+      const typedValue = fieldEntry?.value ?? null
 
-      const result = validateField(field, value)
+      const result = validateField(field, typedValue)
       errorMap[field.id] = result.valid ? null : result.error
 
       if (!result.valid) {
@@ -385,34 +386,31 @@ function EntityFields({
 
   /**
    * Create a mutation function for a specific custom field
+   * Receives raw value from PropertyProvider, mutation returns TypedFieldValue
    */
   const handleFieldMutate = useCallback(
-    (fieldId: string) => async (value: any) => {
+    (fieldId: string) => async (rawValue: any) => {
       if (!entityId) return
 
       try {
-        // Call mutation first to get the CustomFieldValue.id
-        // Use mutationModelType (ENTITY for entity instances, original modelType otherwise)
+        // Call mutation - receives raw value, returns { id, value: TypedFieldValue }
         const result = await setValueMutation.mutateAsync({
           entityId,
           fieldId,
-          value,
+          value: rawValue,
           modelType: mutationModelType,
         })
 
-        // Update local state with the returned valueId
-        // Cast result to handle different return types from mutation
+        // Extract returned data - mutation now returns TypedFieldValue directly
         const resultId = (result as { id?: string })?.id
+        const typedValue = (result as { value?: StoredFieldValue })?.value ?? null
 
-        // Unwrap value if it's wrapped in { data: ... } (PropertyProvider wraps values)
-        const unwrappedValue =
-          value && typeof value === 'object' && 'data' in value ? value.data : value
-
+        // Update local state with TypedFieldValue
         setFieldValues((prev) => ({
           ...prev,
           [fieldId]: {
-            valueId: resultId || prev[fieldId]?.valueId, // Capture new ID or preserve existing
-            data: unwrappedValue,
+            valueId: resultId || prev[fieldId]?.valueId,
+            value: typedValue,
           },
         }))
 
@@ -464,21 +462,18 @@ function EntityFields({
 
   /**
    * Create a mutation function for built-in entity fields
+   * Receives raw value from PropertyProvider, sends to mutation
    */
   const handleBuiltInFieldMutate = useCallback(
-    (fieldId: string) => async (value: any) => {
+    (fieldId: string) => async (rawValue: any) => {
       if (!entityId) return
 
       try {
-        // PropertyProvider passes wrapped values in format {data: actualValue}, so extract the data
-        const actualValue =
-          value && typeof value === 'object' && 'data' in value ? value.data : value
-
-        // Use the same unified mutation for built-in fields
+        // PropertyProvider now passes raw values directly (no legacy wrapping)
         await setValueMutation.mutateAsync({
           entityId,
           fieldId,
-          value: actualValue,
+          value: rawValue,
           modelType: mutationModelType,
         })
       } catch (error) {
@@ -893,7 +888,7 @@ function EntityFieldsContent({
                   id={field.id}
                   providerId={field.id}
                   field={{ ...field, valueId: fieldValues[field.id]?.valueId }}
-                  value={fieldValues[field.id]?.data}
+                  value={fieldValues[field.id]?.value}
                   mutate={handleFieldMutate(field.id)}
                   loading={isLoadingValues}
                   isEditMode={isEditMode}
@@ -917,7 +912,7 @@ function EntityFieldsContent({
                   id={`system-${field.id}`}
                   providerId={`system-${field.id}`}
                   field={field}
-                  value={{ data: field.value }}
+                  value={field.value ? { type: 'date', value: field.value } : null}
                   mutate={async () => {}}
                   loading={false}
                   isEditMode={isEditMode}

@@ -51,15 +51,13 @@ function RelationshipCellContent({
       return relatedId ? [relatedId] : []
     }
 
-    // Handle legacy { data: x } wrapper
+    // STRICT: Reject legacy { data: x } wrapper format
     if (typeof value === 'object' && value !== null && 'data' in (value as Record<string, unknown>)) {
-      const data = (value as { data?: string[] }).data
-      if (Array.isArray(data)) return data
-      if (typeof data === 'string') return [data]
+      console.error('[RelationshipCell] Legacy { data: x } format detected. All values must be TypedFieldValue.')
       return []
     }
 
-    // Handle raw string ID
+    // Handle raw string ID (pre-extracted value)
     if (typeof value === 'string') return [value]
 
     return []
@@ -422,7 +420,7 @@ export function renderFileValue(value: unknown): React.ReactNode {
 
 /**
  * Render plain text value
- * Handles TypedFieldValue, legacy { data: x } wrapper, and raw values
+ * Handles TypedFieldValue and raw values (no legacy format support)
  */
 export function renderTextValue(value: unknown): React.ReactNode {
   // Handle null/undefined
@@ -440,11 +438,10 @@ export function renderTextValue(value: unknown): React.ReactNode {
       return renderTextValue(extracted)
     }
 
-    // Check for legacy .data wrapper (common in custom field values)
+    // STRICT: Reject legacy .data wrapper format
     if ('data' in objValue) {
-      const innerValue = objValue.data
-      // Recursively render the inner value
-      return renderTextValue(innerValue)
+      console.error('[renderTextValue] Legacy { data: x } format detected. All values must be TypedFieldValue.')
+      return <EmptyCell />
     }
 
     // For other objects, show empty state (don't stringify to [object Object])
@@ -537,15 +534,16 @@ const cellRenderers: Record<string, CellRenderer> = {
 }
 
 /**
- * Extract raw value from TypedFieldValue or legacy { data: ... } wrapper.
- * Handles single values, arrays, and null.
+ * Extract raw value from TypedFieldValue.
+ * Strict mode - rejects legacy { data: x } format.
  */
 function unwrapValue(value: unknown): unknown {
   if (value === null || value === undefined) return null
 
-  // Handle legacy { data: x } wrapper format (check for 'data' but no 'type')
+  // STRICT: Reject legacy { data: x } wrapper format
   if (typeof value === 'object' && 'data' in (value as Record<string, unknown>) && !('type' in (value as Record<string, unknown>))) {
-    return (value as Record<string, unknown>).data
+    console.error('[CellRenderer] Legacy { data: x } format detected. All values must be TypedFieldValue.')
+    return null
   }
 
   // Handle TypedFieldValue array (e.g., multi-select, tags)
@@ -554,7 +552,7 @@ function unwrapValue(value: unknown): unknown {
     if (value.length > 0 && typeof value[0] === 'object' && value[0] !== null && 'type' in value[0]) {
       return value.map((v) => extractValue(v as TypedFieldValue))
     }
-    // Already an array of raw values
+    // Already an array of raw values (could be empty or pre-extracted)
     return value
   }
 
@@ -577,7 +575,7 @@ export function renderCellValue(
   formatting?: ColumnFormatting,
   config?: CellConfig
 ): React.ReactNode {
-  // Unwrap { data: ... } wrapper if present
+  // Extract raw value from TypedFieldValue
   const actualValue = unwrapValue(value)
 
   // Get renderer for field type, fallback to TEXT

@@ -66,6 +66,7 @@ import { mediaAssetRouter } from './routers/mediaAsset'
 import { entityDefinitionRouter } from './routers/entityDefinition'
 import { entityInstanceRouter } from './routers/entityInstance'
 import { dataImportRouter } from './routers/data-import'
+import { fieldValueRouter } from './routers/fieldValue'
 
 /**
  * This is the primary router for your server.
@@ -92,6 +93,7 @@ export const appRouter = createTRPCRouter({
   dataset: datasetRouter,
   document: documentRouter,
   segment: segmentRouter,
+  fieldValue: fieldValueRouter,
   file: fileRouter,
   folder: folderRouter,
   mediaAsset: mediaAssetRouter,

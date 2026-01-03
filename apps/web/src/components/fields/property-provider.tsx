@@ -124,20 +124,29 @@ interface PropertyProviderProps {
 }
 
 /**
- * Extract raw value from TypedFieldValue or legacy { data: x } wrapper.
- * Handles single values, arrays, and null.
+ * Extract raw value from TypedFieldValue.
+ * Strict mode - throws if legacy { data: x } format is received.
+ * Also accepts already-extracted raw primitives (string, number, boolean).
  */
-function extractRawValue(val: StoredFieldValue | { data: unknown } | null | undefined): unknown {
+function extractRawValue(val: StoredFieldValue | null | undefined): unknown {
   if (val === null || val === undefined) return null
 
-  // Handle legacy { data: x } wrapper format
+  // STRICT: Reject legacy { data: x } wrapper format
   if (typeof val === 'object' && 'data' in val && !('type' in val)) {
-    return (val as { data: unknown }).data
+    throw new Error(
+      `[PropertyProvider] Legacy { data: x } format detected. ` +
+        `All values must be TypedFieldValue. Received: ${JSON.stringify(val)}`
+    )
   }
 
   // Handle TypedFieldValue array (e.g., multi-select, tags)
   if (Array.isArray(val)) {
-    return val.map((v) => extractValue(v as TypedFieldValue))
+    // Check if it's an array of TypedFieldValue or already raw values
+    if (val.length > 0 && typeof val[0] === 'object' && val[0] !== null && 'type' in val[0]) {
+      return val.map((v) => extractValue(v as TypedFieldValue))
+    }
+    // Already an array of raw values (e.g., string[])
+    return val
   }
 
   // Handle single TypedFieldValue
@@ -145,8 +154,27 @@ function extractRawValue(val: StoredFieldValue | { data: unknown } | null | unde
     return extractValue(val as TypedFieldValue)
   }
 
-  // Already a raw value (shouldn't happen in normal flow, but handle gracefully)
-  return val
+  // Accept raw primitives (already extracted or from default values)
+  if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') {
+    return val
+  }
+
+  // Accept Date objects
+  if (val instanceof Date) {
+    return val.toISOString()
+  }
+
+  // Accept plain objects as raw values (e.g., { firstName, lastName } for NAME field)
+  // These are already-extracted JSON values
+  if (typeof val === 'object') {
+    return val
+  }
+
+  // STRICT: Reject unexpected format
+  throw new Error(
+    `[PropertyProvider] Unexpected value format. Expected TypedFieldValue or raw value. ` +
+      `Received: ${JSON.stringify(val)}`
+  )
 }
 
 /**

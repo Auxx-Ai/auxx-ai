@@ -1,5 +1,33 @@
 // packages/services/src/index.ts
 
+// Field Values
+export {
+  getFieldWithDefinition,
+  getExistingFieldValue,
+  insertFieldValue,
+  batchInsertFieldValues,
+  updateFieldValue,
+  deleteFieldValues,
+  deleteFieldValueById,
+  updateEntityDisplayName,
+} from './field-values'
+
+export type {
+  FieldNotFoundError,
+  FieldValueNotFoundError,
+  EntityNotFoundError as FieldValueEntityNotFoundError,
+  FieldValueError,
+  GetFieldWithDefinitionInput,
+  FieldWithDefinition,
+  GetExistingValueInput,
+  ExistingFieldValueRow,
+  InsertFieldValueInput,
+  UpdateFieldValueInput,
+  DeleteFieldValuesInput,
+  UpdateDisplayNameInput,
+  FieldValueRow,
+} from './field-values'
+
 // Table View
 export {
   listViews,

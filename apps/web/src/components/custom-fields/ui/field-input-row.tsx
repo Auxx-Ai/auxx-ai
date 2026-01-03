@@ -159,23 +159,39 @@ export function FieldInputRow({
 }
 
 /**
- * Normalize various value formats to array of IDs
- * Handles: string, string[], { data: string }, { data: string[] }
+ * Normalize value formats to array of IDs
+ * Handles: TypedFieldValue[], TypedFieldValue, string[], string
+ * STRICT: Rejects legacy { data: x } format
  */
 function normalizeToIdArray(value: unknown): string[] {
   if (!value) return []
 
-  // Unwrap { data: ... } format
-  const unwrapped = (value as any)?.data ?? value
-
-  // Handle array
-  if (Array.isArray(unwrapped)) {
-    return unwrapped.filter((id): id is string => typeof id === 'string')
+  // STRICT: Reject legacy { data: x } format
+  if (typeof value === 'object' && 'data' in (value as any) && !('type' in (value as any))) {
+    console.error('[FieldInputRow] Legacy { data: x } format detected. All values must be TypedFieldValue.')
+    return []
   }
 
-  // Handle single string
-  if (typeof unwrapped === 'string' && unwrapped) {
-    return [unwrapped]
+  // Handle TypedFieldValue array (e.g., OptionFieldValue[], RelationshipFieldValue[])
+  if (Array.isArray(value)) {
+    return value.map((v: any) => {
+      if (typeof v === 'object' && v !== null && 'type' in v) {
+        return v.optionId ?? v.relatedEntityId ?? v.value
+      }
+      return typeof v === 'string' ? v : null
+    }).filter((id): id is string => id !== null)
+  }
+
+  // Handle single TypedFieldValue
+  if (typeof value === 'object' && 'type' in (value as any)) {
+    const tv = value as { optionId?: string; relatedEntityId?: string; value?: string }
+    const id = tv.optionId ?? tv.relatedEntityId ?? tv.value
+    return id ? [id] : []
+  }
+
+  // Handle single string (pre-extracted ID)
+  if (typeof value === 'string' && value) {
+    return [value]
   }
 
   return []

@@ -70,13 +70,28 @@ interface BulkUpdateEntityInstanceDialogProps {
 }
 
 /**
- * Unwrap field value from { data: value } format
- * CustomFieldValue stores values as { data: <actual_value> }
+ * Extract raw value from TypedFieldValue.
+ * Values are now TypedFieldValue format (not legacy { data: x })
  */
-function unwrapFieldValue(value: unknown): unknown {
-  if (value && typeof value === 'object' && 'data' in value) {
-    return (value as { data: unknown }).data
+function extractRawValue(value: unknown): unknown {
+  if (value === null || value === undefined) return null
+
+  // Handle TypedFieldValue array (multi-select, tags)
+  if (Array.isArray(value)) {
+    return value.map((v: any) => {
+      if (v && typeof v === 'object' && 'type' in v) {
+        return v.optionId ?? v.relatedEntityId ?? v.value
+      }
+      return v
+    })
   }
+
+  // Handle single TypedFieldValue
+  if (typeof value === 'object' && 'type' in value) {
+    const tv = value as { type: string; value?: any; optionId?: string; relatedEntityId?: string }
+    return tv.optionId ?? tv.relatedEntityId ?? tv.value
+  }
+
   return value
 }
 
@@ -94,7 +109,7 @@ function computeInitialValues(
   for (const field of fields) {
     const values = instances.map((instance) => {
       const fieldValue = instance.customFieldValues?.find((v) => v.fieldId === field.id)
-      return unwrapFieldValue(fieldValue?.value)
+      return extractRawValue(fieldValue?.value)
     })
 
     // Check if all values are the same
@@ -174,7 +189,7 @@ export function BulkUpdateEntityInstanceDialog({
   }, [open, selectedInstances, sortedFields, setInitial])
 
   // Bulk set values mutation
-  const bulkSetValues = api.customField.bulkSetValues.useMutation({
+  const bulkSetValues = api.fieldValue.setBulk.useMutation({
     onError: (error) => {
       toastError({ title: 'Failed to update values', description: error.message })
     },

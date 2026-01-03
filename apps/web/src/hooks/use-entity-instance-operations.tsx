@@ -6,6 +6,7 @@ import { api } from '~/trpc/react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCustomField } from '~/components/custom-fields/hooks/use-custom-field'
+import { inferTypedValueFromRow, type FieldValueRow } from '@auxx/lib/field-values/client'
 import type { EntityRow } from '~/app/(protected)/app/custom/[slug]/_components/types'
 
 /**
@@ -78,18 +79,29 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
 
   /** Transform instances to have customFieldValues for column compatibility */
   const instances: EntityRow[] = useMemo(() => {
-    return rawInstances.map((instance) => ({
-      id: instance.id,
-      entityDefinitionId: instance.entityDefinitionId,
-      createdAt: instance.createdAt,
-      updatedAt: instance.updatedAt,
-      archivedAt: instance.archivedAt,
-      customFieldValues: instance.values.map((v) => ({
-        fieldId: v.fieldId,
-        value: v.value,
-      })),
-      _originalValues: instance.values,
-    }))
+    return rawInstances.map((instance) => {
+      // Convert raw FieldValue rows to objects with TypedFieldValue
+      const typedValues = (instance.typedValues ?? []).map((row) => ({
+        id: row.id,
+        fieldId: row.fieldId,
+        value: inferTypedValueFromRow(row as FieldValueRow),
+      }))
+
+      return {
+        id: instance.id,
+        entityDefinitionId: instance.entityDefinitionId,
+        createdAt: instance.createdAt,
+        updatedAt: instance.updatedAt,
+        archivedAt: instance.archivedAt,
+        // Cells read from store via syncer
+        customFieldValues: typedValues.map((v) => ({
+          fieldId: v.fieldId,
+          value: null, // Values come from store, not row data
+        })),
+        // Converted values with TypedFieldValue for drawer display
+        _originalValues: typedValues,
+      }
+    })
   }, [rawInstances])
 
   /** Handle scrolling to bottom - load more data */

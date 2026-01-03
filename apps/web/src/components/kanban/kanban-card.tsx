@@ -7,6 +7,7 @@ import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { MessageSquare, CheckSquare, StickyNote, Box } from 'lucide-react'
 import { formatRelativeTime } from '@auxx/lib/utils'
+import { extractValue, type TypedFieldValue } from '@auxx/types/field-value'
 
 /** Custom field definition */
 interface CustomField {
@@ -175,9 +176,13 @@ export function KanbanCard({
             {fields.slice(0, 2).map((field) => {
               const value = getValue(field.id)
               if (value == null) return null
+              // Extract raw value from TypedFieldValue for display
+              const rawValue = (typeof value === 'object' && value !== null && 'type' in value)
+                ? extractValue(value as TypedFieldValue)
+                : value
               return (
                 <div key={field.id} className="text-xs text-muted-foreground truncate">
-                  {formatValue(value, field.type)}
+                  {formatValue(rawValue, field.type)}
                 </div>
               )
             })}
