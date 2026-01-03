@@ -12,3 +12,9 @@ export {
 } from './update-entity-instance'
 export { deleteEntityInstance, type DeleteEntityInstanceParams } from './delete-entity-instance'
 export type { EntityInstanceError } from './errors'
+export {
+  batchUpdateDisplayValues,
+  clearDisplayValues,
+  type BatchUpdateDisplayValuesInput,
+  type ClearDisplayValuesInput,
+} from './batch-update-display-values'

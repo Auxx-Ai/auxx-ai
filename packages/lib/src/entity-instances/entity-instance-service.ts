@@ -9,7 +9,8 @@ import {
   deleteEntityInstance,
 } from '@auxx/services/entity-instances'
 import { getEntityDefinition } from '@auxx/services/entity-definitions'
-import { CustomFieldService, ModelTypes } from '../custom-fields'
+import { ModelTypes } from '../custom-fields'
+import { FieldValueService } from '../field-values'
 import { database } from '@auxx/database'
 import { getCustomFields, checkUniqueValue } from '@auxx/services/custom-fields'
 import { publisher } from '../events/publisher'
@@ -333,22 +334,18 @@ export class EntityInstanceService {
 
     // Set field values if provided
     if (Object.keys(values).length > 0) {
-      const customFieldService = new CustomFieldService(
-        this.organizationId,
-        this.userId,
-        database
-      )
+      const fieldValueService = new FieldValueService(this.organizationId, this.userId, database)
 
-      // Convert values object to array format expected by setValues
+      // Convert values object to array format expected by setValuesForEntity
       const valueArray = Object.entries(values)
         .filter(([_, value]) => value !== undefined && value !== null && value !== '')
         .map(([fieldId, value]) => ({ fieldId, value }))
 
       if (valueArray.length > 0) {
-        await customFieldService.setValues({
+        await fieldValueService.setValuesForEntity({
           entityId: instance.id,
           values: valueArray,
-          modelType: ModelTypes.ENTITY,
+          modelType: 'entity',
         })
       }
     }
@@ -394,22 +391,18 @@ export class EntityInstanceService {
 
     // Set field values if provided
     if (Object.keys(values).length > 0) {
-      const customFieldService = new CustomFieldService(
-        this.organizationId,
-        this.userId,
-        database
-      )
+      const fieldValueService = new FieldValueService(this.organizationId, this.userId, database)
 
-      // Convert values object to array format expected by setValues
+      // Convert values object to array format expected by setValuesForEntity
       const valueArray = Object.entries(values)
         .filter(([_, value]) => value !== undefined && value !== null && value !== '')
         .map(([fieldId, value]) => ({ fieldId, value }))
 
       if (valueArray.length > 0) {
-        await customFieldService.setValues({
+        await fieldValueService.setValuesForEntity({
           entityId: instanceId,
           values: valueArray,
-          modelType: ModelTypes.ENTITY,
+          modelType: 'entity',
         })
       }
     }

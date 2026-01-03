@@ -17,11 +17,14 @@ import {
   batchInsertFieldValues,
   updateFieldValue,
   deleteFieldValues,
-  updateEntityDisplayName,
   type FieldWithDefinition,
   type FieldValueRow as ServiceFieldValueRow,
 } from '@auxx/services'
 import { convertToTypedInput, getDisplayValue } from './value-converter'
+import { isBuiltInField, getBuiltInFieldHandler } from '../custom-fields/built-in-fields'
+import { checkUniqueValueTyped } from '../custom-fields/check-unique-value-typed'
+import { publisher } from '../events'
+import type { ContactFieldUpdatedEvent } from '../events/types'
 import type {
   SetValueInput,
   SetValueWithTypeInput,
@@ -35,6 +38,12 @@ import type {
   TypedFieldValueResult,
   BatchFieldValueResult,
   FieldValueRow,
+  ModelType,
+  SetValueWithBuiltInInput,
+  SetValuesForEntityInput,
+  SetBulkValuesInput,
+  SetValueResult,
+  SetValuesResult,
 } from './types'
 
 /**
@@ -90,7 +99,7 @@ export class FieldValueService {
     // Handle null/delete case
     if (typedInput === null) {
       await this.deleteValue({ entityId, fieldId })
-      await this.maybeUpdateDisplayName(entityId, field, null)
+      await this.maybeUpdateDisplayValue(entityId, field, null)
       return []
     }
 
@@ -105,8 +114,8 @@ export class FieldValueService {
       result = await this.setSingleValue(entityId, fieldId, field.type, typedInput)
     }
 
-    // 4. Update displayName if this is the primary display field
-    await this.maybeUpdateDisplayName(entityId, field, typedInput)
+    // 4. Update display value if this is a display field
+    await this.maybeUpdateDisplayValue(entityId, field, typedInput)
 
     return result
   }
@@ -134,14 +143,14 @@ export class FieldValueService {
 
     // If value is null, we're done (deletion)
     if (value === null) {
-      await this.maybeUpdateDisplayName(entityId, field, null)
+      await this.maybeUpdateDisplayValue(entityId, field, null)
       return []
     }
 
     // Handle array of values (multi-value fields)
     const values = Array.isArray(value) ? value : [value]
     if (values.length === 0) {
-      await this.maybeUpdateDisplayName(entityId, field, null)
+      await this.maybeUpdateDisplayValue(entityId, field, null)
       return []
     }
 
@@ -159,8 +168,8 @@ export class FieldValueService {
 
     const result = inserted.map((row) => this.rowToTypedValue(row as unknown as FieldValueRow, fieldType))
 
-    // Update displayName if this is the primary display field
-    await this.maybeUpdateDisplayName(entityId, field, value)
+    // Update display value if this is a display field
+    await this.maybeUpdateDisplayValue(entityId, field, value)
 
     return result
   }
@@ -242,6 +251,201 @@ export class FieldValueService {
           eq(schema.FieldValue.organizationId, this.organizationId)
         )
       )
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // HIGH-LEVEL WRITE OPERATIONS (with built-in field support)
+  // ─────────────────────────────────────────────────────────────
+
+  /**
+   * Set field value with built-in field support and optional event publishing.
+   * This is the main entry point for setting values (replaces CustomFieldService.setValue).
+   *
+   * @param params - Input parameters including entityId, fieldId, value, modelType
+   * @returns Result containing id and typed value
+   */
+  async setValueWithBuiltIn(params: SetValueWithBuiltInInput): Promise<SetValueResult> {
+    const { entityId, fieldId, value, modelType, publishEvents = true } = params
+
+    // 1. Check if built-in field
+    if (isBuiltInField(fieldId, modelType)) {
+      const handler = getBuiltInFieldHandler(fieldId, modelType)
+      if (!handler) {
+        throw new Error(`Built-in field ${fieldId} has no handler`)
+      }
+      await handler(this.db, entityId, value, this.organizationId)
+      return { value: null } // Built-in fields don't return FieldValue
+    }
+
+    // 2. Get field definition (cached)
+    const field = await this.getField(fieldId)
+
+    // 3. Convert raw value to typed input
+    const options = Array.isArray(field.options) ? (field.options as SelectOption[]) : undefined
+    const typedValue = convertToTypedInput(value, field.type, options)
+
+    // 4. Check uniqueness if applicable
+    if (field.isUnique && typedValue !== null) {
+      await checkUniqueValueTyped(
+        {
+          fieldId,
+          value: typedValue,
+          organizationId: this.organizationId,
+          modelType,
+          entityDefinitionId: field.entityDefinitionId,
+          excludeEntityId: entityId,
+        },
+        this.db
+      )
+    }
+
+    // 5. Get old value for event (only if publishing for contacts)
+    let oldValue: TypedFieldValue | TypedFieldValue[] | null = null
+    if (publishEvents && modelType === 'contact') {
+      oldValue = await this.getValue({ entityId, fieldId })
+    }
+
+    // 6. Set the value
+    const result = await this.setValueWithType({
+      entityId,
+      fieldId,
+      fieldType: field.type,
+      value: typedValue,
+    })
+
+    const resultValue = result.length > 0 ? result[0]! : null
+
+    // 7. Publish event for contacts
+    if (publishEvents && modelType === 'contact' && this.userId) {
+      await publisher.publishLater({
+        type: 'contact:field:updated',
+        data: {
+          contactId: entityId,
+          organizationId: this.organizationId,
+          userId: this.userId,
+          fieldId: field.id,
+          fieldName: field.name,
+          fieldType: field.type,
+          oldValue,
+          newValue: resultValue,
+        },
+      } as ContactFieldUpdatedEvent)
+    }
+
+    return {
+      id: result[0]?.id,
+      value: resultValue,
+    }
+  }
+
+  /**
+   * Set multiple field values for one entity efficiently.
+   * - Handles both built-in and custom fields
+   * - Prefetches field definitions to avoid N+1 queries
+   * Replaces CustomFieldService.setValues
+   *
+   * @param params - Input parameters including entityId, values array, modelType
+   * @returns Array of results for each field
+   */
+  async setValuesForEntity(params: SetValuesForEntityInput): Promise<SetValuesResult[]> {
+    const { entityId, values, modelType, publishEvents = true } = params
+
+    // Filter out undefined values
+    const validValues = values.filter((v) => v.value !== undefined)
+    if (validValues.length === 0) return []
+
+    // Separate built-in from custom fields
+    const builtIns: typeof validValues = []
+    const customs: typeof validValues = []
+
+    for (const v of validValues) {
+      if (isBuiltInField(v.fieldId, modelType)) {
+        builtIns.push(v)
+      } else {
+        customs.push(v)
+      }
+    }
+
+    const results: SetValuesResult[] = []
+
+    // Handle built-in fields
+    for (const v of builtIns) {
+      const handler = getBuiltInFieldHandler(v.fieldId, modelType)
+      if (handler) {
+        await handler(this.db, entityId, v.value, this.organizationId)
+      }
+      results.push({ fieldId: v.fieldId, value: null })
+    }
+
+    // Handle custom fields - batch prefetch all field definitions
+    if (customs.length > 0) {
+      // Prefetch all fields (fills cache)
+      await Promise.all(customs.map((v) => this.getField(v.fieldId).catch(() => null)))
+
+      // Now set each value (will use cached field definitions)
+      for (const v of customs) {
+        try {
+          const result = await this.setValueWithBuiltIn({
+            entityId,
+            fieldId: v.fieldId,
+            value: v.value,
+            modelType,
+            publishEvents,
+          })
+          results.push({ fieldId: v.fieldId, ...result })
+        } catch (error) {
+          // Log but continue with other fields
+          console.error(`Failed to set field ${v.fieldId}:`, error)
+          results.push({ fieldId: v.fieldId, value: null })
+        }
+      }
+    }
+
+    return results
+  }
+
+  /**
+   * Set same values for multiple entities.
+   * Uses Promise.allSettled for resilience.
+   * Replaces CustomFieldService.bulkSetValues
+   *
+   * @param params - Input parameters including entityIds, values array, modelType
+   * @returns Count of successfully updated entities
+   */
+  async setBulkValues(params: SetBulkValuesInput): Promise<{ count: number }> {
+    const { entityIds, values, modelType } = params
+
+    if (entityIds.length === 0 || values.length === 0) {
+      return { count: 0 }
+    }
+
+    // Filter out undefined values
+    const validValues = values.filter((v) => v.value !== undefined)
+    if (validValues.length === 0) {
+      return { count: 0 }
+    }
+
+    // Prefetch all field definitions once (outside the loop)
+    const customFieldIds = validValues
+      .filter((v) => !isBuiltInField(v.fieldId, modelType))
+      .map((v) => v.fieldId)
+    const uniqueFieldIds = [...new Set(customFieldIds)]
+    await Promise.all(uniqueFieldIds.map((id) => this.getField(id).catch(() => null)))
+
+    // Set values for all entities in parallel
+    const results = await Promise.allSettled(
+      entityIds.map((entityId) =>
+        this.setValuesForEntity({
+          entityId,
+          values: validValues,
+          modelType,
+          publishEvents: false, // Don't spam events for bulk operations
+        })
+      )
+    )
+
+    const count = results.filter((r) => r.status === 'fulfilled').length
+    return { count }
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -508,21 +712,33 @@ export class FieldValueService {
   }
 
   /**
-   * Update EntityInstance.displayName if field is primaryDisplayFieldId.
+   * Update EntityInstance display columns if field is a display field.
+   * Handles primary (displayName), secondary (secondaryDisplayValue), and avatar (avatarUrl).
    */
-  private async maybeUpdateDisplayName(
+  private async maybeUpdateDisplayValue(
     entityId: string,
     field: FieldWithDefinition,
     value: TypedFieldValueInput | TypedFieldValueInput[] | null
   ): Promise<void> {
     const entityDef = field.entityDefinition
-    if (!entityDef || entityDef.primaryDisplayFieldId !== field.id) {
-      return
+    if (!entityDef) return
+
+    // Check which display field this is (if any)
+    type DisplayColumn = 'displayName' | 'secondaryDisplayValue' | 'avatarUrl'
+    let column: DisplayColumn | null = null
+
+    if (entityDef.primaryDisplayFieldId === field.id) {
+      column = 'displayName'
+    } else if (entityDef.secondaryDisplayFieldId === field.id) {
+      column = 'secondaryDisplayValue'
+    } else if (entityDef.avatarFieldId === field.id) {
+      column = 'avatarUrl'
     }
 
-    // Convert TypedFieldValueInput to TypedFieldValue for getDisplayValue
-    // (getDisplayValue expects full TypedFieldValue with base fields)
-    let displayValue: TypedFieldValue | TypedFieldValue[] | null = null
+    if (!column) return
+
+    // Compute display value
+    let displayValue: string | null = null
     if (value) {
       const toTypedValue = (input: TypedFieldValueInput): TypedFieldValue => ({
         ...input,
@@ -534,18 +750,38 @@ export class FieldValueService {
         updatedAt: '',
       } as TypedFieldValue)
 
-      displayValue = Array.isArray(value)
+      const typedValue = Array.isArray(value)
         ? value.map(toTypedValue)
         : toTypedValue(value)
+
+      // For avatar fields, extract URL directly
+      if (column === 'avatarUrl') {
+        const singleValue = Array.isArray(typedValue) ? typedValue[0] : typedValue
+        if (singleValue) {
+          if (singleValue.type === 'text') {
+            displayValue = singleValue.value || null
+          } else if (singleValue.type === 'json') {
+            const json = singleValue.value as Record<string, unknown>
+            if (typeof json?.url === 'string') {
+              displayValue = json.url
+            }
+          }
+        }
+      } else {
+        displayValue = getDisplayValue(typedValue, field.options as SelectOption[] | undefined) || null
+      }
     }
 
-    const displayName = getDisplayValue(displayValue, field.options as SelectOption[] | undefined)
-
-    await updateEntityDisplayName({
-      entityId,
-      organizationId: this.organizationId,
-      displayName: displayName || null,
-    })
+    // Update the appropriate column
+    await this.db
+      .update(schema.EntityInstance)
+      .set({ [column]: displayValue })
+      .where(
+        and(
+          eq(schema.EntityInstance.id, entityId),
+          eq(schema.EntityInstance.organizationId, this.organizationId)
+        )
+      )
   }
 
   /**

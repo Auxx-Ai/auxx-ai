@@ -1,32 +1,31 @@
 // packages/lib/src/resources/crud/utils/custom-fields.ts
 
-import { CustomFieldService } from '../../../custom-fields'
-import { ModelTypes, type ModelType } from '@auxx/services/custom-fields'
+import { FieldValueService, type ModelType } from '../../../field-values'
 import type { CrudContext } from '../types'
 
 /**
- * Map resource type to CustomFieldService model type
+ * Map resource type to FieldValueService model type
  */
 function getModelType(resourceType: string): ModelType {
   switch (resourceType) {
     case 'contact':
-      return ModelTypes.CONTACT
+      return 'contact'
     case 'ticket':
-      return ModelTypes.TICKET
+      return 'ticket'
     case 'thread':
-      return ModelTypes.THREAD
+      return 'thread'
     default:
-      // Entity instances use ENTITY_INSTANCE
+      // Entity instances use 'entity'
       if (resourceType.startsWith('entity_')) {
-        return ModelTypes.ENTITY
+        return 'entity'
       }
-      return ModelTypes.CONTACT
+      return 'contact'
   }
 }
 
 /**
  * Set custom field values in batch for an entity.
- * Uses CustomFieldService.setValues() for efficiency.
+ * Uses FieldValueService.setValuesForEntity() for efficiency.
  */
 export async function setCustomFields(
   entityId: string,
@@ -40,10 +39,10 @@ export async function setCustomFields(
 
   if (entries.length === 0) return
 
-  const service = new CustomFieldService(ctx.organizationId, ctx.userId ?? '', ctx.db)
+  const service = new FieldValueService(ctx.organizationId, ctx.userId ?? '', ctx.db)
   const modelType = getModelType(resourceType)
 
-  await service.setValues({
+  await service.setValuesForEntity({
     entityId,
     values: entries.map(([fieldId, value]) => ({ fieldId, value })),
     modelType,

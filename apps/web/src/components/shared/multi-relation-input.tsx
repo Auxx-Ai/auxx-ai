@@ -74,7 +74,7 @@ export function MultiRelationInput({
 
   // Get hydrated items for selected IDs from the store
   const { items: selectedItems, isLoading: isLoadingSelected } = useRelationship(resourceId, value)
-
+  console.log('resourceId:', resourceId)
   // Search for items when popover is open
   const { data: searchResults, isLoading: isSearching } = api.resource.search.useQuery(
     {

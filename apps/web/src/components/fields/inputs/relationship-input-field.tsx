@@ -74,7 +74,7 @@ export function RelationshipInputField() {
     })
     return map
   }, [selectedIdsArray, hydratedSelectedItems])
-
+  console.log('RelationshipInputField resourceId:', resourceId)
   // Always fetch search results
   const { data: searchResults, isLoading } = api.resource.search.useQuery(
     { tableId: resourceId!, search, limit: 20 },

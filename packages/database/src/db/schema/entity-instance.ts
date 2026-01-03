@@ -54,6 +54,12 @@ export const EntityInstance = pgTable(
     /** Denormalized primary display field value for fast sorting/display */
     displayName: text(),
 
+    /** Denormalized secondary display field value (subtitle/description) */
+    secondaryDisplayValue: text(),
+
+    /** Denormalized avatar URL from avatarFieldId */
+    avatarUrl: text(),
+
     /** Combined searchable text from key fields (for full-text search) */
     searchText: text(),
 

@@ -2,8 +2,7 @@
 
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
-import { FieldValueService } from '@auxx/lib/field-values'
-import { CustomFieldService } from '@auxx/lib/custom-fields'
+import { FieldValueService, type ModelType } from '@auxx/lib/field-values'
 import { ModelTypes, ModelTypeValues } from '@auxx/types/custom-field'
 
 /** Zod schema for ModelType validation */
@@ -19,7 +18,7 @@ const typedValueInputSchema = z.object({
 
 /**
  * Field Value Router - handles all field value operations
- * Separated from customField router for single responsibility
+ * Uses FieldValueService directly for all operations
  */
 export const fieldValueRouter = createTRPCRouter({
   /**
@@ -33,12 +32,15 @@ export const fieldValueRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
-      const service = new CustomFieldService(
+      const service = new FieldValueService(
         ctx.session.organizationId,
         ctx.session.user.id,
         ctx.db
       )
-      return await service.getValues(input.entityId, input.modelType)
+      return await service.getValuesWithFields({
+        entityId: input.entityId,
+        modelType: input.modelType as ModelType,
+      })
     }),
 
   /**
@@ -54,16 +56,16 @@ export const fieldValueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const service = new CustomFieldService(
+      const service = new FieldValueService(
         ctx.session.organizationId,
         ctx.session.user.id,
         ctx.db
       )
-      return await service.setValue({
+      return await service.setValueWithBuiltIn({
         entityId: input.entityId,
         fieldId: input.fieldId,
         value: input.value ?? null,
-        modelType: input.modelType,
+        modelType: input.modelType as ModelType,
       })
     }),
 
@@ -84,18 +86,18 @@ export const fieldValueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const service = new CustomFieldService(
+      const service = new FieldValueService(
         ctx.session.organizationId,
         ctx.session.user.id,
         ctx.db
       )
-      return await service.setValues({
+      return await service.setValuesForEntity({
         entityId: input.entityId,
         values: input.values.map((v) => ({
           fieldId: v.fieldId,
           value: v.value ?? null,
         })),
-        modelType: input.modelType,
+        modelType: input.modelType as ModelType,
       })
     }),
 
@@ -116,18 +118,18 @@ export const fieldValueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const service = new CustomFieldService(
+      const service = new FieldValueService(
         ctx.session.organizationId,
         ctx.session.user.id,
         ctx.db
       )
-      return await service.bulkSetValues({
+      return await service.setBulkValues({
         entityIds: input.entityIds,
         values: input.values.map((v) => ({
           fieldId: v.fieldId,
           value: v.value ?? null,
         })),
-        modelType: input.modelType,
+        modelType: input.modelType as ModelType,
       })
     }),
 
@@ -143,16 +145,16 @@ export const fieldValueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const service = new CustomFieldService(
+      const service = new FieldValueService(
         ctx.session.organizationId,
         ctx.session.user.id,
         ctx.db
       )
-      return await service.deleteValue({
+      await service.deleteValue({
         entityId: input.entityId,
         fieldId: input.fieldId,
-        modelType: input.modelType,
       })
+      return { success: true }
     }),
 
   /**

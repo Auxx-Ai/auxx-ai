@@ -3,6 +3,13 @@
 import type { TypedFieldValue, TypedFieldValueInput } from '@auxx/types'
 
 // =============================================================================
+// MODEL TYPES
+// =============================================================================
+
+/** Model type for field values (matches ModelTypes from custom-fields) */
+export type ModelType = 'contact' | 'ticket' | 'thread' | 'entity'
+
+// =============================================================================
 // SERVICE INPUT TYPES
 // =============================================================================
 
@@ -16,6 +23,58 @@ export interface SetValueInput {
   fieldId: string
   /** Raw value - service will convert based on field type */
   value: unknown
+}
+
+/**
+ * Input for setValueWithBuiltIn - handles both built-in and custom fields.
+ * Replaces CustomFieldService.setValue
+ */
+export interface SetValueWithBuiltInInput {
+  entityId: string
+  fieldId: string
+  value: unknown
+  modelType: ModelType
+  /** Whether to publish events (default: true) */
+  publishEvents?: boolean
+}
+
+/**
+ * Input for setValuesForEntity - batch set multiple fields on one entity.
+ * Replaces CustomFieldService.setValues
+ */
+export interface SetValuesForEntityInput {
+  entityId: string
+  values: Array<{ fieldId: string; value: unknown }>
+  modelType: ModelType
+  /** Whether to publish events (default: true) */
+  publishEvents?: boolean
+}
+
+/**
+ * Input for setBulkValues - set same values on multiple entities.
+ * Replaces CustomFieldService.bulkSetValues
+ */
+export interface SetBulkValuesInput {
+  entityIds: string[]
+  values: Array<{ fieldId: string; value: unknown }>
+  modelType: ModelType
+}
+
+/**
+ * Result from setValueWithBuiltIn
+ */
+export interface SetValueResult {
+  id?: string
+  value: TypedFieldValue | null
+}
+
+/**
+ * Result from setValuesForEntity
+ */
+export interface SetValuesResult {
+  fieldId: string
+  id?: string
+  value: TypedFieldValue | null
 }
 
 /**

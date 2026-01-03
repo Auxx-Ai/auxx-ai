@@ -20,7 +20,7 @@ import {
 } from '../../../tickets/ticket-service'
 import { ThreadMutationService } from '../../../threads/thread-mutation.service'
 import { UnreadService } from '../../../threads/unread-service'
-import { CustomFieldService } from '@auxx/lib/custom-fields'
+import { FieldValueService, type ModelType as FieldModelType } from '@auxx/lib/field-values'
 import { ModelTypes, type ModelType } from '@auxx/database'
 import { database, type Database } from '@auxx/database'
 import { getCrudField, CRUD_RESOURCE_CONFIGS } from '../../../resources/crud-definitions'
@@ -1188,17 +1188,26 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
     customFieldData: Record<string, any>,
     modelType: ModelType
   ): Promise<void> {
-    const customFieldService = new CustomFieldService(organizationId, userId, database)
+    const fieldValueService = new FieldValueService(organizationId, userId, database)
+
+    // Map ModelType to FieldModelType
+    const fieldModelType: FieldModelType =
+      modelType === ModelTypes.CONTACT
+        ? 'contact'
+        : modelType === ModelTypes.TICKET
+          ? 'ticket'
+          : modelType === ModelTypes.THREAD
+            ? 'thread'
+            : 'entity'
 
     const promises = Object.entries(customFieldData)
       .map(([fieldId, value]) => {
         if (value === null || value === undefined || value === '') return null
-        console.log(`Setting custom field ${fieldId} to value:`, value)
-        return customFieldService.setValue({
+        return fieldValueService.setValueWithBuiltIn({
           entityId,
           fieldId,
           value,
-          modelType,
+          modelType: fieldModelType,
         })
       })
       .filter(Boolean)

@@ -219,3 +219,62 @@ export function getDisplayValue(
       return typedValue.displayName ?? typedValue.relatedEntityId
   }
 }
+
+// =============================================================================
+// RAW ROW CONVERSION (for use with FieldValue table rows)
+// =============================================================================
+
+/**
+ * FieldValue row structure from database (matches FieldValue schema).
+ */
+export interface FieldValueRow {
+  id: string
+  entityId: string
+  fieldId: string
+  valueText: string | null
+  valueNumber: number | null
+  valueBoolean: boolean | null
+  valueDate: string | null
+  valueJson: unknown
+  optionId: string | null
+  relatedEntityId: string | null
+  sortKey: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+/**
+ * Convert a raw FieldValue row to TypedFieldValue.
+ * Used when loading from database relations (e.g., EntityInstance.typedValues).
+ */
+export function rowToTypedValue(row: FieldValueRow, fieldType: string): TypedFieldValue {
+  const base = {
+    id: row.id,
+    entityId: row.entityId,
+    fieldId: row.fieldId,
+    sortKey: row.sortKey,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  }
+
+  const valueType = getValueType(fieldType)
+
+  switch (valueType) {
+    case 'text':
+      return { ...base, type: 'text', value: row.valueText ?? '' }
+    case 'number':
+      return { ...base, type: 'number', value: row.valueNumber ?? 0 }
+    case 'boolean':
+      return { ...base, type: 'boolean', value: row.valueBoolean ?? false }
+    case 'date':
+      return { ...base, type: 'date', value: row.valueDate ?? '' }
+    case 'json':
+      return { ...base, type: 'json', value: (row.valueJson as Record<string, unknown>) ?? {} }
+    case 'option':
+      return { ...base, type: 'option', optionId: row.optionId ?? '' }
+    case 'relationship':
+      return { ...base, type: 'relationship', relatedEntityId: row.relatedEntityId ?? '' }
+    default:
+      return { ...base, type: 'text', value: row.valueText ?? '' }
+  }
+}

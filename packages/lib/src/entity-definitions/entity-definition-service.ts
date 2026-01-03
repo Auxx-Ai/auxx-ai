@@ -9,6 +9,7 @@ import {
   updateEntityDefinition,
   deleteEntityDefinition,
 } from '@auxx/services/entity-definitions'
+import { DisplayFieldService, type DisplayFieldType } from '../field-values'
 import type { CreateEntityDefinitionInput, UpdateEntityDefinitionInput } from './types'
 
 /**
@@ -101,16 +102,58 @@ export class EntityDefinitionService {
   }
 
   /**
-   * Update an entity definition
-   * Only allows updating: icon, singular, plural, archivedAt
+   * Update an entity definition.
+   * Triggers display field recalculation if display field pointers change.
    */
   async update(id: string, input: UpdateEntityDefinitionInput) {
+    // 1. Get existing to detect display field changes
+    const existingResult = await getEntityDefinition({
+      id,
+      organizationId: this.organizationId,
+    })
+
+    if (existingResult.isErr()) {
+      throw new Error(existingResult.error.message)
+    }
+
+    const existing = existingResult.value
+
+    // 2. Perform the update
     const result = await updateEntityDefinition({
       id,
       organizationId: this.organizationId,
       data: input,
     })
-    return unwrapResult(result)
+
+    if (result.isErr()) {
+      throw new Error(result.error.message)
+    }
+
+    // 3. Check which display fields changed
+    const changedDisplayFields: DisplayFieldType[] = []
+
+    if ('primaryDisplayFieldId' in input && input.primaryDisplayFieldId !== existing.primaryDisplayFieldId) {
+      changedDisplayFields.push('primary')
+    }
+    if ('secondaryDisplayFieldId' in input && input.secondaryDisplayFieldId !== existing.secondaryDisplayFieldId) {
+      changedDisplayFields.push('secondary')
+    }
+    if ('avatarFieldId' in input && input.avatarFieldId !== existing.avatarFieldId) {
+      changedDisplayFields.push('avatar')
+    }
+
+    // 4. Trigger recalculation if any changed
+    if (changedDisplayFields.length > 0) {
+      try {
+        const displayFieldService = new DisplayFieldService(this.organizationId)
+        await displayFieldService.recalculateDisplayFields(id, changedDisplayFields)
+      } catch (error) {
+        // Log error but don't fail the update
+        console.error('Failed to recalculate display fields:', error)
+      }
+    }
+
+    return result.value
   }
 
   /**
