@@ -6,9 +6,11 @@ import {
   useCustomFieldValueStore,
   buildValueKey,
   type ResourceType,
+  type StoredFieldValue,
 } from '~/stores/custom-field-value-store'
 import { toastError } from '@auxx/ui/components/toast'
 import type { ModelType } from '@auxx/types/custom-field'
+import { extractValue } from '@auxx/types/field-value'
 
 interface UseSaveFieldValueOptions {
   resourceType: ResourceType
@@ -38,25 +40,53 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
   const bulkMutation = api.customField.bulkSetValues.useMutation()
 
   /**
+   * Extract raw value from TypedFieldValue for API calls.
+   * The API accepts raw values and handles conversion internally.
+   * Also handles raw values passed directly (returns them as-is).
+   */
+  const getRawValue = (value: StoredFieldValue | unknown): unknown => {
+    if (value === null || value === undefined) return null
+
+    // Handle TypedFieldValue array
+    if (Array.isArray(value)) {
+      // Check if it's an array of TypedFieldValue objects
+      if (value.length > 0 && typeof value[0] === 'object' && value[0] !== null && 'type' in value[0]) {
+        return value.map((v) => extractValue(v))
+      }
+      // Already an array of raw values
+      return value
+    }
+
+    // Handle single TypedFieldValue
+    if (typeof value === 'object' && value !== null && 'type' in value) {
+      return extractValue(value)
+    }
+
+    // Already a raw value (string, number, boolean, etc.)
+    return value
+  }
+
+  /**
    * Save a field value with optimistic update.
    * Returns immediately after updating store - mutation runs in background.
    * @param resourceId - The resource ID (entity/contact/ticket ID)
    * @param fieldId - The custom field ID
-   * @param value - The value to save
+   * @param value - The value to save (raw value or TypedFieldValue)
    */
   const saveValue = useCallback(
-    (resourceId: string, fieldId: string, value: unknown): void => {
+    (resourceId: string, fieldId: string, value: StoredFieldValue | unknown): void => {
       const key = buildValueKey(resourceType, resourceId, fieldId, entityDefId)
 
-      // 1. Optimistic update to store (table sees it immediately)
+      // 1. Optimistic update to store with typed value
       setValueOptimistic(key, value)
 
-      // 2. Fire mutation in background
+      // 2. Fire mutation in background with raw value (API handles conversion)
+      const rawValue = getRawValue(value)
       mutation.mutate(
         {
           entityId: resourceId,
           fieldId,
-          value: value === null ? null : { data: value },
+          value: rawValue,
           modelType,
         },
         {
@@ -90,10 +120,10 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
    * Save using the default resourceId from options.
    * Convenience method for single-resource contexts (e.g., contact drawer).
    * @param fieldId - The custom field ID
-   * @param value - The value to save
+   * @param value - The value to save (raw value or TypedFieldValue)
    */
   const saveFieldValue = useCallback(
-    (fieldId: string, value: unknown): void => {
+    (fieldId: string, value: StoredFieldValue | unknown): void => {
       if (!defaultResourceId) {
         console.error('saveFieldValue called without resourceId - use saveValue instead')
         return
@@ -108,19 +138,20 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
    * Use when you need to know the result (e.g., getting the valueId).
    * @param resourceId - The resource ID (entity/contact/ticket ID)
    * @param fieldId - The custom field ID
-   * @param value - The value to save
+   * @param value - The value to save (raw value or TypedFieldValue)
    */
   const saveValueAsync = useCallback(
-    async (resourceId: string, fieldId: string, value: unknown): Promise<{ id?: string } | undefined> => {
+    async (resourceId: string, fieldId: string, value: StoredFieldValue | unknown): Promise<{ id?: string } | undefined> => {
       const key = buildValueKey(resourceType, resourceId, fieldId, entityDefId)
 
       setValueOptimistic(key, value)
 
       try {
+        const rawValue = getRawValue(value)
         const result = await mutation.mutateAsync({
           entityId: resourceId,
           fieldId,
-          value: value === null ? null : { data: value },
+          value: rawValue,
           modelType,
         })
 
@@ -153,10 +184,10 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
    * Async version using the default resourceId from options.
    * Convenience method for single-resource contexts.
    * @param fieldId - The custom field ID
-   * @param value - The value to save
+   * @param value - The value to save (raw value or TypedFieldValue)
    */
   const saveFieldValueAsync = useCallback(
-    async (fieldId: string, value: unknown): Promise<{ id?: string } | undefined> => {
+    async (fieldId: string, value: StoredFieldValue | unknown): Promise<{ id?: string } | undefined> => {
       if (!defaultResourceId) {
         console.error('saveFieldValueAsync called without resourceId - use saveValueAsync instead')
         return undefined
@@ -171,10 +202,10 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
    * Applies optimistic updates to all resources, then fires one bulk mutation.
    * @param resourceIds - Array of resource IDs to update
    * @param fieldId - The field ID to update
-   * @param value - The value to set for all resources
+   * @param value - The value to set for all resources (raw value or TypedFieldValue)
    */
   const saveBulkValues = useCallback(
-    (resourceIds: string[], fieldId: string, value: unknown): void => {
+    (resourceIds: string[], fieldId: string, value: StoredFieldValue | unknown): void => {
       const keys = resourceIds.map((id) => buildValueKey(resourceType, id, fieldId, entityDefId))
 
       // Apply optimistic updates to all
@@ -182,11 +213,12 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
         setValueOptimistic(key, value)
       }
 
-      // Fire single bulk mutation
+      // Fire single bulk mutation with raw value
+      const rawValue = getRawValue(value)
       bulkMutation.mutate(
         {
           entityIds: resourceIds,
-          values: [{ fieldId, value: value === null ? null : { data: value } }],
+          values: [{ fieldId, value: rawValue }],
           modelType,
         },
         {

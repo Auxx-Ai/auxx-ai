@@ -9,9 +9,9 @@ import {
   PropertyProvider,
   usePropertyContext,
   type StoreConfig,
-} from '~/components/contacts/drawer/property-provider'
-import { useFieldPopoverHandlers } from '~/components/contacts/drawer/use-field-popover-handlers'
-import { getInputComponentForFieldType } from '~/components/contacts/input/get-input-component'
+} from '~/components/fields/property-provider'
+import { useFieldPopoverHandlers } from '~/components/fields/use-field-popover-handlers'
+import { getInputComponentForFieldType } from '~/components/fields/inputs/get-input-component'
 import { getFieldTypeMinWidth, getFieldTypeMaxWidth } from '@auxx/lib/custom-fields/types'
 
 interface CellFieldEditorProps {

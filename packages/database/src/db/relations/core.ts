@@ -38,6 +38,7 @@ import {
   EntityDefinition,
   EntityInstance,
   Event,
+  FieldValue,
   ExternalKnowledgeSource,
   File,
   Folder,
@@ -720,6 +721,8 @@ export const customFieldRelations = relations(CustomField, ({ one, many }) => ({
     references: [EntityDefinition.id],
   }),
   fieldValues: many(CustomFieldValue),
+  // New typed field values (FieldValue table)
+  typedFieldValues: many(FieldValue),
 }))
 
 export const customFieldValueRelations = relations(CustomFieldValue, ({ one }) => ({
@@ -731,6 +734,27 @@ export const customFieldValueRelations = relations(CustomFieldValue, ({ one }) =
   // entityId is polymorphic but this enables the EntityInstance.values relation
   entityInstance: one(EntityInstance, {
     fields: [CustomFieldValue.entityId],
+    references: [EntityInstance.id],
+  }),
+}))
+
+/**
+ * FieldValue relations - typed field value storage
+ * This is the new storage format replacing CustomFieldValue JSONB
+ */
+export const fieldValueRelations = relations(FieldValue, ({ one }) => ({
+  field: one(CustomField, {
+    fields: [FieldValue.fieldId],
+    references: [CustomField.id],
+  }),
+  organization: one(Organization, {
+    fields: [FieldValue.organizationId],
+    references: [Organization.id],
+  }),
+  // entityId is polymorphic (Contact, Ticket, EntityInstance, etc.)
+  // We define explicit relation to EntityInstance for custom entities
+  entityInstance: one(EntityInstance, {
+    fields: [FieldValue.entityId],
     references: [EntityInstance.id],
   }),
 }))
@@ -773,8 +797,10 @@ export const entityInstanceRelations = relations(EntityInstance, ({ one, many })
     fields: [EntityInstance.createdById],
     references: [User.id],
   }),
-  // Custom field values for this instance
+  // Custom field values for this instance (legacy JSONB)
   values: many(CustomFieldValue),
+  // New typed field values
+  typedValues: many(FieldValue),
 }))
 
 export const tableViewRelations = relations(TableView, ({ one }) => ({

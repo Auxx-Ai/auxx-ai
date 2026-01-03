@@ -6,6 +6,7 @@ import { schema } from '@auxx/database'
 import type { ResourceField, EnumValue } from '../../resources/registry/field-types'
 import { BaseType } from '../core/types'
 import { BaseConditionBuilder, type GenericCondition } from './base-condition-builder'
+import { getValueType } from '@auxx/types'
 
 const logger = createScopedLogger('entity-condition-builder')
 
@@ -21,8 +22,8 @@ export interface EntityQueryContext {
 
 /**
  * Condition builder for custom entity instances
- * Queries against CustomFieldValue table using EXISTS subqueries
- * (EntityInstance has no fieldValues column - values are in separate CustomFieldValue table)
+ * Queries against FieldValue table using EXISTS subqueries with typed columns
+ * (EntityInstance has no fieldValues column - values are in separate FieldValue table)
  */
 export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryContext> {
   // ─────────────────────────────────────────────────────────────────
@@ -51,7 +52,9 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
     }
 
     const fieldType = this.baseTypeToQueryType(field.type)
-    return this.buildJsonOperatorSql(condition.operator, fieldIdForSql, rawValue, fieldType, context)
+    // Get the database field type to determine which typed column to use
+    const dbFieldType = field.dbFieldType || 'TEXT'
+    return this.buildTypedConditionSql(condition.operator, fieldIdForSql, rawValue, fieldType, dbFieldType, context)
   }
 
   buildOrderBySql(
@@ -71,12 +74,17 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
     // Keep outer table as Drizzle column reference for correct alias resolution
     const outerTableId = context.outerTable.id
 
-    // Build subquery using raw SQL strings for CustomFieldValue references
+    // Determine which typed column to use based on field type
+    const dbFieldType = fieldDef.dbFieldType || 'TEXT'
+    const valueColumn = this.getTypedColumnName(dbFieldType)
+
+    // Build subquery using FieldValue typed column
     const valueSubquery = sql`(
-      SELECT "CustomFieldValue"."value"->>'data'
-      FROM "CustomFieldValue"
-      WHERE "CustomFieldValue"."entityId" = ${outerTableId}
-        AND "CustomFieldValue"."fieldId" = ${fieldIdForSql}
+      SELECT "FieldValue".${sql.raw(`"${valueColumn}"`)}
+      FROM "FieldValue"
+      WHERE "FieldValue"."entityId" = ${outerTableId}
+        AND "FieldValue"."fieldId" = ${fieldIdForSql}
+      ORDER BY "FieldValue"."sortKey" ASC
       LIMIT 1
     )`
 
@@ -104,24 +112,47 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
   // ─────────────────────────────────────────────────────────────────
 
   /**
-   * Build SQL for entity field conditions using EXISTS subquery against CustomFieldValue table
-   * EntityInstance has no fieldValues column - values are stored in separate CustomFieldValue table
-   *
-   * IMPORTANT: We use raw SQL strings for CustomFieldValue references to prevent Drizzle
-   * from applying the outer query's table alias to them. Only the outer table ID uses
-   * a Drizzle column reference so it gets the correct alias ("EntityInstance").
+   * Get the FieldValue column name for a database field type.
+   */
+  private getTypedColumnName(dbFieldType: string): string {
+    const valueType = getValueType(dbFieldType)
+    switch (valueType) {
+      case 'text':
+        return 'valueText'
+      case 'number':
+        return 'valueNumber'
+      case 'boolean':
+        return 'valueBoolean'
+      case 'date':
+        return 'valueDate'
+      case 'json':
+        return 'valueJson'
+      case 'option':
+        return 'optionId'
+      case 'relationship':
+        return 'relatedEntityId'
+      default:
+        return 'valueText'
+    }
+  }
+
+  /**
+   * Build SQL for entity field conditions using EXISTS subquery against FieldValue table
+   * EntityInstance has no fieldValues column - values are stored in separate FieldValue table
    *
    * @param operator - The condition operator (e.g., 'is', 'contains')
    * @param fieldId - The database field ID (already resolved from field.key to field.id)
    * @param rawValue - The value to compare against
    * @param fieldType - The field type for type-specific handling
+   * @param dbFieldType - The database field type (e.g., 'TEXT', 'NUMBER')
    * @param context - Query context with outer table reference
    */
-  private buildJsonOperatorSql(
+  private buildTypedConditionSql(
     operator: string,
     fieldId: string,
-    rawValue: any,
+    rawValue: unknown,
     fieldType: string,
+    dbFieldType: string,
     context: EntityQueryContext
   ): SQL<unknown> | undefined {
     // Keep outer table as Drizzle column reference for correct alias resolution
@@ -130,36 +161,35 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
     // Handle 'not exists' specially - check that NO row exists for this field
     if (operator === 'not exists') {
       return sql`NOT EXISTS (
-        SELECT 1 FROM "CustomFieldValue"
-        WHERE "CustomFieldValue"."entityId" = ${outerTableId}
-          AND "CustomFieldValue"."fieldId" = ${fieldId}
+        SELECT 1 FROM "FieldValue"
+        WHERE "FieldValue"."entityId" = ${outerTableId}
+          AND "FieldValue"."fieldId" = ${fieldId}
       )`
     }
 
-    // Build value condition for other operators (uses raw SQL for CustomFieldValue)
-    const valueCondition = this.buildValueCondition(operator, rawValue)
+    // Build value condition for other operators
+    const valueCondition = this.buildTypedValueCondition(operator, rawValue, dbFieldType)
     if (!valueCondition) return undefined
 
-    // Build EXISTS subquery - use raw SQL strings for CustomFieldValue table/columns
+    // Build EXISTS subquery
     return sql`EXISTS (
-      SELECT 1 FROM "CustomFieldValue"
-      WHERE "CustomFieldValue"."entityId" = ${outerTableId}
-        AND "CustomFieldValue"."fieldId" = ${fieldId}
+      SELECT 1 FROM "FieldValue"
+      WHERE "FieldValue"."entityId" = ${outerTableId}
+        AND "FieldValue"."fieldId" = ${fieldId}
         AND ${valueCondition}
     )`
   }
 
   /**
-   * Build value condition for CustomFieldValue.value JSONB column
-   * Values are stored as {"data": "actual_value"}
-   *
-   * IMPORTANT: Uses raw SQL strings for CustomFieldValue.value to prevent Drizzle
-   * from applying the outer query's table alias.
+   * Build value condition for FieldValue typed columns.
    */
-  private buildValueCondition(operator: string, rawValue: any): SQL<unknown> | undefined {
-    // Use raw SQL for value column to prevent Drizzle alias resolution
-    const valueData = sql.raw(`"CustomFieldValue"."value"->>'data'`)
-    const valueCol = sql.raw(`"CustomFieldValue"."value"`)
+  private buildTypedValueCondition(
+    operator: string,
+    rawValue: unknown,
+    dbFieldType: string
+  ): SQL<unknown> | undefined {
+    const columnName = this.getTypedColumnName(dbFieldType)
+    const valueCol = sql.raw(`"FieldValue"."${columnName}"`)
 
     switch (operator) {
       // ===== EQUALITY =====
@@ -167,89 +197,139 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
         if (rawValue === null || rawValue === undefined) {
           return sql`${valueCol} IS NULL`
         }
-        return sql`${valueData} = ${String(rawValue)}`
+        return this.buildTypedEquality(valueCol, rawValue, dbFieldType)
       }
 
       case 'is not': {
         if (rawValue === null || rawValue === undefined) {
           return sql`${valueCol} IS NOT NULL`
         }
-        return sql`${valueData} != ${String(rawValue)}`
+        return this.buildTypedInequality(valueCol, rawValue, dbFieldType)
       }
 
-      // ===== STRING =====
+      // ===== STRING (text columns only) =====
       case 'contains': {
-        return sql`${valueData} ILIKE ${'%' + String(rawValue ?? '') + '%'}`
+        return sql`${valueCol}::text ILIKE ${'%' + String(rawValue ?? '') + '%'}`
       }
 
       case 'not contains': {
-        return sql`${valueData} NOT ILIKE ${'%' + String(rawValue ?? '') + '%'}`
+        return sql`${valueCol}::text NOT ILIKE ${'%' + String(rawValue ?? '') + '%'}`
       }
 
       case 'starts with': {
-        return sql`${valueData} ILIKE ${String(rawValue ?? '') + '%'}`
+        return sql`${valueCol}::text ILIKE ${String(rawValue ?? '') + '%'}`
       }
 
       case 'ends with': {
-        return sql`${valueData} ILIKE ${'%' + String(rawValue ?? '')}`
+        return sql`${valueCol}::text ILIKE ${'%' + String(rawValue ?? '')}`
       }
 
-      // ===== COMPARISON (with numeric cast) =====
+      // ===== COMPARISON (numeric columns) =====
       case '>': {
-        return sql`(${valueData})::numeric > ${Number(rawValue)}`
+        const numCol = sql.raw(`"FieldValue"."valueNumber"`)
+        return sql`${numCol} > ${Number(rawValue)}`
       }
 
       case '<': {
-        return sql`(${valueData})::numeric < ${Number(rawValue)}`
+        const numCol = sql.raw(`"FieldValue"."valueNumber"`)
+        return sql`${numCol} < ${Number(rawValue)}`
       }
 
       case '>=': {
-        return sql`(${valueData})::numeric >= ${Number(rawValue)}`
+        const numCol = sql.raw(`"FieldValue"."valueNumber"`)
+        return sql`${numCol} >= ${Number(rawValue)}`
       }
 
       case '<=': {
-        return sql`(${valueData})::numeric <= ${Number(rawValue)}`
+        const numCol = sql.raw(`"FieldValue"."valueNumber"`)
+        return sql`${numCol} <= ${Number(rawValue)}`
       }
 
       // ===== SET =====
       case 'in': {
         const values = Array.isArray(rawValue) ? rawValue : [rawValue]
         if (!values.length) return undefined
-        const conditions = values.map((v) => sql`${valueData} = ${String(v)}`)
-        return conditions.length === 1 ? conditions[0] : sql`(${sql.join(conditions, sql` OR `)})`
+        const conditions = values.map((v) => this.buildTypedEquality(valueCol, v, dbFieldType))
+        return conditions.length === 1
+          ? conditions[0]
+          : sql`(${sql.join(conditions.filter(Boolean) as SQL[], sql` OR `)})`
       }
 
       case 'not in': {
         const values = Array.isArray(rawValue) ? rawValue : [rawValue]
         if (!values.length) return undefined
-        const conditions = values.map((v) => sql`${valueData} != ${String(v)}`)
-        return conditions.length === 1 ? conditions[0] : sql`(${sql.join(conditions, sql` AND `)})`
+        const conditions = values.map((v) => this.buildTypedInequality(valueCol, v, dbFieldType))
+        return conditions.length === 1
+          ? conditions[0]
+          : sql`(${sql.join(conditions.filter(Boolean) as SQL[], sql` AND `)})`
       }
 
       // ===== EXISTENCE =====
       case 'exists': {
-        // EXISTS subquery already checks for row existence
         return sql`true`
       }
 
       case 'not exists': {
-        // Return undefined to skip the EXISTS clause - handled specially
         return undefined
       }
 
       case 'empty': {
-        return sql`(${valueData} IS NULL OR ${valueData} = '')`
+        return sql`(${valueCol} IS NULL OR ${valueCol}::text = '')`
       }
 
       case 'not empty': {
-        return sql`(${valueData} IS NOT NULL AND ${valueData} != '')`
+        return sql`(${valueCol} IS NOT NULL AND ${valueCol}::text != '')`
       }
 
       default: {
         logger.warn(`Unknown operator '${operator}' for entity field value condition`)
         if (rawValue === null || rawValue === undefined) return undefined
-        return sql`${valueData} = ${String(rawValue)}`
+        return this.buildTypedEquality(valueCol, rawValue, dbFieldType)
       }
+    }
+  }
+
+  /**
+   * Build typed equality condition based on value type.
+   */
+  private buildTypedEquality(
+    valueCol: ReturnType<typeof sql.raw>,
+    rawValue: unknown,
+    dbFieldType: string
+  ): SQL<unknown> {
+    const valueType = getValueType(dbFieldType)
+
+    switch (valueType) {
+      case 'number':
+        return sql`${valueCol} = ${Number(rawValue)}`
+      case 'boolean':
+        return sql`${valueCol} = ${Boolean(rawValue)}`
+      case 'date':
+        return sql`${valueCol} = ${String(rawValue)}`
+      default:
+        return sql`${valueCol} = ${String(rawValue)}`
+    }
+  }
+
+  /**
+   * Build typed inequality condition based on value type.
+   */
+  private buildTypedInequality(
+    valueCol: ReturnType<typeof sql.raw>,
+    rawValue: unknown,
+    dbFieldType: string
+  ): SQL<unknown> {
+    const valueType = getValueType(dbFieldType)
+
+    switch (valueType) {
+      case 'number':
+        return sql`${valueCol} != ${Number(rawValue)}`
+      case 'boolean':
+        return sql`${valueCol} != ${Boolean(rawValue)}`
+      case 'date':
+        return sql`${valueCol} != ${String(rawValue)}`
+      default:
+        return sql`${valueCol} != ${String(rawValue)}`
     }
   }
 }

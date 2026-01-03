@@ -1,26 +1,31 @@
 // packages/lib/src/import/resolution/resolve-relation-lookups.ts
 
-import { eq, and, sql, isNull, inArray, type SQL } from 'drizzle-orm'
+import { eq, and, sql, isNull, inArray, ilike, type SQL } from 'drizzle-orm'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { ResourceRegistryService } from '../../resources/registry/resource-registry-service'
 import type { Resource, SystemResource, CustomResource } from '../../resources/registry/types'
 import { BaseType } from '../../resources/types'
+import { getValueType } from '@auxx/types'
 
 const logger = createScopedLogger('resolve-relation-lookups')
 
-/** Field types that support scalar matching (->>'data') */
-const SCALAR_FIELD_TYPES = [
+/** Field types that support text matching */
+const TEXT_FIELD_TYPES = [
   BaseType.STRING,
-  BaseType.NUMBER,
   BaseType.EMAIL,
   BaseType.URL,
-  BaseType.ENUM,
   BaseType.PHONE,
 ]
 
-/** Field types that support array contains matching (?|) */
+/** Field types that support numeric matching */
+const NUMERIC_FIELD_TYPES = [BaseType.NUMBER]
+
+/** Field types that use option matching */
+const ENUM_FIELD_TYPES = [BaseType.ENUM]
+
+/** Field types that support array contains matching */
 const ARRAY_FIELD_TYPES = [BaseType.TAGS, BaseType.ARRAY]
 
 /** Pending relation lookup extracted from resolution */
@@ -233,7 +238,7 @@ async function querySystemResource(
 /**
  * Query custom entity instances.
  * Uses entityDefinitionId and field.id from already-cached resource data.
- * Handles different field types with appropriate JSONB queries.
+ * Handles different field types with typed FieldValue column queries.
  */
 async function queryCustomEntity(
   db: Database,
@@ -266,26 +271,28 @@ async function queryCustomEntity(
     return []
   }
 
-  // Build type-appropriate query condition
+  // Build type-appropriate query condition using FieldValue typed columns
   let matchCondition: SQL<unknown>
+  let valueColumn: string
 
-  if (SCALAR_FIELD_TYPES.includes(field.type)) {
-    // Scalar types: extract ->>'data' and compare (case-insensitive for text types)
-    if (
-      field.type === BaseType.STRING ||
-      field.type === BaseType.EMAIL ||
-      field.type === BaseType.URL ||
-      field.type === BaseType.PHONE
-    ) {
-      matchCondition = sql`LOWER(${schema.CustomFieldValue.value}->>'data') = ANY(${searchValues})`
-    } else {
-      // NUMBER, ENUM - exact match
-      matchCondition = sql`${schema.CustomFieldValue.value}->>'data' = ANY(${searchValues})`
-    }
+  if (TEXT_FIELD_TYPES.includes(field.type)) {
+    // Text types: case-insensitive match on valueText
+    valueColumn = 'valueText'
+    matchCondition = sql`LOWER(${schema.FieldValue.valueText}) = ANY(${searchValues})`
+  } else if (NUMERIC_FIELD_TYPES.includes(field.type)) {
+    // Numeric types: match on valueNumber
+    valueColumn = 'valueNumber'
+    const numericValues = searchValues.map((v) => parseFloat(v)).filter((n) => !isNaN(n))
+    if (numericValues.length === 0) return []
+    matchCondition = inArray(schema.FieldValue.valueNumber, numericValues)
+  } else if (ENUM_FIELD_TYPES.includes(field.type)) {
+    // Enum/select types: match on optionId
+    valueColumn = 'optionId'
+    matchCondition = sql`LOWER(${schema.FieldValue.optionId}) = ANY(${searchValues})`
   } else if (ARRAY_FIELD_TYPES.includes(field.type)) {
-    // Array types: check if array contains any of the search values
-    // ?| operator: does the array contain ANY of these values?
-    matchCondition = sql`${schema.CustomFieldValue.value}->'data' ?| ${searchValues}`
+    // Array/tags types: match on optionId (stored as multiple rows)
+    valueColumn = 'optionId'
+    matchCondition = sql`LOWER(${schema.FieldValue.optionId}) = ANY(${searchValues})`
   } else {
     // Unsupported field types (ADDRESS, OBJECT, etc.)
     logger.warn('Unsupported field type for relation matching', {
@@ -296,24 +303,37 @@ async function queryCustomEntity(
     return []
   }
 
-  // Query with type-appropriate condition - filtering happens in DB
-  // Note: CustomFieldValue.entityId links to EntityInstance.id
+  // Query with type-appropriate condition using FieldValue typed columns
   const results = await db
     .select({
-      entityId: schema.CustomFieldValue.entityId,
-      value: schema.CustomFieldValue.value,
+      entityId: schema.FieldValue.entityId,
+      valueText: schema.FieldValue.valueText,
+      valueNumber: schema.FieldValue.valueNumber,
+      optionId: schema.FieldValue.optionId,
     })
-    .from(schema.CustomFieldValue)
+    .from(schema.FieldValue)
     .innerJoin(
       schema.EntityInstance,
-      and(eq(schema.CustomFieldValue.entityId, schema.EntityInstance.id), isNull(schema.EntityInstance.archivedAt))
+      and(eq(schema.FieldValue.entityId, schema.EntityInstance.id), isNull(schema.EntityInstance.archivedAt))
     )
-    .where(and(eq(schema.CustomFieldValue.fieldId, field.id), matchCondition))
+    .where(and(eq(schema.FieldValue.fieldId, field.id), matchCondition))
 
-  return results.map((r) => ({
-    id: r.entityId,
-    [matchField]: (r.value as { data?: unknown })?.data,
-  }))
+  return results.map((r) => {
+    // Extract the appropriate value based on column type
+    let value: unknown
+    if (valueColumn === 'valueText') {
+      value = r.valueText
+    } else if (valueColumn === 'valueNumber') {
+      value = r.valueNumber
+    } else if (valueColumn === 'optionId') {
+      value = r.optionId
+    }
+
+    return {
+      id: r.entityId,
+      [matchField]: value,
+    }
+  })
 }
 
 /**

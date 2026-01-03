@@ -7,6 +7,7 @@ import {
   buildValueKey,
   parseValueKey,
   type ResourceType,
+  type StoredFieldValue,
 } from '~/stores/custom-field-value-store'
 import type { VisibilityState } from '@tanstack/react-table'
 import { generateId } from '@auxx/lib/utils'
@@ -38,8 +39,8 @@ interface SyncerResult {
   /** Whether a fetch is currently in progress */
   isFetching: boolean
 
-  /** Get a value from the store */
-  getValue: (rowId: string, fieldId: string) => unknown | undefined
+  /** Get a value from the store (returns TypedFieldValue | TypedFieldValue[] | null) */
+  getValue: (rowId: string, fieldId: string) => StoredFieldValue | undefined
 
   /** Check if a value is currently loading */
   isValueLoading: (rowId: string, fieldId: string) => boolean
@@ -144,18 +145,11 @@ export function useCustomFieldValueSyncer(
           fieldIds: Array.from(fieldIds),
         })
 
-        // Update store with fetched values (unwrap {data: ...} wrapper if present)
-        const entries = data.values.map((v) => {
-          // Database stores values wrapped in {data: actualValue}, unwrap for consistency
-          const rawValue =
-            v.value && typeof v.value === 'object' && 'data' in (v.value as object)
-              ? (v.value as { data: unknown }).data
-              : v.value
-          return {
-            key: buildValueKey(resourceType, v.resourceId, v.fieldId, entityDefId),
-            value: rawValue,
-          }
-        })
+        // Update store with fetched TypedFieldValues directly
+        const entries = data.values.map((v) => ({
+          key: buildValueKey(resourceType, v.resourceId, v.fieldId, entityDefId),
+          value: v.value,
+        }))
         setValues(entries)
       } catch (error) {
         console.error('Failed to fetch custom field values:', error)
@@ -187,7 +181,7 @@ export function useCustomFieldValueSyncer(
   // Get value accessor - STABLE function that reads from ref
   // This prevents column recreation when values change, improving performance
   const getValue = useCallback(
-    (rowId: string, fieldId: string): unknown | undefined => {
+    (rowId: string, fieldId: string): StoredFieldValue | undefined => {
       const key = buildValueKey(resourceType, rowId, fieldId, entityDefId)
       return valuesRef.current[key]
     },

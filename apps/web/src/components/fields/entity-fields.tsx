@@ -25,7 +25,7 @@ import { toastError } from '@auxx/ui/components/toast'
 import {
   FieldNavigationProvider,
   useFieldNavigation,
-} from '../contacts/drawer/field-navigation-context'
+} from './field-navigation-context'
 import { ModelTypes, type ModelType } from '@auxx/types/custom-field'
 import { modelConfigs, type EntityModelConfig } from './configs/model-field-configs'
 import { useDynamicFieldOptions } from './hooks/use-dynamic-field-options'
@@ -45,7 +45,7 @@ import {
   buildValueKey,
   type ResourceType,
 } from '~/stores/custom-field-value-store'
-import type { StoreConfig } from '../contacts/drawer/property-provider'
+import type { StoreConfig } from './property-provider'
 
 /**
  * Transform ResourceField to CustomField format for EntityFields compatibility

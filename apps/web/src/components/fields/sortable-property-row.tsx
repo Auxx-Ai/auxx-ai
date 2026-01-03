@@ -6,9 +6,9 @@ import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, Pencil, Trash2 } from 'lucide-react'
 import { type LucideIcon } from 'lucide-react'
 import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
-import PropertyRow from '../contacts/drawer/property-row'
-import { PropertyProvider, type StoreConfig } from '../contacts/drawer/property-provider'
-import { useFieldNavigationOptional } from '../contacts/drawer/field-navigation-context'
+import PropertyRow from './property-row'
+import { PropertyProvider, type StoreConfig } from './property-provider'
+import { useFieldNavigationOptional } from './field-navigation-context'
 import { Button } from '@auxx/ui/components/button'
 import { useEffect, useRef, useCallback } from 'react'
 import { cn } from '@auxx/ui/lib/utils'
@@ -216,4 +216,4 @@ function PropertyRowWithNavigation({
 }
 
 // Import at top level won't work here due to circular dependency, import inline
-import { usePropertyContext } from '../contacts/drawer/property-provider'
+import { usePropertyContext } from './property-provider'

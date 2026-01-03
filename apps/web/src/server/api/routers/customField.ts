@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { CustomFieldService } from '@auxx/lib/custom-fields'
+import { FieldValueService } from '@auxx/lib/field-values'
 import {
   ModelTypes,
   ModelTypeValues,
@@ -12,7 +13,6 @@ import {
   fileOptionsSchema,
 } from '@auxx/types/custom-field'
 import { FieldType } from '@auxx/database/enums'
-import { batchGetFieldValuesQuery } from '@auxx/services/custom-fields'
 
 // Zod schema for ModelType validation
 const modelTypeSchema = z.enum(ModelTypeValues)
@@ -295,6 +295,7 @@ export const customFieldRouter = createTRPCRouter({
 
   /**
    * Batch get field values for multiple resources (used by smart value syncer)
+   * Returns TypedFieldValue directly (no legacy wrapper)
    */
   batchGetValues: protectedProcedure
     .input(
@@ -306,18 +307,72 @@ export const customFieldRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const result = await batchGetFieldValuesQuery({
-        ...input,
-        orgId: ctx.session.organizationId,
+      const fieldValueService = new FieldValueService(
+        ctx.session.organizationId,
+        ctx.session.user.id,
+        ctx.db
+      )
+
+      const result = await fieldValueService.batchGetValues({
+        resourceType: input.resourceType,
+        entityDefId: input.entityDefId,
+        entityIds: input.resourceIds,
+        fieldIds: input.fieldIds,
       })
 
-      if (result.isErr()) {
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: result.error.message,
-        })
-      }
+      // Return typed values directly (no legacy conversion)
+      return result
+    }),
 
-      return result.value
+  /**
+   * Add a value to a multi-value field (MULTI_SELECT, TAGS, etc.)
+   */
+  addFieldValue: protectedProcedure
+    .input(
+      z.object({
+        entityId: z.string(),
+        fieldId: z.string(),
+        fieldType: z.string(),
+        value: z.object({
+          type: z.enum(['text', 'number', 'boolean', 'date', 'json', 'option', 'relationship']),
+          value: z.any().optional(),
+          optionId: z.string().optional(),
+          relatedEntityId: z.string().optional(),
+        }),
+        position: z
+          .union([z.literal('start'), z.literal('end'), z.object({ after: z.string() })])
+          .optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const fieldValueService = new FieldValueService(
+        ctx.session.organizationId,
+        ctx.session.user.id,
+        ctx.db
+      )
+
+      return await fieldValueService.addValue({
+        entityId: input.entityId,
+        fieldId: input.fieldId,
+        fieldType: input.fieldType,
+        value: input.value as any,
+        position: input.position,
+      })
+    }),
+
+  /**
+   * Remove a single value from a multi-value field by value ID
+   */
+  removeFieldValue: protectedProcedure
+    .input(z.object({ valueId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const fieldValueService = new FieldValueService(
+        ctx.session.organizationId,
+        ctx.session.user.id,
+        ctx.db
+      )
+
+      await fieldValueService.removeValue(input.valueId)
+      return { success: true }
     }),
 })

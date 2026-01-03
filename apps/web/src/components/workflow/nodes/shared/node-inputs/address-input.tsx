@@ -4,7 +4,7 @@ import { useCallback } from 'react'
 import {
   AddressStructFields,
   type AddressStruct,
-} from '~/components/contacts/input/address-struct-input-field'
+} from '~/components/fields/inputs/address-struct-input-field'
 import { createNodeInput, type NodeInputProps } from './base-node-input'
 
 /**

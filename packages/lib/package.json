@@ -44,6 +44,8 @@
     "./entity-instances": "./src/entity-instances/index.ts",
     "./entity-instances/types": "./src/entity-instances/types.ts",
     "./events": "./src/events/index.ts",
+    "./field-values": "./src/field-values/index.ts",
+    "./field-values/client": "./src/field-values/client.ts",
     "./files": "./src/files/index.ts",
     "./files/client": "./src/files/client.ts",
     "./files/core": "./src/files/core/index.ts",

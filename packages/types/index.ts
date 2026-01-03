@@ -2,4 +2,5 @@
 
 // Re-export all types from submodules
 export * from './custom-field'
+export * from './field-value'
 export * from './pagination'

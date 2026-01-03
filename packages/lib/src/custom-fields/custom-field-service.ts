@@ -7,15 +7,9 @@ import {
   updateCustomField,
   deleteCustomField,
   updateFieldPositions,
-  getFieldValuesQuery,
   getFieldByIdQuery,
-  getExistingValueQuery,
-  upsertFieldValueQuery,
-  deleteFieldValueQuery,
   verifyEntityExistsQuery,
-  normalizeCustomFieldValue,
   getRelationshipPair,
-  checkUniqueValue,
   ModelTypes,
   type ModelType,
   type RelationshipOptions,
@@ -25,6 +19,12 @@ import { isBuiltInField, getBuiltInFieldHandler } from './built-in-fields'
 import { publisher } from '../events'
 import type { ContactFieldUpdatedEvent } from '../events/types'
 import type { SelectOption, CurrencyOptions, FileOptions } from '@auxx/services/custom-fields'
+import {
+  FieldValueService,
+  convertToTypedInput,
+  typedValueToLegacy,
+} from '../field-values'
+import { checkUniqueValueTyped } from './check-unique-value-typed'
 
 /**
  * Service for managing custom fields and their values across different models
@@ -170,13 +170,23 @@ export class CustomFieldService {
       throw new Error(entityCheck.error.message)
     }
 
-    const result = await getFieldValuesQuery({ entityId, modelType })
+    // Use new FieldValueService
+    const fieldValueService = new FieldValueService(this.organizationId, this.userId, this.db)
+    const values = await fieldValueService.getValuesWithFields({
+      entityId,
+      modelType: modelType as 'contact' | 'ticket' | 'thread' | 'entity',
+    })
 
-    if (result.isErr()) {
-      throw new Error(result.error.message)
-    }
-
-    return result.value
+    // Convert to legacy format for backward compatibility
+    return values.map((v) => ({
+      id: v.id,
+      entityId: v.entityId,
+      fieldId: v.fieldId,
+      value: typedValueToLegacy(v.value),
+      createdAt: v.createdAt,
+      updatedAt: v.updatedAt,
+      field: v.field,
+    }))
   }
 
   /**
@@ -192,7 +202,7 @@ export class CustomFieldService {
   }: {
     entityId: string
     fieldId: string
-    value: any
+    value: unknown
     modelType?: ModelType
   }) {
     // Verify entity belongs to organization
@@ -232,49 +242,41 @@ export class CustomFieldService {
       throw new Error('Field not found')
     }
 
-    // Get existing value
-    const existingResult = await getExistingValueQuery({ entityId, fieldId })
+    // Get select options if available
+    const options = Array.isArray(field.options) ? field.options as SelectOption[] : undefined
 
-    if (existingResult.isErr()) {
-      throw new Error(existingResult.error.message)
-    }
-
-    const oldValue = existingResult.value?.value
-
-    // Normalize value based on field type
-    const normalizedValue = normalizeCustomFieldValue(value, {
-      type: field.type,
-      name: field.name,
-      options: field.options,
-    })
+    // Convert raw value to typed input
+    const typedValue = convertToTypedInput(value, field.type, options)
 
     // Check uniqueness if field is marked as unique
-    if (field.isUnique) {
-      const uniqueCheck = await checkUniqueValue({
+    if (field.isUnique && typedValue !== null) {
+      await checkUniqueValueTyped({
         fieldId,
-        value: normalizedValue,
+        value: typedValue,
         organizationId: this.organizationId,
         modelType,
         entityDefinitionId: field.entityDefinitionId,
-        excludeEntityId: entityId, // Exclude current record for updates
-      })
-
-      if (uniqueCheck.isErr()) {
-        throw new Error(`${field.name} must be unique: ${uniqueCheck.error.message}`)
-      }
+        excludeEntityId: entityId,
+      }, this.db)
     }
 
-    // Upsert value
-    const upsertResult = await upsertFieldValueQuery({
+    // Use new FieldValueService
+    const fieldValueService = new FieldValueService(this.organizationId, this.userId, this.db)
+
+    // Get old value for event
+    const oldTypedValue = await fieldValueService.getValue({ entityId, fieldId })
+    const oldValue = typedValueToLegacy(oldTypedValue)
+
+    // Set the new value
+    const result = await fieldValueService.setValue({
       entityId,
       fieldId,
-      value: normalizedValue,
-      existingValueId: existingResult.value?.id,
+      fieldType: field.type,
+      value: typedValue,
     })
 
-    if (upsertResult.isErr()) {
-      throw new Error(upsertResult.error.message)
-    }
+    // Convert result to legacy format
+    const legacyValue = typedValueToLegacy(result.length > 0 ? result[0]! : null)
 
     // Publish event for contacts
     if (modelType === ModelTypes.CONTACT && this.userId) {
@@ -288,12 +290,17 @@ export class CustomFieldService {
           fieldName: field.name,
           fieldType: field.type,
           oldValue,
-          newValue: normalizedValue,
+          newValue: legacyValue,
         },
       } as ContactFieldUpdatedEvent)
     }
 
-    return upsertResult.value
+    return {
+      id: result[0]?.id ?? '',
+      entityId,
+      fieldId,
+      value: legacyValue,
+    }
   }
 
   /**
@@ -336,13 +343,11 @@ export class CustomFieldService {
       throw new Error('Field not found or does not match model type')
     }
 
-    const deleteResult = await deleteFieldValueQuery({ entityId, fieldId })
+    // Use new FieldValueService
+    const fieldValueService = new FieldValueService(this.organizationId, this.userId, this.db)
+    await fieldValueService.deleteValue({ entityId, fieldId })
 
-    if (deleteResult.isErr()) {
-      throw new Error(deleteResult.error.message)
-    }
-
-    return deleteResult.value
+    return { success: true }
   }
 
   /**

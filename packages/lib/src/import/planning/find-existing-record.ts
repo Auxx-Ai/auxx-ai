@@ -1,12 +1,13 @@
 // packages/lib/src/import/planning/find-existing-record.ts
 
-import { eq, and, ilike, sql } from 'drizzle-orm'
+import { eq, and, ilike } from 'drizzle-orm'
 import type { PgTableWithColumns } from 'drizzle-orm/pg-core'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Resource, ResourceField } from '../../resources'
 import { BaseType } from '../../workflow-engine/core/types'
+import { getValueType } from '@auxx/types'
 
 const logger = createScopedLogger('find-existing-record')
 
@@ -128,7 +129,7 @@ async function findInSystemTable(
 
 /**
  * Find a record in a custom entity by unique field value.
- * Queries CustomFieldValue table to find the entityId.
+ * Queries FieldValue table using typed columns to find the entityId.
  */
 async function findInCustomEntity(
   db: Database,
@@ -139,16 +140,37 @@ async function findInCustomEntity(
 ): Promise<string | null> {
   if (!identifierField.id) return null
 
+  // Determine which typed column to query based on field type
+  const dbFieldType = identifierField.dbFieldType || 'TEXT'
+  const valueType = getValueType(dbFieldType)
+
+  // Build the value comparison based on type
+  let valueComparison
+  switch (valueType) {
+    case 'text':
+      valueComparison = eq(schema.FieldValue.valueText, value)
+      break
+    case 'number':
+      valueComparison = eq(schema.FieldValue.valueNumber, parseFloat(value))
+      break
+    case 'option':
+      valueComparison = eq(schema.FieldValue.optionId, value)
+      break
+    default:
+      // For other types, use text column
+      valueComparison = eq(schema.FieldValue.valueText, value)
+  }
+
   const result = await db
-    .select({ entityId: schema.CustomFieldValue.entityId })
-    .from(schema.CustomFieldValue)
-    .innerJoin(schema.EntityInstance, eq(schema.CustomFieldValue.entityId, schema.EntityInstance.id))
+    .select({ entityId: schema.FieldValue.entityId })
+    .from(schema.FieldValue)
+    .innerJoin(schema.EntityInstance, eq(schema.FieldValue.entityId, schema.EntityInstance.id))
     .where(
       and(
         eq(schema.EntityInstance.entityDefinitionId, entityDefinitionId),
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.CustomFieldValue.fieldId, identifierField.id),
-        sql`${schema.CustomFieldValue.value}::text = ${JSON.stringify(value)}`
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.FieldValue.fieldId, identifierField.id),
+        valueComparison
       )
     )
     .limit(1)

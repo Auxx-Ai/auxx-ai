@@ -1,0 +1,119 @@
+// packages/lib/src/field-values/types.ts
+
+import type { TypedFieldValue, TypedFieldValueInput } from '@auxx/types'
+
+// =============================================================================
+// SERVICE INPUT TYPES
+// =============================================================================
+
+/** Input for setting a single field value */
+export interface SetValueInput {
+  entityId: string
+  fieldId: string
+  fieldType: string
+  value: TypedFieldValueInput | TypedFieldValueInput[] | null
+}
+
+/** Input for adding a value to a multi-value field */
+export interface AddValueInput {
+  entityId: string
+  fieldId: string
+  fieldType: string
+  value: TypedFieldValueInput
+  position?: 'start' | 'end' | { after: string }
+}
+
+/** Input for getting a single field value */
+export interface GetValueInput {
+  entityId: string
+  fieldId: string
+}
+
+/** Input for getting values with field metadata */
+export interface GetValuesWithFieldsInput {
+  entityId: string
+  modelType: 'contact' | 'ticket' | 'thread' | 'entity'
+}
+
+/** Input for getting multiple values */
+export interface GetValuesInput {
+  entityId: string
+  fieldIds?: string[]
+}
+
+/** Input for batch getting values */
+export interface BatchGetValuesInput {
+  resourceType: 'contact' | 'ticket' | 'entity'
+  entityDefId?: string
+  entityIds: string[]
+  fieldIds: string[]
+}
+
+/** Input for deleting values */
+export interface DeleteValueInput {
+  entityId: string
+  fieldId: string
+}
+
+// =============================================================================
+// SERVICE RETURN TYPES
+// =============================================================================
+
+/** Value with joined field metadata */
+export interface FieldValueWithField {
+  id: string
+  entityId: string
+  fieldId: string
+  value: TypedFieldValue | TypedFieldValue[]
+  sortKey: string
+  createdAt: string
+  updatedAt: string
+  field: {
+    id: string
+    name: string
+    type: string
+    modelType: string
+    position: number
+    required: boolean
+    description: string | null
+    defaultValue: string | null
+    options: unknown
+    icon: string | null
+    isCustom: boolean
+    active: boolean
+  }
+}
+
+/** Single result from batch get */
+export interface TypedFieldValueResult {
+  resourceId: string
+  fieldId: string
+  value: TypedFieldValue | TypedFieldValue[] | null
+}
+
+/** Result from batch get values */
+export interface BatchFieldValueResult {
+  values: TypedFieldValueResult[]
+}
+
+// =============================================================================
+// DATABASE ROW TYPES
+// =============================================================================
+
+/** Raw row from FieldValue table */
+export interface FieldValueRow {
+  id: string
+  entityId: string
+  fieldId: string
+  organizationId: string
+  valueText: string | null
+  valueNumber: number | null
+  valueBoolean: boolean | null
+  valueDate: string | null
+  valueJson: unknown | null
+  optionId: string | null
+  relatedEntityId: string | null
+  sortKey: string
+  createdAt: string
+  updatedAt: string
+}

@@ -2,7 +2,7 @@
 
 import { type ColumnDef, type Table as TanstackTable } from '@tanstack/react-table'
 import { type LucideIcon } from 'lucide-react'
-import type { StoreConfig } from '~/components/contacts/drawer/property-provider'
+import type { StoreConfig } from '~/components/fields/property-provider'
 import type { ModelType, TargetTimeInStatus } from '@auxx/types/custom-field'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 

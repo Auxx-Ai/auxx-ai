@@ -1,6 +1,7 @@
 // packages/lib/src/custom-fields/index.ts
 
 export { CustomFieldService, normalizeCustomFieldValue } from './custom-field-service'
+export { checkUniqueValueTyped, type CheckUniqueValueTypedInput } from './check-unique-value-typed'
 
 // Export unified types from @auxx/database
 export {

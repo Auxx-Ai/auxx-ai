@@ -2,12 +2,22 @@
 
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
+import type { TypedFieldValue } from '@auxx/types/field-value'
 
 /** Resource types that support custom fields */
 export type ResourceType = 'contact' | 'ticket' | 'entity'
 
 /** Key format: `${resourceType}:${entityDefId?}:${resourceId}:${fieldId}` */
 export type ValueKey = string
+
+/**
+ * Stored value type - can be:
+ * - TypedFieldValue (single value with type discriminator)
+ * - TypedFieldValue[] (multi-value like multi-select, tags)
+ * - Raw value (string, number, boolean, object) during optimistic updates
+ * - null (empty value)
+ */
+export type StoredFieldValue = TypedFieldValue | TypedFieldValue[] | unknown
 
 /** Loading state for a fetch batch */
 interface LoadingBatch {
@@ -17,13 +27,13 @@ interface LoadingBatch {
 
 /** Pending optimistic update state */
 interface PendingUpdate {
-  value: unknown
-  original: unknown
+  value: StoredFieldValue
+  original: StoredFieldValue
 }
 
 interface CustomFieldValueState {
   /** Cached values by composite key (use Record for Zustand reactivity) */
-  values: Record<ValueKey, unknown>
+  values: Record<ValueKey, StoredFieldValue>
 
   /** Keys currently being fetched (for dedup) - keyed by batch ID */
   loadingBatches: Record<string, LoadingBatch>
@@ -39,13 +49,13 @@ interface CustomFieldValueState {
   // ─────────────────────────────────────────────────────────────────
 
   /** Set multiple values (batch update from API) */
-  setValues: (entries: Array<{ key: ValueKey; value: unknown }>) => void
+  setValues: (entries: Array<{ key: ValueKey; value: StoredFieldValue }>) => void
 
   /** Set a single value (optimistic update on save) */
-  setValue: (key: ValueKey, value: unknown) => void
+  setValue: (key: ValueKey, value: StoredFieldValue) => void
 
   /** Set value optimistically (stores original for rollback) */
-  setValueOptimistic: (key: ValueKey, newValue: unknown) => void
+  setValueOptimistic: (key: ValueKey, newValue: StoredFieldValue) => void
 
   /** Confirm optimistic update succeeded */
   confirmOptimistic: (key: ValueKey) => void
@@ -341,7 +351,7 @@ export function useCustomFieldValue(
   resourceId: string,
   fieldId: string,
   entityDefId?: string
-): unknown | undefined {
+): StoredFieldValue | undefined {
   const key = buildValueKey(resourceType, resourceId, fieldId, entityDefId)
   return useCustomFieldValueStore((state) => state.values[key])
 }
@@ -368,9 +378,9 @@ export function useResourceFieldValues(
   resourceId: string,
   fieldIds: string[],
   entityDefId?: string
-): Record<string, unknown> {
+): Record<string, StoredFieldValue | undefined> {
   return useCustomFieldValueStore((state) => {
-    const result: Record<string, unknown> = {}
+    const result: Record<string, StoredFieldValue | undefined> = {}
     for (const fieldId of fieldIds) {
       const key = buildValueKey(resourceType, resourceId, fieldId, entityDefId)
       result[fieldId] = state.values[key]

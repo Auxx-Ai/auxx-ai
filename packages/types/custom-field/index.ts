@@ -54,6 +54,8 @@ export type TargetTimeInStatus = z.infer<typeof targetTimeInStatusSchema>
 
 /** Zod schema for select/multi-select field options */
 export const selectOptionSchema = z.object({
+  /** Stable unique ID for this option (used by FieldValue.optionId) */
+  id: z.string().optional(),
   label: z.string(),
   value: z.string(),
   color: z.enum(SELECT_OPTION_COLORS).optional(),

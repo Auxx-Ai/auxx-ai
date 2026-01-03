@@ -11,6 +11,7 @@ import { CellPadding, type CellConfig } from '../components/formatted-cell'
 import { TagsCellView } from '~/components/ui/tags-view'
 import { ItemsCellView } from '~/components/ui/items-list-view'
 import { useRelationship } from '~/components/resources'
+import { extractValue, type TypedFieldValue } from '@auxx/types/field-value'
 import type {
   ColumnFormatting,
   CurrencyColumnFormatting,
@@ -33,9 +34,34 @@ function RelationshipCellContent({
 }) {
   const ids = useMemo(() => {
     if (!value) return []
-    const data = (value as { data?: string[] })?.data ?? value
-    if (Array.isArray(data)) return data
-    if (typeof data === 'string') return [data]
+
+    // Handle TypedFieldValue array (RelationshipFieldValue[])
+    if (Array.isArray(value)) {
+      if (value.length > 0 && typeof value[0] === 'object' && value[0] !== null && 'type' in value[0]) {
+        // Array of TypedFieldValue - extract relatedEntityId from each
+        return value.map((v) => (v as { relatedEntityId?: string }).relatedEntityId).filter(Boolean) as string[]
+      }
+      // Already an array of IDs
+      return value.filter((id) => typeof id === 'string') as string[]
+    }
+
+    // Handle single TypedFieldValue (RelationshipFieldValue)
+    if (typeof value === 'object' && value !== null && 'type' in (value as Record<string, unknown>)) {
+      const relatedId = (value as { relatedEntityId?: string }).relatedEntityId
+      return relatedId ? [relatedId] : []
+    }
+
+    // Handle legacy { data: x } wrapper
+    if (typeof value === 'object' && value !== null && 'data' in (value as Record<string, unknown>)) {
+      const data = (value as { data?: string[] }).data
+      if (Array.isArray(data)) return data
+      if (typeof data === 'string') return [data]
+      return []
+    }
+
+    // Handle raw string ID
+    if (typeof value === 'string') return [value]
+
     return []
   }, [value])
 
@@ -396,7 +422,7 @@ export function renderFileValue(value: unknown): React.ReactNode {
 
 /**
  * Render plain text value
- * Handles objects by extracting .data property or JSON stringifying
+ * Handles TypedFieldValue, legacy { data: x } wrapper, and raw values
  */
 export function renderTextValue(value: unknown): React.ReactNode {
   // Handle null/undefined
@@ -404,15 +430,23 @@ export function renderTextValue(value: unknown): React.ReactNode {
     return <EmptyCell />
   }
 
-  // Handle objects (e.g., { data: "actual value" } wrapper)
+  // Handle objects
   if (typeof value === 'object') {
-    // Check for .data wrapper (common in custom field values)
     const objValue = value as Record<string, unknown>
+
+    // Check for TypedFieldValue (has 'type' property)
+    if ('type' in objValue) {
+      const extracted = extractValue(value as TypedFieldValue)
+      return renderTextValue(extracted)
+    }
+
+    // Check for legacy .data wrapper (common in custom field values)
     if ('data' in objValue) {
       const innerValue = objValue.data
       // Recursively render the inner value
       return renderTextValue(innerValue)
     }
+
     // For other objects, show empty state (don't stringify to [object Object])
     return <EmptyCell />
   }
@@ -503,12 +537,33 @@ const cellRenderers: Record<string, CellRenderer> = {
 }
 
 /**
- * Unwrap value from { data: ... } wrapper if present
+ * Extract raw value from TypedFieldValue or legacy { data: ... } wrapper.
+ * Handles single values, arrays, and null.
  */
 function unwrapValue(value: unknown): unknown {
-  if (typeof value === 'object' && value !== null && 'data' in (value as Record<string, unknown>)) {
+  if (value === null || value === undefined) return null
+
+  // Handle legacy { data: x } wrapper format (check for 'data' but no 'type')
+  if (typeof value === 'object' && 'data' in (value as Record<string, unknown>) && !('type' in (value as Record<string, unknown>))) {
     return (value as Record<string, unknown>).data
   }
+
+  // Handle TypedFieldValue array (e.g., multi-select, tags)
+  if (Array.isArray(value)) {
+    // Check if it's an array of TypedFieldValue objects
+    if (value.length > 0 && typeof value[0] === 'object' && value[0] !== null && 'type' in value[0]) {
+      return value.map((v) => extractValue(v as TypedFieldValue))
+    }
+    // Already an array of raw values
+    return value
+  }
+
+  // Handle single TypedFieldValue
+  if (typeof value === 'object' && 'type' in (value as Record<string, unknown>)) {
+    return extractValue(value as TypedFieldValue)
+  }
+
+  // Already a raw value (string, number, boolean, etc.)
   return value
 }
 
