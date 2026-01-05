@@ -56,12 +56,35 @@ export function RelationshipInputField() {
   const isSingleSelect =
     relationship?.relationshipType === 'belongs_to' || relationship?.relationshipType === 'has_one'
 
-  // Determine resourceId using hook (looks up apiSlug for custom entities)
-  const resourceId = useResourceIdFromField(field)
+  // Get relatedEntityDefinitionId for storing with values
+  const relatedEntityDefinitionId = useMemo(() => {
+    if (!relationship) return ''
+    // For custom entities, use the stored relatedEntityDefinitionId
+    if (relationship.relatedEntityDefinitionId) {
+      return relationship.relatedEntityDefinitionId
+    }
+    // For system resources, use the relatedModelType (e.g., "contact", "ticket")
+    if (relationship.relatedModelType) {
+      return relationship.relatedModelType
+    }
+    return ''
+  }, [relationship])
+
+  // Determine resourceId using hook - returns { tableId?, apiSlug? }
+  const resourceRef = useResourceIdFromField(field)
+
+  // For useRelationship, we need a proper resourceId format
+  // If we have tableId, use it; if apiSlug, prefix with entity_
+  const resourceIdForHydration = useMemo(() => {
+    if (!resourceRef) return null
+    if (resourceRef.tableId) return resourceRef.tableId
+    if (resourceRef.apiSlug) return `entity_${resourceRef.apiSlug}`
+    return null
+  }, [resourceRef])
 
   // Hydrate selected items via global store (always available even if not in search)
   const selectedIdsArray = useMemo(() => Array.from(initialSelectedIds), [initialSelectedIds])
-  const { items: hydratedSelectedItems } = useRelationship(resourceId, selectedIdsArray)
+  const { items: hydratedSelectedItems } = useRelationship(resourceIdForHydration, selectedIdsArray)
 
   // Build map of hydrated selected items
   const hydratedSelectedMap = useMemo(() => {
@@ -74,11 +97,16 @@ export function RelationshipInputField() {
     })
     return map
   }, [selectedIdsArray, hydratedSelectedItems])
-  console.log('RelationshipInputField resourceId:', resourceId)
-  // Always fetch search results
+
+  // Always fetch search results - pass either tableId or apiSlug
   const { data: searchResults, isLoading } = api.resource.search.useQuery(
-    { tableId: resourceId!, search, limit: 20 },
-    { enabled: !!resourceId }
+    {
+      tableId: resourceRef?.tableId,
+      apiSlug: resourceRef?.apiSlug,
+      search,
+      limit: 20,
+    },
+    { enabled: !!resourceRef }
   )
 
   // Keep ref in sync with state
@@ -104,13 +132,18 @@ export function RelationshipInputField() {
         currentIds.length !== originalIds.length ||
         currentIds.some((id) => !originalIds.includes(id))
       if (hasChanged) {
-        commitValue(currentIds)
+        // Wrap IDs with relatedEntityDefinitionId for proper storage
+        const values = currentIds.map((id) => ({
+          relatedEntityId: id,
+          relatedEntityDefinitionId,
+        }))
+        commitValue(values)
       }
     }
     return () => {
       onBeforeClose.current = undefined
     }
-  }, [onBeforeClose, value, commitValue])
+  }, [onBeforeClose, value, commitValue, relatedEntityDefinitionId])
 
   // Build selected items - prefer hydrated from store, fall back to search results
   const initiallySelectedItems = useMemo(() => {
@@ -170,7 +203,7 @@ export function RelationshipInputField() {
     setCurrentSelectedIds(newSelected)
   }
 
-  if (!resourceId) {
+  if (!resourceRef) {
     return <span className="text-muted-foreground p-2">Invalid relationship config</span>
   }
 

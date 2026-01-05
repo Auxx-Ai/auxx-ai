@@ -100,14 +100,16 @@ export function CurrencyInputField() {
       currencyCode={options.currencyCode}
       decimalPlaces={options.decimalPlaces}
       disabled={isSaving}>
-      <InputGroup>
+      <div className="h-6.5 flex items-center">
+        {/* <InputGroup> */}
         <BaseCurrencyInputField
           onBlur={handleBlur}
           onKeyDown={handleKeyDown}
           placeholder="0.00"
           autoFocus
         />
-      </InputGroup>
+      </div>
+      {/* </InputGroup> */}
     </CurrencyInput>
   )
 }

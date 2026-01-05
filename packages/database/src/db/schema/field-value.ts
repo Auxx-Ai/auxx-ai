@@ -87,6 +87,9 @@ export const FieldValue = pgTable(
     /** Related entity ID for RELATIONSHIP fields */
     relatedEntityId: text(),
 
+    /** Related entity definition ID for RELATIONSHIP fields (UUID or system resource name like "contacts") */
+    relatedEntityDefinitionId: text(),
+
     // ========================================
     // Multi-value ordering
     // ========================================
@@ -111,6 +114,7 @@ export const FieldValue = pgTable(
     // Option and relationship lookups
     index('FieldValue_optionId_idx').using('btree', table.optionId.asc().nullsLast()),
     index('FieldValue_relatedEntityId_idx').using('btree', table.relatedEntityId.asc().nullsLast()),
+    index('FieldValue_relatedEntityDefinitionId_idx').using('btree', table.relatedEntityDefinitionId.asc().nullsLast()),
 
     // Unique per sortKey (allows multi-value with ordering)
     uniqueIndex('FieldValue_entity_field_sortKey_key').using(

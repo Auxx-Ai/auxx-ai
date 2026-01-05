@@ -154,14 +154,46 @@ export function convertToTypedInput(
     }
 
     case 'relationship': {
-      // Handle multi-relationship (array of IDs)
-      if (isMultiValueFieldType(fieldType) && Array.isArray(value)) {
-        return value.map((v): TypedFieldValueInput => ({
+      // Helper to extract relationship fields from an object
+      const extractRelationship = (obj: unknown): TypedFieldValueInput => {
+        if (typeof obj === 'object' && obj !== null && 'relatedEntityId' in obj) {
+          const rel = obj as { relatedEntityId: string; relatedEntityDefinitionId?: string }
+          return {
+            type: 'relationship',
+            relatedEntityId: rel.relatedEntityId,
+            relatedEntityDefinitionId: rel.relatedEntityDefinitionId ?? '',
+          }
+        }
+        // Handle stringified JSON (can happen with some serialization paths)
+        if (typeof obj === 'string' && obj.startsWith('{')) {
+          try {
+            const parsed = JSON.parse(obj)
+            if (typeof parsed === 'object' && parsed !== null && 'relatedEntityId' in parsed) {
+              return {
+                type: 'relationship',
+                relatedEntityId: parsed.relatedEntityId,
+                relatedEntityDefinitionId: parsed.relatedEntityDefinitionId ?? '',
+              }
+            }
+          } catch {
+            // Not valid JSON, treat as raw ID
+          }
+        }
+        // Raw ID string
+        return {
           type: 'relationship',
-          relatedEntityId: String(v),
-        }))
+          relatedEntityId: String(obj),
+          relatedEntityDefinitionId: '',
+        }
       }
-      return { type: 'relationship', relatedEntityId: String(value) }
+
+      // Handle arrays for multi-value relationships
+      if (Array.isArray(value)) {
+        return value.map(extractRelationship)
+      }
+
+      // Single value
+      return extractRelationship(value)
     }
 
     default:
@@ -238,6 +270,7 @@ export interface FieldValueRow {
   valueJson: unknown
   optionId: string | null
   relatedEntityId: string | null
+  relatedEntityDefinitionId: string | null
   sortKey: string | null
   createdAt: string
   updatedAt: string
@@ -273,7 +306,12 @@ export function rowToTypedValue(row: FieldValueRow, fieldType: string): TypedFie
     case 'option':
       return { ...base, type: 'option', optionId: row.optionId ?? '' }
     case 'relationship':
-      return { ...base, type: 'relationship', relatedEntityId: row.relatedEntityId ?? '' }
+      return {
+        ...base,
+        type: 'relationship',
+        relatedEntityId: row.relatedEntityId ?? '',
+        relatedEntityDefinitionId: row.relatedEntityDefinitionId ?? '',
+      }
     default:
       return { ...base, type: 'text', value: row.valueText ?? '' }
   }

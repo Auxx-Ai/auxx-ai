@@ -36,9 +36,9 @@ export function CheckboxInputField() {
 
   return (
     <div
-      className={`flex items-center justify-center gap-2 text-sm px-2 bg-natural-300 dark:bg-natural-800 rounded-full ${isSaving ? 'opacity-70' : 'cursor-pointer'}`}
+      className={`flex items-center h-6.5 justify-center gap-2 text-sm px-2 bg-natural-300 dark:bg-natural-800 rounded-full ${isSaving ? 'opacity-70' : 'cursor-pointer'}`}
       onClick={handleToggle}>
-      <Icon className={`h-4 w-4 ${isSaving ? 'animate-spin' : ''}`} />
+      <Icon className={`size-4 ${isSaving ? 'animate-spin' : ''}`} />
       <span className="text-muted-foreground">{text}</span>
     </div>
   )

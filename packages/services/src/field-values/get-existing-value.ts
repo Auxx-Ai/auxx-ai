@@ -27,6 +27,7 @@ export async function getExistingFieldValue(input: GetExistingValueInput) {
         valueJson: schema.FieldValue.valueJson,
         optionId: schema.FieldValue.optionId,
         relatedEntityId: schema.FieldValue.relatedEntityId,
+        relatedEntityDefinitionId: schema.FieldValue.relatedEntityDefinitionId,
         sortKey: schema.FieldValue.sortKey,
       })
       .from(schema.FieldValue)

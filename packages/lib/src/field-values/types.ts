@@ -61,11 +61,11 @@ export interface SetBulkValuesInput {
 }
 
 /**
- * Result from setValueWithBuiltIn
+ * Result from setValueWithBuiltIn - always returns arrays for consistency
  */
 export interface SetValueResult {
-  id?: string
-  value: TypedFieldValue | null
+  ids: string[]
+  values: TypedFieldValue[]
 }
 
 /**
@@ -73,8 +73,8 @@ export interface SetValueResult {
  */
 export interface SetValuesResult {
   fieldId: string
-  id?: string
-  value: TypedFieldValue | null
+  ids: string[]
+  values: TypedFieldValue[]
 }
 
 /**
@@ -188,6 +188,7 @@ export interface FieldValueRow {
   valueJson: unknown | null
   optionId: string | null
   relatedEntityId: string | null
+  relatedEntityDefinitionId: string | null
   sortKey: string
   createdAt: string
   updatedAt: string

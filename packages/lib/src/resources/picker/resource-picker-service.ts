@@ -494,16 +494,9 @@ export class ResourcePickerService {
       }
     }
 
-    // Query EntityInstances with their custom field values
+    // Query EntityInstances - use pre-computed display columns instead of field values
     const instances = await this.db.query.EntityInstance.findMany({
       where: and(...conditions),
-      with: {
-        values: {
-          with: {
-            field: true,
-          },
-        },
-      },
       orderBy: (inst, { desc }) => [desc(inst.updatedAt), desc(inst.id)],
       limit: limit + 1,
     })
@@ -544,19 +537,13 @@ export class ResourcePickerService {
     resource: CustomResource,
     id: string
   ): Promise<ResourcePickerItem | null> {
+    // Use pre-computed display columns instead of field values
     const instance = await this.db.query.EntityInstance.findFirst({
       where: and(
         eq(schema.EntityInstance.id, id),
         eq(schema.EntityInstance.organizationId, this.organizationId),
         eq(schema.EntityInstance.entityDefinitionId, resource.entityDefinitionId)
       ),
-      with: {
-        values: {
-          with: {
-            field: true,
-          },
-        },
-      },
     })
 
     if (!instance) return null
@@ -565,69 +552,29 @@ export class ResourcePickerService {
   }
 
   /**
-   * Unwrap field value from { data: value } format used by CustomFieldValue
-   */
-  private unwrapFieldValue(value: unknown): unknown {
-    if (value && typeof value === 'object' && 'data' in value) {
-      return (value as { data: unknown }).data
-    }
-    return value
-  }
-
-  /**
-   * Transform an EntityInstance to ResourcePickerItem using CustomResource display config
+   * Transform an EntityInstance to ResourcePickerItem using pre-computed display columns.
+   * EntityInstance.displayName, secondaryDisplayValue, and avatarUrl are populated
+   * by FieldValueService.maybeUpdateDisplayValue() when field values are set.
    */
   private transformEntityInstanceToPickerItem(
     resource: CustomResource,
     instance: {
       id: string
+      displayName: string | null
+      secondaryDisplayValue: string | null
+      avatarUrl: string | null
       createdAt: string
       updatedAt: string
-      values: Array<{
-        value: unknown
-        field: { id: string; name: string; type: string } | null
-      }>
     }
   ): ResourcePickerItem {
-    // Build a map of fieldId → value for easy lookup
-    const valueByIdMap = new Map<string, string>()
-    for (const v of instance.values) {
-      if (v.field && v.value != null) {
-        const rawValue = this.unwrapFieldValue(v.value)
-        valueByIdMap.set(v.field.id, rawValue != null ? String(rawValue) : '')
-      }
-    }
-
-    // Get display name: try primary field, fallback to instance ID
-    let displayName = instance.id
-    if (resource.display.primaryDisplayField) {
-      const primaryValue = valueByIdMap.get(resource.display.primaryDisplayField.id)
-      if (primaryValue && primaryValue.trim()) {
-        displayName = primaryValue
-      }
-    }
-
-    // Get secondary info from configured field
-    const secondaryInfo = resource.display.secondaryDisplayField
-      ? valueByIdMap.get(resource.display.secondaryDisplayField.id)
-      : undefined
-
-    // Get avatar URL from configured field
-    const avatarUrl = resource.display.avatarField
-      ? valueByIdMap.get(resource.display.avatarField.id)
-      : undefined
-
     return {
       id: instance.id,
       tableId: resource.id,
       identifier: instance.id,
-      displayName,
-      secondaryInfo,
-      avatarUrl,
-      data: {
-        ...instance,
-        _valueMap: Object.fromEntries(valueByIdMap),
-      },
+      displayName: instance.displayName || instance.id,
+      secondaryInfo: instance.secondaryDisplayValue || undefined,
+      avatarUrl: instance.avatarUrl || undefined,
+      data: instance,
       createdAt: instance.createdAt,
       updatedAt: instance.updatedAt,
     }
@@ -678,6 +625,7 @@ export class ResourcePickerService {
 
   /**
    * Fetch entity instances by IDs
+   * Uses pre-computed display columns instead of field values
    */
   private async fetchEntityInstancesByIds(
     resource: CustomResource,
@@ -689,13 +637,6 @@ export class ResourcePickerService {
         eq(schema.EntityInstance.entityDefinitionId, resource.entityDefinitionId),
         inArray(schema.EntityInstance.id, ids)
       ),
-      with: {
-        values: {
-          with: {
-            field: true,
-          },
-        },
-      },
     })
 
     return instances.map((inst) => this.transformEntityInstanceToPickerItem(resource, inst))

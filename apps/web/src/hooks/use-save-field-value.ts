@@ -135,13 +135,13 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
 
   /**
    * Async version that waits for mutation to complete.
-   * Use when you need to know the result (e.g., getting the valueId).
+   * Use when you need to know the result (e.g., getting the valueIds).
    * @param resourceId - The resource ID (entity/contact/ticket ID)
    * @param fieldId - The custom field ID
    * @param value - The value to save (raw value or TypedFieldValue)
    */
   const saveValueAsync = useCallback(
-    async (resourceId: string, fieldId: string, value: StoredFieldValue | unknown): Promise<{ id?: string } | undefined> => {
+    async (resourceId: string, fieldId: string, value: StoredFieldValue | unknown): Promise<{ ids: string[] } | undefined> => {
       const key = buildValueKey(resourceType, resourceId, fieldId, entityDefId)
 
       setValueOptimistic(key, value)
@@ -157,7 +157,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
 
         confirmOptimistic(key)
         onSuccess?.()
-        return { id: (result as { id?: string })?.id }
+        return { ids: (result as { ids: string[] })?.ids ?? [] }
       } catch (error: unknown) {
         rollbackOptimistic(key)
         const errorMessage = error instanceof Error ? error.message : 'Could not save this field value'
@@ -187,7 +187,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
    * @param value - The value to save (raw value or TypedFieldValue)
    */
   const saveFieldValueAsync = useCallback(
-    async (fieldId: string, value: StoredFieldValue | unknown): Promise<{ id?: string } | undefined> => {
+    async (fieldId: string, value: StoredFieldValue | unknown): Promise<{ ids: string[] } | undefined> => {
       if (!defaultResourceId) {
         console.error('saveFieldValueAsync called without resourceId - use saveValueAsync instead')
         return undefined

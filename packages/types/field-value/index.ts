@@ -131,6 +131,8 @@ export interface OptionFieldValue extends BaseFieldValue {
 export interface RelationshipFieldValue extends BaseFieldValue {
   type: 'relationship'
   relatedEntityId: string
+  /** EntityDefinition.id (UUID) or system resource name ("contacts", "tickets") */
+  relatedEntityDefinitionId: string
   /** Denormalized for display */
   displayName?: string
 }
@@ -189,6 +191,8 @@ export interface OptionFieldValueInput {
 export interface RelationshipFieldValueInput {
   type: 'relationship'
   relatedEntityId: string
+  /** EntityDefinition.id (UUID) or system resource name ("contacts", "tickets") */
+  relatedEntityDefinitionId: string
 }
 
 /** Discriminated union of all typed field value inputs */
@@ -245,6 +249,7 @@ export const optionFieldValueInputSchema = z.object({
 export const relationshipFieldValueInputSchema = z.object({
   type: z.literal('relationship'),
   relatedEntityId: z.string(),
+  relatedEntityDefinitionId: z.string(),
 })
 
 /** Schema for typed field value input (discriminated union) */
@@ -341,6 +346,15 @@ export function createTypedValueInput(
     case 'option':
       return { type: 'option', optionId: String(rawValue) }
     case 'relationship':
-      return { type: 'relationship', relatedEntityId: String(rawValue) }
+      // Handle object input with relatedEntityDefinitionId
+      if (typeof rawValue === 'object' && rawValue !== null && 'relatedEntityId' in rawValue) {
+        const obj = rawValue as { relatedEntityId: string; relatedEntityDefinitionId?: string }
+        return {
+          type: 'relationship',
+          relatedEntityId: obj.relatedEntityId,
+          relatedEntityDefinitionId: obj.relatedEntityDefinitionId ?? '',
+        }
+      }
+      return { type: 'relationship', relatedEntityId: String(rawValue), relatedEntityDefinitionId: '' }
   }
 }

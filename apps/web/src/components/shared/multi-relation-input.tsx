@@ -25,7 +25,13 @@ import { useRelationship } from '~/components/resources'
  */
 export interface MultiRelationInputProps {
   /** Resource ID for the target table (e.g., 'entity_vendors', 'contact') */
-  resourceId: string
+  resourceId?: string
+
+  /** Table ID for system resources or entity_ prefixed custom resources */
+  tableId?: string
+
+  /** Raw apiSlug for custom entities that needs server-side resolution */
+  apiSlug?: string
 
   /** Currently selected IDs */
   value: string[]
@@ -60,6 +66,8 @@ export interface MultiRelationInputProps {
  */
 export function MultiRelationInput({
   resourceId,
+  tableId: tableIdProp,
+  apiSlug,
   value = [],
   onChange,
   disabled = false,
@@ -72,18 +80,33 @@ export function MultiRelationInput({
   const [open, setOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
 
+  // Resolve tableId from props (prefer explicit tableId, then resourceId for backwards compat)
+  const tableId = tableIdProp ?? resourceId
+
+  // For useRelationship, we need a proper resourceId format
+  // If we have tableId, use it; if apiSlug, prefix with entity_
+  const resourceIdForHydration = useMemo(() => {
+    if (tableId) return tableId
+    if (apiSlug) return `entity_${apiSlug}`
+    return null
+  }, [tableId, apiSlug])
+
   // Get hydrated items for selected IDs from the store
-  const { items: selectedItems, isLoading: isLoadingSelected } = useRelationship(resourceId, value)
-  console.log('resourceId:', resourceId)
-  // Search for items when popover is open
+  const { items: selectedItems, isLoading: isLoadingSelected } = useRelationship(
+    resourceIdForHydration,
+    value
+  )
+
+  // Search for items when popover is open - pass either tableId or apiSlug
   const { data: searchResults, isLoading: isSearching } = api.resource.search.useQuery(
     {
-      tableId: resourceId,
+      tableId,
+      apiSlug,
       search: searchQuery,
       limit: 20,
     },
     {
-      enabled: open,
+      enabled: open && !!(tableId || apiSlug),
     }
   )
 

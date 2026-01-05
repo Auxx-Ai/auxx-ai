@@ -405,7 +405,7 @@ const CurrencyInputField = React.forwardRef<HTMLInputElement, CurrencyInputField
     return (
       <div className="relative flex flex-1 flex-row items-center">
         {showSymbol && (
-          <span className="text-muted-foreground shrink-0 pointer-events-none text-sm pe-1">
+          <span className="text-muted-foreground shrink-0 pointer-events-none text-sm pe-1 ps-2">
             {symbol}
           </span>
         )}
@@ -431,7 +431,7 @@ const CurrencyInputField = React.forwardRef<HTMLInputElement, CurrencyInputField
             // Text sizing and alignment
             'text-sm',
             // Padding for symbol
-            showSymbol ? 'pl-7' : 'pl-3',
+            // showSymbol ? 'pl-5' : 'pl-3',
             'pr-3',
             className
           )}

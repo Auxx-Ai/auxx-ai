@@ -64,9 +64,9 @@ export function FieldInputRow({
     ? { ...(field.options as object), enum: extractEnumOptions(field.options) }
     : (field.options as FieldOptions | undefined)
 
-  // For relationship fields, resolve resourceId from field options
-  // resourceId is already in the correct format (e.g., "entity_orders" or "contact")
-  const resourceId = useMemo(() => {
+  // For relationship fields, resolve tableId or apiSlug from field options
+  // Returns { tableId?, apiSlug? } based on the stored format
+  const resourceRef = useMemo(() => {
     if (field.type !== 'RELATIONSHIP') return null
 
     const relationship = (field.options as { relationship?: {
@@ -76,19 +76,30 @@ export function FieldInputRow({
     } })?.relationship
     if (!relationship) return null
 
-    // relatedEntityDefinitionId is already in "entity_orders" format = resourceId
-    if (relationship.relatedEntityDefinitionId) {
-      return relationship.relatedEntityDefinitionId
+    // System resource (contact, ticket, etc.) - use as tableId directly
+    if (relationship.relatedModelType) {
+      return { tableId: relationship.relatedModelType }
     }
 
     // Check relatedResourceId (might be stored directly)
     if (relationship.relatedResourceId) {
-      return relationship.relatedResourceId
+      // Already in entity_xxx format or system resource
+      if (relationship.relatedResourceId.startsWith('entity_')) {
+        return { tableId: relationship.relatedResourceId }
+      }
+      // Could be system resource or raw apiSlug
+      return { apiSlug: relationship.relatedResourceId }
     }
 
-    // Check relatedModelType (for system models)
-    if (relationship.relatedModelType) {
-      return relationship.relatedModelType
+    // relatedEntityDefinitionId could be UUID or apiSlug - let server resolve
+    if (relationship.relatedEntityDefinitionId) {
+      const value = relationship.relatedEntityDefinitionId
+      // Already in entity_xxx format
+      if (value.startsWith('entity_')) {
+        return { tableId: value }
+      }
+      // UUID or raw apiSlug - let server resolve via apiSlug param
+      return { apiSlug: value }
     }
 
     return null
@@ -107,14 +118,33 @@ export function FieldInputRow({
     return relationship?.relationshipType === 'has_many'
   }, [field])
 
-  // Handle relationship field change - convert array back to storage format
+  // Get relatedEntityDefinitionId from field options
+  const relatedEntityDefinitionId = useMemo(() => {
+    if (field.type !== 'RELATIONSHIP') return null
+    const relationship = (field.options as { relationship?: {
+      relatedEntityDefinitionId?: string
+      relatedModelType?: string
+    } })?.relationship
+    // For custom entities, use stored relatedEntityDefinitionId
+    // For system resources, use relatedModelType
+    return relationship?.relatedEntityDefinitionId ?? relationship?.relatedModelType ?? null
+  }, [field])
+
+  // Handle relationship field change - wrap IDs with relatedEntityDefinitionId
   const handleRelationshipChange = (ids: string[]) => {
-    // Store as array for multi-select, single string for single-select
-    onChange(field.id, isMultiRelationship ? ids : ids[0] ?? null)
+    if (!relatedEntityDefinitionId) {
+      console.error('[FieldInputRow] Missing relatedEntityDefinitionId for relationship field')
+      return
+    }
+    const values = ids.map((id) => ({
+      relatedEntityId: id,
+      relatedEntityDefinitionId,
+    }))
+    onChange(field.id, isMultiRelationship ? values : values[0] ?? null)
   }
 
   // Render relationship field with MultiRelationInput
-  if (field.type === 'RELATIONSHIP' && resourceId) {
+  if (field.type === 'RELATIONSHIP' && resourceRef) {
     return (
       <VarEditorFieldRow
         title={field.name}
@@ -125,7 +155,8 @@ export function FieldInputRow({
         validationType={validationType}
         showIcon={true}>
         <MultiRelationInput
-          resourceId={resourceId}
+          tableId={resourceRef.tableId}
+          apiSlug={resourceRef.apiSlug}
           value={relationshipIds}
           onChange={handleRelationshipChange}
           placeholder={placeholder ?? `Select ${field.name.toLowerCase()}...`}

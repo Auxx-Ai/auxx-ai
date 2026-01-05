@@ -1,0 +1,2 @@
+ALTER TABLE "FieldValue" ADD COLUMN "relatedEntityDefinitionId" text;--> statement-breakpoint
+CREATE INDEX "FieldValue_relatedEntityDefinitionId_idx" ON "FieldValue" USING btree ("relatedEntityDefinitionId");

@@ -313,9 +313,7 @@ export class FieldValueService {
       value: typedValue,
     })
 
-    const resultValue = result.length > 0 ? result[0]! : null
-
-    // 7. Publish event for contacts
+    // 7. Publish event for contacts (use first value for event compat)
     if (publishEvents && modelType === 'contact' && this.userId) {
       await publisher.publishLater({
         type: 'contact:field:updated',
@@ -327,14 +325,15 @@ export class FieldValueService {
           fieldName: field.name,
           fieldType: field.type,
           oldValue,
-          newValue: resultValue,
+          newValue: result[0] ?? null,
         },
       } as ContactFieldUpdatedEvent)
     }
 
+    // Always return arrays
     return {
-      id: result[0]?.id,
-      value: resultValue,
+      ids: result.map((r) => r.id),
+      values: result,
     }
   }
 
@@ -374,7 +373,7 @@ export class FieldValueService {
       if (handler) {
         await handler(this.db, entityId, v.value, this.organizationId)
       }
-      results.push({ fieldId: v.fieldId, value: null })
+      results.push({ fieldId: v.fieldId, ids: [], values: [] })
     }
 
     // Handle custom fields - batch prefetch all field definitions
@@ -396,7 +395,7 @@ export class FieldValueService {
         } catch (error) {
           // Log but continue with other fields
           console.error(`Failed to set field ${v.fieldId}:`, error)
-          results.push({ fieldId: v.fieldId, value: null })
+          results.push({ fieldId: v.fieldId, ids: [], values: [] })
         }
       }
     }
@@ -502,6 +501,7 @@ export class FieldValueService {
         valueJson: schema.FieldValue.valueJson,
         optionId: schema.FieldValue.optionId,
         relatedEntityId: schema.FieldValue.relatedEntityId,
+        relatedEntityDefinitionId: schema.FieldValue.relatedEntityDefinitionId,
         sortKey: schema.FieldValue.sortKey,
         createdAt: schema.FieldValue.createdAt,
         updatedAt: schema.FieldValue.updatedAt,
@@ -630,6 +630,7 @@ export class FieldValueService {
         valueJson: schema.FieldValue.valueJson,
         optionId: schema.FieldValue.optionId,
         relatedEntityId: schema.FieldValue.relatedEntityId,
+        relatedEntityDefinitionId: schema.FieldValue.relatedEntityDefinitionId,
         sortKey: schema.FieldValue.sortKey,
         id: schema.FieldValue.id,
         createdAt: schema.FieldValue.createdAt,
@@ -918,7 +919,10 @@ export class FieldValueService {
       case 'option':
         return { optionId: value.optionId }
       case 'relationship':
-        return { relatedEntityId: value.relatedEntityId }
+        return {
+          relatedEntityId: value.relatedEntityId,
+          relatedEntityDefinitionId: value.relatedEntityDefinitionId,
+        }
     }
   }
 
@@ -968,6 +972,7 @@ export class FieldValueService {
       valueJson: null as unknown,
       optionId: null as string | null,
       relatedEntityId: null as string | null,
+      relatedEntityDefinitionId: null as string | null,
     }
 
     switch (value.type) {
@@ -987,7 +992,11 @@ export class FieldValueService {
       case 'option':
         return { ...base, optionId: value.optionId }
       case 'relationship':
-        return { ...base, relatedEntityId: value.relatedEntityId }
+        return {
+          ...base,
+          relatedEntityId: value.relatedEntityId,
+          relatedEntityDefinitionId: value.relatedEntityDefinitionId,
+        }
     }
   }
 
@@ -1020,7 +1029,12 @@ export class FieldValueService {
       case 'option':
         return { ...base, type: 'option', optionId: row.optionId ?? '' }
       case 'relationship':
-        return { ...base, type: 'relationship', relatedEntityId: row.relatedEntityId ?? '' }
+        return {
+          ...base,
+          type: 'relationship',
+          relatedEntityId: row.relatedEntityId ?? '',
+          relatedEntityDefinitionId: row.relatedEntityDefinitionId ?? '',
+        }
       default:
         return { ...base, type: 'text', value: row.valueText ?? '' }
     }

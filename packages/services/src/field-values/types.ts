@@ -75,6 +75,7 @@ export interface ExistingFieldValueRow {
   valueJson: unknown | null
   optionId: string | null
   relatedEntityId: string | null
+  relatedEntityDefinitionId: string | null
   sortKey: string
 }
 
@@ -91,6 +92,7 @@ export interface InsertFieldValueInput {
   valueJson?: unknown | null
   optionId?: string | null
   relatedEntityId?: string | null
+  relatedEntityDefinitionId?: string | null
 }
 
 /** Input for updating a field value */
@@ -104,6 +106,7 @@ export interface UpdateFieldValueInput {
   valueJson?: unknown | null
   optionId?: string | null
   relatedEntityId?: string | null
+  relatedEntityDefinitionId?: string | null
 }
 
 /** Input for deleting field values */
@@ -133,6 +136,7 @@ export interface FieldValueRow {
   valueJson: unknown | null
   optionId: string | null
   relatedEntityId: string | null
+  relatedEntityDefinitionId: string | null
   sortKey: string
   createdAt: string
   updatedAt: string

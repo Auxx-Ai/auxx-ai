@@ -27,6 +27,7 @@ export async function insertFieldValue(input: InsertFieldValueInput) {
         valueJson: input.valueJson ?? null,
         optionId: input.optionId ?? null,
         relatedEntityId: input.relatedEntityId ?? null,
+        relatedEntityDefinitionId: input.relatedEntityDefinitionId ?? null,
       })
       .returning(),
     'insert-field-value'
@@ -62,6 +63,7 @@ export async function batchInsertFieldValues(inputs: InsertFieldValueInput[]) {
     valueJson: input.valueJson ?? null,
     optionId: input.optionId ?? null,
     relatedEntityId: input.relatedEntityId ?? null,
+    relatedEntityDefinitionId: input.relatedEntityDefinitionId ?? null,
   }))
 
   const dbResult = await fromDatabase(

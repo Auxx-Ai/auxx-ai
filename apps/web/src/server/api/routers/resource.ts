@@ -34,14 +34,19 @@ const resourceIdSchema = z.string().refine(
   { message: 'Invalid resource ID. Must be a valid TableId or entity_xxx format.' }
 )
 
-const getResourcesInputSchema = z.object({
-  tableId: resourceIdSchema,
-  limit: z.number().min(1).max(100).default(50),
-  cursor: z.string().nullish(),
-  search: z.string().optional(),
-  filters: z.record(z.string(), z.any()).optional(),
-  skipCache: z.boolean().optional(),
-})
+const getResourcesInputSchema = z
+  .object({
+    tableId: resourceIdSchema.optional(),
+    apiSlug: z.string().optional(),
+    limit: z.number().min(1).max(100).default(50),
+    cursor: z.string().nullish(),
+    search: z.string().optional(),
+    filters: z.record(z.string(), z.any()).optional(),
+    skipCache: z.boolean().optional(),
+  })
+  .refine((data) => data.tableId || data.apiSlug, {
+    message: 'Either tableId or apiSlug is required',
+  })
 
 const getResourceByIdInputSchema = z.object({
   tableId: resourceIdSchema,
@@ -51,13 +56,29 @@ const getResourceByIdInputSchema = z.object({
 export const resourceRouter = createTRPCRouter({
   /**
    * Get paginated resources for picker
+   * Accepts either tableId (entity_products, contact) or apiSlug (products)
    */
   getAll: protectedProcedure.input(getResourcesInputSchema).query(async ({ ctx, input }) => {
     const { organizationId, userId } = ctx.session
+    let { tableId } = input
+    const { apiSlug } = input
 
     try {
+      // Resolve apiSlug to tableId if provided
+      if (apiSlug && !tableId) {
+        const registryService = new ResourceRegistryService(organizationId, ctx.db)
+        const resource = await registryService.getByApiSlug(apiSlug)
+        if (!resource) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: `Entity not found: ${apiSlug}`,
+          })
+        }
+        tableId = resource.id
+      }
+
       const service = new ResourcePickerService(organizationId, userId, ctx.db)
-      return await service.getResources(input)
+      return await service.getResources({ ...input, tableId: tableId! })
     } catch (error: any) {
       if (error instanceof TRPCError) throw error
       throw new TRPCError({
@@ -128,13 +149,29 @@ export const resourceRouter = createTRPCRouter({
 
   /**
    * Search resources (alias for getAll with semantic meaning)
+   * Accepts either tableId (entity_products, contact) or apiSlug (products)
    */
   search: protectedProcedure.input(getResourcesInputSchema).query(async ({ ctx, input }) => {
     const { organizationId, userId } = ctx.session
+    let { tableId } = input
+    const { apiSlug } = input
 
     try {
+      // Resolve apiSlug to tableId if provided
+      if (apiSlug && !tableId) {
+        const registryService = new ResourceRegistryService(organizationId, ctx.db)
+        const resource = await registryService.getByApiSlug(apiSlug)
+        if (!resource) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: `Entity not found: ${apiSlug}`,
+          })
+        }
+        tableId = resource.id
+      }
+
       const service = new ResourcePickerService(organizationId, userId, ctx.db)
-      return await service.getResources(input)
+      return await service.getResources({ ...input, tableId: tableId! })
     } catch (error: any) {
       if (error instanceof TRPCError) throw error
       throw new TRPCError({

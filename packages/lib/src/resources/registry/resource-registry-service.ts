@@ -140,6 +140,9 @@ export class ResourceRegistryService {
   // Performance optimization: Cache full resource definitions
   private resourceCache: Map<string, Resource> = new Map()
 
+  // Performance optimization: Cache by apiSlug for fast lookup
+  private apiSlugCache: Map<string, CustomResource> = new Map()
+
   // Performance optimization: Cache entity slug map
   private entitySlugMap: Map<string, string> | null = null
 
@@ -155,6 +158,7 @@ export class ResourceRegistryService {
   clearCache(): void {
     this.fieldCache.clear()
     this.resourceCache.clear()
+    this.apiSlugCache.clear()
     this.entitySlugMap = null
   }
 
@@ -306,6 +310,28 @@ export class ResourceRegistryService {
         ),
       ],
     }
+  }
+
+  /**
+   * Get custom resource by raw apiSlug (e.g., "products")
+   * Checks apiSlugCache first, then DB lookup via getBySlug.
+   * Caches result in both apiSlugCache and resourceCache.
+   */
+  async getByApiSlug(apiSlug: string): Promise<CustomResource | null> {
+    // Check cache first
+    const cached = this.apiSlugCache.get(apiSlug)
+    if (cached) return cached
+
+    // Use existing getBySlug which queries DB
+    const resource = await this.getBySlug(apiSlug)
+
+    if (resource) {
+      // Cache by both apiSlug AND canonical resourceId
+      this.apiSlugCache.set(apiSlug, resource)
+      this.resourceCache.set(resource.id, resource)
+    }
+
+    return resource
   }
 
   /**

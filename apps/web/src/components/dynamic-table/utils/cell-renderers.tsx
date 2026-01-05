@@ -24,44 +24,62 @@ type SelectOption = { label: string; value: string }
 
 /**
  * Relationship cell content - handles hydration internally
+ * Extracts relatedEntityDefinitionId from TypedFieldValue to determine resource type
  */
-function RelationshipCellContent({
-  value,
-  resourceId,
-}: {
-  value: unknown
-  resourceId: string | null
-}) {
-  const ids = useMemo(() => {
-    if (!value) return []
+function RelationshipCellContent({ value }: { value: unknown }) {
+  // Extract IDs and entityDefinitionId from value
+  const { ids, entityDefinitionId } = useMemo(() => {
+    if (!value) return { ids: [], entityDefinitionId: null }
 
     // Handle TypedFieldValue array (RelationshipFieldValue[])
     if (Array.isArray(value)) {
       if (value.length > 0 && typeof value[0] === 'object' && value[0] !== null && 'type' in value[0]) {
-        // Array of TypedFieldValue - extract relatedEntityId from each
-        return value.map((v) => (v as { relatedEntityId?: string }).relatedEntityId).filter(Boolean) as string[]
+        // Array of TypedFieldValue - extract relatedEntityId and relatedEntityDefinitionId
+        const first = value[0] as { relatedEntityDefinitionId?: string }
+        return {
+          ids: value.map((v) => (v as { relatedEntityId?: string }).relatedEntityId).filter(Boolean) as string[],
+          entityDefinitionId: first.relatedEntityDefinitionId || null,
+        }
       }
       // Already an array of IDs
-      return value.filter((id) => typeof id === 'string') as string[]
+      return { ids: value.filter((id) => typeof id === 'string') as string[], entityDefinitionId: null }
     }
 
     // Handle single TypedFieldValue (RelationshipFieldValue)
     if (typeof value === 'object' && value !== null && 'type' in (value as Record<string, unknown>)) {
-      const relatedId = (value as { relatedEntityId?: string }).relatedEntityId
-      return relatedId ? [relatedId] : []
+      const rel = value as { relatedEntityId?: string; relatedEntityDefinitionId?: string }
+      return {
+        ids: rel.relatedEntityId ? [rel.relatedEntityId] : [],
+        entityDefinitionId: rel.relatedEntityDefinitionId || null,
+      }
     }
 
     // STRICT: Reject legacy { data: x } wrapper format
     if (typeof value === 'object' && value !== null && 'data' in (value as Record<string, unknown>)) {
       console.error('[RelationshipCell] Legacy { data: x } format detected. All values must be TypedFieldValue.')
-      return []
+      return { ids: [], entityDefinitionId: null }
     }
 
     // Handle raw string ID (pre-extracted value)
-    if (typeof value === 'string') return [value]
+    if (typeof value === 'string') return { ids: [value], entityDefinitionId: null }
 
-    return []
+    return { ids: [], entityDefinitionId: null }
   }, [value])
+
+  // Convert entityDefinitionId to resourceId format for useRelationship
+  const resourceId = useMemo(() => {
+    if (!entityDefinitionId) return null
+    // System resources use name directly (e.g., "contact", "contacts")
+    if (['contact', 'contacts', 'ticket', 'tickets', 'user', 'users', 'thread', 'threads'].includes(entityDefinitionId)) {
+      return entityDefinitionId.replace(/s$/, '') // normalize plural to singular
+    }
+    // Already in entity_xxx format - return as-is
+    if (entityDefinitionId.startsWith('entity_')) {
+      return entityDefinitionId
+    }
+    // UUID - prefix with entity_ (the hook will resolve via apiSlug)
+    return `entity_${entityDefinitionId}`
+  }, [entityDefinitionId])
 
   const { items: hydratedItems, isLoading } = useRelationship(resourceId, ids)
 
@@ -502,11 +520,9 @@ const cellRenderers: Record<string, CellRenderer> = {
     return <TagsCellView value={value as string | string[] | null} options={opts} />
   },
 
-  // Relationship - uses RelationshipCellContent which handles hydration internally
-  RELATIONSHIP: (value, _, config) => {
-    const targetTable = (config?.options as { relationship?: { targetTable?: string } })
-      ?.relationship?.targetTable
-    return <RelationshipCellContent value={value} resourceId={targetTable ?? null} />
+  // Relationship - uses RelationshipCellContent which extracts resourceId from TypedFieldValue
+  RELATIONSHIP: (value) => {
+    return <RelationshipCellContent value={value} />
   },
 
   // Generic items renderer - for groups, sources, any list of items
