@@ -426,6 +426,7 @@ export default function CustomerListPage() {
               className="h-full flex-1"
               resourceType="contact"
               tableId={TABLE_ID}
+              entityLabel="Contact"
               bulkActions={bulkActions}
               enableSearch
               columns={columns}
@@ -437,6 +438,7 @@ export default function CustomerListPage() {
               showRowNumbers={false}
               importHref="/app/contacts/import"
               onColumnVisibilityChange={setColumnVisibility}
+              onAddNew={() => setIsNewCustomerOpen(true)}
               emptyState={<EmptyStateComponent />}>
               {/* Custom footer to show loading state */}
               <DynamicTableFooter>

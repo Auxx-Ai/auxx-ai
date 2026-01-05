@@ -323,6 +323,7 @@ export function PartsContent() {
               data={rows}
               className="h-full flex-1"
               tableId="parts-table"
+              entityLabel="Part"
               bulkActions={bulkActions}
               enableSearch
               columns={columns}
@@ -332,6 +333,7 @@ export function PartsContent() {
               onRowSelectionChange={handleRowSelectionChange}
               rowSelection={selectedRowIds}
               showRowNumbers={false}
+              onAddNew={() => setIsCreateDialogOpen(true)}
               emptyState={<EmptyStateComponent />}>
               <DynamicTableFooter>
                 <div className="flex items-center justify-between px-4 py-2 text-sm text-muted-foreground">

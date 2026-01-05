@@ -2,18 +2,13 @@
 
 'use client'
 
-import { Button } from '@auxx/ui/components/button'
 import type { ExtendedColumnDef } from '~/components/dynamic-table'
-import { FormattedCell, CellPadding } from '~/components/dynamic-table'
+import { FormattedCell, CellPadding, PrimaryCell } from '~/components/dynamic-table'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import {
-  MoreHorizontal,
   Eye,
   Edit,
   Trash2,
@@ -229,87 +224,6 @@ interface TicketColumnsActions {
   onReply?: (ticket: Ticket) => void
 }
 
-/**
- * Props for TicketTitleCell component
- */
-interface TicketTitleCellProps {
-  ticket: Ticket
-  onViewDetails: (ticket: Ticket) => void
-  onEdit: (ticket: Ticket) => void
-  onDelete: (ticket: Ticket) => void
-  onAssign?: (ticket: Ticket) => void
-  onReply?: (ticket: Ticket) => void
-}
-
-/**
- * Ticket title cell component with integrated actions
- * Shows the ticket title as clickable link and actions dropdown on hover
- * Handles its own padding for proper table cell layout
- */
-function TicketTitleCell({
-  ticket,
-  onViewDetails,
-  onEdit,
-  onDelete,
-  onAssign,
-  onReply,
-}: TicketTitleCellProps) {
-  return (
-    <div className="flex items-center justify-between w-full pl-3 pr-2 text-sm group/title">
-      <button
-        className="text-left underline decoration-muted-foreground/50 hover:decoration-primary truncate max-w-[calc(100%-40px)] font-medium"
-        onClick={(e) => {
-          e.stopPropagation()
-          onViewDetails(ticket)
-        }}>
-        {ticket.title || 'Untitled'}
-      </button>
-
-      <div onClick={(e) => e.stopPropagation()} className="shrink-0">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="size-6 p-0 opacity-0 group-hover/title:opacity-100 transition-opacity">
-              <MoreHorizontal />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => onViewDetails(ticket)}>
-              <Eye />
-              View Details
-            </DropdownMenuItem>
-            {onReply && (
-              <DropdownMenuItem onClick={() => onReply(ticket)}>
-                <MessageSquare />
-                Reply
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuItem onClick={() => onEdit(ticket)}>
-              <Edit />
-              Edit Ticket
-            </DropdownMenuItem>
-            {onAssign && (
-              <DropdownMenuItem onClick={() => onAssign(ticket)}>
-                <User />
-                Assign Agent
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => onDelete(ticket)}
-              className="text-destructive focus:text-destructive">
-              <Trash2 />
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    </div>
-  )
-}
-
 export function createTicketColumns({
   onViewDetails,
   onEdit,
@@ -332,21 +246,42 @@ export function createTicketColumns({
       accessorKey: 'title',
       header: 'Title',
       cell: ({ row }) => (
-        <TicketTitleCell
-          ticket={row.original}
-          onViewDetails={onViewDetails}
-          onEdit={onEdit}
-          onDelete={onDelete}
-          onAssign={onAssign}
-          onReply={onReply}
-        />
+        <PrimaryCell
+          value={row.original.title}
+          onTitleClick={() => onViewDetails(row.original)}>
+          <DropdownMenuItem onClick={() => onViewDetails(row.original)}>
+            <Eye />
+            View Details
+          </DropdownMenuItem>
+          {onReply && (
+            <DropdownMenuItem onClick={() => onReply(row.original)}>
+              <MessageSquare />
+              Reply
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem onClick={() => onEdit(row.original)}>
+            <Edit />
+            Edit Ticket
+          </DropdownMenuItem>
+          {onAssign && (
+            <DropdownMenuItem onClick={() => onAssign(row.original)}>
+              <User />
+              Assign Agent
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem variant="destructive" onClick={() => onDelete(row.original)}>
+            <Trash2 />
+            Delete
+          </DropdownMenuItem>
+        </PrimaryCell>
       ),
       size: 300,
       minSize: 200,
       enableSorting: true,
       enableHiding: false,
       icon: TextAlignStart,
-      defaultPinned: true,
+      primaryCell: true,
     },
     {
       accessorKey: 'contact',

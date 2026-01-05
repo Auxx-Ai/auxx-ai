@@ -49,7 +49,6 @@ export function AddressStructFields({
   autoFocus = false,
   className = 'flex w-[350px] flex-col gap-2 p-2',
 }: AddressStructFieldsProps) {
-
   /** Handle field change */
   const handleFieldChange = useCallback(
     (fieldName: keyof AddressStruct, fieldValue: string) => {

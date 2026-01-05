@@ -14,8 +14,10 @@ import {
   PinOff,
   Pencil,
   Settings2,
+  Plus,
 } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@auxx/ui/components/tooltip'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -250,6 +252,8 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
     setColumnLabel,
     columnFormatting,
     setColumnFormatting,
+    onAddNew,
+    entityLabel,
   } = useTableContext<TData>()
 
   const columnType = columnDef.columnType || 'text'
@@ -265,6 +269,10 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
   // Get header content from column definition (custom label takes precedence)
   const originalLabel = typeof columnDef.header === 'string' ? columnDef.header : column.id
   const headerContent = columnLabels[column.id] ?? originalLabel
+
+  // Show "New" button only for primary columns with onAddNew callback
+  const isPrimaryColumn = columnDef.primaryCell === true
+  const showNewButton = isPrimaryColumn && onAddNew
 
   return (
     <div
@@ -296,12 +304,34 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
         </div>
       )}
       <div className="font-medium text-xs pl-3 flex text-zinc-600 select-none z-10">
-        <div className="header-title w-full truncate flex items-center">
+        <div className="header-title w-full truncate flex items-center gap-1">
           {/* Column type icon */}
           {Icon && <Icon className="mr-1 inline-block size-3 text-zinc-400" />}
 
           {/* Column name */}
           <span className="font-medium text-xs">{headerContent}</span>
+
+          {/* New button (only for primary column with onAddNew) */}
+          {showNewButton && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className="ml-1 bg-primary-100 hover:bg-primary-200 size-5 rounded-md"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onAddNew()
+                  }}
+                  aria-label={`New ${entityLabel || ''}`}>
+                  <Plus className="size-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                <p>New {entityLabel || ''}</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
         </div>
       </div>
     </div>

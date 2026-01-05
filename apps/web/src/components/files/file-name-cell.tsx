@@ -199,9 +199,9 @@ export function FileNameCell({ item, depth = 0, isMoving = false, actions }: Fil
             <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
-                size="sm"
-                className="size-6 p-0 opacity-0 group-hover/name:opacity-100 transition-opacity data-[state=open]:opacity-100!">
-                <MoreVertical className="size-4" />
+                size="icon-sm"
+                className="opacity-0 group-hover/name:opacity-100 transition-opacity data-[state=open]:opacity-100! rounded-full">
+                <MoreVertical />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">

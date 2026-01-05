@@ -36,7 +36,7 @@ export function createFileColumns(actions: FileColumnsActions): ExtendedColumnDe
       accessorKey: 'name',
       header: 'Name',
       minSize: 300,
-      defaultPinned: true,
+      primaryCell: true,
       enableHiding: false,
       cell: ({ row }) => (
         <FileNameCell

@@ -1,15 +1,17 @@
 // apps/web/src/app/(protected)/app/workflows/_components/executions/workflow-runs-columns.tsx
 import type { ExtendedColumnDef } from '~/components/dynamic-table'
-import { CellPadding, FormattedCell } from '~/components/dynamic-table'
+import { CellPadding, FormattedCell, PrimaryCell } from '~/components/dynamic-table'
 import { ItemsCellView } from '~/components/ui/items-list-view'
 import { Badge } from '@auxx/ui/components/badge'
-import { Button } from '@auxx/ui/components/button'
+import {
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from '@auxx/ui/components/dropdown-menu'
 import {
   XCircle,
   Clock,
   Play,
   Square,
-  MoreVertical,
   PanelRight,
   StopCircle,
   Hash,
@@ -23,13 +25,6 @@ import {
   CircleDot,
   CalendarClock,
 } from 'lucide-react'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@auxx/ui/components/dropdown-menu'
 import { WorkflowTriggerSourceValues } from '@auxx/database/enums'
 import type { WorkflowRunEntity as WorkflowRun } from '@auxx/database/models'
 import { WorkflowRunStatusBadge, type WorkflowRunStatus } from './workflow-run-status-badge'
@@ -84,72 +79,6 @@ interface RunIdCellProps {
 }
 
 /**
- * Run ID cell component with integrated actions
- * Shows the run ID as clickable link and actions dropdown on hover
- * Handles its own padding for proper table cell layout
- */
-function RunIdCell({ run, onViewDetails, onStopRun, onDeleteRun }: RunIdCellProps) {
-  const shortId = run.id.slice(-5)
-  const isRunning = run.status === 'RUNNING'
-
-  return (
-    <div className="flex items-center justify-between w-full pl-3 pr-2 text-sm group/runid">
-      <button
-        className="flex items-center gap-1 text-sm font-mono text-left underline decoration-muted-foreground/50 hover:decoration-primary"
-        onClick={(e) => {
-          e.stopPropagation()
-          onViewDetails(run)
-        }}>
-        <Hash className="size-3 text-muted-foreground" />
-        <span>{shortId}</span>
-      </button>
-
-      <div onClick={(e) => e.stopPropagation()} className="shrink-0">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="size-6 p-0 opacity-0 group-hover/runid:opacity-100 transition-opacity data-[state=open]:opacity-100!">
-              <MoreVertical />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => onViewDetails(run)}>
-              <PanelRight />
-              View Details
-            </DropdownMenuItem>
-            {run.status === 'FAILED' && run.error && (
-              <DropdownMenuItem onClick={() => onViewDetails(run)}>
-                <XCircle />
-                View Error
-              </DropdownMenuItem>
-            )}
-            {isRunning && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem variant="destructive" onClick={() => onStopRun(run)}>
-                  <StopCircle />
-                  Stop Execution
-                </DropdownMenuItem>
-              </>
-            )}
-            {!isRunning && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem variant="destructive" onClick={() => onDeleteRun(run)}>
-                  <Trash2 />
-                  Delete Run
-                </DropdownMenuItem>
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    </div>
-  )
-}
-/**
  * Create workflow runs table columns
  */
 export const createWorkflowRunsColumns = (
@@ -160,19 +89,52 @@ export const createWorkflowRunsColumns = (
     header: 'Run ID',
     icon: Hash,
     accessorFn: (row) => row.id,
-    cell: ({ row }) => (
-      <RunIdCell
-        run={row.original}
-        onViewDetails={actions.onViewDetails}
-        onStopRun={actions.onStopRun}
-        onDeleteRun={actions.onDeleteRun}
-      />
-    ),
+    cell: ({ row }) => {
+      const run = row.original
+      const shortId = run.id.slice(-5)
+      const isRunning = run.status === 'RUNNING'
+      return (
+        <PrimaryCell
+          value={shortId}
+          prefixIcon={<Hash className="size-3 text-muted-foreground" />}
+          titleClassName="font-mono text-sm"
+          onTitleClick={() => actions.onViewDetails(run)}>
+          <DropdownMenuItem onClick={() => actions.onViewDetails(run)}>
+            <PanelRight />
+            View Details
+          </DropdownMenuItem>
+          {run.status === 'FAILED' && run.error && (
+            <DropdownMenuItem onClick={() => actions.onViewDetails(run)}>
+              <XCircle />
+              View Error
+            </DropdownMenuItem>
+          )}
+          {isRunning && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" onClick={() => actions.onStopRun(run)}>
+                <StopCircle />
+                Stop Execution
+              </DropdownMenuItem>
+            </>
+          )}
+          {!isRunning && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" onClick={() => actions.onDeleteRun(run)}>
+                <Trash2 />
+                Delete Run
+              </DropdownMenuItem>
+            </>
+          )}
+        </PrimaryCell>
+      )
+    },
     enableSorting: false,
     enableHiding: false,
     minSize: 120,
     maxSize: 160,
-    defaultPinned: true,
+    primaryCell: true,
   },
   {
     id: 'status',

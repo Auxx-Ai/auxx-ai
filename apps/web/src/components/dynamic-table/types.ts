@@ -77,8 +77,8 @@ export type ExtendedColumnDef<TData = any> = ColumnDef<TData> & {
   maxSize?: number
   /** Default visibility state */
   defaultVisible?: boolean
-  /** Pin this column to the left by default (when no saved view exists) */
-  defaultPinned?: boolean
+  /** Mark this column as primary (pins left by default, can show 'New' button) */
+  primaryCell?: boolean
   /** Field type from custom fields (for formatting support) */
   fieldType?: string
   /** Default formatting options from field definition */
@@ -320,6 +320,9 @@ export interface DynamicTableProps<TData = any> {
 
   /** Entity label for "New X" buttons in kanban */
   entityLabel?: string
+
+  /** Callback when "New" button is clicked in primary column header */
+  onAddNew?: () => void
 
   /** Callback when kanban card is clicked */
   onCardClick?: (card: TData) => void

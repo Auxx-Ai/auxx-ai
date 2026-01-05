@@ -7,7 +7,6 @@ import type { VisibilityState } from '@tanstack/react-table'
 import { Button } from '@auxx/ui/components/button'
 import {
   Plus,
-  MoreVertical,
   Trash2,
   Archive,
   Database,
@@ -15,23 +14,25 @@ import {
   SquarePen,
   BookPlus,
   Play,
+  MoreVertical,
 } from 'lucide-react'
 import { useEntityInstanceOperations } from '~/hooks/use-entity-instance-operations'
-import { DynamicView, DynamicTableFooter, CustomFieldCell } from '~/components/dynamic-table'
+import { DynamicView, DynamicTableFooter, CustomFieldCell, PrimaryCell } from '~/components/dynamic-table'
 import type { ExtendedColumnDef, CellSelectionConfig } from '~/components/dynamic-table'
 import type { StoreConfig } from '~/components/fields/property-provider'
 import { ModelTypes } from '@auxx/types/custom-field'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@auxx/ui/components/dropdown-menu'
 import { EmptyState } from '~/components/global/empty-state'
 import {
   mapFieldTypeToColumnType,
   getIconForFieldType,
 } from '~/components/dynamic-table/custom-field-column-factory'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from '@auxx/ui/components/dropdown-menu'
 import type { FieldType } from '@auxx/database/types'
 import {
   MainPage,
@@ -54,83 +55,6 @@ import { useSaveFieldValue } from '~/hooks/use-save-field-value'
 import { getDisplayValue } from '@auxx/lib/field-values/client'
 import type { TypedFieldValue } from '@auxx/types/field-value'
 import type { EntityRow } from './types'
-
-/**
- * Props for PrimaryDisplayCell component
- */
-interface PrimaryDisplayCellProps {
-  row: EntityRow
-  value: unknown
-  onOpenDrawer: (row: EntityRow) => void
-  onEdit: (row: EntityRow) => void
-  onArchive: (id: string) => void
-  onDelete: (id: string) => void
-}
-
-/**
- * Primary display cell component with integrated actions
- * Shows the primary display value as clickable link and actions dropdown
- * Handles its own padding for proper table cell layout
- */
-function PrimaryDisplayCell({
-  row,
-  value,
-  onOpenDrawer,
-  onEdit,
-  onArchive,
-  onDelete,
-}: PrimaryDisplayCellProps) {
-  // Extract display string from TypedFieldValue or raw value
-  const displayValue = (() => {
-    if (value == null) return null
-    // Handle TypedFieldValue from store
-    if (typeof value === 'object' && 'type' in value) {
-      return getDisplayValue(value as TypedFieldValue) || null
-    }
-    // Handle raw value (fallback)
-    return String(value)
-  })()
-
-  return (
-    <div className="flex items-center justify-between w-full pl-3 pr-2 text-sm group/primary">
-      <button
-        className="text-left underline decoration-muted-foreground/50 hover:decoration-primary truncate max-w-[calc(100%-40px)]"
-        onClick={(e) => {
-          e.stopPropagation()
-          onOpenDrawer(row)
-        }}>
-        {displayValue || 'Untitled'}
-      </button>
-
-      <div onClick={(e) => e.stopPropagation()} className="shrink-0">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className=" opacity-0 group-hover/primary:opacity-100 transition-opacity data-[state=open]:opacity-100! data-[state=open]:bg-primary-200 rounded-full">
-              <MoreVertical />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => onEdit(row)}>
-              <SquarePen />
-              Edit
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onArchive(row.id)}>
-              <Archive />
-              Archive
-            </DropdownMenuItem>
-            <DropdownMenuItem variant="destructive" onClick={() => onDelete(row.id)}>
-              <Trash2 />
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    </div>
-  )
-}
 
 /**
  * Props for HeaderActionsDropdown component
@@ -410,7 +334,7 @@ export function EntityRecordsContent() {
           id: `field_${primaryField.id}`,
           accessorFn: (row) => getValue(row.id, primaryField.id),
           header: primaryField.name,
-          defaultPinned: true,
+          primaryCell: true,
           columnType: 'text',
           fieldType: primaryField.type,
           icon: getIconForFieldType(primaryField.type),
@@ -421,15 +345,33 @@ export function EntityRecordsContent() {
           size: 300,
           cell: ({ row }) => {
             const value = getValue(row.original.id, primaryField.id)
+            const displayValue = (() => {
+              if (value == null) return null
+              // Handle TypedFieldValue from store
+              if (typeof value === 'object' && 'type' in value) {
+                return getDisplayValue(value as TypedFieldValue) || null
+              }
+              // Handle raw value (fallback)
+              return String(value)
+            })()
             return (
-              <PrimaryDisplayCell
-                row={row.original}
-                value={value}
-                onOpenDrawer={handleOpenDrawer}
-                onEdit={handleOpenEditDialog}
-                onArchive={handleArchive}
-                onDelete={handleDelete}
-              />
+              <PrimaryCell
+                value={displayValue}
+                onTitleClick={() => handleOpenDrawer(row.original)}>
+                <DropdownMenuItem onClick={() => handleOpenEditDialog(row.original)}>
+                  <SquarePen />
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleArchive(row.original.id)}>
+                  <Archive />
+                  Archive
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive" onClick={() => handleDelete(row.original.id)}>
+                  <Trash2 />
+                  Delete
+                </DropdownMenuItem>
+              </PrimaryCell>
             )
           },
         }
@@ -704,6 +646,7 @@ export function EntityRecordsContent() {
               customFields={customFields}
               primaryFieldId={resource?.display.primaryDisplayField?.id}
               entityLabel={resource?.label}
+              onAddNew={() => setIsCreateDialogOpen(true)}
               onCardClick={handleOpenDrawer}
               onAddCard={() => setIsCreateDialogOpen(true)}
               modelType="entity"

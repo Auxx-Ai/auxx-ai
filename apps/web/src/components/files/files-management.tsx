@@ -587,6 +587,7 @@ export function FilesManagement({
             <DynamicTable<FileItem>
               tableId="filesystem-items"
               className="h-full flex flex-col"
+              entityLabel="File"
               columns={columns}
               data={dataForTable}
               onRowClick={handleRowClick}
@@ -599,6 +600,7 @@ export function FilesManagement({
               onRefresh={refetchFiles}
               searchPlaceholder="Search files and folders..."
               searchKeys={['name', 'path', 'mimeType', 'ext']}
+              onAddNew={() => setUploadDialogOpen(true)}
               dragDrop={dragDropConfig}
               customFilter={
                 <FileFilterBar

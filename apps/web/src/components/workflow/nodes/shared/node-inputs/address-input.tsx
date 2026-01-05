@@ -53,13 +53,12 @@ export const AddressInput = createNodeInput<AddressInputProps>(
       },
       [name, onChange, onError]
     )
-    console.log('Rendering AddressInput with value:', value)
     return (
       <AddressStructFields
         value={value}
         onChange={handleChange}
         disabled={isLoading}
-        className="flex w-full flex-col gap-1 pe-2"
+        className="flex w-full flex-col gap-1 pe-2 py-1"
       />
     )
   }

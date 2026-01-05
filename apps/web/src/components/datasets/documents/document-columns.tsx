@@ -53,7 +53,7 @@ export function createDocumentColumns({
       minSize: 200,
       maxSize: 400,
       size: 300,
-      defaultPinned: true,
+      primaryCell: true,
     },
     {
       accessorKey: 'status',

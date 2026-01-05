@@ -51,6 +51,9 @@ interface TableContextValue<TData = any> {
   /** Entity label for "New X" buttons in kanban */
   entityLabel?: string
 
+  /** Callback when "New" button is clicked in primary column header */
+  onAddNew?: () => void
+
   /** Model type for creating new fields: 'contact', 'ticket', 'entity', etc. */
   modelType?: ModelType
 

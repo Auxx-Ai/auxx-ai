@@ -327,6 +327,7 @@ export function DocumentManagement({ datasetId, onDocumentSelect }: DocumentMana
       <DynamicTable<Document>
         tableId="dataset-documents"
         className="h-full"
+        entityLabel="Document"
         columns={columns}
         data={documents}
         isLoading={isDocumentsLoading}
@@ -338,6 +339,7 @@ export function DocumentManagement({ datasetId, onDocumentSelect }: DocumentMana
         onRefresh={refetch}
         searchPlaceholder="Search documents..."
         searchKeys={['filename', 'title', 'mimeType']}
+        onAddNew={() => setUploadDialogOpen(true)}
         customFilter={
           <DocumentFilterBar
             filterValue={documentFilter}

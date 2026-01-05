@@ -83,21 +83,21 @@ export function computeInitialViewConfig(defaults: ViewDefaults): ViewConfig {
 
 /**
  * Compute default column pinning based on column definitions.
- * Finds the last column with defaultPinned: true and pins all columns up to it.
+ * Finds the last column with primaryCell: true and pins all columns up to it.
  */
 function computeDefaultColumnPinning(
   columns: ExtendedColumnDef[],
   enableCheckbox?: boolean
 ): ColumnPinningState {
-  // Find the last column with defaultPinned: true
+  // Find the last column with primaryCell: true
   let lastPinnedIndex = -1
   columns.forEach((column, index) => {
-    if (column.defaultPinned) {
+    if (column.primaryCell) {
       lastPinnedIndex = index
     }
   })
 
-  // If no defaultPinned columns, just pin checkbox if enabled
+  // If no primaryCell columns, just pin checkbox if enabled
   if (lastPinnedIndex === -1) {
     return enableCheckbox ? { left: ['_checkbox'] } : {}
   }

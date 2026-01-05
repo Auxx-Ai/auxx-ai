@@ -180,7 +180,7 @@ export function useDynamicTable<TData extends Record<string, any>>({
     setColumnPinning((prev) => resolveColumnPinning(prev))
   }, [resolveColumnPinning])
 
-  // Update pinning when baseViewConfig changes (handles async column loading with defaultPinned)
+  // Update pinning when baseViewConfig changes (handles async column loading with primaryCell)
   // Only applies when there's no saved view to avoid overriding user's saved pinning
   useEffect(() => {
     if (!currentView && baseViewConfig.columnPinning) {

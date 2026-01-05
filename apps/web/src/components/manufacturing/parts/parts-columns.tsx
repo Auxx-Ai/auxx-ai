@@ -3,13 +3,9 @@
 'use client'
 
 import { Badge } from '@auxx/ui/components/badge'
-import { Button } from '@auxx/ui/components/button'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import {
   Package,
@@ -17,14 +13,13 @@ import {
   Hash,
   DollarSign,
   Boxes,
-  MoreVertical,
   PanelRight,
   SquarePen,
   Trash2,
   Calculator,
 } from 'lucide-react'
 import type { ExtendedColumnDef } from '~/components/dynamic-table'
-import { FormattedCell } from '~/components/dynamic-table'
+import { FormattedCell, PrimaryCell } from '~/components/dynamic-table'
 import type { InventoryEntity as Inventory } from '@auxx/database/models'
 
 /**
@@ -55,74 +50,6 @@ export interface PartColumnActions {
 }
 
 /**
- * Props for PartTitleCell component
- */
-interface PartTitleCellProps {
-  part: PartRow
-  onViewDetails: (row: PartRow) => void
-  onEdit: (row: PartRow) => void
-  onDelete: (id: string) => void
-  onRecalculateCost: (id: string) => void
-}
-
-/**
- * Part title cell component with integrated actions
- * Shows the part title as clickable link and actions dropdown on hover
- */
-function PartTitleCell({
-  part,
-  onViewDetails,
-  onEdit,
-  onDelete,
-  onRecalculateCost,
-}: PartTitleCellProps) {
-  return (
-    <div className="flex items-center justify-between w-full pl-3 pr-2 text-sm group/title">
-      <button
-        className="text-left underline decoration-muted-foreground/50 hover:decoration-primary truncate max-w-[calc(100%-40px)] font-medium"
-        onClick={(e) => {
-          e.stopPropagation()
-          onViewDetails(part)
-        }}>
-        {part.title || 'Untitled'}
-      </button>
-
-      <div onClick={(e) => e.stopPropagation()} className="shrink-0">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="size-6 p-0 opacity-0 group-hover/title:opacity-100 transition-opacity data-[state=open]:opacity-100!">
-              <MoreVertical />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => onViewDetails(part)}>
-              <PanelRight />
-              View Details
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onEdit(part)}>
-              <SquarePen />
-              Edit Part
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onRecalculateCost(part.id)}>
-              <Calculator />
-              Recalculate Cost
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" onClick={() => onDelete(part.id)}>
-              <Trash2 />
-              Delete Part
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    </div>
-  )
-}
-
-/**
  * Create table columns for the parts list
  * Uses FormattedCell for consistent cell rendering
  */
@@ -133,16 +60,30 @@ export function createPartColumns(actions: PartColumnActions): ExtendedColumnDef
       id: 'title',
       header: 'Title',
       cell: ({ row }) => (
-        <PartTitleCell
-          part={row.original}
-          onViewDetails={actions.onViewDetails}
-          onEdit={actions.onEdit}
-          onDelete={actions.onDelete}
-          onRecalculateCost={actions.onRecalculateCost}
-        />
+        <PrimaryCell
+          value={row.original.title}
+          onTitleClick={() => actions.onViewDetails(row.original)}>
+          <DropdownMenuItem onClick={() => actions.onViewDetails(row.original)}>
+            <PanelRight />
+            View Details
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => actions.onEdit(row.original)}>
+            <SquarePen />
+            Edit Part
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => actions.onRecalculateCost(row.original.id)}>
+            <Calculator />
+            Recalculate Cost
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem variant="destructive" onClick={() => actions.onDelete(row.original.id)}>
+            <Trash2 />
+            Delete Part
+          </DropdownMenuItem>
+        </PrimaryCell>
       ),
       enableSorting: true,
-      defaultPinned: true,
+      primaryCell: true,
       enableResizing: true,
       enableHiding: false,
       minSize: 200,

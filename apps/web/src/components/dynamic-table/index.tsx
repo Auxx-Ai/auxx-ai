@@ -57,6 +57,7 @@ export { DragPreview } from './components/drag-preview'
 export { FormattedCell, CellPadding, type CellConfig } from './components/formatted-cell'
 export { CustomFieldCell } from './components/custom-field-cell'
 export { CopyableLinkCell } from './components/copyable-link-cell'
+export { PrimaryCell, type PrimaryCellProps } from './cells/primary-cell'
 
 // New components from the refactor
 export { TableBody } from './components/table-body'

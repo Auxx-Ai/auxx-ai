@@ -310,6 +310,7 @@ export function TicketManagement({
         tableId={TABLE_ID}
         resourceType="ticket"
         className="h-full"
+        entityLabel="Ticket"
         columns={columns}
         data={tickets}
         isLoading={isTicketsLoading}
@@ -321,6 +322,7 @@ export function TicketManagement({
         onRefresh={refetchTickets}
         searchPlaceholder="Search tickets..."
         onColumnVisibilityChange={setColumnVisibility}
+        onAddNew={() => setCreateDialogOpen(true)}
         onScrollToBottom={handleScrollToBottom}
         emptyState={
           <EmptyState
