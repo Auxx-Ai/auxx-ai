@@ -43,7 +43,7 @@ function ModelFieldsPage() {
   const currentResourceId = isSystem
     ? model
     : entityDefinition
-      ? `entity_${entityDefinition.apiSlug}`
+      ? entityDefinition.id
       : undefined
 
   // Show loading state for custom entities

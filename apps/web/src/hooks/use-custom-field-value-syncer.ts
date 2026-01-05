@@ -137,6 +137,15 @@ export function useCustomFieldValueSyncer(
         fieldIds.add(parsed.fieldId)
       }
 
+      // Compute all requested combinations (cartesian product)
+      const allRequestedCombinations = new Set<string>()
+      for (const resourceId of resourceIds) {
+        for (const fieldId of fieldIds) {
+          const key = buildValueKey(resourceType, resourceId, fieldId, entityDefId)
+          allRequestedCombinations.add(key)
+        }
+      }
+
       try {
         const data = await batchFetch.mutateAsync({
           resourceType,
@@ -145,12 +154,22 @@ export function useCustomFieldValueSyncer(
           fieldIds: Array.from(fieldIds),
         })
 
-        // Update store with fetched TypedFieldValues directly
-        const entries = data.values.map((v) => ({
-          key: buildValueKey(resourceType, v.resourceId, v.fieldId, entityDefId),
-          value: v.value,
+        // Update store with fetched TypedFieldValues AND mark all combinations as loaded
+        // Entries with actual data from batchGet
+        const entriesMap = new Map(
+          data.values.map((v) => [
+            buildValueKey(resourceType, v.resourceId, v.fieldId, entityDefId),
+            v.value,
+          ])
+        )
+
+        // Mark all requested combinations as loaded (including ones with no data)
+        const allLoadedEntries = Array.from(allRequestedCombinations).map((key) => ({
+          key,
+          value: entriesMap.get(key) ?? null,
         }))
-        setValues(entries)
+
+        setValues(allLoadedEntries)
       } catch (error) {
         console.error('Failed to fetch custom field values:', error)
       } finally {

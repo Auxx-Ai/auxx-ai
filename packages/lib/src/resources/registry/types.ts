@@ -4,8 +4,14 @@ import type { JoinScopingConfig } from './display-config'
 import { RESOURCE_TABLE_REGISTRY, type TableId } from './field-registry'
 import type { ResourceField } from './field-types'
 
-/** Custom resource ID format (e.g., 'entity_product') */
-export type CustomResourceId = `entity_${string}`
+/**
+ * Entity definition UUID (custom resource ID, e.g., 'cm1234abc567def890...')
+ * No entity_ prefix - this is the raw UUID
+ */
+export type EntityDefinitionId = string & { readonly __brand: 'EntityDefinitionId' }
+
+/** Custom resource ID is now just the UUID (EntityDefinitionId) */
+export type CustomResourceId = EntityDefinitionId
 
 /** Any resource ID (system or custom) */
 export type ResourceId = TableId | CustomResourceId
@@ -49,6 +55,7 @@ export interface DisplayFieldConfig {
 /** Custom entity resource with field-based display config */
 export interface CustomResource extends BaseResource {
   type: 'custom'
+  apiSlug: string
   color?: string
   entityDefinitionId: string
   organizationId: string
@@ -92,24 +99,29 @@ export function isSystemResourceId(id: string): id is TableId {
 }
 
 /**
- * Type guard to check if a string is a custom resource ID
+ * Type guard to check if a string is a custom resource ID (UUID format)
+ * A UUID is considered custom if it's not a known system TableId
  */
 export function isCustomResourceId(id: string): id is CustomResourceId {
-  return id.startsWith('entity_')
+  // Not a system resource and has UUID format (minimum CUID2 length)
+  return !isSystemResourceId(id) && id.length >= 20
 }
 
 /**
- * Extract the slug from a custom resource ID
- * @example getEntitySlug('entity_product') → 'product'
+ * @deprecated Use resource.apiSlug instead.
+ * Custom resource IDs are now UUID-based, not slug-based.
+ * Get the apiSlug from the CustomResource object.
  */
 export function getEntitySlug(resourceId: CustomResourceId): string {
-  return resourceId.replace('entity_', '')
+  throw new Error('getEntitySlug is deprecated. Use resource.apiSlug instead.')
 }
 
 /**
- * Build a custom resource ID from a slug
- * @example buildCustomResourceId('product') → 'entity_product'
+ * @deprecated Custom resource IDs are now UUID-based, not slug-based.
+ * Use the EntityDefinition UUID directly.
  */
 export function buildCustomResourceId(slug: string): CustomResourceId {
-  return `entity_${slug}`
+  throw new Error(
+    'buildCustomResourceId is deprecated. Custom resource IDs are now UUID-based. Use the EntityDefinition ID directly.'
+  )
 }

@@ -21,32 +21,27 @@ import { type Database, schema } from '@auxx/database'
 import { eq, and } from 'drizzle-orm'
 
 /**
- * Validate resource ID - accepts both system TableId and custom entity ID (entity_xxx)
+ * Validate resource ID - accepts system TableId or custom entity UUID
  */
 const resourceIdSchema = z.string().refine(
   (val: string) => {
     // System table IDs
     if (RESOURCE_TABLE_REGISTRY.some((r: { id: string }) => r.id === val)) return true
-    // Custom entity IDs (entity_xxx format)
-    if (val.startsWith('entity_')) return true
+    // Custom entity IDs - UUID format (cuid2 minimum length)
+    if (val.length >= 20) return true
     return false
   },
-  { message: 'Invalid resource ID. Must be a valid TableId or entity_xxx format.' }
+  { message: 'Invalid resource ID. Must be system TableId or EntityDefinitionId (UUID).' }
 )
 
-const getResourcesInputSchema = z
-  .object({
-    tableId: resourceIdSchema.optional(),
-    apiSlug: z.string().optional(),
-    limit: z.number().min(1).max(100).default(50),
-    cursor: z.string().nullish(),
-    search: z.string().optional(),
-    filters: z.record(z.string(), z.any()).optional(),
-    skipCache: z.boolean().optional(),
-  })
-  .refine((data) => data.tableId || data.apiSlug, {
-    message: 'Either tableId or apiSlug is required',
-  })
+const getResourcesInputSchema = z.object({
+  tableId: resourceIdSchema,
+  limit: z.number().min(1).max(100).default(50),
+  cursor: z.string().nullish(),
+  search: z.string().optional(),
+  filters: z.record(z.string(), z.any()).optional(),
+  skipCache: z.boolean().optional(),
+})
 
 const getResourceByIdInputSchema = z.object({
   tableId: resourceIdSchema,
@@ -56,29 +51,15 @@ const getResourceByIdInputSchema = z.object({
 export const resourceRouter = createTRPCRouter({
   /**
    * Get paginated resources for picker
-   * Accepts either tableId (entity_products, contact) or apiSlug (products)
+   * Accepts tableId (system resource ID or custom entity UUID)
    */
   getAll: protectedProcedure.input(getResourcesInputSchema).query(async ({ ctx, input }) => {
     const { organizationId, userId } = ctx.session
-    let { tableId } = input
-    const { apiSlug } = input
+    const { tableId } = input
 
     try {
-      // Resolve apiSlug to tableId if provided
-      if (apiSlug && !tableId) {
-        const registryService = new ResourceRegistryService(organizationId, ctx.db)
-        const resource = await registryService.getByApiSlug(apiSlug)
-        if (!resource) {
-          throw new TRPCError({
-            code: 'NOT_FOUND',
-            message: `Entity not found: ${apiSlug}`,
-          })
-        }
-        tableId = resource.id
-      }
-
       const service = new ResourcePickerService(organizationId, userId, ctx.db)
-      return await service.getResources({ ...input, tableId: tableId! })
+      return await service.getResources({ ...input, tableId })
     } catch (error: any) {
       if (error instanceof TRPCError) throw error
       throw new TRPCError({
@@ -182,24 +163,6 @@ export const resourceRouter = createTRPCRouter({
   }),
 
   /**
-   * Get all available resource types (system + custom entities)
-   */
-  getAllResourceTypes: protectedProcedure.query(async ({ ctx }) => {
-    const { organizationId } = ctx.session
-
-    try {
-      const service = new ResourceRegistryService(organizationId, ctx.db)
-      return await service.getAll()
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      throw new TRPCError({
-        code: 'INTERNAL_SERVER_ERROR',
-        message: `Failed to fetch resource types: ${message}`,
-      })
-    }
-  }),
-
-  /**
    * Invalidate cache (for testing/admin)
    */
   invalidateCache: protectedProcedure
@@ -230,6 +193,27 @@ export const resourceRouter = createTRPCRouter({
         })
       }
     }),
+
+  /**
+   * Get all available resource types (system + custom entities)
+   * Returns resources with apiSlug for custom entities (used for mapping)
+   */
+  getAllResourceTypes: protectedProcedure.query(async ({ ctx }) => {
+    const { organizationId } = ctx.session
+
+    try {
+      const service = new ResourceRegistryService(organizationId, ctx.db)
+      const resources = await service.getAll()
+
+      return resources
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      throw new TRPCError({
+        code: 'INTERNAL_SERVER_ERROR',
+        message: `Failed to fetch resource types: ${message}`,
+      })
+    }
+  }),
 
   /**
    * List resource IDs with server-side filtering (Query Snapshot pattern)
@@ -302,19 +286,21 @@ export const resourceRouter = createTRPCRouter({
         sorting: input.sorting ?? [],
         executeQuery: async () => {
           // Route to appropriate query function
-          if (input.tableId.startsWith('entity_')) {
-            return queryEntityInstanceIds({
+          // Check if system resource first
+          if (RESOURCE_TABLE_REGISTRY.some((r) => r.id === input.tableId)) {
+            return querySystemResourceIds({
               db: ctx.db,
-              entityDefinitionId: input.tableId.replace('entity_', ''),
+              tableId: input.tableId as TableId,
               organizationId,
               filters: (input.filters ?? []) as ConditionGroup[],
               sorting: input.sorting ?? [],
             })
           }
 
-          return querySystemResourceIds({
+          // Otherwise treat as custom entity (UUID)
+          return queryEntityInstanceIds({
             db: ctx.db,
-            tableId: input.tableId as TableId,
+            entityDefinitionId: input.tableId,
             organizationId,
             filters: (input.filters ?? []) as ConditionGroup[],
             sorting: input.sorting ?? [],
@@ -351,9 +337,9 @@ async function queryEntityInstanceIds(params: {
 }): Promise<string[]> {
   const { db, entityDefinitionId, organizationId, filters, sorting } = params
 
-  // Get fields for this entity via ResourceRegistryService
+  // Get fields for this entity via ResourceRegistryService (entityDefinitionId is now UUID, no prefix)
   const registryService = new ResourceRegistryService(organizationId, db)
-  const fields = await registryService.getFieldsForResource(`entity_${entityDefinitionId}`)
+  const fields = await registryService.getFieldsForResource(entityDefinitionId)
 
   // Build WHERE clause using existing EntityConditionBuilder
   const context: EntityQueryContext = {

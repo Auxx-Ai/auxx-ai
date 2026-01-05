@@ -3,6 +3,7 @@
 import { useMemo } from 'react'
 import { usePropertyContext } from '../property-provider'
 import { useRelationship } from '~/components/resources'
+import { RESOURCE_TABLE_REGISTRY } from '@auxx/lib/resources/client'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import { Skeleton } from '@auxx/ui/components/skeleton'
@@ -36,21 +37,18 @@ export function DisplayRelationship() {
       .map((v) => (v as RelationshipFieldValue).relatedEntityId)
       .filter(Boolean)
 
-    // Get entityDefinitionId from first value and convert to resourceId format
+    // Get entityDefinitionId from first value - use it directly as resourceId
     const first = value[0] as RelationshipFieldValue
     const entityDefId = first?.relatedEntityDefinitionId
     let resolvedResourceId: string | null = null
 
     if (entityDefId) {
-      // System resources use name directly
-      if (['contact', 'contacts', 'ticket', 'tickets', 'user', 'users', 'thread', 'threads'].includes(entityDefId)) {
-        resolvedResourceId = entityDefId.replace(/s$/, '') // normalize plural
-      } else if (entityDefId.startsWith('entity_')) {
-        // Already in entity_xxx format - use as-is
+      // Check if it's a system resource first
+      if (RESOURCE_TABLE_REGISTRY.some((r) => r.id === entityDefId)) {
         resolvedResourceId = entityDefId
       } else {
-        // UUID - prefix with entity_
-        resolvedResourceId = `entity_${entityDefId}`
+        // Otherwise it's a UUID (no entity_ prefix needed)
+        resolvedResourceId = entityDefId
       }
     }
 

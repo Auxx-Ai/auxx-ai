@@ -51,7 +51,7 @@ export const entityHandler: ResourceHandler = {
 
     // Set custom fields in batch
     if (Object.keys(customFields).length > 0) {
-      await setCustomFields(record.id, customFields, `entity_${entityDefinitionId}`, ctx)
+      await setCustomFields(record.id, customFields, entityDefinitionId, ctx)
     }
 
     // Publish event
@@ -97,8 +97,7 @@ export const entityHandler: ResourceHandler = {
 
     // Set custom fields in batch
     if (Object.keys(customFields).length > 0) {
-      const resourceType = entityDefinitionId ? `entity_${entityDefinitionId}` : 'entity'
-      await setCustomFields(id, customFields, resourceType, ctx)
+      await setCustomFields(id, customFields, entityDefinitionId, ctx)
     }
 
     // Publish event

@@ -763,7 +763,7 @@ export function EntityRecordsContent() {
         onOpenChange={setIsFieldDialogOpen}
         onSave={handleSaveField}
         isPending={isCreatingField}
-        currentResourceId={`entity_${slug}`}
+        currentResourceId={resource?.id}
       />
 
       {/* Workflow Trigger Dialog */}

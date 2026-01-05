@@ -7,8 +7,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { getWorkflowApp } from '@auxx/services/workflows'
 import { database as db, schema } from '@auxx/database'
 import { executeResourceQuery, fetchResourceById } from '../../resources/resource-fetcher'
-import { RESOURCE_TABLE_MAP, type TableId } from '../../resources/registry/field-registry'
-import { isCustomResourceId } from '../../resources/registry/types'
+import { RESOURCE_TABLE_MAP, isCustomResourceId, type TableId } from '../../resources/client'
 import { inArray } from 'drizzle-orm'
 
 const logger = createScopedLogger('trigger-manual-workflow-bulk')
@@ -81,17 +80,17 @@ export async function triggerManualResourceWorkflowBulk(params: {
   workflowAppId: string
   resourceType: string
   resourceIds: string[]
-  entitySlug?: string // Required when resourceType === 'entity'
+  entityDefinitionId?: string // EntityDefinitionId UUID when resourceType === 'entity'
   organizationId: string
   createdBy: string
 }): Promise<Result<BulkTriggerResponse, BulkTriggerError>> {
-  const { workflowAppId, resourceType, resourceIds, entitySlug, organizationId, createdBy } = params
+  const { workflowAppId, resourceType, resourceIds, entityDefinitionId, organizationId, createdBy } = params
 
   logger.info('Bulk manual trigger started', {
     workflowAppId,
     resourceType,
     resourceCount: resourceIds.length,
-    entitySlug,
+    entityDefinitionId,
     organizationId,
     createdBy,
   })
@@ -127,9 +126,9 @@ export async function triggerManualResourceWorkflowBulk(params: {
   }
 
   // 2. Batch fetch all resources (single query for system, individual for custom entities)
-  // For entities, convert to 'entity_<slug>' format for fetchResourcesByIds
+  // For entities, use entityDefinitionId (UUID) directly
   const fetchResourceType =
-    resourceType === 'entity' && entitySlug ? `entity_${entitySlug}` : resourceType
+    resourceType === 'entity' && entityDefinitionId ? entityDefinitionId : resourceType
   const resourcesMap = await fetchResourcesByIds(fetchResourceType, resourceIds, organizationId)
 
   logger.info('Resources fetched', {

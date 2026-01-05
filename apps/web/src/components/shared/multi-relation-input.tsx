@@ -24,14 +24,11 @@ import { useRelationship } from '~/components/resources'
  * Props for MultiRelationInput
  */
 export interface MultiRelationInputProps {
-  /** Resource ID for the target table (e.g., 'entity_vendors', 'contact') */
+  /** Resource ID for the target table (system ID or custom entity UUID) */
   resourceId?: string
 
-  /** Table ID for system resources or entity_ prefixed custom resources */
+  /** Table ID for system resources or custom entity UUID */
   tableId?: string
-
-  /** Raw apiSlug for custom entities that needs server-side resolution */
-  apiSlug?: string
 
   /** Currently selected IDs */
   value: string[]
@@ -67,7 +64,6 @@ export interface MultiRelationInputProps {
 export function MultiRelationInput({
   resourceId,
   tableId: tableIdProp,
-  apiSlug,
   value = [],
   onChange,
   disabled = false,
@@ -83,30 +79,21 @@ export function MultiRelationInput({
   // Resolve tableId from props (prefer explicit tableId, then resourceId for backwards compat)
   const tableId = tableIdProp ?? resourceId
 
-  // For useRelationship, we need a proper resourceId format
-  // If we have tableId, use it; if apiSlug, prefix with entity_
-  const resourceIdForHydration = useMemo(() => {
-    if (tableId) return tableId
-    if (apiSlug) return `entity_${apiSlug}`
-    return null
-  }, [tableId, apiSlug])
-
-  // Get hydrated items for selected IDs from the store
+  // Get hydrated items for selected IDs from the store (tableId is system ID or UUID, no prefix needed)
   const { items: selectedItems, isLoading: isLoadingSelected } = useRelationship(
-    resourceIdForHydration,
+    tableId,
     value
   )
 
-  // Search for items when popover is open - pass either tableId or apiSlug
+  // Search for items when popover is open
   const { data: searchResults, isLoading: isSearching } = api.resource.search.useQuery(
     {
-      tableId,
-      apiSlug,
+      tableId: tableId!,
       search: searchQuery,
       limit: 20,
     },
     {
-      enabled: open && !!(tableId || apiSlug),
+      enabled: open && !!tableId,
     }
   )
 

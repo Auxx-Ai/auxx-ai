@@ -16,6 +16,8 @@ import {
   isValidEnumValue,
   getFieldOperators,
   isValidOperatorForField,
+  isSystemResourceId,
+  isCustomResourceId,
 } from '../../../resources/registry'
 import { ConditionQueryBuilder } from '../../query-builder/condition-query-builder'
 import type { GenericCondition, ConditionGroup } from '../../query-builder/base-condition-builder'
@@ -25,7 +27,7 @@ import type { TableId } from '../../../resources/registry/field-registry'
 import { database, schema, type Database } from '@auxx/database'
 
 interface FindNodeData {
-  resourceType: string // Now supports both system resources and custom entities (entity_xxx)
+  resourceType: string // Now supports both system resources and custom entities (UUID format)
   findMode: 'findOne' | 'findMany'
   conditions: GenericCondition[] // For backward compatibility
   conditionGroups: ConditionGroup[] // Primary grouping system
@@ -72,7 +74,7 @@ export class FindProcessor extends BaseNodeProcessor {
 
     // Skip validation for custom entities - field IDs are UUIDs, not static registry keys
     // EntityConditionBuilder will validate fields during query building
-    if (resourceType.startsWith('entity_')) {
+    if (isCustomResourceId(resourceType)) {
       return errors
     }
 
@@ -676,20 +678,21 @@ export class FindProcessor extends BaseNodeProcessor {
     limit: number | undefined,
     findMode: 'findOne' | 'findMany'
   ): Promise<{ results: any[] | any; count: number }> {
-    const slug = resourceType.replace('entity_', '')
+    // resourceType is now EntityDefinitionId (UUID) directly
+    const entityDefinitionId = resourceType
 
     // Get entity definition
     const entityDef = await db.query.EntityDefinition.findFirst({
       where: (defs, { eq, and, isNull }) =>
         and(
-          eq(defs.apiSlug, slug),
+          eq(defs.id, entityDefinitionId),
           eq(defs.organizationId, organizationId),
           isNull(defs.archivedAt)
         ),
     })
 
     if (!entityDef) {
-      throw new Error(`Entity definition not found: ${slug}`)
+      throw new Error(`Entity definition not found: ${entityDefinitionId}`)
     }
 
     // Get fields for this entity to build proper query context
@@ -916,7 +919,7 @@ export class FindProcessor extends BaseNodeProcessor {
           )
         }
       })
-    } else if (config.resourceType && config.resourceType.startsWith('entity_')) {
+    } else if (config.resourceType && isCustomResourceId(config.resourceType)) {
       // For custom entities, we can't validate at design time, so just warn
       if ((config.conditions?.length || 0) > 0) {
         warnings.push(
@@ -995,7 +998,7 @@ export class FindProcessor extends BaseNodeProcessor {
           }
         })
       })
-    } else if (config.resourceType && config.resourceType.startsWith('entity_')) {
+    } else if (config.resourceType && isCustomResourceId(config.resourceType)) {
       // For custom entities, we can't validate at design time, so just warn
       if ((config.conditionGroups?.length || 0) > 0) {
         warnings.push(

@@ -84,11 +84,8 @@ function RelationshipCellContent({ value }: { value: unknown }) {
       return entityDefinitionId.replace(/s$/, '') // normalize plural to singular
     }
 
-    // It's a UUID - need to convert to entity_{slug} format
-    // For now, prefix with entity_ and let useRelationship handle UUID resolution
-    return entityDefinitionId.startsWith('entity_')
-      ? entityDefinitionId
-      : `entity_${entityDefinitionId}`
+    // It's a custom entity UUID - use directly (no entity_ prefix)
+    return entityDefinitionId
   }, [entityDefinitionId])
 
   const { items: hydratedItems, isLoading } = useRelationship(resourceId, ids)

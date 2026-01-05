@@ -618,7 +618,7 @@ function EntityFields({
     : []
 
   // Build the resource ID for relationship field editor
-  const currentResourceId = isEntityInstance ? `entity_${entityDefinitionId}` : modelType
+  const currentResourceId = isEntityInstance ? entityDefinitionId : modelType
 
   // Create storeConfig for PropertyProvider (bi-directional sync with table)
   const storeConfig: StoreConfig | undefined = useMemo(() => {

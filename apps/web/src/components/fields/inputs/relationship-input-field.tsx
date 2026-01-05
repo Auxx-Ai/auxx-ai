@@ -70,16 +70,13 @@ export function RelationshipInputField() {
     return ''
   }, [relationship])
 
-  // Determine resourceId using hook - returns { tableId?, apiSlug? }
+  // Determine resourceId using hook - returns { tableId, entityDefinitionId? } or null
   const resourceRef = useResourceIdFromField(field)
 
-  // For useRelationship, we need a proper resourceId format
-  // If we have tableId, use it; if apiSlug, prefix with entity_
+  // For useRelationship, use tableId directly (either system resource or UUID, no prefix needed)
   const resourceIdForHydration = useMemo(() => {
     if (!resourceRef) return null
-    if (resourceRef.tableId) return resourceRef.tableId
-    if (resourceRef.apiSlug) return `entity_${resourceRef.apiSlug}`
-    return null
+    return resourceRef.tableId
   }, [resourceRef])
 
   // Hydrate selected items via global store (always available even if not in search)

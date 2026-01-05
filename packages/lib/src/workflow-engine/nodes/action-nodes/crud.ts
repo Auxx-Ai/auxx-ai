@@ -31,6 +31,8 @@ import {
   getField,
   getAllFields,
   setEntityVariables,
+  isSystemResourceId,
+  isCustomResourceId,
 } from '../../../resources/registry'
 import { BaseType } from '../../core/types'
 import type { TableId } from '../../../resources/registry/field-registry'
@@ -41,10 +43,10 @@ import type { CustomResource } from '../../../resources/registry/types'
 import type { ResourceField } from '../../../resources/registry/field-types'
 /**
  * CRUD node data interface
- * Now supports both system resources (contact, ticket) and custom entities (entity_xxx)
+ * Now supports both system resources (contact, ticket) and custom entities (UUID format)
  */
 interface CrudNodeData {
-  resourceType: string // Now accepts system ('contact', 'ticket') and custom ('entity_vendors') resources
+  resourceType: string // Now accepts system ('contact', 'ticket') and custom (UUID) resources
   mode: 'create' | 'update' | 'delete'
   resourceId?: string // For update/delete operations
   data: Record<string, any> // Field values
@@ -213,7 +215,7 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
     const errors: string[] = []
 
     // Skip validation for custom entities - they use dynamic field definitions
-    if (resourceType.startsWith('entity_')) {
+    if (isCustomResourceId(resourceType)) {
       return errors
     }
 
@@ -337,15 +339,26 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
       errors.push('Resource ID is required for update and delete operations')
     }
 
-    // For system resources, we can still do static validation using the registry
-    const isCustomEntity = config.resourceType?.startsWith('entity_')
+    // Validate that resourceType is either a system resource or custom entity
+    const isSystemResource = isSystemResourceId(config.resourceType)
+    const isCustomEntity = isCustomResourceId(config.resourceType)
 
-    if (config.resourceType && !isCustomEntity) {
+    if (config.resourceType && !isSystemResource && !isCustomEntity) {
+      errors.push(
+        `Unknown resource type: ${config.resourceType}. Must be a system resource (contact, ticket, etc.) or custom entity UUID.`
+      )
+      return { valid: false, errors, warnings }
+    }
+
+    // Only do static validation for system resources
+    // Custom entities will be validated at runtime with actual entity definition
+    if (isSystemResource) {
       const crudConfig = CRUD_RESOURCE_CONFIGS[config.resourceType as TableId]
 
       if (!crudConfig) {
+        // This shouldn't happen if isSystemResourceId() works correctly
         errors.push(`Unknown system resource type: ${config.resourceType}`)
-        return { valid: errors.length === 0, errors, warnings }
+        return { valid: false, errors, warnings }
       }
 
       // Validate required fields for create using registry (system resources only)

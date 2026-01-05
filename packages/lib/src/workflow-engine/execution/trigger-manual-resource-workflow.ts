@@ -79,10 +79,8 @@ export async function triggerManualResourceWorkflow(params: {
   }
 
   // 2. Fetch resource and verify organization ownership
-  // For entities, convert to 'entity_<slug>' format for fetchResourceById
-  const fetchResourceType =
-    resourceType === 'entity' && entitySlug ? `entity_${entitySlug}` : resourceType
-  const resourceData = await fetchResourceById(fetchResourceType as any, resourceId, organizationId)
+  // resourceType is already in the correct format (system ID or UUID for custom entities)
+  const resourceData = await fetchResourceById(resourceType as any, resourceId, organizationId)
 
   if (!resourceData) {
     return err({

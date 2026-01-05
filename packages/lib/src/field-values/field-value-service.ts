@@ -23,6 +23,7 @@ import { convertToTypedInput, getDisplayValue } from './value-converter'
 import { FieldValueValidator, fieldValueSchemas } from './field-value-validator'
 import { isBuiltInField, getBuiltInFieldHandler } from '../custom-fields/built-in-fields'
 import { checkUniqueValueTyped } from '../custom-fields/check-unique-value-typed'
+import { ResourceRegistryService } from '../resources/registry/resource-registry-service'
 import { publisher } from '../events'
 import type { ContactFieldUpdatedEvent } from '../events/types'
 import type {
@@ -64,7 +65,8 @@ export class FieldValueService {
   constructor(
     private readonly organizationId: string,
     private readonly userId?: string,
-    db: Database = database
+    db: Database = database,
+    private registryService: ResourceRegistryService = new ResourceRegistryService(organizationId, db)
   ) {
     this.db = db
   }
@@ -565,34 +567,13 @@ export class FieldValueService {
       return { values: [] }
     }
 
-    // Query field values with field metadata
+    // Query field values (metadata will be fetched via ResourceRegistryService)
     const rows = await this.db
-      .select({
-        entityId: schema.FieldValue.entityId,
-        fieldId: schema.FieldValue.fieldId,
-        valueText: schema.FieldValue.valueText,
-        valueNumber: schema.FieldValue.valueNumber,
-        valueBoolean: schema.FieldValue.valueBoolean,
-        valueDate: schema.FieldValue.valueDate,
-        valueJson: schema.FieldValue.valueJson,
-        optionId: schema.FieldValue.optionId,
-        relatedEntityId: schema.FieldValue.relatedEntityId,
-        relatedEntityDefinitionId: schema.FieldValue.relatedEntityDefinitionId,
-        sortKey: schema.FieldValue.sortKey,
-        id: schema.FieldValue.id,
-        createdAt: schema.FieldValue.createdAt,
-        updatedAt: schema.FieldValue.updatedAt,
-        fieldType: schema.CustomField.type,
-      })
+      .select()
       .from(schema.FieldValue)
-      .innerJoin(schema.CustomField, eq(schema.CustomField.id, schema.FieldValue.fieldId))
       .where(
         and(
           eq(schema.FieldValue.organizationId, this.organizationId),
-          eq(schema.CustomField.modelType, resourceType),
-          resourceType === 'entity' && entityDefId
-            ? eq(schema.CustomField.entityDefinitionId, entityDefId)
-            : undefined,
           inArray(schema.FieldValue.entityId, entityIds),
           inArray(schema.FieldValue.fieldId, fieldIds)
         )
@@ -608,7 +589,10 @@ export class FieldValueService {
       valueMap.set(key, existing)
     }
 
-    // Build result with validation
+    // Fetch field type map once, using ResourceRegistryService cache
+    const fieldTypeMap = await this.getFieldTypeMap(resourceType, entityDefId, fieldIds)
+
+    // Build result with validation (only include combinations that have actual data)
     const results: TypedFieldValueResult[] = []
     for (const entityId of entityIds) {
       for (const fieldId of fieldIds) {
@@ -616,14 +600,24 @@ export class FieldValueService {
         const fieldRows = valueMap.get(key)
         const issues: string[] = []
 
+        // Skip combinations with no data - only return values that exist
         if (!fieldRows || fieldRows.length === 0) {
-          results.push({
-            resourceId: entityId,
-            fieldId,
-            value: null,
-          })
+          continue
         } else {
-          const fieldType = fieldRows[0]!.fieldType
+          const fieldType = fieldTypeMap.get(fieldId)
+
+          if (!fieldType) {
+            // Field definition not found - orphaned reference
+            issues.push(`Field type not found for field ${fieldId}`)
+            results.push({
+              resourceId: entityId,
+              fieldId,
+              value: null,
+              issues,
+            })
+            continue
+          }
+
           const typedValues = fieldRows.map((row) => {
             const typed = this.rowToTypedValue(row as unknown as FieldValueRow, fieldType)
             // Check for invalid values
@@ -660,6 +654,49 @@ export class FieldValueService {
     }
 
     return { values: results }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // PRIVATE HELPERS - BATCH VALUE RETRIEVAL
+  // ─────────────────────────────────────────────────────────────
+
+  /**
+   * Build a Map of fieldId -> fieldType using ResourceRegistryService cache.
+   * Handles both system resources (e.g., 'contact') and custom entity resources.
+   *
+   * @param resourceType - 'contact', 'ticket', 'entity', etc.
+   * @param entityDefId - EntityDefinition ID if resourceType is 'entity'
+   * @param fieldIds - Field IDs to fetch types for
+   * @returns Map<fieldId, fieldType>
+   * @throws Error if resource not found or field type lookup fails
+   */
+  private async getFieldTypeMap(
+    resourceType: string,
+    entityDefId: string | undefined,
+    fieldIds: string[]
+  ): Promise<Map<string, string>> {
+    // Determine the resource ID based on resourceType and entityDefId
+    const resourceId = resourceType === 'entity' ? entityDefId : resourceType
+
+    if (!resourceId) {
+      throw new Error(`Cannot determine resource ID from resourceType: ${resourceType}`)
+    }
+
+    // Fetch resource using service cache
+    const resource = await this.registryService.getById(resourceId)
+    if (!resource) {
+      throw new Error(`Resource not found: ${resourceId}`)
+    }
+
+    // Build map of fieldId -> fieldType
+    const typeMap = new Map<string, string>()
+    for (const field of resource.fields) {
+      if (fieldIds.includes(field.id)) {
+        typeMap.set(field.id, field.type)
+      }
+    }
+
+    return typeMap
   }
 
   // ─────────────────────────────────────────────────────────────

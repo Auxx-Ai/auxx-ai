@@ -21,23 +21,22 @@ interface FieldWithRelationship {
 
 /**
  * Result from useResourceIdFromField hook.
- * Contains either tableId (for properly formatted IDs) or apiSlug (for raw slugs that need resolution).
+ * Contains tableId (system resource ID or custom entity UUID).
  */
 export interface ResourceIdResult {
-  /** For system resources (contact, ticket) or entity_xxx format */
-  tableId?: string
-  /** For raw apiSlug that needs server-side resolution */
-  apiSlug?: string
+  /** System resource ID (e.g., "contact", "ticket") or custom entity UUID */
+  tableId: string
+  /** Custom entity UUID (for custom entities only, same as tableId) */
+  entityDefinitionId?: string
 }
 
 /**
  * Hook to extract resource identification from a relationship field.
- * Returns an object with either tableId or apiSlug based on the stored format.
+ * Returns tableId which is either a system resource ID or custom entity UUID.
  *
- * The stored value in relatedEntityDefinitionId can be:
- * - UUID (EntityDefinition.id) - treated as apiSlug for server resolution
- * - apiSlug (e.g., "products") - treated as apiSlug
- * - entity_apiSlug (e.g., "entity_products") - treated as tableId
+ * The stored value in relatedEntityDefinitionId is:
+ * - System resource ID (contact, ticket, etc.) - used directly as tableId
+ * - UUID (EntityDefinition.id) - used directly as tableId (no entity_ prefix)
  *
  * @param field - Field definition with relationship options
  * @returns ResourceIdResult or null if not a valid relationship field
@@ -47,22 +46,15 @@ export function useResourceIdFromField(field: FieldWithRelationship): ResourceId
     const relationship = field.options?.relationship
     if (!relationship) return null
 
-    // System resource (contact, ticket, etc.) - use as tableId directly
+    // System resource (contact, ticket, etc.) - use relatedModelType as tableId
     if (relationship.relatedModelType) {
       return { tableId: relationship.relatedModelType }
     }
 
-    // Check relatedEntityDefinitionId
+    // Custom entity - use relatedEntityDefinitionId (UUID directly, no prefix)
     if (relationship.relatedEntityDefinitionId) {
-      const value = relationship.relatedEntityDefinitionId
-
-      // Already in entity_xxx format - use as tableId
-      if (value.startsWith('entity_')) {
-        return { tableId: value }
-      }
-
-      // UUID or raw apiSlug - let server resolve via apiSlug param
-      return { apiSlug: value }
+      const uuid = relationship.relatedEntityDefinitionId
+      return { tableId: uuid, entityDefinitionId: uuid }
     }
 
     return null

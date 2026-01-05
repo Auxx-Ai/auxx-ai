@@ -60,7 +60,8 @@ function toCustomResourceBase(
   def: Omit<EntityDefinitionWithFields, 'customFields'>
 ): Omit<CustomResource, 'fields'> {
   return {
-    id: `entity_${def.apiSlug}` as CustomResourceId,
+    id: def.id as CustomResourceId,
+    apiSlug: def.apiSlug,
     type: 'custom',
     label: def.singular,
     plural: def.plural,
@@ -336,9 +337,10 @@ export class ResourceRegistryService {
 
   /**
    * Get resource by ID with display config and fields included
-   * Supports both entity_<apiSlug> and entity_<entityDefinitionId> formats.
+   * Supports system resource IDs (TableId) and custom entity IDs (UUID/EntityDefinitionId).
    *
    * For system resources: Returns static registry fields + organization's custom fields
+   * For custom entities: Returns custom entity with fields from EntityDefinition
    *
    * Results are cached to avoid repeated DB lookups.
    */
@@ -381,47 +383,38 @@ export class ResourceRegistryService {
         ...toSystemResourceBase(tableId),
         fields: [...staticFields, ...customResourceFields],
       }
-    } else if (resourceId.startsWith('entity_')) {
-      // Check if custom resource (entity_xxx format)
-      const identifier = resourceId.replace('entity_', '')
-
-      // Try apiSlug lookup first (canonical format)
-      const bySlug = await this.getBySlug(identifier)
-      if (bySlug) {
-        resource = bySlug
-      } else {
-        // Fallback: try by EntityDefinition ID
-        const entityDef = await this.db.query.EntityDefinition.findFirst({
-          where: (defs, { eq, and, isNull }) =>
-            and(
-              eq(defs.id, identifier),
-              eq(defs.organizationId, this.organizationId),
-              isNull(defs.archivedAt)
-            ),
-          with: {
-            primaryDisplayField: true,
-            secondaryDisplayField: true,
-            avatarField: true,
-            customFields: {
-              where: (fields, { eq }) => eq(fields.active, true),
-              orderBy: (fields, { asc }) => [asc(fields.position)],
-            },
+    } else {
+      // Custom entity - treat as EntityDefinitionId (UUID) - no entity_ prefix needed
+      const entityDef = await this.db.query.EntityDefinition.findFirst({
+        where: (defs, { eq, and, isNull }) =>
+          and(
+            eq(defs.id, resourceId),
+            eq(defs.organizationId, this.organizationId),
+            isNull(defs.archivedAt)
+          ),
+        with: {
+          primaryDisplayField: true,
+          secondaryDisplayField: true,
+          avatarField: true,
+          customFields: {
+            where: (fields, { eq }) => eq(fields.active, true),
+            orderBy: (fields, { asc }) => [asc(fields.position)],
           },
-        })
+        },
+      })
 
-        if (entityDef) {
-          const entityIdToSlug = await this.getEntitySlugMap()
-          // Include implicit EntityInstance system fields before custom fields
-          resource = {
-            ...toCustomResourceBase(entityDef as EntityDefinitionWithFields),
-            fields: [
-              ...getEntityInstanceFields(),
-              ...this.mapCustomFieldsToResourceFields(
-                (entityDef as EntityDefinitionWithFields).customFields,
-                entityIdToSlug
-              ),
-            ],
-          }
+      if (entityDef) {
+        const entityIdToSlug = await this.getEntitySlugMap()
+        // Include implicit EntityInstance system fields before custom fields
+        resource = {
+          ...toCustomResourceBase(entityDef as EntityDefinitionWithFields),
+          fields: [
+            ...getEntityInstanceFields(),
+            ...this.mapCustomFieldsToResourceFields(
+              (entityDef as EntityDefinitionWithFields).customFields,
+              entityIdToSlug
+            ),
+          ],
         }
       }
     }
@@ -451,10 +444,11 @@ export class ResourceRegistryService {
   }
 
   /**
-   * Check if resource ID is a custom entity
+   * Check if resource ID is a custom entity (UUID format, not a system resource)
    */
   isCustomResource(resourceId: string): boolean {
-    return resourceId.startsWith('entity_')
+    // Not a system resource and has UUID format (minimum CUID2 length)
+    return !this.isSystemResource(resourceId) && resourceId.length >= 20
   }
 
   /**
@@ -499,11 +493,11 @@ export class ResourceRegistryService {
 
       fields = [...staticFields, ...customResourceFields]
     } else if (this.isCustomResource(resourceId)) {
-      const slug = resourceId.replace('entity_', '')
+      // resourceId is now EntityDefinitionId (UUID) directly
       const entityDef = await this.db.query.EntityDefinition.findFirst({
         where: (defs, { eq, and, isNull }) =>
           and(
-            eq(defs.apiSlug, slug),
+            eq(defs.id, resourceId),
             eq(defs.organizationId, this.organizationId),
             isNull(defs.archivedAt)
           ),
@@ -602,9 +596,8 @@ export class ResourceRegistryService {
           // System resource (e.g., "contact", "ticket")
           targetTable = rel.relatedModelType
         } else if (rel?.relatedEntityDefinitionId) {
-          // Custom entity - look up apiSlug from preloaded map
-          const apiSlug = entityIdToSlug.get(rel.relatedEntityDefinitionId)
-          targetTable = apiSlug ? `entity_${apiSlug}` : undefined
+          // Custom entity - use UUID directly (no prefix)
+          targetTable = rel.relatedEntityDefinitionId
         }
 
         if (targetTable) {

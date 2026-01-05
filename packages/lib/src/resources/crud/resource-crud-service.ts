@@ -280,9 +280,8 @@ export class ResourceCrudService {
     // Pass through entity definition ID for custom entities
     if (resource.type === 'custom' && resource.entityDefinitionId) {
       standardFields._entityDefinitionId = resource.entityDefinitionId
-      // Extract slug from resource ID (entity_<slug>)
-      const slug = resource.id.replace('entity_', '')
-      standardFields._entitySlug = slug
+      // Use apiSlug from resource
+      standardFields._entitySlug = resource.apiSlug
     }
 
     for (const [key, value] of Object.entries(data)) {

@@ -3,44 +3,52 @@
 import { useMemo } from 'react'
 import { useResourceProvider } from '../providers/resource-provider'
 import type { CustomResource } from '@auxx/lib/resources/client'
-import { getEntitySlug } from '@auxx/lib/resources/client'
 
 interface UseEntityDefinitionResult {
   /** The custom resource (contains entityDefinitionId, label, plural, etc.) */
   resource: CustomResource | undefined
   /** Convenience: the entity definition ID */
   entityDefinitionId: string | undefined
-  /** Convenience: the entity slug (derived from resource.id) */
+  /** Convenience: the entity slug (apiSlug) */
   slug: string | undefined
   /** Loading state */
   isLoading: boolean
 }
 
 /**
- * Get custom resource by entity slug
+ * Get custom resource by entity slug (apiSlug)
  * The CustomResource contains all entity definition data:
- * - entityDefinitionId
+ * - entityDefinitionId (UUID)
+ * - apiSlug (immutable slug for URLs)
  * - label (singular name)
  * - plural (plural name)
  * - icon, color, display config
  */
-export function useEntityDefinition(slug: string | null): UseEntityDefinitionResult {
-  const { getResourceById, isLoadingResources } = useResourceProvider()
+export function useEntityDefinition(slugOrUuid: string | null): UseEntityDefinitionResult {
+  const { customResources, getResourceById, apiSlugMap, isLoadingResources } = useResourceProvider()
 
-  const resourceId = slug ? `entity_${slug}` : null
-  const resource = resourceId ? getResourceById(resourceId) : undefined
-  const customResource = resource?.type === 'custom' ? (resource as CustomResource) : undefined
+  const resource = useMemo(() => {
+    if (!slugOrUuid) return undefined
+
+    // Try as UUID first (direct lookup in resource map)
+    const byUuid = getResourceById(slugOrUuid)
+    if (byUuid?.type === 'custom') return byUuid as CustomResource
+
+    // Try as slug (search in custom resources by apiSlug)
+    const bySlug = customResources.find((r) => r.apiSlug === slugOrUuid)
+    return bySlug
+  }, [slugOrUuid, getResourceById, customResources])
 
   return {
-    resource: customResource,
-    entityDefinitionId: customResource?.entityDefinitionId,
-    slug: customResource ? getEntitySlug(customResource.id) : undefined,
+    resource,
+    entityDefinitionId: resource?.entityDefinitionId,
+    slug: resource?.apiSlug,
     isLoading: isLoadingResources,
   }
 }
 
 /**
- * Get custom resource by entity definition ID
+ * Get custom resource by entity definition ID (UUID)
  */
 export function useEntityDefinitionById(id: string | null): UseEntityDefinitionResult {
   const { customResources, isLoadingResources } = useResourceProvider()
@@ -53,7 +61,7 @@ export function useEntityDefinitionById(id: string | null): UseEntityDefinitionR
   return {
     resource: customResource,
     entityDefinitionId: customResource?.entityDefinitionId,
-    slug: customResource ? getEntitySlug(customResource.id) : undefined,
+    slug: customResource?.apiSlug,
     isLoading: isLoadingResources,
   }
 }
