@@ -22,10 +22,7 @@ import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { api } from '~/trpc/react'
 import { useFieldValidation } from '../contacts/validation/use-field-validation'
 import { toastError } from '@auxx/ui/components/toast'
-import {
-  FieldNavigationProvider,
-  useFieldNavigation,
-} from './field-navigation-context'
+import { FieldNavigationProvider, useFieldNavigation } from './field-navigation-context'
 import { ModelTypes, type ModelType } from '@auxx/types/custom-field'
 import { modelConfigs, type EntityModelConfig } from './configs/model-field-configs'
 import { useDynamicFieldOptions } from './hooks/use-dynamic-field-options'
@@ -73,16 +70,14 @@ function transformResourceFieldForEntityFields(
   // Handle relationship configuration
   if (field.relationship) {
     options.relationship = {
-      relatedEntityDefinitionId:
-        field.relationship.targetTable.startsWith('entity_') ||
-        !['contact', 'ticket', 'thread', 'user'].includes(field.relationship.targetTable)
-          ? field.relationship.targetTable.replace('entity_', '')
-          : undefined,
-      relatedModelType: ['contact', 'ticket', 'thread', 'user'].includes(
-        field.relationship.targetTable
-      )
-        ? field.relationship.targetTable
-        : undefined,
+      // Use the preserved relatedEntityDefinitionId from ResourceField
+      // For custom entities: UUID (e.g., "xw53y13fbov3dhdenzqlft2u")
+      // For system resources: undefined (use relatedModelType instead)
+      relatedEntityDefinitionId: field.relationship.relatedEntityDefinitionId,
+      // Use the preserved relatedModelType from ResourceField
+      // For system resources: model type (e.g., "contact", "ticket")
+      // For custom entities: undefined (use relatedEntityDefinitionId instead)
+      relatedModelType: field.relationship.relatedModelType,
     }
   }
 
@@ -248,39 +243,25 @@ function EntityFields({
       .map((field, index) => transformResourceFieldForEntityFields(field, index))
   }, [resources, modelType, isEntityInstance, entityDefinitionId, preloadedFields])
 
-  // Fetch custom fields for this model type (fallback only if ResourceProvider doesn't have them)
-  const { data: fetchedFields, refetch: refetchFields } = api.customField.getAll.useQuery(
-    { modelType, entityDefinitionId },
-    { enabled: !preloadedFields && !resourceFields }
-  )
+  // Use preloaded fields first, then ResourceProvider fields (single source of truth)
+  const fields = preloadedFields ?? resourceFields
 
-  // Use preloaded fields first, then ResourceProvider fields, finally fetched fields as fallback
-  const fields = preloadedFields ?? resourceFields ?? fetchedFields
-
-  // Fetch values (skip if preloaded values provided)
-  const {
-    data: fetchedValues,
-    refetch: refetchValues,
-    isLoading: valuesLoading,
-  } = api.fieldValue.getAll.useQuery(
-    { entityId: entityId || '', modelType },
-    { enabled: !!entityId && !isEntityInstance && !preloadedValues }
-  )
+  // Fetch only values (field definitions come from useAllResources via resourceFields)
+  // const {
+  //   data: fetchedValues,
+  //   refetch: refetchValues,
+  //   isLoading: valuesLoading,
+  // } = api.fieldValue.getValues.useQuery(
+  //   { entityId: entityId || '', fieldIds: fields?.map((f: any) => f.id) ?? [] },
+  //   { enabled: !!entityId && !isEntityInstance && !preloadedValues && !!fields }
+  // )
 
   // Use preloaded values for entity instances
-  const values = preloadedValues ?? fetchedValues
+  const values = preloadedValues
+  // const values = preloadedValues ?? fetchedValues
 
   // Unified mutation for both built-in and custom fields
   const setValueMutation = api.fieldValue.set.useMutation({
-    onSuccess: () => {
-      // For non-entity instances, refetch entity and values
-      // if (!isEntityInstance) {
-      //   refetchEntity()
-      //   refetchValues()
-      // }
-      // Call optional callback (e.g., to refetch parent data)
-      // onMutationSuccess?.()
-    },
     onError: (error) => {
       toastError({ title: 'Error updating field', description: error.message })
     },
@@ -327,20 +308,35 @@ function EntityFields({
       const valueMap: Record<string, { valueId?: string; value: StoredFieldValue }> = {}
       const storeEntries: Array<{ key: string; value: StoredFieldValue }> = []
 
-      values.forEach((value: any) => {
-        // Value is now TypedFieldValue directly (no legacy unwrapping)
-        const typedValue = value.value as StoredFieldValue
+      // Handle both Map (from getValues) and array (from preloadedValues with field metadata)
+      const entries = values instanceof Map ? Array.from(values.entries()) : values
 
-        valueMap[value.fieldId] = {
-          valueId: value.id, // CustomFieldValue.id for linking attachments
-          value: typedValue, // TypedFieldValue directly
-        }
-        // Build entry for store hydration
-        storeEntries.push({
-          key: buildValueKey(resourceType, entityId, value.fieldId, entityDefinitionId),
-          value: typedValue,
+      if (values instanceof Map) {
+        // Data from getValues() - Map<fieldId, TypedFieldValue>
+        entries.forEach(([fieldId, typedValue]: [string, any]) => {
+          valueMap[fieldId] = {
+            value: typedValue as StoredFieldValue,
+          }
+          storeEntries.push({
+            key: buildValueKey(resourceType, entityId, fieldId, entityDefinitionId),
+            value: typedValue as StoredFieldValue,
+          })
         })
-      })
+      } else {
+        // Data from preloadedValues - array with field metadata
+        entries.forEach((value: any) => {
+          const typedValue = value.value as StoredFieldValue
+
+          valueMap[value.fieldId] = {
+            valueId: value.id, // CustomFieldValue.id for linking attachments
+            value: typedValue, // TypedFieldValue directly
+          }
+          storeEntries.push({
+            key: buildValueKey(resourceType, entityId, value.fieldId, entityDefinitionId),
+            value: typedValue,
+          })
+        })
+      }
 
       setFieldValues(valueMap)
 
@@ -541,8 +537,6 @@ function EntityFields({
     // Instead, call onMutationSuccess to trigger parent refetch
     if (preloadedFields) {
       onMutationSuccess?.()
-    } else {
-      refetchFields()
     }
   }
 
@@ -564,8 +558,6 @@ function EntityFields({
       // Refetch fields after deletion
       if (preloadedFields) {
         onMutationSuccess?.()
-      } else {
-        refetchFields()
       }
     }
   }
@@ -580,7 +572,8 @@ function EntityFields({
   }
 
   // For entity instances, determine loading state differently
-  const isLoadingValues = isEntityInstance ? false : valuesLoading
+  // const isLoadingValues = isEntityInstance ? false : valuesLoading
+  const isLoadingValues = false //isEntityInstance ? false : valuesLoading
 
   // System timestamp fields for entity instances (read-only)
   // Convert Date objects or date strings to ISO format for proper parsing

@@ -314,15 +314,23 @@ export function EntityInstanceDialog({
 /**
  * Extract raw value from TypedFieldValue.
  * Values are now TypedFieldValue format (not legacy { data: x })
+ * For relationships, preserves the full object with both relatedEntityId and relatedEntityDefinitionId.
  */
 function extractRawValue(value: unknown): any {
   if (value === null || value === undefined) return null
 
-  // Handle TypedFieldValue array (multi-select, tags)
+  // Handle TypedFieldValue array (multi-select, tags, relationships)
   if (Array.isArray(value)) {
     return value.map((v: any) => {
       if (v && typeof v === 'object' && 'type' in v) {
-        return v.optionId ?? v.relatedEntityId ?? v.value
+        // For relationships, preserve the full object structure
+        if (v.type === 'relationship') {
+          return {
+            relatedEntityId: v.relatedEntityId,
+            relatedEntityDefinitionId: v.relatedEntityDefinitionId,
+          }
+        }
+        return v.optionId ?? v.value
       }
       return v
     })
@@ -330,8 +338,23 @@ function extractRawValue(value: unknown): any {
 
   // Handle single TypedFieldValue
   if (typeof value === 'object' && 'type' in value) {
-    const tv = value as { type: string; value?: any; optionId?: string; relatedEntityId?: string }
-    return tv.optionId ?? tv.relatedEntityId ?? tv.value
+    const tv = value as {
+      type: string
+      value?: any
+      optionId?: string
+      relatedEntityId?: string
+      relatedEntityDefinitionId?: string
+    }
+
+    // For relationships, preserve the full object structure
+    if (tv.type === 'relationship') {
+      return {
+        relatedEntityId: tv.relatedEntityId,
+        relatedEntityDefinitionId: tv.relatedEntityDefinitionId,
+      }
+    }
+
+    return tv.optionId ?? tv.value
   }
 
   return value

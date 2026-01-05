@@ -18,9 +18,9 @@ import {
   updateFieldValue,
   deleteFieldValues,
   type FieldWithDefinition,
-  type FieldValueRow as ServiceFieldValueRow,
 } from '@auxx/services'
 import { convertToTypedInput, getDisplayValue } from './value-converter'
+import { FieldValueValidator, fieldValueSchemas } from './field-value-validator'
 import { isBuiltInField, getBuiltInFieldHandler } from '../custom-fields/built-in-fields'
 import { checkUniqueValueTyped } from '../custom-fields/check-unique-value-typed'
 import { publisher } from '../events'
@@ -30,15 +30,12 @@ import type {
   SetValueWithTypeInput,
   AddValueInput,
   GetValueInput,
-  GetValuesWithFieldsInput,
   GetValuesInput,
   BatchGetValuesInput,
   DeleteValueInput,
-  FieldValueWithField,
   TypedFieldValueResult,
   BatchFieldValueResult,
   FieldValueRow,
-  ModelType,
   SetValueWithBuiltInInput,
   SetValuesForEntityInput,
   SetBulkValuesInput,
@@ -60,6 +57,9 @@ export class FieldValueService {
 
   /** Cache for CustomField lookups (keyed by fieldId) */
   private fieldCache: Map<string, FieldWithDefinition> = new Map()
+
+  /** Shared validator instance (stateless, reusable) */
+  private validator = new FieldValueValidator()
 
   constructor(
     private readonly organizationId: string,
@@ -260,9 +260,11 @@ export class FieldValueService {
   /**
    * Set field value with built-in field support and optional event publishing.
    * This is the main entry point for setting values (replaces CustomFieldService.setValue).
+   * Uses FieldValueValidator with Zod schemas for type-safe validation.
    *
    * @param params - Input parameters including entityId, fieldId, value, modelType
    * @returns Result containing id and typed value
+   * @throws Error if validation fails
    */
   async setValueWithBuiltIn(params: SetValueWithBuiltInInput): Promise<SetValueResult> {
     const { entityId, fieldId, value, modelType, publishEvents = true } = params
@@ -274,18 +276,24 @@ export class FieldValueService {
         throw new Error(`Built-in field ${fieldId} has no handler`)
       }
       await handler(this.db, entityId, value, this.organizationId)
-      return { value: null } // Built-in fields don't return FieldValue
+      return { ids: [], values: [] } // Built-in fields don't return FieldValue
     }
 
     // 2. Get field definition (cached)
     const field = await this.getField(fieldId)
 
-    // 3. Convert raw value to typed input
-    const options = Array.isArray(field.options) ? (field.options as SelectOption[]) : undefined
-    const typedValue = convertToTypedInput(value, field.type, options)
+    // 3. Validate and convert raw value to typed input using FieldValueValidator
+    const typedValue = await this.validateAndConvertValue(value, field.type, field as any)
 
-    // 4. Check uniqueness if applicable
-    if (field.isUnique && typedValue !== null) {
+    // Handle null values (deletion)
+    if (typedValue === null) {
+      await this.deleteValue({ entityId, fieldId })
+      await this.maybeUpdateDisplayValue(entityId, field, null)
+      return { ids: [], values: [] }
+    }
+
+    // 4. Check uniqueness if applicable (if field has unique constraint)
+    if ((field as any).isUnique && typedValue !== null) {
       await checkUniqueValueTyped(
         {
           fieldId,
@@ -376,12 +384,19 @@ export class FieldValueService {
       results.push({ fieldId: v.fieldId, ids: [], values: [] })
     }
 
-    // Handle custom fields - batch prefetch all field definitions
+    // Handle custom fields - batch prefetch all field definitions and validate relationships
     if (customs.length > 0) {
       // Prefetch all fields (fills cache)
       await Promise.all(customs.map((v) => this.getField(v.fieldId).catch(() => null)))
 
-      // Now set each value (will use cached field definitions)
+      // Pre-batch validate all relationships (fills cache for later)
+      const fieldTypes = customs.map((c) => {
+        const field = this.fieldCache.get(c.fieldId)
+        return field?.type ?? 'TEXT'
+      })
+      await this.preBatchValidateRelationships(customs.map((c) => c.value), fieldTypes)
+
+      // Now set each value (will use cached field definitions and relationship validations)
       for (const v of customs) {
         try {
           const result = await this.setValueWithBuiltIn({
@@ -447,6 +462,25 @@ export class FieldValueService {
     return { count }
   }
 
+  /**
+   * Convert database rows to TypedFieldValue(s).
+   * Handles both single and multi-value fields.
+   * Shared by getValue() and getValues() to eliminate code duplication.
+   */
+  private rowsToTypedValues(
+    rows: FieldValueRow[],
+    fieldType: string,
+    isMultiValue: boolean
+  ): TypedFieldValue | TypedFieldValue[] {
+    const typedValues = rows.map((row) => this.rowToTypedValue(row, fieldType))
+
+    // Return single value for single-value fields, array for multi-value
+    if (isMultiValue) {
+      return typedValues
+    }
+    return typedValues[0] ?? null
+  }
+
   // ─────────────────────────────────────────────────────────────
   // READ OPERATIONS
   // ─────────────────────────────────────────────────────────────
@@ -455,11 +489,16 @@ export class FieldValueService {
    * Get single value by entityId + fieldId.
    * Returns array for multi-value fields, single value for single-value fields.
    */
-  async getValue(params: GetValueInput): Promise<TypedFieldValue | TypedFieldValue[] | null> {
+  async getValue(
+    params: GetValueInput,
+    cachedField?: FieldWithDefinition
+  ): Promise<TypedFieldValue | TypedFieldValue[] | null> {
+    // Use cached field if provided (avoids redundant CustomField join)
+    const field = cachedField ?? (await this.getField(params.fieldId))
+
     const rows = await this.db
       .select()
       .from(schema.FieldValue)
-      .innerJoin(schema.CustomField, eq(schema.CustomField.id, schema.FieldValue.fieldId))
       .where(
         and(
           eq(schema.FieldValue.entityId, params.entityId),
@@ -473,100 +512,14 @@ export class FieldValueService {
       return null
     }
 
-    const fieldType = rows[0]!.CustomField.type
-    const typedValues = rows.map((row) =>
-      this.rowToTypedValue(row.FieldValue as unknown as FieldValueRow, fieldType)
-    )
-
-    // Return single value for single-value fields, array for multi-value
-    if (isMultiValueFieldType(fieldType)) {
-      return typedValues
-    }
-    return typedValues[0] ?? null
-  }
-
-  /**
-   * Get all values for an entity with field metadata.
-   */
-  async getValuesWithFields(params: GetValuesWithFieldsInput): Promise<FieldValueWithField[]> {
-    const rows = await this.db
-      .select({
-        id: schema.FieldValue.id,
-        entityId: schema.FieldValue.entityId,
-        fieldId: schema.FieldValue.fieldId,
-        valueText: schema.FieldValue.valueText,
-        valueNumber: schema.FieldValue.valueNumber,
-        valueBoolean: schema.FieldValue.valueBoolean,
-        valueDate: schema.FieldValue.valueDate,
-        valueJson: schema.FieldValue.valueJson,
-        optionId: schema.FieldValue.optionId,
-        relatedEntityId: schema.FieldValue.relatedEntityId,
-        relatedEntityDefinitionId: schema.FieldValue.relatedEntityDefinitionId,
-        sortKey: schema.FieldValue.sortKey,
-        createdAt: schema.FieldValue.createdAt,
-        updatedAt: schema.FieldValue.updatedAt,
-        field: {
-          id: schema.CustomField.id,
-          name: schema.CustomField.name,
-          type: schema.CustomField.type,
-          modelType: schema.CustomField.modelType,
-          position: schema.CustomField.position,
-          required: schema.CustomField.required,
-          description: schema.CustomField.description,
-          defaultValue: schema.CustomField.defaultValue,
-          options: schema.CustomField.options,
-          icon: schema.CustomField.icon,
-          isCustom: schema.CustomField.isCustom,
-          active: schema.CustomField.active,
-        },
-      })
-      .from(schema.FieldValue)
-      .innerJoin(schema.CustomField, eq(schema.CustomField.id, schema.FieldValue.fieldId))
-      .where(
-        and(
-          eq(schema.FieldValue.entityId, params.entityId),
-          eq(schema.FieldValue.organizationId, this.organizationId),
-          eq(schema.CustomField.modelType, params.modelType)
-        )
-      )
-      .orderBy(asc(schema.CustomField.position), asc(schema.FieldValue.sortKey))
-
-    // Group multi-value fields
-    const groupedByField = new Map<string, typeof rows>()
-    for (const row of rows) {
-      const existing = groupedByField.get(row.fieldId) ?? []
-      existing.push(row)
-      groupedByField.set(row.fieldId, existing)
-    }
-
-    const results: FieldValueWithField[] = []
-    for (const [fieldId, fieldRows] of groupedByField) {
-      const firstRow = fieldRows[0]!
-      const fieldType = firstRow.field.type
-      const typedValues = fieldRows.map((row) =>
-        this.rowToTypedValue(row as unknown as FieldValueRow, fieldType)
-      )
-
-      results.push({
-        id: firstRow.id,
-        entityId: firstRow.entityId,
-        fieldId,
-        value: isMultiValueFieldType(fieldType) ? typedValues : typedValues[0]!,
-        sortKey: firstRow.sortKey,
-        createdAt: firstRow.createdAt,
-        updatedAt: firstRow.updatedAt,
-        field: firstRow.field,
-      })
-    }
-
-    return results
+    return this.rowsToTypedValues(rows, field.type, isMultiValueFieldType(field.type))
   }
 
   /**
    * Get values for specific fields on an entity.
    */
   async getValues(params: GetValuesInput): Promise<Map<string, TypedFieldValue | TypedFieldValue[]>> {
-    let query = this.db
+    const query = this.db
       .select()
       .from(schema.FieldValue)
       .innerJoin(schema.CustomField, eq(schema.CustomField.id, schema.FieldValue.fieldId))
@@ -580,28 +533,22 @@ export class FieldValueService {
       .orderBy(asc(schema.FieldValue.sortKey))
 
     const rows = await query
+    const result = new Map<string, TypedFieldValue | TypedFieldValue[]>()
 
     // Group by fieldId
-    const result = new Map<string, TypedFieldValue | TypedFieldValue[]>()
     const groupedByField = new Map<string, typeof rows>()
-
     for (const row of rows) {
       const existing = groupedByField.get(row.FieldValue.fieldId) ?? []
       existing.push(row)
       groupedByField.set(row.FieldValue.fieldId, existing)
     }
 
+    // Convert and store results
     for (const [fieldId, fieldRows] of groupedByField) {
       const fieldType = fieldRows[0]!.CustomField.type
-      const typedValues = fieldRows.map((row) =>
-        this.rowToTypedValue(row.FieldValue as unknown as FieldValueRow, fieldType)
-      )
-
-      if (isMultiValueFieldType(fieldType)) {
-        result.set(fieldId, typedValues)
-      } else {
-        result.set(fieldId, typedValues[0]!)
-      }
+      const fieldValueRows = fieldRows.map((r) => r.FieldValue as unknown as FieldValueRow)
+      const typedValues = this.rowsToTypedValues(fieldValueRows, fieldType, isMultiValueFieldType(fieldType))
+      result.set(fieldId, typedValues)
     }
 
     return result
@@ -661,26 +608,53 @@ export class FieldValueService {
       valueMap.set(key, existing)
     }
 
-    // Build result with nulls for missing values
+    // Build result with validation
     const results: TypedFieldValueResult[] = []
     for (const entityId of entityIds) {
       for (const fieldId of fieldIds) {
         const key = `${entityId}:${fieldId}`
         const fieldRows = valueMap.get(key)
+        const issues: string[] = []
 
         if (!fieldRows || fieldRows.length === 0) {
-          results.push({ resourceId: entityId, fieldId, value: null })
+          results.push({
+            resourceId: entityId,
+            fieldId,
+            value: null,
+          })
         } else {
           const fieldType = fieldRows[0]!.fieldType
-          const typedValues = fieldRows.map((row) =>
-            this.rowToTypedValue(row as unknown as FieldValueRow, fieldType)
-          )
+          const typedValues = fieldRows.map((row) => {
+            const typed = this.rowToTypedValue(row as unknown as FieldValueRow, fieldType)
+            // Check for invalid values
+            if (!this.isValidTypedValue(typed, fieldType)) {
+              issues.push(`Invalid value for ${fieldType} field`)
+            }
+            return typed
+          })
+
+          // Check for orphaned option/relationship references
+          for (const row of fieldRows) {
+            const rowIssues = this.validateRowReferences(row, fieldType)
+            issues.push(...rowIssues)
+          }
+
+          const result: TypedFieldValueResult = {
+            resourceId: entityId,
+            fieldId,
+          }
 
           if (isMultiValueFieldType(fieldType)) {
-            results.push({ resourceId: entityId, fieldId, value: typedValues })
+            result.value = typedValues
           } else {
-            results.push({ resourceId: entityId, fieldId, value: typedValues[0]! })
+            result.value = typedValues[0]!
           }
+
+          if (issues.length > 0) {
+            result.issues = issues
+          }
+
+          results.push(result)
         }
       }
     }
@@ -713,6 +687,221 @@ export class FieldValueService {
   }
 
   /**
+   * Batch validate relationships efficiently.
+   * Collects all relationship validations and does them in a single DB query.
+   * Returns a map for quick lookup during individual validations.
+   */
+  private batchRelationshipValidationCache = new Map<string, { success: boolean; message?: string }>()
+
+  /**
+   * Pre-validate all relationships in a batch for the current operation.
+   * Call this before validating individual values to enable batch optimization.
+   */
+  async preBatchValidateRelationships(
+    values: unknown[],
+    fieldTypes: string[]
+  ): Promise<void> {
+    // Collect all relationships from values
+    const relationships: Array<{ relatedEntityId: string; relatedEntityDefinitionId: string }> = []
+
+    for (let i = 0; i < values.length; i++) {
+      const value = values[i]
+      const fieldType = fieldTypes[i]
+
+      if (fieldType !== 'RELATIONSHIP') continue
+
+      if (Array.isArray(value)) {
+        for (const v of value) {
+          if (v && typeof v === 'object' && 'relatedEntityId' in v) {
+            relationships.push({
+              relatedEntityId: (v as any).relatedEntityId,
+              relatedEntityDefinitionId: (v as any).relatedEntityDefinitionId,
+            })
+          }
+        }
+      } else if (value && typeof value === 'object' && 'relatedEntityId' in value) {
+        relationships.push({
+          relatedEntityId: (value as any).relatedEntityId,
+          relatedEntityDefinitionId: (value as any).relatedEntityDefinitionId,
+        })
+      }
+    }
+
+    // Batch validate if we have relationships
+    if (relationships.length > 0) {
+      this.batchRelationshipValidationCache = await this.validator.batchValidateRelationships(
+        relationships,
+        { db: this.db, organizationId: this.organizationId }
+      )
+    }
+  }
+
+  /**
+   * Validate and convert raw value to TypedFieldValueInput using FieldValueValidator.
+   * Each field type has dedicated Zod schema validation.
+   * Throws descriptive error if validation fails.
+   */
+  private async validateAndConvertValue(
+    value: unknown,
+    fieldType: string,
+    field: FieldWithDefinition
+  ): Promise<TypedFieldValueInput | TypedFieldValueInput[] | null> {
+    // Handle null/undefined
+    if (value === null || value === undefined) {
+      return null
+    }
+
+    // Use shared validator instance (stateless, reusable)
+    // Handle arrays (for multi-value fields like MULTI_SELECT, TAGS, RELATIONSHIP)
+    if (Array.isArray(value)) {
+      const converted: TypedFieldValueInput[] = []
+      for (const v of value) {
+        const single = await this.validateSingleValue(v, fieldType)
+        if (single !== null) {
+          converted.push(single)
+        }
+      }
+      return converted.length > 0 ? converted : null
+    }
+
+    // Single value
+    return this.validateSingleValue(value, fieldType)
+  }
+
+  /**
+   * Validate single value using appropriate Zod schema.
+   * Each field type has its own validation logic.
+   * Uses shared validator instance for efficiency.
+   */
+  private async validateSingleValue(
+    value: unknown,
+    fieldType: string
+  ): Promise<TypedFieldValueInput | null> {
+    // Helper to throw validation error with proper message
+    const throwValidationError = (result: { success: false; error: any }) => {
+      const issues = result.error.issues || []
+      const message = issues.map((i: any) => i.message).join(', ') || 'Validation failed'
+      throw new Error(message)
+    }
+
+    switch (fieldType) {
+      case 'TEXT':
+      case 'RICH_TEXT':
+      case 'ADDRESS': {
+        const result = this.validator.validateText(value)
+        if (!result.success) throwValidationError(result)
+        const textValue = result.data || ''
+        return textValue === '' ? null : { type: 'text', value: textValue }
+      }
+
+      case 'EMAIL': {
+        const result = this.validator.validateEmail(value)
+        if (!result.success) throwValidationError(result)
+        return { type: 'text', value: result.data || '' }
+      }
+
+      case 'URL': {
+        const result = this.validator.validateUrl(value)
+        if (!result.success) throwValidationError(result)
+        return { type: 'text', value: result.data || '' }
+      }
+
+      case 'PHONE_INTL': {
+        const result = this.validator.validatePhone(value)
+        if (!result.success) throwValidationError(result)
+        return { type: 'text', value: result.data || '' }
+      }
+
+      case 'NUMBER':
+      case 'CURRENCY': {
+        const result = this.validator.validateNumber(value)
+        if (!result.success) throwValidationError(result)
+        return { type: 'number', value: result.data ?? 0 }
+      }
+
+      case 'CHECKBOX': {
+        const result = this.validator.validateBoolean(value)
+        if (!result.success) throwValidationError(result)
+        return { type: 'boolean', value: result.data ?? false }
+      }
+
+      case 'DATE':
+      case 'DATETIME':
+      case 'TIME': {
+        const result = this.validator.validateDate(value)
+        if (!result.success) throwValidationError(result)
+        return { type: 'date', value: result.data || '' }
+      }
+
+      case 'SINGLE_SELECT':
+      case 'MULTI_SELECT':
+      case 'TAGS': {
+        const result = this.validator.validateOption(value)
+        if (!result.success) throwValidationError(result)
+        return { type: 'option', optionId: result.data || '' }
+      }
+
+      case 'RELATIONSHIP': {
+        // Parse relationship value first
+        const structureResult = fieldValueSchemas.relationship.safeParse(value)
+        if (!structureResult.success) throwValidationError(structureResult)
+
+        const { relatedEntityId, relatedEntityDefinitionId } = structureResult.data
+
+        // Check batch validation cache first (if preBatchValidateRelationships was called)
+        if (this.batchRelationshipValidationCache.has(relatedEntityId)) {
+          const validation = this.batchRelationshipValidationCache.get(relatedEntityId)!
+          if (!validation.success) {
+            throwValidationError({
+              success: false,
+              error: {
+                issues: [{ message: validation.message || 'Relationship validation failed', path: ['relatedEntityId'] }],
+              },
+            })
+          }
+        } else {
+          // Fall back to individual validation if batch wasn't called
+          const result = await this.validator.validateRelationship(value, {
+            db: this.db,
+            organizationId: this.organizationId,
+          })
+          if (!result.success) throwValidationError(result)
+        }
+
+        return {
+          type: 'relationship',
+          relatedEntityId,
+          relatedEntityDefinitionId,
+        }
+      }
+
+      case 'NAME': {
+        const result = this.validator.validateNameJson(value)
+        if (!result.success) throwValidationError(result)
+        return { type: 'json', value: result.data || {} }
+      }
+
+      case 'ADDRESS_STRUCT': {
+        const result = this.validator.validateAddressStructJson(value)
+        if (!result.success) throwValidationError(result)
+        return { type: 'json', value: result.data || {} }
+      }
+
+      case 'FILE': {
+        const result = this.validator.validateFileJson(value)
+        if (!result.success) throwValidationError(result)
+        return { type: 'json', value: result.data || {} }
+      }
+
+      default: {
+        const result = this.validator.validateJson(value)
+        if (!result.success) throwValidationError(result)
+        return { type: 'json', value: result.data || {} }
+      }
+    }
+  }
+
+  /**
    * Update EntityInstance display columns if field is a display field.
    * Handles primary (displayName), secondary (secondaryDisplayValue), and avatar (avatarUrl).
    */
@@ -732,7 +921,7 @@ export class FieldValueService {
       column = 'displayName'
     } else if (entityDef.secondaryDisplayFieldId === field.id) {
       column = 'secondaryDisplayValue'
-    } else if (entityDef.avatarFieldId === field.id) {
+    } else if ((entityDef as any).avatarFieldId === field.id) {
       column = 'avatarUrl'
     }
 
@@ -813,7 +1002,7 @@ export class FieldValueService {
 
     if (existing) {
       // UPDATE existing row
-      const updateData = this.buildUpdateData(fieldType, singleValue)
+      const updateData = this.buildUpdateData(singleValue)
       const updatedResult = await updateFieldValue({
         id: existing.id,
         organizationId: this.organizationId,
@@ -902,6 +1091,7 @@ export class FieldValueService {
     valueJson?: unknown | null
     optionId?: string | null
     relatedEntityId?: string | null
+    relatedEntityDefinitionId?: string | null
   } {
     switch (value.type) {
       case 'text':
@@ -930,7 +1120,6 @@ export class FieldValueService {
    * Build update data from typed value input (for service layer).
    */
   private buildUpdateData(
-    fieldType: string,
     value: TypedFieldValueInput
   ): {
     valueText?: string | null
@@ -940,9 +1129,30 @@ export class FieldValueService {
     valueJson?: unknown | null
     optionId?: string | null
     relatedEntityId?: string | null
+    relatedEntityDefinitionId?: string | null
   } {
-    // Same structure as insert data
-    return this.buildInsertData(fieldType, value)
+    // Same structure as insert data (fieldType not needed for structure)
+    switch (value.type) {
+      case 'text':
+        return { valueText: value.value }
+      case 'number':
+        return { valueNumber: value.value }
+      case 'boolean':
+        return { valueBoolean: value.value }
+      case 'date':
+        return {
+          valueDate: value.value instanceof Date ? value.value.toISOString() : value.value,
+        }
+      case 'json':
+        return { valueJson: value.value }
+      case 'option':
+        return { optionId: value.optionId }
+      case 'relationship':
+        return {
+          relatedEntityId: value.relatedEntityId,
+          relatedEntityDefinitionId: value.relatedEntityDefinitionId,
+        }
+    }
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -1038,5 +1248,66 @@ export class FieldValueService {
       default:
         return { ...base, type: 'text', value: row.valueText ?? '' }
     }
+  }
+
+  /**
+   * Validate that a typed value has actual content (not just defaults)
+   */
+  private isValidTypedValue(value: TypedFieldValue, fieldType: string): boolean {
+    const valueType = getValueType(fieldType)
+
+    switch (valueType) {
+      case 'text':
+        return value.type === 'text' && typeof value.value === 'string'
+      case 'number':
+        return value.type === 'number' && typeof value.value === 'number'
+      case 'boolean':
+        return value.type === 'boolean' && typeof value.value === 'boolean'
+      case 'date':
+        return value.type === 'date' && typeof value.value === 'string'
+      case 'json':
+        return value.type === 'json' && typeof value.value === 'object'
+      case 'option':
+        return (
+          value.type === 'option' &&
+          'optionId' in value &&
+          typeof (value as any).optionId === 'string'
+        )
+      case 'relationship':
+        return (
+          value.type === 'relationship' &&
+          'relatedEntityId' in value &&
+          typeof (value as any).relatedEntityId === 'string'
+        )
+      default:
+        return true
+    }
+  }
+
+  /**
+   * Validate that referenced entities/options exist
+   */
+  private validateRowReferences(row: FieldValueRow, fieldType: string): string[] {
+    const issues: string[] = []
+    const valueType = getValueType(fieldType)
+
+    // Check for orphaned option references (option exists but is no longer valid)
+    if (valueType === 'option' && row.optionId) {
+      if (!row.optionId || row.optionId.trim() === '') {
+        issues.push('Empty option ID reference')
+      }
+    }
+
+    // Check for orphaned relationship references
+    if (valueType === 'relationship') {
+      if (!row.relatedEntityId || row.relatedEntityId.trim() === '') {
+        issues.push('Missing related entity ID')
+      }
+      if (!row.relatedEntityDefinitionId || row.relatedEntityDefinitionId.trim() === '') {
+        issues.push('Missing related entity definition ID')
+      }
+    }
+
+    return issues
   }
 }

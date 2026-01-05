@@ -22,28 +22,6 @@ const typedValueInputSchema = z.object({
  */
 export const fieldValueRouter = createTRPCRouter({
   /**
-   * Get all field values for an entity
-   */
-  getAll: protectedProcedure
-    .input(
-      z.object({
-        entityId: z.string(),
-        modelType: modelTypeSchema.default(ModelTypes.CONTACT),
-      })
-    )
-    .query(async ({ ctx, input }) => {
-      const service = new FieldValueService(
-        ctx.session.organizationId,
-        ctx.session.user.id,
-        ctx.db
-      )
-      return await service.getValuesWithFields({
-        entityId: input.entityId,
-        modelType: input.modelType as ModelType,
-      })
-    }),
-
-  /**
    * Set a single field value for an entity
    */
   set: protectedProcedure

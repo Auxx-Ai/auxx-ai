@@ -42,6 +42,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
   /**
    * Extract raw value from TypedFieldValue for API calls.
    * The API accepts raw values and handles conversion internally.
+   * For relationships, preserves both relatedEntityId and relatedEntityDefinitionId.
    * Also handles raw values passed directly (returns them as-is).
    */
   const getRawValue = (value: StoredFieldValue | unknown): unknown => {
@@ -51,7 +52,16 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
     if (Array.isArray(value)) {
       // Check if it's an array of TypedFieldValue objects
       if (value.length > 0 && typeof value[0] === 'object' && value[0] !== null && 'type' in value[0]) {
-        return value.map((v) => extractValue(v))
+        return value.map((v: any) => {
+          // For relationships, preserve the full object structure
+          if (v.type === 'relationship') {
+            return {
+              relatedEntityId: v.relatedEntityId,
+              relatedEntityDefinitionId: v.relatedEntityDefinitionId,
+            }
+          }
+          return extractValue(v)
+        })
       }
       // Already an array of raw values
       return value
@@ -59,6 +69,14 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
 
     // Handle single TypedFieldValue
     if (typeof value === 'object' && value !== null && 'type' in value) {
+      const tv = value as any
+      // For relationships, preserve the full object structure
+      if (tv.type === 'relationship') {
+        return {
+          relatedEntityId: tv.relatedEntityId,
+          relatedEntityDefinitionId: tv.relatedEntityDefinitionId,
+        }
+      }
       return extractValue(value)
     }
 

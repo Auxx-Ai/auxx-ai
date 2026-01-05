@@ -23,30 +23,42 @@ import type {
 type SelectOption = { label: string; value: string }
 
 /**
- * Relationship cell content - handles hydration internally
- * Extracts relatedEntityDefinitionId from TypedFieldValue to determine resource type
+ * Relationship cell content - displays related entities with display names.
+ * Extracts relatedEntityDefinitionId from TypedFieldValue to determine resource type.
+ * Standardized format:
+ * - System resources: store model type string (e.g., "contact", "ticket")
+ * - Custom entities: store UUID of EntityDefinition
  */
 function RelationshipCellContent({ value }: { value: unknown }) {
   // Extract IDs and entityDefinitionId from value
   const { ids, entityDefinitionId } = useMemo(() => {
     if (!value) return { ids: [], entityDefinitionId: null }
 
-    // Handle TypedFieldValue array (RelationshipFieldValue[])
+    // Handle TypedFieldValue array
     if (Array.isArray(value)) {
-      if (value.length > 0 && typeof value[0] === 'object' && value[0] !== null && 'type' in value[0]) {
-        // Array of TypedFieldValue - extract relatedEntityId and relatedEntityDefinitionId
+      if (
+        value.length > 0 &&
+        typeof value[0] === 'object' &&
+        value[0] !== null &&
+        'type' in value[0]
+      ) {
         const first = value[0] as { relatedEntityDefinitionId?: string }
         return {
-          ids: value.map((v) => (v as { relatedEntityId?: string }).relatedEntityId).filter(Boolean) as string[],
+          ids: value
+            .map((v) => (v as { relatedEntityId?: string }).relatedEntityId)
+            .filter(Boolean) as string[],
           entityDefinitionId: first.relatedEntityDefinitionId || null,
         }
       }
       // Already an array of IDs
-      return { ids: value.filter((id) => typeof id === 'string') as string[], entityDefinitionId: null }
+      return {
+        ids: value.filter((id) => typeof id === 'string') as string[],
+        entityDefinitionId: null,
+      }
     }
 
-    // Handle single TypedFieldValue (RelationshipFieldValue)
-    if (typeof value === 'object' && value !== null && 'type' in (value as Record<string, unknown>)) {
+    // Handle single TypedFieldValue
+    if (typeof value === 'object' && value !== null && 'type' in value) {
       const rel = value as { relatedEntityId?: string; relatedEntityDefinitionId?: string }
       return {
         ids: rel.relatedEntityId ? [rel.relatedEntityId] : [],
@@ -54,31 +66,29 @@ function RelationshipCellContent({ value }: { value: unknown }) {
       }
     }
 
-    // STRICT: Reject legacy { data: x } wrapper format
-    if (typeof value === 'object' && value !== null && 'data' in (value as Record<string, unknown>)) {
-      console.error('[RelationshipCell] Legacy { data: x } format detected. All values must be TypedFieldValue.')
-      return { ids: [], entityDefinitionId: null }
-    }
-
-    // Handle raw string ID (pre-extracted value)
+    // Handle raw string ID
     if (typeof value === 'string') return { ids: [value], entityDefinitionId: null }
 
     return { ids: [], entityDefinitionId: null }
   }, [value])
 
-  // Convert entityDefinitionId to resourceId format for useRelationship
+  // Convert entityDefinitionId to resourceId for useRelationship
+  // System resources: "contact" -> use as-is
+  // Custom entities: UUID -> convert to "entity_{slug}" (or pass through, let hook handle it)
   const resourceId = useMemo(() => {
     if (!entityDefinitionId) return null
-    // System resources use name directly (e.g., "contact", "contacts")
-    if (['contact', 'contacts', 'ticket', 'tickets', 'user', 'users', 'thread', 'threads'].includes(entityDefinitionId)) {
+
+    // Check if it's a known system resource first
+    const systemResources = ['contact', 'contacts', 'ticket', 'tickets', 'user', 'users', 'thread', 'threads']
+    if (systemResources.includes(entityDefinitionId)) {
       return entityDefinitionId.replace(/s$/, '') // normalize plural to singular
     }
-    // Already in entity_xxx format - return as-is
-    if (entityDefinitionId.startsWith('entity_')) {
-      return entityDefinitionId
-    }
-    // UUID - prefix with entity_ (the hook will resolve via apiSlug)
-    return `entity_${entityDefinitionId}`
+
+    // It's a UUID - need to convert to entity_{slug} format
+    // For now, prefix with entity_ and let useRelationship handle UUID resolution
+    return entityDefinitionId.startsWith('entity_')
+      ? entityDefinitionId
+      : `entity_${entityDefinitionId}`
   }, [entityDefinitionId])
 
   const { items: hydratedItems, isLoading } = useRelationship(resourceId, ids)
@@ -458,7 +468,9 @@ export function renderTextValue(value: unknown): React.ReactNode {
 
     // STRICT: Reject legacy .data wrapper format
     if ('data' in objValue) {
-      console.error('[renderTextValue] Legacy { data: x } format detected. All values must be TypedFieldValue.')
+      console.error(
+        '[renderTextValue] Legacy { data: x } format detected. All values must be TypedFieldValue.'
+      )
       return <EmptyCell />
     }
 
@@ -557,15 +569,26 @@ function unwrapValue(value: unknown): unknown {
   if (value === null || value === undefined) return null
 
   // STRICT: Reject legacy { data: x } wrapper format
-  if (typeof value === 'object' && 'data' in (value as Record<string, unknown>) && !('type' in (value as Record<string, unknown>))) {
-    console.error('[CellRenderer] Legacy { data: x } format detected. All values must be TypedFieldValue.')
+  if (
+    typeof value === 'object' &&
+    'data' in (value as Record<string, unknown>) &&
+    !('type' in (value as Record<string, unknown>))
+  ) {
+    console.error(
+      '[CellRenderer] Legacy { data: x } format detected. All values must be TypedFieldValue.'
+    )
     return null
   }
 
   // Handle TypedFieldValue array (e.g., multi-select, tags)
   if (Array.isArray(value)) {
     // Check if it's an array of TypedFieldValue objects
-    if (value.length > 0 && typeof value[0] === 'object' && value[0] !== null && 'type' in value[0]) {
+    if (
+      value.length > 0 &&
+      typeof value[0] === 'object' &&
+      value[0] !== null &&
+      'type' in value[0]
+    ) {
       return value.map((v) => extractValue(v as TypedFieldValue))
     }
     // Already an array of raw values (could be empty or pre-extracted)

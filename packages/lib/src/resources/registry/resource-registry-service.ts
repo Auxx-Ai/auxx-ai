@@ -611,6 +611,10 @@ export class ResourceRegistryService {
           relationship = {
             targetTable,
             cardinality: rel?.relationshipType === 'has_many' ? 'one-to-many' : 'many-to-one',
+            // Preserve the original entity definition IDs from CustomField
+            // These are needed by the frontend to correctly store relationship values
+            relatedEntityDefinitionId: rel?.relatedEntityDefinitionId,
+            relatedModelType: rel?.relatedModelType,
           }
         }
       }

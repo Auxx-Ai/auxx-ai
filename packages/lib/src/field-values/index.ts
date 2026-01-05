@@ -26,7 +26,6 @@ export type {
   SetValueWithTypeInput,
   AddValueInput,
   GetValueInput,
-  GetValuesWithFieldsInput,
   GetValuesInput,
   BatchGetValuesInput,
   DeleteValueInput,
@@ -37,7 +36,6 @@ export type {
   // Result types
   SetValueResult,
   SetValuesResult,
-  FieldValueWithField,
   TypedFieldValueResult,
   BatchFieldValueResult,
   FieldValueRow,

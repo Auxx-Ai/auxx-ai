@@ -274,12 +274,14 @@ async function createRelationshipFieldWithInverse(input: {
         where: (defs, { eq, and }) =>
           and(eq(defs.apiSlug, apiSlug), eq(defs.organizationId, organizationId)),
       })
+
       if (!entityDef) {
         return err({
           code: 'NOT_FOUND' as const,
           message: `Entity definition not found: ${apiSlug}`,
         })
       }
+
       relatedEntityDefinitionId = entityDef.id
       relatedModelType = null
     } else {

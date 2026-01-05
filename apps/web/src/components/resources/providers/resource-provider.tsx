@@ -85,9 +85,28 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
     return () => clearTimeout(timeout)
   }, [relationshipPendingSize, relationshipBatch.length])
 
+  // Convert UUID resourceIds to entity_{slug} format for API
+  const normalizedBatch = useMemo(() => {
+    return relationshipBatch.map(({ resourceId, id }) => {
+      // If resourceId is UUID (starts with entity_ followed by UUID), look up the slug
+      if (resourceId.startsWith('entity_') && resourceId.length > 20) {
+        // Extract UUID part
+        const uuid = resourceId.slice(7) // Remove 'entity_' prefix
+        // Look up custom resource by id to get the apiSlug
+        const resource = resourcesQuery.data?.find(
+          (r) => isCustomResource(r) && (r as CustomResource).entityDefinitionId === uuid
+        )
+        if (resource && isCustomResource(resource)) {
+          return { resourceId: `entity_${(resource as CustomResource).apiSlug}`, id }
+        }
+      }
+      return { resourceId, id }
+    })
+  }, [relationshipBatch, resourcesQuery.data])
+
   const { data: relationshipData, error: relationshipError } = api.resource.getByIds.useQuery(
-    { items: relationshipBatch },
-    { enabled: relationshipBatch.length > 0, staleTime: Infinity, refetchOnWindowFocus: false }
+    { items: normalizedBatch },
+    { enabled: normalizedBatch.length > 0, staleTime: Infinity, refetchOnWindowFocus: false }
   )
 
   useEffect(() => {

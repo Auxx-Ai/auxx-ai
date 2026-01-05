@@ -104,12 +104,6 @@ export interface GetValueInput {
   fieldId: string
 }
 
-/** Input for getting values with field metadata */
-export interface GetValuesWithFieldsInput {
-  entityId: string
-  modelType: 'contact' | 'ticket' | 'thread' | 'entity'
-}
-
 /** Input for getting multiple values */
 export interface GetValuesInput {
   entityId: string
@@ -134,36 +128,13 @@ export interface DeleteValueInput {
 // SERVICE RETURN TYPES
 // =============================================================================
 
-/** Value with joined field metadata */
-export interface FieldValueWithField {
-  id: string
-  entityId: string
-  fieldId: string
-  value: TypedFieldValue | TypedFieldValue[]
-  sortKey: string
-  createdAt: string
-  updatedAt: string
-  field: {
-    id: string
-    name: string
-    type: string
-    modelType: string
-    position: number
-    required: boolean
-    description: string | null
-    defaultValue: string | null
-    options: unknown
-    icon: string | null
-    isCustom: boolean
-    active: boolean
-  }
-}
-
 /** Single result from batch get */
 export interface TypedFieldValueResult {
   resourceId: string
   fieldId: string
   value: TypedFieldValue | TypedFieldValue[] | null
+  /** Issues found with this field (only present if there are issues) */
+  issues?: string[]
 }
 
 /** Result from batch get values */

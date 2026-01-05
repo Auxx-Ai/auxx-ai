@@ -76,11 +76,18 @@ interface BulkUpdateEntityInstanceDialogProps {
 function extractRawValue(value: unknown): unknown {
   if (value === null || value === undefined) return null
 
-  // Handle TypedFieldValue array (multi-select, tags)
+  // Handle TypedFieldValue array (multi-select, tags, relationships)
   if (Array.isArray(value)) {
     return value.map((v: any) => {
       if (v && typeof v === 'object' && 'type' in v) {
-        return v.optionId ?? v.relatedEntityId ?? v.value
+        // For relationships, preserve the full object structure
+        if (v.type === 'relationship') {
+          return {
+            relatedEntityId: v.relatedEntityId,
+            relatedEntityDefinitionId: v.relatedEntityDefinitionId,
+          }
+        }
+        return v.optionId ?? v.value
       }
       return v
     })
@@ -88,8 +95,23 @@ function extractRawValue(value: unknown): unknown {
 
   // Handle single TypedFieldValue
   if (typeof value === 'object' && 'type' in value) {
-    const tv = value as { type: string; value?: any; optionId?: string; relatedEntityId?: string }
-    return tv.optionId ?? tv.relatedEntityId ?? tv.value
+    const tv = value as {
+      type: string
+      value?: any
+      optionId?: string
+      relatedEntityId?: string
+      relatedEntityDefinitionId?: string
+    }
+
+    // For relationships, preserve the full object structure
+    if (tv.type === 'relationship') {
+      return {
+        relatedEntityId: tv.relatedEntityId,
+        relatedEntityDefinitionId: tv.relatedEntityDefinitionId,
+      }
+    }
+
+    return tv.optionId ?? tv.value
   }
 
   return value
