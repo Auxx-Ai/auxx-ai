@@ -157,8 +157,12 @@ export function EntitySidebarNav() {
           isOpen={isOpen}
           toggleOpen={handleToggleOpen}
           additionalOptions={
-            <DropdownMenuItem onClick={() => router.push('/app/settings/custom-fields')}>
-              <Settings /> Manage Fields
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation()
+                router.push('/app/settings/custom-fields')
+              }}>
+              <Settings /> Manage Objects
             </DropdownMenuItem>
           }
         />

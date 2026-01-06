@@ -183,7 +183,7 @@ export class ResourceRegistryService {
     const customFields = await this.db.query.CustomField.findMany({
       where: (fields, { eq, and }) =>
         and(eq(fields.organizationId, this.organizationId), eq(fields.active, true)),
-      orderBy: (fields, { asc }) => [asc(fields.position)],
+      orderBy: (fields, { asc }) => [asc(fields.sortOrder)],
     })
 
     // Group fields by target (entityDefinitionId for custom entities, modelType for system models)
@@ -255,7 +255,7 @@ export class ResourceRegistryService {
         avatarField: true,
         customFields: {
           where: (fields, { eq }) => eq(fields.active, true),
-          orderBy: (fields, { asc }) => [asc(fields.position)],
+          orderBy: (fields, { asc }) => [asc(fields.sortOrder)],
         },
       },
     })
@@ -290,7 +290,7 @@ export class ResourceRegistryService {
         avatarField: true,
         customFields: {
           where: (fields, { eq }) => eq(fields.active, true),
-          orderBy: (fields, { asc }) => [asc(fields.position)],
+          orderBy: (fields, { asc }) => [asc(fields.sortOrder)],
         },
       },
     })
@@ -370,7 +370,7 @@ export class ResourceRegistryService {
             eq(f.active, true),
             isNull(f.entityDefinitionId)
           ),
-        orderBy: (f, { asc }) => [asc(f.position)],
+        orderBy: (f, { asc }) => [asc(f.sortOrder)],
       })
 
       const entityIdToSlug = await this.getEntitySlugMap()
@@ -398,7 +398,7 @@ export class ResourceRegistryService {
           avatarField: true,
           customFields: {
             where: (fields, { eq }) => eq(fields.active, true),
-            orderBy: (fields, { asc }) => [asc(fields.position)],
+            orderBy: (fields, { asc }) => [asc(fields.sortOrder)],
           },
         },
       })
@@ -482,7 +482,7 @@ export class ResourceRegistryService {
             eq(f.active, true),
             isNull(f.entityDefinitionId)
           ),
-        orderBy: (f, { asc }) => [asc(f.position)],
+        orderBy: (f, { asc }) => [asc(f.sortOrder)],
       })
 
       const entityIdToSlug = await this.getEntitySlugMap()
@@ -504,7 +504,7 @@ export class ResourceRegistryService {
         with: {
           customFields: {
             where: (fields, { eq }) => eq(fields.active, true),
-            orderBy: (fields, { asc }) => [asc(fields.position)],
+            orderBy: (fields, { asc }) => [asc(fields.sortOrder)],
           },
         },
       })

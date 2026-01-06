@@ -13,6 +13,9 @@ export function useEntityDefinitionMutations() {
   /** Invalidate resource definitions cache so workflow nodes get updated resources */
   const invalidateResourceDefinitions = () => {
     utils.resource.getAllResourceTypes.invalidate()
+    utils.entityDefinition.getAll.invalidate()
+    utils.entityDefinition.getBySlug.invalidate()
+    utils.entityDefinition.getById.invalidate()
   }
 
   const createEntity = api.entityDefinition.create.useMutation({

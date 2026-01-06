@@ -47,6 +47,7 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
+import { CustomFieldDialog } from './custom-field-dialog'
 
 /** Entity definition data for editing */
 interface EntityDefinitionEntity {
@@ -99,8 +100,16 @@ export function EntityDefinitionDialog({
   const [secondaryDisplayFieldId, setSecondaryDisplayFieldId] = useState<string | null>(null)
   const [avatarFieldId, setAvatarFieldId] = useState<string | null>(null)
 
+  // Track if user has manually edited singular field (stops auto-generation)
+  const [singularTouched, setSingularTouched] = useState(false)
+
+  // Custom field dialog state (shown after entity creation)
+  const [customFieldDialogOpen, setCustomFieldDialogOpen] = useState(false)
+  const [createdEntityId, setCreatedEntityId] = useState<string | null>(null)
+
   // Slug validation state
   const [slugExists, setSlugExists] = useState<boolean | null>(null)
+  const [slugReason, setSlugReason] = useState<'reserved' | 'taken' | null>(null)
   const [isCheckingSlug, setIsCheckingSlug] = useState(false)
 
   // Combined form values for dirty checking
@@ -154,6 +163,7 @@ export function EntityDefinitionDialog({
         setSecondaryDisplayFieldId(editingEntity.secondaryDisplayFieldId ?? null)
         setAvatarFieldId(editingEntity.avatarFieldId ?? null)
         setSlugExists(null)
+        setSlugReason(null)
 
         initValues = {
           icon,
@@ -174,6 +184,10 @@ export function EntityDefinitionDialog({
         setSecondaryDisplayFieldId(null)
         setAvatarFieldId(null)
         setSlugExists(null)
+        setSlugReason(null)
+        setSingularTouched(false)
+        setCreatedEntityId(null)
+        setCustomFieldDialogOpen(false)
 
         initValues = {
           icon: 'package',
@@ -199,6 +213,7 @@ export function EntityDefinitionDialog({
   const checkSlug = useDebouncedCallback(async (slugToCheck: string) => {
     if (!slugToCheck || slugToCheck.length < 1) {
       setSlugExists(null)
+      setSlugReason(null)
       setIsCheckingSlug(false)
       return
     }
@@ -209,8 +224,11 @@ export function EntityDefinitionDialog({
         excludeId: editingEntity?.id,
       })
       setSlugExists(result.exists)
+      setSlugReason(result.reason)
     } catch {
-      setSlugExists(null)
+      // Treat errors as slug being unavailable
+      setSlugExists(true)
+      setSlugReason(null)
     } finally {
       setIsCheckingSlug(false)
     }
@@ -230,16 +248,18 @@ export function EntityDefinitionDialog({
           checkSlug(newSlug)
         } else {
           setSlugExists(null)
+          setSlugReason(null)
         }
 
         // Auto-generate singular (remove trailing 's' if present)
-        if (value && !singular) {
+        // Only if user hasn't manually edited the singular field
+        if (!singularTouched) {
           const singularValue = value.endsWith('s') ? value.slice(0, -1) : value
           setSingular(singularValue)
         }
       }
     },
-    [isEditing, singular, checkSlug]
+    [isEditing, singularTouched, checkSlug]
   )
 
   // Handle slug change (manual edit)
@@ -252,6 +272,7 @@ export function EntityDefinitionDialog({
         checkSlug(newSlug)
       } else {
         setSlugExists(null)
+        setSlugReason(null)
       }
     },
     [checkSlug]
@@ -261,16 +282,42 @@ export function EntityDefinitionDialog({
   const { createEntity: createEntityMutation, updateEntity: updateEntityMutation } =
     useEntityDefinitionMutations()
 
-  /** Handle create success */
-  const handleCreateSuccess = () => {
-    onOpenChange(false)
-    onSuccess?.()
+  // Custom field mutation (used after entity creation)
+  const createCustomField = api.customField.create.useMutation()
+
+  /** Handle create success - open custom field dialog */
+  const handleCreateSuccess = (data: { id: string }) => {
+    // Mark form as clean so unsaved changes guard doesn't trigger
+    setInitial(formValues)
+    setCreatedEntityId(data.id)
+    setCustomFieldDialogOpen(true)
   }
 
   /** Handle update success */
   const handleUpdateSuccess = () => {
     onOpenChange(false)
     onSuccess?.()
+  }
+
+  /** Handle custom field save */
+  const handleCustomFieldSave = async (fieldData: any) => {
+    if (!createdEntityId) return
+    await createCustomField.mutateAsync({
+      ...fieldData,
+      modelType: 'entity' as const,
+      entityDefinitionId: createdEntityId,
+    })
+  }
+
+  /** Handle custom field dialog close - close both dialogs */
+  const handleCustomFieldDialogClose = (open: boolean) => {
+    setCustomFieldDialogOpen(open)
+    if (!open) {
+      // Close the entity dialog too and clean up
+      setCreatedEntityId(null)
+      onOpenChange(false)
+      onSuccess?.()
+    }
   }
 
   const isPending = createEntityMutation.isPending || updateEntityMutation.isPending
@@ -396,7 +443,10 @@ export function EntityDefinitionDialog({
                     <Input
                       placeholder="Customer"
                       value={singular}
-                      onChange={(e) => setSingular(e.target.value)}
+                      onChange={(e) => {
+                        setSingular(e.target.value)
+                        setSingularTouched(true)
+                      }}
                     />
                   </Field>
                 </>
@@ -434,7 +484,11 @@ export function EntityDefinitionDialog({
                   : 'A unique identifier for API access (cannot be changed later).'}
               </FieldDescription>
               {slugExists === true && !isEditing && (
-                <FieldError>This slug is already taken.</FieldError>
+                <FieldError>
+                  {slugReason === 'reserved'
+                    ? 'This slug is reserved for system entities.'
+                    : 'This slug is already taken.'}
+                </FieldError>
               )}
             </Field>
 
@@ -541,6 +595,16 @@ export function EntityDefinitionDialog({
         </form>
         </DialogContent>
       </Dialog>
+
+      {/* Custom field dialog shown after entity creation */}
+      <CustomFieldDialog
+        open={customFieldDialogOpen}
+        onOpenChange={handleCustomFieldDialogClose}
+        onSave={handleCustomFieldSave}
+        isPending={createCustomField.isPending}
+        currentResourceId={createdEntityId ?? undefined}
+      />
+
       <ConfirmDialog />
     </>
   )

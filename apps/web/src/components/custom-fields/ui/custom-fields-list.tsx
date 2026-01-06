@@ -41,7 +41,11 @@ interface CustomFieldsListProps {
 /**
  * FieldList component for displaying a list of custom fields used inside app/settings
  */
-export function CustomFieldsList({ modelType, entityDefinitionId, currentResourceId }: CustomFieldsListProps) {
+export function CustomFieldsList({
+  modelType,
+  entityDefinitionId,
+  currentResourceId,
+}: CustomFieldsListProps) {
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingField, setEditingField] = useState<any | null>(null)
@@ -50,8 +54,10 @@ export function CustomFieldsList({ modelType, entityDefinitionId, currentResourc
   const [confirmDelete, ConfirmDeleteDialog] = useConfirm()
 
   // Use sortedFields for local drag order, fallback to API fields
-  const { create, update, fields, isLoading, isPending, destroy } =
-    useCustomField({ modelType, entityDefinitionId })
+  const { create, update, fields, isLoading, isPending, destroy } = useCustomField({
+    modelType,
+    entityDefinitionId,
+  })
   const [sortedFields, setSortedFields] = useState<any[]>([])
 
   // Keep sortedFields in sync with API fields unless user is dragging
@@ -128,11 +134,7 @@ export function CustomFieldsList({ modelType, entityDefinitionId, currentResourc
       })
 
       // Update each affected field's sortOrder using generic update mutation
-      await Promise.all(
-        newOrder.map(({ id, sortOrder }) =>
-          update.mutateAsync({ id, sortOrder })
-        )
-      )
+      await Promise.all(newOrder.map(({ id, sortOrder }) => update.mutateAsync({ id, sortOrder })))
     }
   }
 
@@ -192,7 +194,7 @@ export function CustomFieldsList({ modelType, entityDefinitionId, currentResourc
                 <TableHead className="text-right">
                   <Button onClick={handleAddNew} disabled={isPending} variant="outline" size="sm">
                     <Plus />
-                    <span>Add</span>
+                    <span className="text-foreground">Add</span>
                   </Button>
                 </TableHead>
               </TableRow>

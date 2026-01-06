@@ -11,7 +11,7 @@ import {
 
 export const entityDefinitionRouter = createTRPCRouter({
   /**
-   * Check if an apiSlug already exists for the organization
+   * Check if an apiSlug already exists for the organization or is reserved
    */
   checkSlugExists: protectedProcedure
     .input(
@@ -26,8 +26,13 @@ export const entityDefinitionRouter = createTRPCRouter({
         organizationId: ctx.session.organizationId,
         excludeId: input.excludeId,
       })
-      if (result.isErr()) throw new Error(result.error.message)
-      return { exists: result.value }
+      if (result.isErr()) {
+        if (result.error.code === 'RESERVED_SLUG') {
+          return { exists: true, reason: 'reserved' as const }
+        }
+        throw new Error(result.error.message)
+      }
+      return { exists: result.value, reason: result.value ? 'taken' as const : null }
     }),
 
   /**
