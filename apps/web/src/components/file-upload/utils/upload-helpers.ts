@@ -2,7 +2,7 @@
 
 import type { UploadFile, QueueStats, EntityUploadConfig } from '@auxx/lib/files/types'
 import { ENTITY_CONFIGS, getEntityConfig } from '@auxx/lib/files/types'
-import { formatBytes, getFileExtension } from '@auxx/lib/utils'
+import { formatBytes, getFileExtension } from '@auxx/utils/file'
 
 /**
  * Utility functions for file upload processing and calculations

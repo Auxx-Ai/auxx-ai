@@ -379,6 +379,13 @@
       "when": 1767429894801,
       "tag": "0053_add-related-entity-definition-id",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1767723564293,
+      "tag": "0054_add_sortorder_customfield",
+      "breakpoints": true
     }
   ]
 }

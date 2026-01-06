@@ -33,7 +33,8 @@ export const CustomField = pgTable(
     description: text(),
     required: boolean().default(false).notNull(),
     active: boolean().default(true).notNull(),
-    position: integer().default(0).notNull(),
+    sortOrder: text().notNull().default('a0'),
+    displayOptions: jsonb('displayOptions').default(null),
     defaultValue: text(),
     options: jsonb(),
     organizationId: text()
@@ -87,6 +88,13 @@ export const CustomField = pgTable(
     index('CustomField_entityDefinitionId_idx').using(
       'btree',
       table.entityDefinitionId.asc().nullsLast()
+    ),
+    // Composite index for efficient sorting by sortOrder within org/entityDefinition scope
+    index('CustomField_organizationId_entityDefinitionId_sortOrder_idx').using(
+      'btree',
+      table.organizationId.asc().nullsLast(),
+      table.entityDefinitionId.asc().nullsLast(),
+      table.sortOrder.asc().nullsLast()
     ),
   ]
 )

@@ -25,7 +25,7 @@ import {
   TicketStatusBadge,
   TicketTypeBadge,
 } from '~/components/tickets/ticket-badges'
-import { getFullName } from '@auxx/lib/utils'
+import { getFullName } from '@auxx/utils/contact'
 import { ContactHoverCard } from '~/components/contacts/contact-hover-card'
 import { useTableContext } from '~/components/dynamic-table'
 import type { Ticket } from './ticket-types'

@@ -1,6 +1,6 @@
 import { Archive, ArrowDown, ArrowRight, ArrowUp, BookDashed, CheckCircle } from 'lucide-react'
 import { Badge } from '@auxx/ui/components/badge'
-import { titleize } from '@auxx/lib/utils'
+import { titleize } from '@auxx/utils/strings'
 import { PRODUDT_STATUS } from '@auxx/database/enums'
 export const priorities = [
   { label: 'Low', value: 'low', icon: ArrowDown },

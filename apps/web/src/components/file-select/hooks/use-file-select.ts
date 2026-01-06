@@ -4,13 +4,9 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useFileUpload } from '~/components/file-upload/hooks/use-file-upload'
-import { generateId } from '@auxx/lib/utils'
+import { generateId } from '@auxx/utils/generateId'
 import type { FileItem } from '~/components/files/files-store'
-import type { 
-  FileSelectState, 
-  UseFileSelectOptions, 
-  UseFileSelectReturn 
-} from '../types'
+import type { FileSelectState, UseFileSelectOptions, UseFileSelectReturn } from '../types'
 
 /**
  * Convert a File object to a FileItem for upload
@@ -29,7 +25,7 @@ function fileToFileItem(file: File): FileItem {
     updatedAt: new Date(),
     path: '/',
     parentId: null,
-    
+
     // Upload-specific fields
     status: 'pending',
     progress: 0,
@@ -56,7 +52,7 @@ function prepareFileSystemItem(fileItem: FileItem): FileItem {
  */
 export function useFileSelect(options: UseFileSelectOptions = {}): UseFileSelectReturn {
   const {
-    entityType = 'FILE',  // Default to 'FILE' entity type
+    entityType = 'FILE', // Default to 'FILE' entity type
     entityId,
     uploadConfig,
     maxFiles,
@@ -129,11 +125,11 @@ export function useFileSelect(options: UseFileSelectOptions = {}): UseFileSelect
 
       // Also update selectedItems state for UI consistency
       if (completedItems.length > 0) {
-        setSelectedItems(prev => {
+        setSelectedItems((prev) => {
           // Merge completed items with existing items, updating status
-          const updated = prev.map(item => {
-            const completed = completedItems.find(c =>
-              uploadToSelectIdMap.current.get(c.id) === item.id || c.id === item.uploadFileId
+          const updated = prev.map((item) => {
+            const completed = completedItems.find(
+              (c) => uploadToSelectIdMap.current.get(c.id) === item.id || c.id === item.uploadFileId
             )
             if (completed) {
               return { ...item, ...completed, id: item.id }
@@ -156,11 +152,11 @@ export function useFileSelect(options: UseFileSelectOptions = {}): UseFileSelect
     },
     onProgress: (_progress) => {
       // Update progress for uploading items
-      setSelectedItems(prev => 
-        prev.map(item => {
+      setSelectedItems((prev) =>
+        prev.map((item) => {
           if (item.source === 'upload') {
-            const uploadFile = upload.files.find(f => 
-              uploadToSelectIdMap.current.get(f.id) === item.id
+            const uploadFile = upload.files.find(
+              (f) => uploadToSelectIdMap.current.get(f.id) === item.id
             )
             if (uploadFile) {
               return {
@@ -181,178 +177,206 @@ export function useFileSelect(options: UseFileSelectOptions = {}): UseFileSelect
   })
 
   // File validation
-  const validateFile = useCallback((file: File): string | null => {
-    // Size validation
-    if (maxFileSize && file.size > maxFileSize) {
-      return `File size (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds maximum allowed size (${(maxFileSize / 1024 / 1024).toFixed(2)}MB)`
-    }
-
-    // Extension validation
-    if (fileExtensions && fileExtensions.length > 0) {
-      const fileExt = file.name.split('.').pop()?.toLowerCase()
-      const allowedExts = fileExtensions.map(ext => ext.replace('.', '').toLowerCase())
-      
-      if (!fileExt || !allowedExts.includes(fileExt)) {
-        return `File type .${fileExt} is not allowed. Allowed types: ${fileExtensions.join(', ')}`
+  const validateFile = useCallback(
+    (file: File): string | null => {
+      // Size validation
+      if (maxFileSize && file.size > maxFileSize) {
+        return `File size (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds maximum allowed size (${(maxFileSize / 1024 / 1024).toFixed(2)}MB)`
       }
-    }
 
-    return null
-  }, [maxFileSize, fileExtensions])
+      // Extension validation
+      if (fileExtensions && fileExtensions.length > 0) {
+        const fileExt = file.name.split('.').pop()?.toLowerCase()
+        const allowedExts = fileExtensions.map((ext) => ext.replace('.', '').toLowerCase())
+
+        if (!fileExt || !allowedExts.includes(fileExt)) {
+          return `File type .${fileExt} is not allowed. Allowed types: ${fileExtensions.join(', ')}`
+        }
+      }
+
+      return null
+    },
+    [maxFileSize, fileExtensions]
+  )
 
   // Error management
   const addError = useCallback((error: string) => {
-    setErrors(prev => [...prev, error])
+    setErrors((prev) => [...prev, error])
   }, [])
 
   // Add files for upload
-  const addFiles = useCallback(async (files: File[]) => {
-    // Validate each file
-    const validFiles: File[] = []
-    const validationErrors: string[] = []
+  const addFiles = useCallback(
+    async (files: File[]) => {
+      // Validate each file
+      const validFiles: File[] = []
+      const validationErrors: string[] = []
 
-    for (const file of files) {
-      const error = validateFile(file)
-      if (error) {
-        validationErrors.push(`${file.name}: ${error}`)
+      for (const file of files) {
+        const error = validateFile(file)
+        if (error) {
+          validationErrors.push(`${file.name}: ${error}`)
+        } else {
+          validFiles.push(file)
+        }
+      }
+
+      // Check total file count
+      if (maxFiles && selectedItems.length + validFiles.length > maxFiles) {
+        const allowedCount = maxFiles - selectedItems.length
+        validationErrors.push(
+          `Cannot add ${validFiles.length} files. Maximum ${maxFiles} files allowed (${allowedCount} slots remaining)`
+        )
+
+        if (allowedCount > 0) {
+          validFiles.splice(allowedCount) // Keep only files that fit
+        } else {
+          validFiles.length = 0 // Clear all files
+        }
+      }
+
+      // Single selection mode
+      if (!allowMultiple && validFiles.length > 0) {
+        validFiles.splice(1) // Keep only first file
+      }
+
+      if (validationErrors.length > 0) {
+        setErrors((prev) => [...prev, ...validationErrors])
+        onError?.(validationErrors.join('; '))
+      }
+
+      if (validFiles.length === 0) return
+
+      // Create FileItems for upload
+      const newItems = validFiles.map(fileToFileItem)
+
+      // Add to upload queue and track mapping deterministically using returned IDs
+      const addedIds = await upload.addFiles(validFiles)
+      addedIds.forEach((uploadFileId, index) => {
+        uploadToSelectIdMap.current.set(uploadFileId, newItems[index].id)
+        // Store the upload file ID for real-time subscription
+        newItems[index].uploadFileId = uploadFileId
+      })
+
+      // Update state
+      if (!allowMultiple) {
+        setSelectedItems(newItems) // Replace all items
       } else {
-        validFiles.push(file)
+        setSelectedItems((prev) => [...prev, ...newItems])
       }
-    }
 
-    // Check total file count
-    if (maxFiles && selectedItems.length + validFiles.length > maxFiles) {
-      const allowedCount = maxFiles - selectedItems.length
-      validationErrors.push(`Cannot add ${validFiles.length} files. Maximum ${maxFiles} files allowed (${allowedCount} slots remaining)`)
-      
-      if (allowedCount > 0) {
-        validFiles.splice(allowedCount) // Keep only files that fit
-      } else {
-        validFiles.length = 0 // Clear all files
+      // Trigger onChange
+      const updatedItems = allowMultiple ? [...selectedItems, ...newItems] : newItems
+      onChange?.(updatedItems)
+
+      // Auto-start upload if enabled
+      if (autoStart) {
+        try {
+          await upload.startUpload()
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Upload failed to start'
+          addError(message)
+          onError?.(message)
+        }
       }
-    }
-
-    // Single selection mode
-    if (!allowMultiple && validFiles.length > 0) {
-      validFiles.splice(1) // Keep only first file
-    }
-
-    if (validationErrors.length > 0) {
-      setErrors(prev => [...prev, ...validationErrors])
-      onError?.(validationErrors.join('; '))
-    }
-
-    if (validFiles.length === 0) return
-
-    // Create FileItems for upload
-    const newItems = validFiles.map(fileToFileItem)
-
-    // Add to upload queue and track mapping deterministically using returned IDs
-    const addedIds = await upload.addFiles(validFiles)
-    addedIds.forEach((uploadFileId, index) => {
-      uploadToSelectIdMap.current.set(uploadFileId, newItems[index].id)
-      // Store the upload file ID for real-time subscription
-      newItems[index].uploadFileId = uploadFileId
-    })
-
-    // Update state
-    if (!allowMultiple) {
-      setSelectedItems(newItems) // Replace all items
-    } else {
-      setSelectedItems(prev => [...prev, ...newItems])
-    }
-
-    // Trigger onChange
-    const updatedItems = allowMultiple ? [...selectedItems, ...newItems] : newItems
-    onChange?.(updatedItems)
-
-    // Auto-start upload if enabled
-    if (autoStart) {
-      try {
-        await upload.startUpload()
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Upload failed to start'
-        addError(message)
-        onError?.(message)
-      }
-    }
-  }, [validateFile, maxFiles, selectedItems, allowMultiple, upload, onChange, onError, autoStart, addError])
+    },
+    [
+      validateFile,
+      maxFiles,
+      selectedItems,
+      allowMultiple,
+      upload,
+      onChange,
+      onError,
+      autoStart,
+      addError,
+    ]
+  )
 
   // Add existing files from filesystem
-  const addExistingFiles = useCallback((fileItems: FileItem[]) => {
-    // Dedupe: filter out files already selected
-    const deduped = fileItems.filter(f => !selectedItems.some(item => item.id === f.id))
+  const addExistingFiles = useCallback(
+    (fileItems: FileItem[]) => {
+      // Dedupe: filter out files already selected
+      const deduped = fileItems.filter((f) => !selectedItems.some((item) => item.id === f.id))
 
-    if (deduped.length === 0) {
-      console.log('[useFileSelect] No new files to add (all already selected)')
-      return
-    }
-
-    // Check limits
-    let itemsToAdd = deduped
-
-    if (maxFiles && selectedItems.length + itemsToAdd.length > maxFiles) {
-      const allowedCount = maxFiles - selectedItems.length
-      itemsToAdd = itemsToAdd.slice(0, allowedCount)
-
-      if (allowedCount < deduped.length) {
-        addError(`Only added ${allowedCount} files. Maximum ${maxFiles} files allowed.`)
+      if (deduped.length === 0) {
+        console.log('[useFileSelect] No new files to add (all already selected)')
+        return
       }
-    }
 
-    if (!allowMultiple && itemsToAdd.length > 0) {
-      itemsToAdd = [itemsToAdd[0]] // Keep only first item
-    }
+      // Check limits
+      let itemsToAdd = deduped
 
-    if (itemsToAdd.length === 0) return
+      if (maxFiles && selectedItems.length + itemsToAdd.length > maxFiles) {
+        const allowedCount = maxFiles - selectedItems.length
+        itemsToAdd = itemsToAdd.slice(0, allowedCount)
 
-    const newItems = itemsToAdd.map(prepareFileSystemItem)
+        if (allowedCount < deduped.length) {
+          addError(`Only added ${allowedCount} files. Maximum ${maxFiles} files allowed.`)
+        }
+      }
 
-    // Update state and call callbacks with latest state
-    setSelectedItems(prev => {
-      const next = allowMultiple ? [...prev, ...newItems] : newItems
-      // Call onChange with the updated state
-      onChange?.(next)
-      return next
-    })
+      if (!allowMultiple && itemsToAdd.length > 0) {
+        itemsToAdd = [itemsToAdd[0]] // Keep only first item
+      }
 
-    // Notify that existing files were added (separate from onChange)
-    if (newItems.length > 0 && onExistingFilesAdded) {
-      onExistingFilesAdded(newItems)
-    }
-  }, [maxFiles, selectedItems, allowMultiple, onChange, onExistingFilesAdded, addError])
+      if (itemsToAdd.length === 0) return
+
+      const newItems = itemsToAdd.map(prepareFileSystemItem)
+
+      // Update state and call callbacks with latest state
+      setSelectedItems((prev) => {
+        const next = allowMultiple ? [...prev, ...newItems] : newItems
+        // Call onChange with the updated state
+        onChange?.(next)
+        return next
+      })
+
+      // Notify that existing files were added (separate from onChange)
+      if (newItems.length > 0 && onExistingFilesAdded) {
+        onExistingFilesAdded(newItems)
+      }
+    },
+    [maxFiles, selectedItems, allowMultiple, onChange, onExistingFilesAdded, addError]
+  )
 
   // Add items directly
-  const addItems = useCallback((items: FileItem[]) => {
-    if (!allowMultiple && items.length > 0) {
-      setSelectedItems([items[0]])
-      onChange?.([items[0]])
-    } else {
-      setSelectedItems(prev => [...prev, ...items])
-      onChange?.([...selectedItems, ...items])
-    }
-  }, [allowMultiple, selectedItems, onChange])
+  const addItems = useCallback(
+    (items: FileItem[]) => {
+      if (!allowMultiple && items.length > 0) {
+        setSelectedItems([items[0]])
+        onChange?.([items[0]])
+      } else {
+        setSelectedItems((prev) => [...prev, ...items])
+        onChange?.([...selectedItems, ...items])
+      }
+    },
+    [allowMultiple, selectedItems, onChange]
+  )
 
   // Remove item
-  const removeItem = useCallback((id: string) => {
-    setSelectedItems(prev => {
-      const updated = prev.filter(item => item.id !== id)
-      onChange?.(updated)
-      return updated
-    })
+  const removeItem = useCallback(
+    (id: string) => {
+      setSelectedItems((prev) => {
+        const updated = prev.filter((item) => item.id !== id)
+        onChange?.(updated)
+        return updated
+      })
 
-    // Also remove from upload queue if it's an upload item
-    const item = selectedItems.find(item => item.id === id)
-    if (item?.source === 'upload') {
-      const uploadId = Array.from(uploadToSelectIdMap.current.entries())
-        .find(([, selectId]) => selectId === id)?.[0]
-      
-      if (uploadId) {
-        upload.removeFile(uploadId)
-        uploadToSelectIdMap.current.delete(uploadId)
+      // Also remove from upload queue if it's an upload item
+      const item = selectedItems.find((item) => item.id === id)
+      if (item?.source === 'upload') {
+        const uploadId = Array.from(uploadToSelectIdMap.current.entries()).find(
+          ([, selectId]) => selectId === id
+        )?.[0]
+
+        if (uploadId) {
+          upload.removeFile(uploadId)
+          uploadToSelectIdMap.current.delete(uploadId)
+        }
       }
-    }
-  }, [selectedItems, upload, onChange])
+    },
+    [selectedItems, upload, onChange]
+  )
 
   // Clear all items
   const clearItems = useCallback(() => {
@@ -377,14 +401,18 @@ export function useFileSelect(options: UseFileSelectOptions = {}): UseFileSelect
     upload.cancelUpload()
   }, [upload])
 
-  const retryUpload = useCallback((itemId: string) => {
-    const uploadId = Array.from(uploadToSelectIdMap.current.entries())
-      .find(([, selectId]) => selectId === itemId)?.[0]
-    
-    if (uploadId) {
-      upload.retry(uploadId)
-    }
-  }, [upload])
+  const retryUpload = useCallback(
+    (itemId: string) => {
+      const uploadId = Array.from(uploadToSelectIdMap.current.entries()).find(
+        ([, selectId]) => selectId === itemId
+      )?.[0]
+
+      if (uploadId) {
+        upload.retry(uploadId)
+      }
+    },
+    [upload]
+  )
 
   // Picker actions
   const openPicker = useCallback(() => setPickerOpen(true), [])

@@ -4,7 +4,7 @@
 
 import { formatDistanceToNowStrict } from 'date-fns'
 import { cn } from '@auxx/ui/lib/utils'
-import { getInitialsFromName } from '@auxx/lib/utils'
+import { getInitialsFromName } from '@auxx/utils'
 import { ArrowDown, ArrowUp } from 'lucide-react'
 import { sanitizeHtml } from '~/lib/sanitize'
 

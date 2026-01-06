@@ -4,7 +4,7 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { api } from '~/trpc/react'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { cloneDeep } from '@auxx/lib/utils'
+import { cloneDeep } from '@auxx/utils/objects'
 import { useKnowledgeBase } from './kb-context'
 import {
   type DragEndEvent,

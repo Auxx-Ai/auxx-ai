@@ -2,7 +2,7 @@
 
 import { createHash } from 'crypto'
 import { getRedisClient, type RedisClient } from '@auxx/redis'
-import { generateId } from '../utils'
+import { generateId } from '@auxx/utils/generateId'
 import type {
   QuerySnapshot,
   GetOrCreateSnapshotInput,

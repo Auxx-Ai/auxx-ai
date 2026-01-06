@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/utils/unique-title-generator.ts
 
-import { incrementTitle } from '@auxx/lib/utils'
+import { incrementTitle } from '@auxx/utils'
 import { type FlowNode } from '../store/types'
 
 /**

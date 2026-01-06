@@ -4,7 +4,7 @@
 import { useMemo } from 'react'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
-import { deepMerge } from '@auxx/lib/utils'
+import { deepMerge } from '@auxx/utils'
 import type { TableView, ViewConfig, KanbanViewConfig } from '../types'
 
 interface ViewStoreState {

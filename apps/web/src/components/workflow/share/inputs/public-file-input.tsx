@@ -5,7 +5,7 @@
 import { useState, useCallback, useRef, useId } from 'react'
 import { FileUp, Loader2, AlertCircle, Trash2 } from 'lucide-react'
 import { cn } from '@auxx/ui/lib/utils'
-import { formatBytes } from '@auxx/lib/utils'
+import { formatBytes } from '@auxx/utils/file'
 import { Button } from '@auxx/ui/components/button'
 import { FileIcon } from '~/components/files/utils/file-icon'
 

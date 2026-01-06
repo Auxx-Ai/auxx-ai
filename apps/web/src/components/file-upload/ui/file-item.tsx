@@ -8,7 +8,7 @@ import { Button } from '@auxx/ui/components/button'
 import { CircularProgress } from '@auxx/ui/components/progress'
 import { RotateCcw, Pause, Trash2 } from 'lucide-react'
 import { useUploadStore, selectFile, selectFileProgress, selectFileStatus } from '../stores'
-import { formatBytes } from '@auxx/lib/utils'
+import { formatBytes } from '@auxx/utils/file'
 import { FileIcon } from '~/components/files/utils/file-icon'
 import {
   FileStatusDisplay,

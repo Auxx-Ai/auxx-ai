@@ -1,6 +1,6 @@
 import { database as db, schema } from '@auxx/database'
 import { eq, inArray } from 'drizzle-orm'
-import { formatEmail } from '../utils'
+import { formatEmail } from '@auxx/utils'
 
 export type CustomerResponse = {
   found: boolean

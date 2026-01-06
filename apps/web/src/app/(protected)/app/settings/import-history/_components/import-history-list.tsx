@@ -24,7 +24,7 @@ import {
 import { MoreVertical, Columns, Rows3, Import } from 'lucide-react'
 import { EntityIcon } from '~/components/pickers/icon-picker'
 import { useAllResources } from '~/components/resources'
-import { formatRelativeTime } from '@auxx/lib/utils'
+import { formatRelativeTime } from '@auxx/utils/date'
 
 /** Returns base path for a given target table */
 function getBasePath(targetTable: string): string {

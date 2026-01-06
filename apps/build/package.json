@@ -14,6 +14,7 @@
     "@auxx/lib": "workspace:*",
     "@auxx/redis": "workspace:*",
     "@auxx/services": "workspace:*",
+    "@auxx/utils": "workspace:*",
     "@auxx/ui": "workspace:*",
     "lucide-react": "catalog:",
     "date-fns": "catalog:",

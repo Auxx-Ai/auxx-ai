@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/nodes/core/if-else/adapters/condition-adapter.tsx
 
 import { useCallback, useMemo, useRef } from 'react'
-import { generateId } from '@auxx/lib/utils'
+import { generateId } from '@auxx/utils/generateId'
 import type {
   ConditionGroup,
   ConditionSystemConfig,

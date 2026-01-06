@@ -13,7 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { FileText, Calendar, MoreVertical, Search, Settings, Trash, Database, Archive } from 'lucide-react'
-import { formatRelativeTime, formatBytes } from '@auxx/lib/utils'
+import { formatRelativeTime, formatBytes } from '@auxx/utils'
 import type { DatasetWithRelations } from '@auxx/lib/datasets'
 import { useDatasetActions } from './hooks/use-dataset-actions'
 

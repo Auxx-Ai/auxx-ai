@@ -4,7 +4,7 @@
 import SettingsPage from '~/components/global/settings-page'
 import { useUser } from '~/hooks/use-user'
 import { useParams } from 'next/navigation'
-import { titleize } from '@auxx/lib/utils'
+import { titleize } from '@auxx/utils'
 import { CustomFieldsList } from '~/components/custom-fields/ui/custom-fields-list'
 import { ModelTypes, type ModelType } from '@auxx/lib/resources/client'
 import { api } from '~/trpc/react'

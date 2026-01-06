@@ -27,6 +27,7 @@ interface CustomField {
       targetTable?: string
       relatedEntityDefinitionId?: string
       relatedModelType?: string
+      relationshipType?: 'belongs_to' | 'has_one' | 'has_many'
     }
     currency?: Record<string, unknown>
   }
@@ -62,11 +63,21 @@ function transformResourceFieldToCustomField(field: ResourceField, index: number
     const isSystemResource = ['contact', 'ticket', 'thread', 'user'].includes(
       field.relationship.targetTable
     )
+
+    // Map cardinality to relationshipType
+    let relationshipType: 'belongs_to' | 'has_one' | 'has_many' = 'belongs_to'
+    if (field.relationship.cardinality === 'one-to-many') {
+      relationshipType = 'has_many'
+    } else if (field.relationship.cardinality === 'one-to-one') {
+      relationshipType = 'has_one'
+    }
+
     options.relationship = {
       // targetTable is already the resourceId we need (e.g., "entity_orders", "contact")
       targetTable: field.relationship.targetTable,
       relatedEntityDefinitionId: !isSystemResource ? field.relationship.targetTable : undefined,
       relatedModelType: isSystemResource ? field.relationship.targetTable : undefined,
+      relationshipType,
     }
   }
 

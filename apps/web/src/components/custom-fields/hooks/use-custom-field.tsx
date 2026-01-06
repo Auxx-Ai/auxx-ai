@@ -70,20 +70,10 @@ export function useCustomField({ modelType, entityDefinitionId }: UseCustomField
     },
   })
 
-  const updatePositions = api.customField.updatePositions.useMutation({
-    onSuccess: () => {
-      invalidateResourceDefinitions()
-    },
-    onError: (error) => {
-      toastError({ title: 'Error updating custom field positions', description: error.message })
-    },
-  })
-
   return {
     fields,
     isLoading,
     isPending: createField.isPending || updateField.isPending || deleteField.isPending,
-    updatePositions,
     refetch,
     create: createField,
     update: updateField,

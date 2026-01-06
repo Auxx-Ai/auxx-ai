@@ -22,7 +22,7 @@ import { Table, TableBody, TableCell, TableRow } from '@auxx/ui/components/table
 import { Settings, Calendar, Database, FileText, Hash, Activity } from 'lucide-react'
 import { api } from '~/trpc/react'
 import { toastError } from '@auxx/ui/components/toast'
-import { formatBytes } from '@auxx/lib/utils'
+import { formatBytes } from '@auxx/utils/file'
 import type { DatasetEntity as Dataset } from '@auxx/database/models'
 
 interface GeneralSettingsSectionProps {

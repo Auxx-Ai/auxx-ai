@@ -43,7 +43,7 @@ import { client } from '~/auth/auth-client' // Use the correct import for your a
 import { useUser } from '~/hooks/use-user'
 import { CreateOrganizationDialog } from '../create-org-dialog'
 import { useEffect, useState } from 'react'
-import { getInitialsFromName } from '@auxx/lib/utils'
+import { getInitialsFromName } from '@auxx/utils'
 import { useRouter } from 'next/navigation'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { useTheme } from 'next-themes'

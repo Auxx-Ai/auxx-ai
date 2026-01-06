@@ -1,0 +1,42 @@
+{
+  "name": "@auxx/utils",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./arrays": "./src/arrays.ts",
+    "./comments": "./src/comments.ts",
+    "./contact": "./src/contact.ts",
+    "./currency": "./src/currency.ts",
+    "./date": "./src/date.ts",
+    "./email": "./src/email.ts",
+    "./file": "./src/file.ts",
+    "./fractional-indexing": "./src/fractional-indexing.ts",
+    "./functions": "./src/functions.ts",
+    "./generateId": "./src/generateId.ts",
+    "./headers": "./src/headers.ts",
+    "./mime": "./src/mime.ts",
+    "./objects": "./src/objects.ts",
+    "./parse": "./src/parse.ts",
+    "./retry": "./src/retry.ts",
+    "./strings": "./src/strings.ts",
+    "./timezone": "./src/timezone.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@auxx/types": "workspace:*",
+    "date-fns-tz": "^3.2.0",
+    "nanoid": "^5.1.5"
+  },
+  "devDependencies": {
+    "@auxx/eslint-config": "workspace:*",
+    "@auxx/typescript-config": "workspace:*",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

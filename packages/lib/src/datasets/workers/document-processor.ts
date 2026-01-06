@@ -9,7 +9,7 @@ import { createDocumentProcessingFlow } from '@auxx/lib/jobs/flows'
 import { MediaAssetService } from '@auxx/lib/files'
 import { DocumentStatus, IndexStatus } from '@auxx/database/enums'
 import type { ChunkSettings, ChunkPreprocessingOptions } from '@auxx/database/types'
-import { interpretEscapeSequences } from '@auxx/lib/utils'
+import { interpretEscapeSequences } from '@auxx/utils'
 import { DocumentEventType, type DocumentExecutionReporter } from '../events'
 import { DocumentService } from '../services/document-service'
 

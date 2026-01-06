@@ -15,7 +15,8 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Tooltip } from '~/components/global/tooltip'
 import { EntityIcon } from '~/components/pickers/icon-picker'
 import { useEntityRecords } from '~/components/custom-fields/context/entity-records-context'
-import EntityRecordOverview from './entity-record-overview'
+import EntityFields from '~/components/fields/entity-fields'
+import { ModelTypes } from '@auxx/types/custom-field'
 import DrawerComments from '~/components/global/comments/drawer-comments'
 import { TimelineTab } from '~/components/timeline'
 import { createCustomEntityType } from '@auxx/lib/timeline/client'
@@ -83,7 +84,7 @@ export function EntityRecordDrawer({
 
   const [activeTab, setActiveTab] = useQueryState('tab', { defaultValue: 'overview' })
 
-  const { resource } = useEntityRecords()
+  const { resource, entityDefinitionId, customFields } = useEntityRecords()
 
   // Counter for focusing comments composer
   const [focusComposerTrigger, setFocusComposerTrigger] = React.useState(0)
@@ -259,13 +260,19 @@ export function EntityRecordDrawer({
                       title="Overview"
                       collapsible={false}
                       icon={<Gauge className="size-4 text-muted-foreground/50" />}>
-                      <EntityRecordOverview
-                        instanceId={instance.id}
-                        preloadedValues={instance._originalValues}
-                        createdAt={instance.createdAt}
-                        updatedAt={instance.updatedAt}
-                        onMutationSuccess={onMutationSuccess}
-                      />
+                      {resource && entityDefinitionId && (
+                        <EntityFields
+                          modelType={ModelTypes.ENTITY}
+                          entityId={instance.id}
+                          entityDefinitionId={entityDefinitionId}
+                          preloadedValues={instance._originalValues}
+                          preloadedFields={customFields}
+                          createdAt={instance.createdAt}
+                          updatedAt={instance.updatedAt}
+                          onMutationSuccess={onMutationSuccess}
+                          className=""
+                        />
+                      )}
                     </Section>
                   </ScrollArea>
                 </TabsContent>

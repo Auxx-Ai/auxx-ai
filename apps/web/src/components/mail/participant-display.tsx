@@ -1,4 +1,4 @@
-import { titleize } from '@auxx/lib/utils'
+import { titleize } from '@auxx/utils/strings'
 import { useQueryState } from 'nuqs'
 import React from 'react'
 import { cn } from '@auxx/ui/lib/utils'

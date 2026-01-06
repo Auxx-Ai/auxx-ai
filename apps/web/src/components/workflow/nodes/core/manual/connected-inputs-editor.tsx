@@ -22,7 +22,7 @@ import {
 } from '@dnd-kit/sortable'
 import { restrictToParentElement, restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { CSS } from '@dnd-kit/utilities'
-import { generateKeyBetween } from '@auxx/lib/utils'
+import { generateKeyBetween } from '@auxx/utils'
 import { useAvailableVariables, useNodesInteractions } from '~/components/workflow/hooks'
 import { useNodeDataUpdate } from '~/components/workflow/hooks/use-node-data-update'
 import { useReadOnly } from '~/components/workflow/hooks/use-read-only'

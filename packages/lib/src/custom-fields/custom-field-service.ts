@@ -6,14 +6,14 @@ import {
   createCustomField,
   updateCustomField,
   deleteCustomField,
-  updateFieldPositions,
   getRelationshipPair,
   ModelTypes,
   type ModelType,
   type RelationshipOptions,
 } from '@auxx/services/custom-fields'
 import type { FieldType } from '@auxx/database/types'
-import type { SelectOption, CurrencyOptions, FileOptions } from '@auxx/services/custom-fields'
+import type { SelectOption, FileOptions } from '@auxx/services/custom-fields'
+import type { CurrencyOptions } from '@auxx/types/custom-field'
 
 /**
  * Service for managing custom fields and their values across different models
@@ -107,7 +107,7 @@ export class CustomFieldService {
     icon?: string
     isCustom?: boolean
     active?: boolean
-    position?: number
+    sortOrder?: string
     type?: FieldType
     isUnique?: boolean
   }) {
@@ -132,32 +132,6 @@ export class CustomFieldService {
     const result = await deleteCustomField({
       id,
       organizationId: this.organizationId,
-    })
-
-    if (result.isErr()) {
-      throw new Error(result.error.message)
-    }
-
-    return result.value
-  }
-
-  /**
-   * Update the positions of multiple custom fields in bulk
-   *
-   * @param params - Object containing array of {id, position} and modelType
-   * @returns Success object
-   */
-  async updatePositions({
-    positions,
-    modelType = ModelTypes.CONTACT,
-  }: {
-    positions: { id: string; position: number }[]
-    modelType?: ModelType
-  }) {
-    const result = await updateFieldPositions({
-      organizationId: this.organizationId,
-      positions,
-      modelType,
     })
 
     if (result.isErr()) {

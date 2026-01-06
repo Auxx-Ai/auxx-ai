@@ -25,6 +25,7 @@
     "@auxx/logger": "workspace:*",
     "@auxx/redis": "workspace:*",
     "@auxx/email": "workspace:*",
+    "@auxx/utils": "workspace:*",
     "@auxx/workflow-nodes": "workspace:*",
     "@t3-oss/env-nextjs": "catalog:",
     "bullmq": "catalog:",

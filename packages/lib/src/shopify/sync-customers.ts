@@ -13,7 +13,7 @@ import {
   formatPhoneNumber,
   formatStreetAddress,
   withRetry,
-} from '../utils'
+} from '@auxx/utils'
 import pLimit from 'p-limit'
 import { database, schema } from '@auxx/database'
 import type { Database } from '@auxx/database'

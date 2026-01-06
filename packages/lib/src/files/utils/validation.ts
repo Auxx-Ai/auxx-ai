@@ -1,5 +1,5 @@
 // packages/lib/src/files/utils/validation.ts
-import { formatBytes } from '@auxx/lib/utils'
+import { formatBytes } from '@auxx/utils/file'
 /**
  * Common validation utilities for file operations
  */

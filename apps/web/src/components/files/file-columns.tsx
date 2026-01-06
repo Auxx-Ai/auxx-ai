@@ -4,7 +4,7 @@
 
 import type { ExtendedColumnDef } from '~/components/dynamic-table'
 import { FormattedCell, CellPadding } from '~/components/dynamic-table'
-import { formatBytes, getDirectoryPath } from '@auxx/lib/utils'
+import { formatBytes, getDirectoryPath } from '@auxx/utils/file'
 import { getStandardFileType } from './utils/file-type'
 import type { FileItem } from './files-store'
 import { FileNameCell } from './file-name-cell'
@@ -96,11 +96,7 @@ export function createFileColumns(actions: FileColumnsActions): ExtendedColumnDe
       fieldType: 'DATE',
       columnType: 'date',
       cell: ({ getValue }) => (
-        <FormattedCell
-          value={getValue()}
-          fieldType="DATE"
-          columnId="createdAt"
-        />
+        <FormattedCell value={getValue()} fieldType="DATE" columnId="createdAt" />
       ),
     },
 

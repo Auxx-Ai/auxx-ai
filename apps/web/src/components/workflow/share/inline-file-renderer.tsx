@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { Download, ExternalLink, FileIcon, ImageIcon, AlertCircle } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
-import { formatBytes } from '@auxx/lib/utils'
+import { formatBytes } from '@auxx/utils/file'
 import type { WorkflowFileData } from '@auxx/lib/workflow-engine/types/file-variable'
 
 /**

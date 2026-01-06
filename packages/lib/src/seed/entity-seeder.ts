@@ -2,7 +2,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { generateId } from '../utils'
+import { generateId } from '@auxx/utils/generateId'
 
 const logger = createScopedLogger('entity-seeder')
 

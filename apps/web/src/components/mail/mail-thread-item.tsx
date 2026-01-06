@@ -3,7 +3,7 @@
 
 import React, { useMemo, useCallback } from 'react'
 import { formatDistanceToNowStrict } from 'date-fns'
-import { getInitialsFromName } from '@auxx/lib/utils'
+import { getInitialsFromName } from '@auxx/utils'
 import DOMPurify from 'dompurify'
 import { useDraggable } from '@dnd-kit/core'
 import { useMailFilter } from './mail-filter-context'

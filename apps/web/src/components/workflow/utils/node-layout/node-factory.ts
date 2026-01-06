@@ -1,10 +1,10 @@
 // apps/web/src/components/workflow/utils/node-layout/node-factory.ts
 
-import { cloneDeep } from '@auxx/lib/utils'
+import { cloneDeep } from '@auxx/utils'
 import type { FlowNode } from '~/components/workflow/types'
 import { NodeType } from '~/components/workflow/types'
 import { unifiedNodeRegistry } from '../../nodes/unified-registry'
-import { generateId } from '../id-generator'
+import { generateId } from '@auxx/utils/generateId'
 import { generateUniqueTitle } from '../unique-title-generator'
 import { useWorkflowStore } from '../../store/workflow-store'
 import { LAYOUT_SPACING } from '../layout-constants'

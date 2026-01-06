@@ -1,5 +1,5 @@
 // apps/web/src/components/workflow/utils/id-generator.ts
-import { generateId } from '@auxx/lib/utils'
+import { generateId } from '@auxx/utils/generateId'
 
 /**
  * Centralized ID generation utility for workflow components

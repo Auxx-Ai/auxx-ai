@@ -8,7 +8,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { useChecklist } from '~/components/workflow/hooks'
 import { useNodesInteractions } from '../hooks/use-node-interactions'
 import { getIcon } from '../utils/icon-helper'
-import { pluralize } from '@auxx/lib/utils'
+import { pluralize } from '@auxx/utils/strings'
 
 import { Tooltip } from '~/components/global/tooltip'
 

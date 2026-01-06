@@ -4,7 +4,7 @@
 
 import { StatCards, type StatCardData } from '@auxx/ui/components/stat-card'
 import { Database, FileText, AlertCircle, Activity } from 'lucide-react'
-import { formatBytes } from '@auxx/lib/utils'
+import { formatBytes } from '@auxx/utils/file'
 import type { OrganizationDatasetStats } from './datasets-provider'
 
 interface DatasetsStatsCardsProps {

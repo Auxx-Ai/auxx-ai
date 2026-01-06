@@ -5,7 +5,7 @@
 import React, { createContext, useContext, useCallback, useMemo } from 'react'
 import { produce } from 'immer'
 import { TextClassifierNodeData, Category, ModelConfig } from './types'
-import { generateId } from '~/components/workflow/utils'
+import { generateId } from '@auxx/utils/generateId'
 import { DEFAULT_CATEGORY_PREFIX } from './constants'
 import { useEdgeInteractions } from '~/components/workflow/hooks'
 import { useUpdateNodeInternals } from '@xyflow/react'

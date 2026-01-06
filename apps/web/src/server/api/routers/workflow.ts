@@ -27,7 +27,7 @@ import {
   triggerManualResourceWorkflow,
   triggerManualResourceWorkflowBulk,
 } from '@auxx/lib/workflow-engine'
-import { generateId } from '@auxx/lib/utils'
+import { generateId } from '@auxx/utils/generateId'
 import { and, eq } from 'drizzle-orm'
 
 // const a = z.enum(WorkflowTriggerType).nullish()

@@ -1,18 +1,17 @@
 'use client'
 
-import { ColumnDef } from '@tanstack/react-table'
+import { type ColumnDef } from '@tanstack/react-table'
 
 import { Badge } from '@auxx/ui/components/badge'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 
 import { getProductStatusBadge, labels } from '~/constants/products'
 import { DataTableColumnHeader } from '~/components/data-table/data-table-column-header'
-import { Product } from './schema'
+import { type Product } from './schema'
 import { DataTableRowActions } from './products-data-table-row-actions'
-import { titleize } from '@auxx/lib/utils'
+import { titleize, pluralize } from '@auxx/utils'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import React from 'react'
-import { pluralize } from '@auxx/lib/utils'
 
 import { Button } from '@auxx/ui/components/button'
 import { ChevronDownIcon, ChevronUpIcon } from 'lucide-react'

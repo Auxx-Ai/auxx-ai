@@ -35,7 +35,6 @@ export function RelationshipInputField() {
   const [search, setSearch] = useState('')
 
   // Debug logging
-  console.log('[RelationshipInputField] Field:', field)
   console.log('[RelationshipInputField] field.options:', field.options)
 
   // Capture keys while open (list uses arrows)
@@ -63,21 +62,17 @@ export function RelationshipInputField() {
 
   // Get relatedEntityDefinitionId for storing with values
   const relatedEntityDefinitionId = useMemo(() => {
-    if (!relationship) {
-      console.warn('[RelationshipInputField] No relationship config found in field.options.relationship')
-      return ''
-    }
     // For custom entities, use the stored relatedEntityDefinitionId
     if (relationship.relatedEntityDefinitionId) {
-      console.log('[RelationshipInputField] Using relatedEntityDefinitionId from config:', relationship.relatedEntityDefinitionId)
       return relationship.relatedEntityDefinitionId
     }
     // For system resources, use the relatedModelType (e.g., "contact", "ticket")
     if (relationship.relatedModelType) {
-      console.log('[RelationshipInputField] Using relatedModelType from config:', relationship.relatedModelType)
       return relationship.relatedModelType
     }
-    console.warn('[RelationshipInputField] Neither relatedEntityDefinitionId nor relatedModelType found')
+    console.warn(
+      '[RelationshipInputField] Neither relatedEntityDefinitionId nor relatedModelType found'
+    )
     return ''
   }, [relationship])
 

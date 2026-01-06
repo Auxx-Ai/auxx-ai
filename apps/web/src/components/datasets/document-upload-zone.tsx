@@ -14,7 +14,7 @@ import { api } from '~/trpc/react'
 import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 
-import { formatBytes } from '@auxx/lib/utils'
+import { formatBytes } from '@auxx/utils/file'
 interface FileWithProgress {
   file: File
   progress: number

@@ -1,6 +1,6 @@
 // packages/lib/src/workflows/template-graph-transformer.ts
 
-import { generateId } from '@auxx/lib/utils'
+import { generateId } from '@auxx/utils/generateId'
 
 /**
  * Type definitions for workflow graph

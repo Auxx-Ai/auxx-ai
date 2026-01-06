@@ -41,6 +41,7 @@
     "@auxx/seed": "workspace:*",
     "@auxx/services": "workspace:*",
     "@auxx/types": "workspace:*",
+    "@auxx/utils": "workspace:*",
     "@auxx/ui": "workspace:*",
     "@auxx/workflow-nodes": "workspace:*",
     "@aws-sdk/client-s3": "catalog:",

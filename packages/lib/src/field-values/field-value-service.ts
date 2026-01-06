@@ -3,7 +3,7 @@
 import { database, schema, type Database } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
 import { and, eq, inArray, asc } from 'drizzle-orm'
-import { generateKeyBetween } from '../utils/fractional-indexing'
+import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
 import {
   type TypedFieldValue,
   type TypedFieldValueInput,

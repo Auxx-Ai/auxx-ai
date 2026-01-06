@@ -8,7 +8,7 @@ import { useTableContext } from '../context/table-context'
 import { renderCellValue } from '../utils/cell-renderers'
 import { ExpandableCell } from './expandable-cell'
 import type { ColumnFormatting } from '../types'
-import type { CurrencyDisplayOptions } from '@auxx/lib/utils'
+import type { CurrencyDisplayOptions } from '@auxx/utils'
 
 /**
  * Config for field-specific data passed to renderers

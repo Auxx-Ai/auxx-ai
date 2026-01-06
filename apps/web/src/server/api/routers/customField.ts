@@ -122,7 +122,7 @@ export const customFieldRouter = createTRPCRouter({
         icon: z.string().optional(),
         isCustom: z.boolean().optional(),
         active: z.boolean().optional(),
-        position: z.number().optional(),
+        sortOrder: z.string().optional(),
         type: z.enum(FieldType).optional(),
       })
     )
@@ -141,25 +141,6 @@ export const customFieldRouter = createTRPCRouter({
       const { organizationId, userId } = ctx.session
       const service = new CustomFieldService(organizationId, userId, ctx.db)
       return await service.deleteField(input.id)
-    }),
-
-  /**
-   * Update positions of multiple custom fields
-   */
-  updatePositions: protectedProcedure
-    .input(
-      z.object({
-        positions: z.array(z.object({ id: z.string(), position: z.number() })),
-        modelType: modelTypeSchema.default(ModelTypes.CONTACT),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-      const service = new CustomFieldService(organizationId, userId, ctx.db)
-      return await service.updatePositions({
-        positions: input.positions,
-        modelType: input.modelType,
-      })
     }),
 
   /**

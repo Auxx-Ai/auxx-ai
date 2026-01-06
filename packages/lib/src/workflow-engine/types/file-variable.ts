@@ -1,5 +1,5 @@
 // packages/lib/src/workflow-engine/types/file-variable.ts
-import { formatBytes } from '@auxx/lib/utils'
+import { formatBytes } from '@auxx/utils/file'
 // Define these types locally for now since the paths don't exist in the lib package
 interface UnifiedVariable {
   id: string

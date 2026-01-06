@@ -12,7 +12,7 @@ import {
 } from '@auxx/ui/components/dialog'
 import { Button } from '@auxx/ui/components/button'
 import { Progress } from '@auxx/ui/components/progress'
-import { formatDate } from '@auxx/lib/utils/date'
+import { formatDate } from '@auxx/utils/date'
 
 interface QuotaInfo {
   /** Current usage amount */

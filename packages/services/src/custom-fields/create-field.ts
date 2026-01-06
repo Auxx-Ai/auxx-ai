@@ -1,9 +1,10 @@
 // packages/services/src/custom-fields/create-field.ts
 
 import { database, schema } from '@auxx/database'
-import { eq, and, desc } from 'drizzle-orm'
+import { eq, and, desc, isNull } from 'drizzle-orm'
 import { ok, err } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
+import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
 import {
   ModelTypes,
   type ModelType,
@@ -60,9 +61,10 @@ function getInverseCardinality(
 }
 
 /**
- * Get highest position for a model type
+ * Get the last field by sortOrder for a scope (org/modelType/entityDefId)
+ * Returns the field with highest sortOrder (lexicographically)
  */
-async function getHighestPosition(
+async function getLastFieldSortOrder(
   organizationId: string,
   modelType: string,
   entityDefinitionId?: string | null
@@ -74,13 +76,15 @@ async function getHighestPosition(
 
   if (entityDefinitionId) {
     conditions.push(eq(schema.CustomField.entityDefinitionId, entityDefinitionId))
+  } else {
+    conditions.push(isNull(schema.CustomField.entityDefinitionId))
   }
 
   return database
-    .select({ position: schema.CustomField.position })
+    .select({ sortOrder: schema.CustomField.sortOrder })
     .from(schema.CustomField)
     .where(and(...conditions))
-    .orderBy(desc(schema.CustomField.position))
+    .orderBy(desc(schema.CustomField.sortOrder))
     .limit(1)
 }
 
@@ -170,27 +174,18 @@ export async function createCustomField(input: CreateCustomFieldInput) {
     }
   }
 
-  // Get highest position
-  const positionResult = await fromDatabase(
-    database
-      .select({ position: schema.CustomField.position })
-      .from(schema.CustomField)
-      .where(
-        and(
-          eq(schema.CustomField.organizationId, organizationId),
-          eq(schema.CustomField.modelType, dbModelType as any)
-        )
-      )
-      .orderBy(desc(schema.CustomField.position))
-      .limit(1),
-    'get-highest-position'
+  // Get last field's sortOrder
+  const lastFieldResult = await fromDatabase(
+    getLastFieldSortOrder(organizationId, dbModelType, entityDefinitionId),
+    'get-last-field-sort-order'
   )
 
-  if (positionResult.isErr()) {
-    return positionResult
+  if (lastFieldResult.isErr()) {
+    return lastFieldResult
   }
 
-  const highestPosition = positionResult.value[0]?.position ?? -1
+  const lastSortOrder = lastFieldResult.value[0]?.sortOrder ?? null
+  const newSortOrder = generateKeyBetween(lastSortOrder, null)
 
   // Insert field
   const insertResult = await fromDatabase(
@@ -203,7 +198,7 @@ export async function createCustomField(input: CreateCustomFieldInput) {
         required,
         defaultValue,
         options: fieldOptions,
-        position: highestPosition + 1,
+        sortOrder: newSortOrder,
         organizationId,
         modelType: dbModelType as any,
         entityDefinitionId: entityDefinitionId || null,
@@ -320,14 +315,14 @@ async function createRelationshipFieldWithInverse(input: {
   // Execute in transaction
   const result = await fromDatabase(
     database.transaction(async (tx) => {
-      // Get positions for both sides
-      const [primaryPosResult, inversePosResult] = await Promise.all([
-        getHighestPosition(organizationId, dbModelType, entityDefinitionId),
-        getHighestPosition(organizationId, inverseModelType, inverseEntityDefinitionId),
+      // Get sortOrder for both sides
+      const [primarySortResult, inverseSortResult] = await Promise.all([
+        getLastFieldSortOrder(organizationId, dbModelType, entityDefinitionId),
+        getLastFieldSortOrder(organizationId, inverseModelType, inverseEntityDefinitionId),
       ])
 
-      const primaryPosition = (primaryPosResult[0]?.position ?? -1) + 1
-      const inversePosition = (inversePosResult[0]?.position ?? -1) + 1
+      const primarySortOrder = generateKeyBetween(primarySortResult[0]?.sortOrder ?? null, null)
+      const inverseSortOrder = generateKeyBetween(inverseSortResult[0]?.sortOrder ?? null, null)
 
       // 1. Create primary field (without inverseFieldId yet)
       const primaryFieldResult = await tx
@@ -339,7 +334,7 @@ async function createRelationshipFieldWithInverse(input: {
           modelType: dbModelType as any,
           entityDefinitionId: entityDefinitionId || null,
           organizationId,
-          position: primaryPosition,
+          sortOrder: primarySortOrder,
           updatedAt: new Date(),
           options: {
             icon,
@@ -372,7 +367,7 @@ async function createRelationshipFieldWithInverse(input: {
           modelType: inverseModelType as any,
           entityDefinitionId: inverseEntityDefinitionId,
           organizationId,
-          position: inversePosition,
+          sortOrder: inverseSortOrder,
           updatedAt: new Date(),
           options: {
             icon: inverseIcon,

@@ -11,7 +11,7 @@ import { EntityIcon } from '~/components/pickers/icon-picker'
 import { parseCSV, type ParseCSVError } from '../utils/parse-csv'
 import { useChunkedUpload } from '../hooks/use-chunked-upload'
 import { MAX_FILE_SIZE_BYTES } from '../constants'
-import { formatBytes } from '@auxx/lib/utils'
+import { formatBytes } from '@auxx/utils/file'
 import type { ParsedCSVData } from '../types'
 
 interface StepUploadProps {

@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/nodes/core/http/utils.ts
 
-import { generateId } from '~/components/workflow/utils/id-generator'
+import { generateId } from '@auxx/utils/generateId'
 import type { KeyValue, BodyPayload, BodyPayloadItem, Body } from './types'
 import { BodyType, BodyPayloadValueType } from './types'
 

@@ -3,7 +3,7 @@ import parse from 'gmail-api-parse-message'
 import { createScopedLogger } from '@auxx/logger'
 import { MessageData, DraftMode, EmailLabel } from '../../../email/email-storage'
 import { parseParticipantString, parseMultipleParticipants, isDefined } from '../../provider-utils'
-import { extractEmailAddress, isUserEmail } from '@auxx/lib/utils'
+import { extractEmailAddress, isUserEmail } from '@auxx/utils'
 import type { ParsedGmailMessage, GmailMessageWithPayload } from '../types'
 
 const logger = createScopedLogger('google-parse-message')

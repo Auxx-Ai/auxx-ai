@@ -5,7 +5,6 @@ export { getCustomFields, type GetCustomFieldsInput } from './get-fields'
 export { createCustomField, type CreateCustomFieldInput } from './create-field'
 export { updateCustomField, type UpdateCustomFieldInput } from './update-field'
 export { deleteCustomField, type DeleteCustomFieldInput } from './delete-field'
-export { updateFieldPositions, type UpdateFieldPositionsInput } from './update-positions'
 
 // Field queries
 export { getFieldByIdQuery, type GetFieldByIdInput } from './get-field-by-id'

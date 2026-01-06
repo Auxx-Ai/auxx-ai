@@ -4,7 +4,7 @@ import React from 'react'
 import { cn } from '@auxx/ui/lib/utils'
 import { Button } from '@auxx/ui/components/button'
 import { Trash2 } from 'lucide-react'
-import { formatBytes } from '@auxx/lib/utils'
+import { formatBytes } from '@auxx/utils/file'
 import { FileIcon } from '~/components/files/utils/file-icon'
 import type { MediaAssetEntity as MediaAsset } from '@auxx/database/models'
 /**

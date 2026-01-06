@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { generateId } from '@auxx/lib/utils'
+import { generateId } from '@auxx/utils/generateId'
 import { useUploadStore, cleanupUploader } from '../stores'
 import type { EntityType, BatchUploadResult } from '@auxx/lib/files/types'
 import type { EntityUploadConfig, FileState } from '../types'
@@ -418,7 +418,11 @@ export function useFileUpload(options: UseFileUploadOptions): UseFileUploadRetur
         onChange,
       },
       uploadConfig: config,
-      metadata: { source: 'useFileUpload-newSession', ts: new Date().toISOString(), ...(sessionMetadata || {}) },
+      metadata: {
+        source: 'useFileUpload-newSession',
+        ts: new Date().toISOString(),
+        ...(sessionMetadata || {}),
+      },
     })
   }, [
     createSession,

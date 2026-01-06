@@ -48,7 +48,7 @@ import {
   TicketStatusBadge,
   TicketTypeBadge,
 } from '~/components/tickets/ticket-badges'
-import { getFullName, getInitials } from '@auxx/lib/utils'
+import { getFullName, getInitials } from '@auxx/utils'
 import { Avatar, AvatarFallback } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import { useRecordWithFetch } from '~/components/resources'

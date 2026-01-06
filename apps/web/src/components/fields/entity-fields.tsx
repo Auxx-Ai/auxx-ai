@@ -19,6 +19,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
+import { getSmartSortPositions } from '@auxx/utils'
 import { api } from '~/trpc/react'
 import { useFieldValidation } from '../contacts/validation/use-field-validation'
 import { toastError } from '@auxx/ui/components/toast'
@@ -70,6 +71,14 @@ function transformResourceFieldForEntityFields(
 
   // Handle relationship configuration
   if (field.relationship) {
+    // Map cardinality to relationshipType
+    let relationshipType: 'belongs_to' | 'has_one' | 'has_many' = 'belongs_to'
+    if (field.relationship.cardinality === 'one-to-many') {
+      relationshipType = 'has_many'
+    } else if (field.relationship.cardinality === 'one-to-one') {
+      relationshipType = 'has_one'
+    }
+
     options.relationship = {
       // Use the preserved relatedEntityDefinitionId from ResourceField
       // For custom entities: UUID (e.g., "xw53y13fbov3dhdenzqlft2u")
@@ -80,7 +89,7 @@ function transformResourceFieldForEntityFields(
       // For custom entities: undefined (use relatedEntityDefinitionId instead)
       relatedModelType: field.relationship.relatedModelType,
       // Add relationshipType for single/multi select behavior
-      relationshipType: field.relationship.cardinality === 'one-to-one' || field.relationship.cardinality === 'many-to-one' ? 'belongs_to' : 'has_many',
+      relationshipType,
     }
   }
 
@@ -124,23 +133,6 @@ interface EntityFieldsProps {
   onMutationSuccess?: () => void
   /** Additional className for the outer container (e.g., for margins) */
   className?: string
-}
-
-/**
- * Returns an array of { id, position } for only affected items after DnD sort
- */
-function getSmartSortPositions<T extends { id: string }>(
-  items: T[],
-  oldIndex: number,
-  newIndex: number
-): { id: string; position: number }[] {
-  if (oldIndex === newIndex) return []
-  const min = Math.min(oldIndex, newIndex)
-  const max = Math.max(oldIndex, newIndex)
-  const newItems = [...items]
-  const [moved] = newItems.splice(oldIndex, 1)
-  if (moved) newItems.splice(newIndex, 0, moved)
-  return newItems.slice(min, max + 1).map((item, idx) => ({ id: item.id, position: min + idx }))
 }
 
 /**
@@ -191,8 +183,8 @@ function EntityFields({
 
   const { validateField } = useFieldValidation()
 
-  // Use custom field hook for position updates and creating/updating fields
-  const { create, update, updatePositions, isPending, destroy } = useCustomField({
+  // Use custom field hook for creating/updating/deleting fields
+  const { create, update, isPending, destroy } = useCustomField({
     modelType: mutationModelType,
     entityDefinitionId,
   })
@@ -355,7 +347,7 @@ function EntityFields({
     if (fields) {
       const sorted = [...fields]
         .filter((f: any) => f.active !== false)
-        .sort((a: any, b: any) => (a.position ?? 0) - (b.position ?? 0))
+        .sort((a: any, b: any) => (a.sortOrder ?? '').localeCompare(b.sortOrder ?? ''))
       setSortedCustomFields(sorted)
     }
   }, [fields])
@@ -488,7 +480,7 @@ function EntityFields({
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
     if (over && active.id !== over.id) {
-      let newOrder: { id: string; position: number }[] = []
+      let newOrder: { id: string; sortOrder: string }[] = []
       setSortedCustomFields((items) => {
         const oldIndex = items.findIndex((item) => item.id === active.id)
         const newIndex = items.findIndex((item) => item.id === over.id)
@@ -496,7 +488,13 @@ function EntityFields({
         newOrder = getSmartSortPositions(items, oldIndex, newIndex)
         return newItems
       })
-      await updatePositions.mutateAsync({ positions: newOrder, modelType: mutationModelType })
+
+      // Update each affected field's sortOrder using generic update mutation
+      await Promise.all(
+        newOrder.map(({ id, sortOrder }) =>
+          update.mutateAsync({ id, sortOrder })
+        )
+      )
     }
   }
 

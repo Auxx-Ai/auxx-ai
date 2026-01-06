@@ -7,7 +7,7 @@ import { Button } from '@auxx/ui/components/button'
 import { type VariantProps } from 'class-variance-authority'
 import { Tag, tagVariants } from './tag'
 import { cn } from '@auxx/ui/lib/utils'
-import { generateId } from '@auxx/lib/utils'
+import { generateId } from '@auxx/utils/generateId'
 
 export enum Delimiter {
   Comma = ',',

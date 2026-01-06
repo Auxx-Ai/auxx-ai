@@ -9,7 +9,7 @@ import {
   CurrencyInputField as BaseCurrencyInputField,
 } from '@auxx/ui/components/input-currency'
 import { InputGroup } from '@auxx/ui/components/input-group'
-import type { CurrencyDisplayOptions } from '@auxx/lib/utils'
+import type { CurrencyDisplayOptions } from '@auxx/utils'
 
 /**
  * CurrencyInputField

@@ -7,7 +7,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { produce } from 'immer'
 import type { CodeNodeOutput } from '../types'
 import { BaseType } from '~/components/workflow/types/unified-types'
-import { cloneDeep, debounce } from '@auxx/lib/utils'
+import { cloneDeep, debounce } from '@auxx/utils'
 import {
   InputGroup,
   InputGroupAddon,

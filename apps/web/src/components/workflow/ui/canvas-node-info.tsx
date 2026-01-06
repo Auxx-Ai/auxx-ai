@@ -1,7 +1,7 @@
 import { memo } from 'react'
 import { Panel, useStore } from '@xyflow/react'
 import type { ReactFlowState } from '@xyflow/react'
-import { pluralize } from '@auxx/lib/utils'
+import { pluralize } from '@auxx/utils/strings'
 
 const nodesLengthSelector = (state: ReactFlowState) => state.nodes.length || 0
 const edgesLengthSelector = (state: ReactFlowState) => state.edges.length || 0

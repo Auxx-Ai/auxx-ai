@@ -1,6 +1,6 @@
-// packages/lib/src/utils/currency.ts
+// packages/utils/src/currency.ts
 
-import type { CurrencyOptions } from '@auxx/services/custom-fields'
+import type { CurrencyOptions } from '@auxx/types/custom-field'
 
 /** Currency display options (uses CurrencyOptions with all fields optional for formatting) */
 export type CurrencyDisplayOptions = Partial<CurrencyOptions>
@@ -84,4 +84,15 @@ export function parseToCents(value: string | number): number | null {
 export function centsToDollars(cents: number | null | undefined): string {
   if (cents === null || cents === undefined) return ''
   return (cents / 100).toFixed(2)
+}
+
+/**
+ * Convert price string to cents
+ * @param priceString - Price as a string
+ * @returns Value in cents (integer) or null
+ * @example "19.99" -> 1999
+ */
+export const convertToCents = (priceString: string | null): number | null => {
+  if (priceString === null) return null
+  return Math.round(parseFloat(priceString) * 100)
 }

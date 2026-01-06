@@ -1,7 +1,7 @@
 // apps/web/src/stores/workflow-run-status-store.ts
 
 import { create } from 'zustand'
-import { generateId } from '@auxx/lib/utils'
+import { generateId } from '@auxx/utils/generateId'
 import { createSSEConnection, type SSEConnection } from '~/lib/sse-connection'
 
 type ResourceType = 'thread' | 'contact' | 'ticket' | 'message' | 'entity'

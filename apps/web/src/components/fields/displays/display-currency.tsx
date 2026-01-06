@@ -4,7 +4,7 @@
 import { useMemo } from 'react'
 import DisplayWrapper from './display-wrapper'
 import { usePropertyContext } from '../property-provider'
-import { formatCurrency, type CurrencyDisplayOptions } from '@auxx/lib/utils'
+import { formatCurrency, type CurrencyDisplayOptions } from '@auxx/utils'
 
 /**
  * DisplayCurrency component

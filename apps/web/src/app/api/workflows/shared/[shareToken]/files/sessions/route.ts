@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createStorageManager } from '@auxx/lib/files/server'
 import { verifyWorkflowPassport, getSharedWorkflowByToken } from '@auxx/services/workflow-share'
 import { setRedisData } from '@auxx/redis'
-import { generateId } from '@auxx/lib/utils'
+import { generateId } from '@auxx/utils/generateId'
 import { createScopedLogger } from '@auxx/logger'
 
 const logger = createScopedLogger('public-file-upload-session')

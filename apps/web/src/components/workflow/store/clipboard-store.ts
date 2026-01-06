@@ -4,7 +4,7 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import type { FlowNode, FlowEdge } from './types'
 import { storeEventBus } from './event-bus'
-import { cloneDeep } from '@auxx/lib/utils'
+import { cloneDeep } from '@auxx/utils'
 
 /**
  * Clipboard data structure containing copied nodes and their relationships

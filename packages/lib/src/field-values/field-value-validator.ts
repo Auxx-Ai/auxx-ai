@@ -1,8 +1,8 @@
 // packages/lib/src/field-values/field-value-validator.ts
 
 import { z } from 'zod'
-import { formatEmail } from '../utils/email'
-import { formatPhoneNumber } from '../utils/contact'
+import { formatEmail } from '@auxx/utils/email'
+import { formatPhoneNumber } from '@auxx/utils/contact'
 
 /**
  * Validation schemas for each field type using Zod.

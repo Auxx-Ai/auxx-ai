@@ -26,7 +26,7 @@ import {
   DropdownMenuContent,
   DropdownMenuSeparator,
 } from '@auxx/ui/components/dropdown-menu'
-import { formatBytes } from '@auxx/lib/utils'
+import { formatBytes } from '@auxx/utils/file'
 import { getFileIconId } from './utils/file-icon'
 import { EntityIcon } from '~/components/pickers/icon-picker'
 import { getStandardFileType } from './utils/file-type'

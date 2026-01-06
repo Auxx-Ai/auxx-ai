@@ -42,7 +42,7 @@ export async function getCustomFields(input: GetCustomFieldsInput) {
       .select()
       .from(schema.CustomField)
       .where(and(...conditions))
-      .orderBy(asc(schema.CustomField.position)),
+      .orderBy(asc(schema.CustomField.sortOrder)),
     'get-custom-fields'
   )
 

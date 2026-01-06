@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef } from 'react'
 import { useStoreApi } from '@xyflow/react'
-import { debounce } from '@auxx/lib/utils'
+import { debounce } from '@auxx/utils'
 import { api } from '~/trpc/react'
 import { useWorkflowStore } from '../store/workflow-store'
 import { useVarStore } from '../store/use-var-store'

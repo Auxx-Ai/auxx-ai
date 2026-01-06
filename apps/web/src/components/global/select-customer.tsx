@@ -27,7 +27,7 @@ import {
 import { useFormContext } from 'react-hook-form'
 import { useDebounce } from '~/hooks/use-debounced-value'
 import { api } from '~/trpc/react'
-import { getFullName } from '@auxx/lib/utils'
+import { getFullName } from '@auxx/utils/contact'
 import { cn } from '@auxx/ui/lib/utils'
 
 type Customer = {

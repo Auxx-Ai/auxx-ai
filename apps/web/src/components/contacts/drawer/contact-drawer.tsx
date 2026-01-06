@@ -14,7 +14,7 @@ import {
   Trash,
   User,
 } from 'lucide-react'
-import { getFullName } from '@auxx/lib/utils'
+import { getFullName } from '@auxx/utils/contact'
 import { formatDistanceToNow } from 'date-fns'
 import { useRouter } from 'next/navigation'
 

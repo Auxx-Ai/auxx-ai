@@ -3,7 +3,7 @@
 
 import React, { useMemo, useCallback } from 'react'
 import { formatDistanceToNowStrict } from 'date-fns'
-import { getInitialsFromName } from '@auxx/lib/utils'
+import { getInitialsFromName } from '@auxx/utils'
 import DOMPurify from 'dompurify'
 import { cn } from '@auxx/ui/lib/utils'
 import { Badge } from '@auxx/ui/components/badge'

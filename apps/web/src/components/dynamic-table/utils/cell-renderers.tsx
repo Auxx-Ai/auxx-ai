@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { formatPhoneNumber } from 'react-phone-number-input'
-import { formatCurrency, formatBytes, type CurrencyDisplayOptions } from '@auxx/lib/utils'
+import { formatCurrency, formatBytes, type CurrencyDisplayOptions } from '@auxx/utils'
 import { CheckSquare, Paperclip } from 'lucide-react'
 import { Badge } from '@auxx/ui/components/badge'
 import { CopyableLinkCell } from '../components/copyable-link-cell'
@@ -34,21 +34,8 @@ type SelectOption = { label: string; value: string }
  * from column formatting or falls back to showing IDs.
  */
 function RelationshipCellContent({ value, columnId }: { value: unknown; columnId?: string }) {
-  // Debug: Log raw value from store
-  console.log('RelationshipCellContent RAW value from store:', value)
-  if (Array.isArray(value) && value.length > 0) {
-    console.log('First item in array:', value[0])
-    console.log('First item relatedEntityDefinitionId:', (value[0] as any)?.relatedEntityDefinitionId)
-  }
-
   // Extract IDs and entityDefinitionId from value using centralized utility
   const { ids, entityDefinitionId } = useMemo(() => extractRelationshipData(value), [value])
-  console.log(
-    'RelationshipCellContent EXTRACTED - ids:',
-    ids,
-    'entityDefinitionId:',
-    entityDefinitionId
-  )
   // Convert entityDefinitionId to resourceId for useRelationship
   // System resources: "contact" -> use as-is
   // Custom entities: UUID -> convert to "entity_{slug}" (or pass through, let hook handle it)
@@ -556,6 +543,9 @@ const cellRenderers: Record<string, CellRenderer> = {
 /**
  * Extract raw value from TypedFieldValue.
  * Strict mode - rejects legacy { data: x } format.
+ *
+ * Special handling: RELATIONSHIP fields preserve full TypedFieldValue objects
+ * because RelationshipCellContent needs relatedEntityDefinitionId to hydrate display names.
  */
 function unwrapValue(value: unknown): unknown {
   if (value === null || value === undefined) return null
@@ -581,6 +571,12 @@ function unwrapValue(value: unknown): unknown {
       value[0] !== null &&
       'type' in value[0]
     ) {
+      const first = value[0] as TypedFieldValue
+      // For RELATIONSHIP fields, keep full object - renderer needs relatedEntityDefinitionId
+      if (first.type === 'relationship') {
+        return value  // ✓ Keep full TypedFieldValue objects
+      }
+      // For other types, extract raw values as before
       return value.map((v) => extractValue(v as TypedFieldValue))
     }
     // Already an array of raw values (could be empty or pre-extracted)
@@ -589,7 +585,13 @@ function unwrapValue(value: unknown): unknown {
 
   // Handle single TypedFieldValue
   if (typeof value === 'object' && 'type' in (value as Record<string, unknown>)) {
-    return extractValue(value as TypedFieldValue)
+    const typed = value as TypedFieldValue
+    // For RELATIONSHIP fields, keep full object
+    if (typed.type === 'relationship') {
+      return value  // ✓ Keep full TypedFieldValue object
+    }
+    // For other types, extract raw value
+    return extractValue(typed)
   }
 
   // Already a raw value (string, number, boolean, etc.)

@@ -38,10 +38,6 @@ export function FieldInput({ children }: FieldInputProps) {
    * Handle clicking outside - extends base handler with deprecated requestClose
    */
   const handleOutsideEvent = useCallback(() => {
-    // Also call deprecated requestClose for backward compat
-    // if (requestClose?.current) {
-    //   requestClose.current({})
-    // }
     baseHandleOutsideEvent()
   }, [baseHandleOutsideEvent])
 

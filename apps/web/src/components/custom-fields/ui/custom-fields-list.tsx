@@ -18,6 +18,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
+import { getSmartSortPositions } from '@auxx/utils'
 
 import { TableBody, TableHead, TableHeader, TableRow } from '@auxx/ui/components/table'
 import { Rows3, Plus } from 'lucide-react'
@@ -49,14 +50,17 @@ export function CustomFieldsList({ modelType, entityDefinitionId, currentResourc
   const [confirmDelete, ConfirmDeleteDialog] = useConfirm()
 
   // Use sortedFields for local drag order, fallback to API fields
-  const { create, update, fields, isLoading, isPending, destroy, updatePositions } =
+  const { create, update, fields, isLoading, isPending, destroy } =
     useCustomField({ modelType, entityDefinitionId })
   const [sortedFields, setSortedFields] = useState<any[]>([])
 
   // Keep sortedFields in sync with API fields unless user is dragging
   useEffect(() => {
     if (fields && fields.length > 0) {
-      setSortedFields(fields)
+      const sorted = [...fields]
+        .filter((f: any) => f.active !== false)
+        .sort((a: any, b: any) => (a.sortOrder ?? '').localeCompare(b.sortOrder ?? ''))
+      setSortedFields(sorted)
     }
   }, [fields])
 
@@ -113,7 +117,7 @@ export function CustomFieldsList({ modelType, entityDefinitionId, currentResourc
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
     if (over && active.id !== over.id) {
-      let newOrder: { id: string; position: number }[] = []
+      let newOrder: { id: string; sortOrder: string }[] = []
       setSortedFields((items) => {
         const oldIndex = items.findIndex((item) => item.id === active.id)
         const newIndex = items.findIndex((item) => item.id === over.id)
@@ -122,7 +126,13 @@ export function CustomFieldsList({ modelType, entityDefinitionId, currentResourc
         newOrder = getSmartSortPositions(items, oldIndex, newIndex)
         return newItems
       })
-      await updatePositions.mutateAsync({ positions: newOrder, modelType })
+
+      // Update each affected field's sortOrder using generic update mutation
+      await Promise.all(
+        newOrder.map(({ id, sortOrder }) =>
+          update.mutateAsync({ id, sortOrder })
+        )
+      )
     }
   }
 
@@ -207,28 +217,4 @@ export function CustomFieldsList({ modelType, entityDefinitionId, currentResourc
       )}
     </div>
   )
-}
-
-/**
- * Returns an array of { id, position } for only the affected items after a drag-and-drop sort.
- * Only items between the old and new index (inclusive) are updated.
- * @param items - The full array of items (must have id)
- * @param oldIndex - The original index of the moved item
- * @param newIndex - The new index of the moved item
- * @returns Array<{ id: string, position: number }>
- */
-function getSmartSortPositions<T extends { id: string }>(
-  items: T[],
-  oldIndex: number,
-  newIndex: number
-): { id: string; position: number }[] {
-  if (oldIndex === newIndex) return []
-  const min = Math.min(oldIndex, newIndex)
-  const max = Math.max(oldIndex, newIndex)
-  // Move the item in the array
-  const newItems = [...items]
-  const [moved] = newItems.splice(oldIndex, 1)
-  if (moved) newItems.splice(newIndex, 0, moved)
-  // Only update affected range
-  return newItems.slice(min, max + 1).map((item, idx) => ({ id: item.id, position: min + idx }))
 }

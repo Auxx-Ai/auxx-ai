@@ -8,7 +8,7 @@ import { api } from '~/trpc/react'
 import { TimeZonePicker } from '~/components/pickers/timezone-picker'
 import { detectTimezone } from '@auxx/config/client'
 import { Globe } from 'lucide-react'
-import { getCurrentTimeInTimezone } from '@auxx/lib/utils'
+import { getCurrentTimeInTimezone } from '@auxx/utils/date'
 
 interface TimezoneSettingsProps {
   currentTimezone?: string | null

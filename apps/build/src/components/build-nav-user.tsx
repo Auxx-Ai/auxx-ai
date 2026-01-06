@@ -24,7 +24,7 @@ import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@auxx/ui/compon
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { useTheme } from 'next-themes'
 import { useRouter } from 'next/navigation'
-import { getInitialsFromName } from '@auxx/lib/utils'
+import { getInitialsFromName } from '@auxx/utils'
 import { useDeveloperAccounts, useDeveloperAccount } from './providers/dehydrated-state-provider'
 import type { DehydratedBuildUser } from '~/lib/dehydration'
 

@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { useDatasetDetail } from './dataset-detail-provider'
-import { formatBytes } from '@auxx/lib/utils'
+import { formatBytes } from '@auxx/utils/file'
 
 export function DatasetHeader() {
   const { dataset, documents, isLoading } = useDatasetDetail()

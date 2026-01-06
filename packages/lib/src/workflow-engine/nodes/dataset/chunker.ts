@@ -13,7 +13,7 @@ import type { ExecutionContextManager } from '../../core/execution-context'
 import { z } from 'zod'
 import { TextChunker, DocumentProcessor } from '@auxx/lib/datasets'
 import type { DocumentChunk } from '@auxx/lib/datasets'
-import { interpretEscapeSequences } from '@auxx/lib/utils'
+import { interpretEscapeSequences } from '@auxx/utils'
 
 const logger = createScopedLogger('chunker-processor')
 

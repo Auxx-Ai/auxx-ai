@@ -1,7 +1,7 @@
 // apps/web/src/components/settings/last-login-display.tsx
 'use client'
 
-import { formatInTimezone, formatRelativeTime } from '@auxx/lib/utils'
+import { formatInTimezone, formatRelativeTime } from '@auxx/utils'
 
 interface LastLoginDisplayProps {
   lastLoginAt: Date | string | null

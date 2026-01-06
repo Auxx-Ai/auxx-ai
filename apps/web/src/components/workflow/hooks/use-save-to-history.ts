@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState } from 'react'
 import { useStoreApi } from '@xyflow/react'
-import { debounce } from '@auxx/lib/utils'
+import { debounce } from '@auxx/utils'
 import { useHistoryManager } from '../store/workflow-store-provider'
 import { storeEventBus } from '../store/event-bus'
 

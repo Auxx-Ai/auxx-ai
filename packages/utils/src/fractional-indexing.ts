@@ -286,3 +286,60 @@ export function generateNKeysBetween(
   const c = generateKeyBetween(a, b, digits)
   return [...generateNKeysBetween(a, c, mid, digits), c, ...generateNKeysBetween(c, b, n - mid - 1, digits)]
 }
+
+/**
+ * Item with a sortOrder field for smart sort calculation
+ */
+export interface SmartSortItem {
+  id: string
+  sortOrder?: string
+}
+
+/**
+ * Result of smart sort with updated sortOrder
+ */
+export interface SmartSortResult {
+  id: string
+  sortOrder: string
+}
+
+/**
+ * Generic smart sort for drag-and-drop reordering
+ *
+ * Only generates new sort keys for affected items (min to max index range),
+ * not the entire list. This is an optimization to minimize database updates.
+ *
+ * @param items - Array of items with id and sortOrder
+ * @param oldIndex - Original index of moved item
+ * @param newIndex - New index of moved item
+ * @returns Array of only affected items with new sortOrder values
+ */
+export function getSmartSortPositions<T extends SmartSortItem>(
+  items: T[],
+  oldIndex: number,
+  newIndex: number
+): SmartSortResult[] {
+  // No changes needed
+  if (oldIndex === newIndex) return []
+
+  const min = Math.min(oldIndex, newIndex)
+  const max = Math.max(oldIndex, newIndex)
+  const newItems = [...items]
+  const [moved] = newItems.splice(oldIndex, 1)
+  if (moved) newItems.splice(newIndex, 0, moved)
+
+  // Get affected range
+  const affectedItems = newItems.slice(min, max + 1)
+
+  // Generate fractional keys between surrounding items
+  const keys = generateNKeysBetween(
+    min > 0 ? newItems[min - 1]?.sortOrder ?? null : null,
+    max < newItems.length - 1 ? newItems[max + 1]?.sortOrder ?? null : null,
+    affectedItems.length
+  )
+
+  return affectedItems.map((item, idx) => ({
+    id: item.id,
+    sortOrder: keys[idx]!,
+  }))
+}

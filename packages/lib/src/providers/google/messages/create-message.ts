@@ -6,7 +6,7 @@ import {
   normalizeMessageId,
   htmlToPlainText,
   generateMimeBoundary,
-} from '@auxx/lib/utils'
+} from '@auxx/utils'
 import { AttachmentFile } from '../../message-provider-interface'
 import { createScopedLogger } from '@auxx/logger'
 

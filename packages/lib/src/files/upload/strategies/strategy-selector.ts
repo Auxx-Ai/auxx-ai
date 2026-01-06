@@ -13,7 +13,7 @@ import { PresignedUploadStrategy } from './presigned-upload'
 import type { StorageManager } from '../../storage/storage-manager'
 import { createScopedLogger } from '@auxx/logger'
 
-import { formatBytes } from '@auxx/lib/utils'
+import { formatBytes } from '@auxx/utils/file'
 const logger = createScopedLogger('upload-strategy-selector')
 
 /**

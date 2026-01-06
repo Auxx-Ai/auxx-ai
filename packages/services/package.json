@@ -34,6 +34,7 @@
     "@auxx/credentials": "workspace:*",
     "@auxx/logger": "workspace:*",
     "@auxx/types": "workspace:*",
+    "@auxx/utils": "workspace:*",
     "drizzle-orm": "catalog:",
     "neverthrow": "^6.2.2",
     "pg": "catalog:",

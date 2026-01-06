@@ -6,7 +6,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { MessageSquare, CheckSquare, StickyNote, Box } from 'lucide-react'
-import { formatRelativeTime } from '@auxx/lib/utils'
+import { formatRelativeTime } from '@auxx/utils/date'
 import { extractValue, type TypedFieldValue } from '@auxx/types/field-value'
 
 /** Custom field definition */

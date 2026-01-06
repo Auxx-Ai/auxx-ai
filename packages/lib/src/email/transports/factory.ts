@@ -4,7 +4,7 @@ import { SESv2Client } from '@aws-sdk/client-sesv2'
 import { env } from '@auxx/config/server'
 import { createScopedLogger } from '@auxx/logger'
 import { createMailgunTransport } from '../nodemailer-mailgun-transport'
-import { parseBoolean } from '../../utils'
+import { parseBoolean } from '@auxx/utils'
 
 const logger = createScopedLogger('email-transport')
 

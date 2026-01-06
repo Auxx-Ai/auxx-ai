@@ -2,8 +2,8 @@
 import React, { useEffect, useState } from 'react'
 import MultipleSelector, { Option } from '@auxx/ui/components/multiselect'
 import { api } from '~/trpc/react'
-import { debounce } from '@auxx/lib/utils'
-import { getFullName } from '@auxx/lib/utils'
+import { debounce } from '@auxx/utils'
+import { getFullName } from '@auxx/utils/contact'
 
 type CustomerMultiSelectProps = { value: Option[]; onChange: (value: Option[]) => void }
 

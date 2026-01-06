@@ -24,7 +24,7 @@ import {
 } from '../../email/email-storage' // Adjust path
 import { env } from '@auxx/config/server'
 import type { IntegrationEntity } from '@auxx/database/models'
-import { sanitizeFilename, getAttachmentByteSize, toGraphRecipients } from '@auxx/lib/utils'
+import { sanitizeFilename, getAttachmentByteSize, toGraphRecipients } from '@auxx/utils'
 import { IntegrationProviderType } from '@auxx/database/enums'
 const logger = createScopedLogger('outlook-provider')
 // Interface for Graph API email address structure

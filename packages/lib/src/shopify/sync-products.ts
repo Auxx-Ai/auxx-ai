@@ -2,7 +2,7 @@ import type { Product, ProductMedia, ProductOption, ProductVariant } from './sho
 import { extractShopifyId } from './utils'
 
 import type { AdminApiClient, ResponseWithType } from '@shopify/admin-api-client'
-import { convertToCents, withRetry } from '../utils'
+import { convertToCents, withRetry } from '@auxx/utils'
 import { database as db, type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { ShopifyAdminClient } from './shopify-webhooks'

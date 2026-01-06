@@ -14,7 +14,9 @@ import {
 } from '@xyflow/react'
 
 import { produce } from 'immer'
-import { uniqueBy } from '@auxx/lib/utils'
+import { uniqueBy } from '@auxx/utils'
+import { generateId } from '@auxx/utils/generateId'
+
 import {
   useSelectionActions,
   useWorkflowSave,
@@ -25,7 +27,6 @@ import {
 import { calculateZIndex } from '~/components/workflow/utils/edge-utils'
 import { useWorkflowHistory, WorkflowHistoryEvent } from './use-save-to-history'
 import type { HandleNodeAddParams, HandleConnectionParams } from '../ui/node-handle/types'
-import { generateId } from '~/components/workflow/utils'
 import { unifiedNodeRegistry } from '~/components/workflow/nodes/unified-registry'
 import { usePanelStore } from '~/components/workflow/store/panel-store'
 import { toastSuccess, toastInfo, toastError } from '@auxx/ui/components/toast'

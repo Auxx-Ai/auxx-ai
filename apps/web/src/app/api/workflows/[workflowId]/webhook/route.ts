@@ -11,7 +11,7 @@ import {
 } from '@auxx/lib/workflow-engine/types'
 import { WorkflowEngine } from '@auxx/lib/workflow-engine'
 import { getRedisClient } from '@auxx/redis'
-import { filterSensitiveHeaders } from '@auxx/lib/utils'
+import { filterSensitiveHeaders } from '@auxx/utils/headers'
 import { v4 as uuidv4 } from 'uuid'
 import { validateAgainstSchema } from '~/components/workflow/utils/schema-to-variable'
 import type { WebhookTestEvent } from '~/components/workflow/nodes/core/webhook/types'

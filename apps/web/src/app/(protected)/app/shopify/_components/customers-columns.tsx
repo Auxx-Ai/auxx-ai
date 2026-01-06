@@ -6,7 +6,7 @@ import { DataTableColumnHeader } from '~/components/data-table/data-table-column
 // import { Customer } from './schema'
 import { DataTableRowActions } from './customers-data-table-row-actions'
 import { formatMoney } from '~/utils/strings'
-import { pluralize } from '@auxx/lib/utils'
+import { pluralize } from '@auxx/utils'
 import Link from 'next/link'
 import type { Customer } from '@auxx/database/types'
 function renderName(row: Customer) {

@@ -26,7 +26,7 @@ import { toastError } from '@auxx/ui/components/toast'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { formatMoney } from '~/utils/strings'
-import { pluralize } from '@auxx/lib/utils'
+import { pluralize } from '@auxx/utils/strings'
 import { VendorPartDialog } from '~/components/manufacturing/parts/vendor-part-dialog'
 import type { VendorPartEntity as VendorPart } from '@auxx/database/models'
 
@@ -142,9 +142,7 @@ export default function DrawerParts({ contactId }: DrawerPartsProps) {
             <div className="flex h-24 flex-col items-center justify-center text-center border rounded-lg bg-muted/30">
               <Package className="mb-2 h-6 w-6 text-muted-foreground" />
               <p className="text-sm text-muted-foreground">No parts added yet</p>
-              <p className="text-xs text-muted-foreground">
-                Add parts that this contact supplies
-              </p>
+              <p className="text-xs text-muted-foreground">Add parts that this contact supplies</p>
             </div>
           ) : (
             <div className="rounded-md border">

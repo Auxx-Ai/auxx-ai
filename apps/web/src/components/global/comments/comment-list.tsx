@@ -3,7 +3,7 @@
 import React from 'react'
 import { CommentItem, CommentSkeleton } from './comment-item'
 import { useComments, type CommentableEntityType, type Comment } from '~/hooks/use-comments'
-import { getGroupPosition, groupConsecutiveComments } from '@auxx/lib/utils'
+import { getGroupPosition, groupConsecutiveComments } from '@auxx/utils'
 
 interface CommentListProps {
   // Required props

@@ -48,7 +48,7 @@ import {
   DialogTitle,
 } from '@auxx/ui/components/dialog'
 import { formatMoney } from '~/utils/strings'
-import { pluralize } from '@auxx/lib/utils'
+import { pluralize } from '@auxx/utils'
 import type { SubpartEntity as Subpart, PartEntity as Part } from '@auxx/database/models'
 type SubpartWithChildPart = Subpart & {
   childPart: Part

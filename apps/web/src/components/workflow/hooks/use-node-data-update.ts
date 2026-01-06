@@ -2,7 +2,7 @@
 import { useCallback, useMemo } from 'react'
 import { produce } from 'immer'
 import { useStoreApi, useStore as useReactFlowStore } from '@xyflow/react'
-import { getByPath } from '@auxx/lib/utils'
+import { getByPath } from '@auxx/utils'
 import { useWorkflowSave } from './use-workflow-save'
 // import { useWorkflowStore } from '../store/workflow-store'
 import { useWorkflowHistory, WorkflowHistoryEvent } from './use-save-to-history'

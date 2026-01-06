@@ -10,7 +10,7 @@ import {
   formatPhoneNumber,
   parseEmailString,
   withRetry,
-} from '../utils'
+} from '@auxx/utils'
 import { schema, type Database } from '@auxx/database'
 import {
   type FulfillmentTracking,

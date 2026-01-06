@@ -6,7 +6,7 @@ import { Button } from '@auxx/ui/components/button'
 import { api } from '~/trpc/react'
 import { useState } from 'react'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { titleize } from '@auxx/lib/utils'
+import { titleize } from '@auxx/utils/strings'
 import { WEBAPP_URL } from '@auxx/config/client'
 
 type SyncType = 'orders' | 'products' | 'customers'
