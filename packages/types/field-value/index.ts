@@ -66,11 +66,13 @@ export type ValueColumn = (typeof FIELD_TYPE_TO_COLUMN)[keyof typeof FIELD_TYPE_
 
 /**
  * Field types that support multiple values (stored as multiple FieldValue rows).
+ * RELATIONSHIP is included because it supports many-to-many cardinality.
  */
 export const MULTI_VALUE_FIELD_TYPES = new Set<string>([
   FieldType.MULTI_SELECT,
   FieldType.TAGS,
   FieldType.FILE,
+  FieldType.RELATIONSHIP,
 ])
 
 // =============================================================================

@@ -4,10 +4,7 @@
 
 import type { ExtendedColumnDef } from '~/components/dynamic-table'
 import { FormattedCell, CellPadding, PrimaryCell } from '~/components/dynamic-table'
-import {
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from '@auxx/ui/components/dropdown-menu'
+import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
 import {
   Eye,
   Edit,
@@ -32,6 +29,7 @@ import { getFullName } from '@auxx/lib/utils'
 import { ContactHoverCard } from '~/components/contacts/contact-hover-card'
 import { useTableContext } from '~/components/dynamic-table'
 import type { Ticket } from './ticket-types'
+import { Button } from '@auxx/ui/components/button'
 
 /**
  * Type cell component - can access table context for inline editing
@@ -246,9 +244,7 @@ export function createTicketColumns({
       accessorKey: 'title',
       header: 'Title',
       cell: ({ row }) => (
-        <PrimaryCell
-          value={row.original.title}
-          onTitleClick={() => onViewDetails(row.original)}>
+        <PrimaryCell value={row.original.title} onTitleClick={() => onViewDetails(row.original)}>
           <DropdownMenuItem onClick={() => onViewDetails(row.original)}>
             <Eye />
             View Details

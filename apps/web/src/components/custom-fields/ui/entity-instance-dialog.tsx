@@ -228,7 +228,7 @@ export function EntityInstanceDialog({
 
       if (valuesToSave.length > 0) {
         await setFieldValues.mutateAsync({
-          entityId: instanceId,
+          resourceId: instanceId,
           values: valuesToSave,
           modelType: 'entity',
         })

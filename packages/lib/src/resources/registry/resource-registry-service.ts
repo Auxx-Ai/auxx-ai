@@ -617,6 +617,7 @@ export class ResourceRegistryService {
         key: field.name, // Human-readable name for variable paths
         label: field.name,
         type: baseType,
+        fieldType: field.type, // Preserve original FieldType for value storage type determination
         description: field.description ?? undefined,
         capabilities: {
           filterable: true,

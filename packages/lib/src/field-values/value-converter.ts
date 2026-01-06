@@ -8,6 +8,7 @@ import {
   isMultiValueFieldType,
 } from '@auxx/types'
 import type { SelectOption } from '@auxx/types'
+import { convertRawToRelationshipInput } from './relationship-field'
 
 /**
  * Extract raw value from {"data": x} wrapper if present (legacy format)
@@ -154,46 +155,8 @@ export function convertToTypedInput(
     }
 
     case 'relationship': {
-      // Helper to extract relationship fields from an object
-      const extractRelationship = (obj: unknown): TypedFieldValueInput => {
-        if (typeof obj === 'object' && obj !== null && 'relatedEntityId' in obj) {
-          const rel = obj as { relatedEntityId: string; relatedEntityDefinitionId?: string }
-          return {
-            type: 'relationship',
-            relatedEntityId: rel.relatedEntityId,
-            relatedEntityDefinitionId: rel.relatedEntityDefinitionId ?? '',
-          }
-        }
-        // Handle stringified JSON (can happen with some serialization paths)
-        if (typeof obj === 'string' && obj.startsWith('{')) {
-          try {
-            const parsed = JSON.parse(obj)
-            if (typeof parsed === 'object' && parsed !== null && 'relatedEntityId' in parsed) {
-              return {
-                type: 'relationship',
-                relatedEntityId: parsed.relatedEntityId,
-                relatedEntityDefinitionId: parsed.relatedEntityDefinitionId ?? '',
-              }
-            }
-          } catch {
-            // Not valid JSON, treat as raw ID
-          }
-        }
-        // Raw ID string
-        return {
-          type: 'relationship',
-          relatedEntityId: String(obj),
-          relatedEntityDefinitionId: '',
-        }
-      }
-
-      // Handle arrays for multi-value relationships
-      if (Array.isArray(value)) {
-        return value.map(extractRelationship)
-      }
-
-      // Single value
-      return extractRelationship(value)
+      // Delegate to centralized relationship utility
+      return convertRawToRelationshipInput(value)
     }
 
     default:

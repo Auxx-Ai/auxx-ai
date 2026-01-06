@@ -9,6 +9,7 @@ import {
   type StoredFieldValue,
 } from '~/stores/custom-field-value-store'
 import { toastError } from '@auxx/ui/components/toast'
+import { normalizeRelationshipValue } from '@auxx/lib/field-values/client'
 import type { ModelType } from '@auxx/types/custom-field'
 import { extractValue } from '@auxx/types/field-value'
 
@@ -31,6 +32,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
   const { resourceType, resourceId: defaultResourceId, entityDefId, modelType, onSuccess } = options
 
   // Get store actions
+  const setValue = useCustomFieldValueStore((s) => s.setValue)
   const setValueOptimistic = useCustomFieldValueStore((s) => s.setValueOptimistic)
   const confirmOptimistic = useCustomFieldValueStore((s) => s.confirmOptimistic)
   const rollbackOptimistic = useCustomFieldValueStore((s) => s.rollbackOptimistic)
@@ -96,20 +98,31 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
       const key = buildValueKey(resourceType, resourceId, fieldId, entityDefId)
 
       // 1. Optimistic update to store with typed value
+      console.log('[useSaveFieldValue] Optimistic update for key:', key, 'with value:', value)
       setValueOptimistic(key, value)
 
       // 2. Fire mutation in background with raw value (API handles conversion)
       const rawValue = getRawValue(value)
       mutation.mutate(
         {
-          entityId: resourceId,
+          resourceId,
           fieldId,
           value: rawValue,
           modelType,
         },
         {
-          onSuccess: () => {
-            confirmOptimistic(key)
+          onSuccess: (result) => {
+            // Update store with the actual TypedFieldValue from server response
+            // This ensures relationships and other fields are properly formatted
+            console.log('[useSaveFieldValue] Mutation success result:', result)
+            console.log('[useSaveFieldValue] result.values:', result?.values)
+            if (result?.values && result.values.length > 0) {
+              console.log('[useSaveFieldValue] Setting store with server value:', result.values[0])
+              setValue(key, result.values[0])
+            } else {
+              console.log('[useSaveFieldValue] No values in result, confirming optimistic')
+              confirmOptimistic(key)
+            }
             onSuccess?.()
           },
           onError: (error) => {
@@ -128,6 +141,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
       modelType,
       mutation,
       setValueOptimistic,
+      setValue,
       confirmOptimistic,
       rollbackOptimistic,
       onSuccess,
@@ -167,13 +181,18 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
       try {
         const rawValue = getRawValue(value)
         const result = await mutation.mutateAsync({
-          entityId: resourceId,
+          resourceId,
           fieldId,
           value: rawValue,
           modelType,
         })
 
-        confirmOptimistic(key)
+        // Update store with the actual TypedFieldValue from server response
+        if (result?.values && result.values.length > 0) {
+          setValue(key, result.values[0])
+        } else {
+          confirmOptimistic(key)
+        }
         onSuccess?.()
         return { ids: (result as { ids: string[] })?.ids ?? [] }
       } catch (error: unknown) {
@@ -192,6 +211,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
       modelType,
       mutation,
       setValueOptimistic,
+      setValue,
       confirmOptimistic,
       rollbackOptimistic,
       onSuccess,
@@ -235,7 +255,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
       const rawValue = getRawValue(value)
       bulkMutation.mutate(
         {
-          entityIds: resourceIds,
+          resourceIds,
           values: [{ fieldId, value: rawValue }],
           modelType,
         },

@@ -114,7 +114,7 @@ export interface GetValuesInput {
 export interface BatchGetValuesInput {
   resourceType: 'contact' | 'ticket' | 'entity'
   entityDefId?: string
-  entityIds: string[]
+  resourceIds: string[]
   fieldIds: string[]
 }
 

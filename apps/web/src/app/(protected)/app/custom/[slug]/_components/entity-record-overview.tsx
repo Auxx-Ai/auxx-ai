@@ -40,7 +40,7 @@ function EntityRecordOverview({
   const { resource, entityDefinitionId, customFields } = useEntityRecords()
 
   if (!resource || !entityDefinitionId) return null
-
+  console.log('EntityRecordOverview rendering for instanceId:', preloadedValues)
   return (
     <EntityFields
       modelType={ModelTypes.ENTITY}

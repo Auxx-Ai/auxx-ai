@@ -248,7 +248,7 @@ export function BulkUpdateEntityInstanceDialog({
 
     try {
       await bulkSetValues.mutateAsync({
-        entityIds: selectedInstances.map((i) => i.id),
+        resourceIds: selectedInstances.map((i) => i.id),
         values: valuesToSave,
         modelType: 'entity',
       })

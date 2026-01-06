@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import { usePropertyContext } from '../property-provider'
 import { useRelationship } from '~/components/resources'
 import { RESOURCE_TABLE_REGISTRY } from '@auxx/lib/resources/client'
+import { extractRelationshipData } from '@auxx/lib/field-values/client'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import { Skeleton } from '@auxx/ui/components/skeleton'
@@ -26,29 +27,18 @@ interface RelationshipItem extends ItemsListItem {
 export function DisplayRelationship() {
   const { value } = usePropertyContext()
 
-  // Extract IDs and resourceId from RelationshipFieldValue[]
+  // Extract IDs and entityDefinitionId using centralized utility
   const { ids, resourceId } = useMemo(() => {
-    if (!Array.isArray(value) || value.length === 0) {
-      return { ids: [], resourceId: null }
-    }
+    const { ids: extractedIds, entityDefinitionId } = extractRelationshipData(value)
 
-    // Value is RelationshipFieldValue[]
-    const extractedIds = value
-      .map((v) => (v as RelationshipFieldValue).relatedEntityId)
-      .filter(Boolean)
-
-    // Get entityDefinitionId from first value - use it directly as resourceId
-    const first = value[0] as RelationshipFieldValue
-    const entityDefId = first?.relatedEntityDefinitionId
     let resolvedResourceId: string | null = null
-
-    if (entityDefId) {
+    if (entityDefinitionId) {
       // Check if it's a system resource first
-      if (RESOURCE_TABLE_REGISTRY.some((r) => r.id === entityDefId)) {
-        resolvedResourceId = entityDefId
+      if (RESOURCE_TABLE_REGISTRY.some((r) => r.id === entityDefinitionId)) {
+        resolvedResourceId = entityDefinitionId
       } else {
         // Otherwise it's a UUID (no entity_ prefix needed)
-        resolvedResourceId = entityDefId
+        resolvedResourceId = entityDefinitionId
       }
     }
 

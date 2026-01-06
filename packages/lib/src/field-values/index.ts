@@ -6,6 +6,16 @@ export { DisplayFieldService } from './display-field-service'
 
 // Utilities
 export { convertToTypedInput, getDisplayValue, rowToTypedValue } from './value-converter'
+export {
+  extractRelationshipData,
+  normalizeRelationshipValue,
+  validateRelationshipValue,
+  validateEntityDefinitionId,
+  isRelationshipFieldValue,
+  isRelationshipFieldValueArray,
+  convertRawToRelationshipInput,
+  type RelationshipData,
+} from './relationship-field'
 
 // Display field types and config
 export type {

@@ -257,6 +257,7 @@ export function EntityRecordDrawer({
                   <ScrollArea className="flex-1">
                     <Section
                       title="Overview"
+                      collapsible={false}
                       icon={<Gauge className="size-4 text-muted-foreground/50" />}>
                       <EntityRecordOverview
                         instanceId={instance.id}

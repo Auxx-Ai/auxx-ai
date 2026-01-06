@@ -5,6 +5,7 @@ import { usePropertyContext } from '../property-provider'
 import { useFieldNavigationOptional } from '../field-navigation-context'
 import { useRelationship } from '~/components/resources'
 import { useResourceIdFromField } from '../hooks/use-resource-id-from-field'
+import { extractRelationshipData } from '@auxx/lib/field-values/client'
 import { api } from '~/trpc/react'
 import { Check } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
@@ -33,6 +34,10 @@ export function RelationshipInputField() {
   const nav = useFieldNavigationOptional()
   const [search, setSearch] = useState('')
 
+  // Debug logging
+  console.log('[RelationshipInputField] Field:', field)
+  console.log('[RelationshipInputField] field.options:', field.options)
+
   // Capture keys while open (list uses arrows)
   useEffect(() => {
     nav?.setPopoverCapturing(true)
@@ -41,12 +46,12 @@ export function RelationshipInputField() {
 
   // Track initial selected IDs (snapshot at mount) - prevents layout shifts
   const [initialSelectedIds, setInitialSelectedIds] = useState<Set<string>>(
-    () => new Set(Array.isArray(value) ? value : [])
+    () => new Set(extractRelationshipData(value).ids)
   )
 
   // Track current selection (what will be saved)
   const [currentSelectedIds, setCurrentSelectedIds] = useState<Set<string>>(
-    () => new Set(Array.isArray(value) ? value : [])
+    () => new Set(extractRelationshipData(value).ids)
   )
 
   // Ref to track current selection for save-on-close
@@ -58,15 +63,21 @@ export function RelationshipInputField() {
 
   // Get relatedEntityDefinitionId for storing with values
   const relatedEntityDefinitionId = useMemo(() => {
-    if (!relationship) return ''
+    if (!relationship) {
+      console.warn('[RelationshipInputField] No relationship config found in field.options.relationship')
+      return ''
+    }
     // For custom entities, use the stored relatedEntityDefinitionId
     if (relationship.relatedEntityDefinitionId) {
+      console.log('[RelationshipInputField] Using relatedEntityDefinitionId from config:', relationship.relatedEntityDefinitionId)
       return relationship.relatedEntityDefinitionId
     }
     // For system resources, use the relatedModelType (e.g., "contact", "ticket")
     if (relationship.relatedModelType) {
+      console.log('[RelationshipInputField] Using relatedModelType from config:', relationship.relatedModelType)
       return relationship.relatedModelType
     }
+    console.warn('[RelationshipInputField] Neither relatedEntityDefinitionId nor relatedModelType found')
     return ''
   }, [relationship])
 
@@ -113,7 +124,7 @@ export function RelationshipInputField() {
 
   // Reset selection state when value prop changes from parent
   useEffect(() => {
-    const newIds = new Set(Array.isArray(value) ? value : [])
+    const newIds = new Set(extractRelationshipData(value).ids)
     setInitialSelectedIds(newIds)
     setCurrentSelectedIds(newIds)
     currentSelectedRef.current = newIds
@@ -123,7 +134,7 @@ export function RelationshipInputField() {
   useEffect(() => {
     onBeforeClose.current = () => {
       const currentIds = Array.from(currentSelectedRef.current)
-      const originalIds = Array.isArray(value) ? value : []
+      const originalIds = extractRelationshipData(value).ids
       // Only save if selection changed
       const hasChanged =
         currentIds.length !== originalIds.length ||

@@ -21,6 +21,18 @@ export {
   type FieldValueRow,
 } from './value-converter'
 
+// Re-export relationship field utilities for client use
+export {
+  extractRelationshipData,
+  normalizeRelationshipValue,
+  validateRelationshipValue,
+  validateEntityDefinitionId,
+  isRelationshipFieldValue,
+  isRelationshipFieldValueArray,
+  convertRawToRelationshipInput,
+  type RelationshipData,
+} from './relationship-field'
+
 /**
  * Infer TypedFieldValue from a raw FieldValue row by checking which column is populated.
  * Used when field type is not available (e.g., from Drizzle relations without joins).
@@ -40,7 +52,12 @@ export function inferTypedValueFromRow(row: FieldValueRow): TypedFieldValue {
     return { ...base, type: 'option', optionId: row.optionId }
   }
   if (row.relatedEntityId != null) {
-    return { ...base, type: 'relationship', relatedEntityId: row.relatedEntityId }
+    return {
+      ...base,
+      type: 'relationship',
+      relatedEntityId: row.relatedEntityId,
+      relatedEntityDefinitionId: row.relatedEntityDefinitionId ?? '',
+    }
   }
   if (row.valueBoolean != null) {
     return { ...base, type: 'boolean', value: row.valueBoolean }

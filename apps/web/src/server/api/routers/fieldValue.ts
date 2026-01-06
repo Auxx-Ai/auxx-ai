@@ -22,12 +22,12 @@ const typedValueInputSchema = z.object({
  */
 export const fieldValueRouter = createTRPCRouter({
   /**
-   * Set a single field value for an entity
+   * Set a single field value for a resource
    */
   set: protectedProcedure
     .input(
       z.object({
-        entityId: z.string(),
+        resourceId: z.string(),
         fieldId: z.string(),
         value: z.any().nullable(),
         modelType: modelTypeSchema.default(ModelTypes.CONTACT),
@@ -40,7 +40,7 @@ export const fieldValueRouter = createTRPCRouter({
         ctx.db
       )
       return await service.setValueWithBuiltIn({
-        entityId: input.entityId,
+        entityId: input.resourceId,
         fieldId: input.fieldId,
         value: input.value ?? null,
         modelType: input.modelType as ModelType,
@@ -48,12 +48,12 @@ export const fieldValueRouter = createTRPCRouter({
     }),
 
   /**
-   * Set multiple field values for one entity
+   * Set multiple field values for one resource
    */
   setMany: protectedProcedure
     .input(
       z.object({
-        entityId: z.string(),
+        resourceId: z.string(),
         values: z.array(
           z.object({
             fieldId: z.string(),
@@ -70,7 +70,7 @@ export const fieldValueRouter = createTRPCRouter({
         ctx.db
       )
       return await service.setValuesForEntity({
-        entityId: input.entityId,
+        entityId: input.resourceId,
         values: input.values.map((v) => ({
           fieldId: v.fieldId,
           value: v.value ?? null,
@@ -80,12 +80,12 @@ export const fieldValueRouter = createTRPCRouter({
     }),
 
   /**
-   * Set values for multiple entities (bulk operation)
+   * Set values for multiple resources (bulk operation)
    */
   setBulk: protectedProcedure
     .input(
       z.object({
-        entityIds: z.array(z.string()).min(1),
+        resourceIds: z.array(z.string()).min(1),
         values: z.array(
           z.object({
             fieldId: z.string(),
@@ -102,7 +102,7 @@ export const fieldValueRouter = createTRPCRouter({
         ctx.db
       )
       return await service.setBulkValues({
-        entityIds: input.entityIds,
+        entityIds: input.resourceIds,
         values: input.values.map((v) => ({
           fieldId: v.fieldId,
           value: v.value ?? null,
@@ -112,12 +112,12 @@ export const fieldValueRouter = createTRPCRouter({
     }),
 
   /**
-   * Delete a field value
+   * Delete a field value for a resource
    */
   delete: protectedProcedure
     .input(
       z.object({
-        entityId: z.string(),
+        resourceId: z.string(),
         fieldId: z.string(),
         modelType: modelTypeSchema.default(ModelTypes.CONTACT),
       })
@@ -129,7 +129,7 @@ export const fieldValueRouter = createTRPCRouter({
         ctx.db
       )
       await service.deleteValue({
-        entityId: input.entityId,
+        entityId: input.resourceId,
         fieldId: input.fieldId,
       })
       return { success: true }
@@ -157,7 +157,7 @@ export const fieldValueRouter = createTRPCRouter({
       return await service.batchGetValues({
         resourceType: input.resourceType,
         entityDefId: input.entityDefId,
-        entityIds: input.resourceIds,
+        resourceIds: input.resourceIds,
         fieldIds: input.fieldIds,
       })
     }),
@@ -168,7 +168,7 @@ export const fieldValueRouter = createTRPCRouter({
   add: protectedProcedure
     .input(
       z.object({
-        entityId: z.string(),
+        resourceId: z.string(),
         fieldId: z.string(),
         fieldType: z.string(),
         value: typedValueInputSchema,
@@ -184,7 +184,7 @@ export const fieldValueRouter = createTRPCRouter({
         ctx.db
       )
       return await service.addValue({
-        entityId: input.entityId,
+        entityId: input.resourceId,
         fieldId: input.fieldId,
         fieldType: input.fieldType,
         value: input.value as any,

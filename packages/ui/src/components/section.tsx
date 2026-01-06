@@ -96,7 +96,7 @@ export function Section({
 
   return (
     <Collapsible
-      open={currentOpen && (typeof enabled === 'boolean' ? enabled : true)}
+      open={!collapsible || (currentOpen && (typeof enabled === 'boolean' ? enabled : true))}
       onOpenChange={handleOpenChange}
       className="group">
       <div className={cn('p-3 pb-4 group-data-[state=closed]:pb-0 border-b flex flex-col', className)}>

@@ -157,10 +157,13 @@ export function useCustomFieldValueSyncer(
         // Update store with fetched TypedFieldValues AND mark all combinations as loaded
         // Entries with actual data from batchGet
         const entriesMap = new Map(
-          data.values.map((v) => [
-            buildValueKey(resourceType, v.resourceId, v.fieldId, entityDefId),
-            v.value,
-          ])
+          data.values.map((v) => {
+            console.log('[Syncer] Storing value for field', v.fieldId, 'value:', v.value)
+            return [
+              buildValueKey(resourceType, v.resourceId, v.fieldId, entityDefId),
+              v.value,
+            ]
+          })
         )
 
         // Mark all requested combinations as loaded (including ones with no data)

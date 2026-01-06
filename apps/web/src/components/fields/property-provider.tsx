@@ -17,6 +17,7 @@ import {
   type StoredFieldValue,
 } from '~/stores/custom-field-value-store'
 import { useSaveFieldValue } from '~/hooks/use-save-field-value'
+import { normalizeRelationshipValue } from '@auxx/lib/field-values/client'
 import type { ModelType } from '@auxx/types/custom-field'
 import { extractValue, type TypedFieldValue } from '@auxx/types/field-value'
 
@@ -139,10 +140,16 @@ function extractRawValue(val: StoredFieldValue | null | undefined): unknown {
     )
   }
 
-  // Handle TypedFieldValue array (e.g., multi-select, tags)
+  // Handle TypedFieldValue array (e.g., multi-select, tags, relationship)
   if (Array.isArray(val)) {
     // Check if it's an array of TypedFieldValue or already raw values
     if (val.length > 0 && typeof val[0] === 'object' && val[0] !== null && 'type' in val[0]) {
+      const first = val[0] as TypedFieldValue
+      // Normalize RELATIONSHIP fields to always return arrays using centralized utility
+      if (first.type === 'relationship') {
+        return normalizeRelationshipValue(val)
+      }
+      // For other types, extract primitive values
       return val.map((v) => extractValue(v as TypedFieldValue))
     }
     // Already an array of raw values (e.g., string[])
@@ -151,7 +158,13 @@ function extractRawValue(val: StoredFieldValue | null | undefined): unknown {
 
   // Handle single TypedFieldValue
   if (typeof val === 'object' && 'type' in val) {
-    return extractValue(val as TypedFieldValue)
+    const typed = val as TypedFieldValue
+    // Normalize RELATIONSHIP fields to always return arrays using centralized utility
+    if (typed.type === 'relationship') {
+      return normalizeRelationshipValue(val)
+    }
+    // For other types, extract primitive value
+    return extractValue(typed)
   }
 
   // Accept raw primitives (already extracted or from default values)

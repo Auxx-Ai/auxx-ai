@@ -54,7 +54,8 @@ function transformResourceFieldForEntityFields(
   field: ResourceField & { id: string },
   index: number
 ): any {
-  const fieldType = mapBaseTypeToFieldType(field.type)
+  // Use preserved fieldType from ResourceField if available, otherwise fallback to mapping BaseType
+  const fieldType = field.fieldType || mapBaseTypeToFieldType(field.type)
 
   // Build options object from ResourceField properties
   const options: Record<string, unknown> = {}
@@ -78,6 +79,8 @@ function transformResourceFieldForEntityFields(
       // For system resources: model type (e.g., "contact", "ticket")
       // For custom entities: undefined (use relatedEntityDefinitionId instead)
       relatedModelType: field.relationship.relatedModelType,
+      // Add relationshipType for single/multi select behavior
+      relationshipType: field.relationship.cardinality === 'one-to-one' || field.relationship.cardinality === 'many-to-one' ? 'belongs_to' : 'has_many',
     }
   }
 
@@ -391,7 +394,7 @@ function EntityFields({
       try {
         // Call mutation - receives raw value, returns { id, value: TypedFieldValue }
         const result = await setValueMutation.mutateAsync({
-          entityId,
+          resourceId: entityId,
           fieldId,
           value: rawValue,
           modelType: mutationModelType,
@@ -467,7 +470,7 @@ function EntityFields({
       try {
         // PropertyProvider now passes raw values directly (no legacy wrapping)
         await setValueMutation.mutateAsync({
-          entityId,
+          resourceId: entityId,
           fieldId,
           value: rawValue,
           modelType: mutationModelType,

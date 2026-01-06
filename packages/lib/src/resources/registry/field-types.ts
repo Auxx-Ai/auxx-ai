@@ -2,6 +2,7 @@
 
 import { BaseType } from '../types'
 import type { TargetTimeInStatus } from '@auxx/services/custom-fields'
+import type { FieldType } from '@auxx/database/types'
 
 /**
  * Enum value with UI metadata
@@ -149,8 +150,17 @@ export interface ResourceField {
   key: string
   /** Display label for UI */
   label: string
-  /** Field data type */
+  /** Field data type (for workflow engine: 'string', 'number', 'object', 'array', etc.) */
   type: BaseType
+
+  /**
+   * Original FieldType from CustomField (e.g., 'TEXT', 'RELATIONSHIP', 'EMAIL')
+   * Used for determining value storage type (which columns store the value).
+   * Different from type: type is for workflow engine (BaseType),
+   * fieldType is for storage and value extraction (FieldType enum).
+   * @optional - populated for custom entity fields, undefined for system resource fields
+   */
+  fieldType?: FieldType
 
   // Database properties
   /** Database column name (if different from key) */

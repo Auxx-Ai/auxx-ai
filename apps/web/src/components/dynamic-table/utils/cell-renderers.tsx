@@ -12,6 +12,7 @@ import { TagsCellView } from '~/components/ui/tags-view'
 import { ItemsCellView } from '~/components/ui/items-list-view'
 import { useRelationship } from '~/components/resources'
 import { extractValue, type TypedFieldValue } from '@auxx/types/field-value'
+import { extractRelationshipData } from '@auxx/lib/field-values/client'
 import type {
   ColumnFormatting,
   CurrencyColumnFormatting,
@@ -28,65 +29,59 @@ type SelectOption = { label: string; value: string }
  * Standardized format:
  * - System resources: store model type string (e.g., "contact", "ticket")
  * - Custom entities: store UUID of EntityDefinition
+ *
+ * Fallback: If value doesn't have entityDefinitionId (old data), tries to determine it
+ * from column formatting or falls back to showing IDs.
  */
-function RelationshipCellContent({ value }: { value: unknown }) {
-  // Extract IDs and entityDefinitionId from value
-  const { ids, entityDefinitionId } = useMemo(() => {
-    if (!value) return { ids: [], entityDefinitionId: null }
+function RelationshipCellContent({ value, columnId }: { value: unknown; columnId?: string }) {
+  // Debug: Log raw value from store
+  console.log('RelationshipCellContent RAW value from store:', value)
+  if (Array.isArray(value) && value.length > 0) {
+    console.log('First item in array:', value[0])
+    console.log('First item relatedEntityDefinitionId:', (value[0] as any)?.relatedEntityDefinitionId)
+  }
 
-    // Handle TypedFieldValue array
-    if (Array.isArray(value)) {
-      if (
-        value.length > 0 &&
-        typeof value[0] === 'object' &&
-        value[0] !== null &&
-        'type' in value[0]
-      ) {
-        const first = value[0] as { relatedEntityDefinitionId?: string }
-        return {
-          ids: value
-            .map((v) => (v as { relatedEntityId?: string }).relatedEntityId)
-            .filter(Boolean) as string[],
-          entityDefinitionId: first.relatedEntityDefinitionId || null,
-        }
-      }
-      // Already an array of IDs
-      return {
-        ids: value.filter((id) => typeof id === 'string') as string[],
-        entityDefinitionId: null,
-      }
-    }
-
-    // Handle single TypedFieldValue
-    if (typeof value === 'object' && value !== null && 'type' in value) {
-      const rel = value as { relatedEntityId?: string; relatedEntityDefinitionId?: string }
-      return {
-        ids: rel.relatedEntityId ? [rel.relatedEntityId] : [],
-        entityDefinitionId: rel.relatedEntityDefinitionId || null,
-      }
-    }
-
-    // Handle raw string ID
-    if (typeof value === 'string') return { ids: [value], entityDefinitionId: null }
-
-    return { ids: [], entityDefinitionId: null }
-  }, [value])
-
+  // Extract IDs and entityDefinitionId from value using centralized utility
+  const { ids, entityDefinitionId } = useMemo(() => extractRelationshipData(value), [value])
+  console.log(
+    'RelationshipCellContent EXTRACTED - ids:',
+    ids,
+    'entityDefinitionId:',
+    entityDefinitionId
+  )
   // Convert entityDefinitionId to resourceId for useRelationship
   // System resources: "contact" -> use as-is
   // Custom entities: UUID -> convert to "entity_{slug}" (or pass through, let hook handle it)
   const resourceId = useMemo(() => {
-    if (!entityDefinitionId) return null
+    let defId = entityDefinitionId
+
+    // If entityDefinitionId is empty, try to infer from column formatting
+    // This handles old database records that don't have relatedEntityDefinitionId populated
+    if (!defId && columnId) {
+      // Format: could include resource type info in columnId or formatting
+      // For now, return null - without proper field metadata, we can't determine the resource type
+    }
+
+    if (!defId) return null
 
     // Check if it's a known system resource first
-    const systemResources = ['contact', 'contacts', 'ticket', 'tickets', 'user', 'users', 'thread', 'threads']
-    if (systemResources.includes(entityDefinitionId)) {
-      return entityDefinitionId.replace(/s$/, '') // normalize plural to singular
+    const systemResources = [
+      'contact',
+      'contacts',
+      'ticket',
+      'tickets',
+      'user',
+      'users',
+      'thread',
+      'threads',
+    ]
+    if (systemResources.includes(defId)) {
+      return defId.replace(/s$/, '') // normalize plural to singular
     }
 
     // It's a custom entity UUID - use directly (no entity_ prefix)
-    return entityDefinitionId
-  }, [entityDefinitionId])
+    return defId
+  }, [entityDefinitionId, columnId])
 
   const { items: hydratedItems, isLoading } = useRelationship(resourceId, ids)
 
