@@ -118,7 +118,6 @@ export function CustomFieldDialog({
 }: CustomFieldDialogProps) {
   const isEditing = !!editingField
 
-  console.log('CustomFieldDialog render, editingField:', editingField)
   // Form setup
   const form = useForm<CustomFieldFormValues>({
     resolver: standardSchemaResolver(customFieldFormSchema),

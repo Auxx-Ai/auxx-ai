@@ -1,0 +1,1 @@
+ALTER TABLE "FieldValue" ALTER COLUMN "valueDate" SET DATA TYPE timestamp(3) with time zone;

@@ -10,7 +10,6 @@ import {
   index,
   uniqueIndex,
   type AnyPgColumn,
-  sql,
   doublePrecision,
 } from './_shared'
 import { createId } from '@paralleldrive/cuid2'
@@ -36,14 +35,13 @@ export const FieldValue = pgTable(
       .$defaultFn(() => createId()),
 
     /** Timestamp when created */
-    createdAt: timestamp({ precision: 3, mode: 'string' })
-      .default(sql`CURRENT_TIMESTAMP`)
-      .notNull(),
+    createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
 
-    /** Timestamp when last updated */
-    updatedAt: timestamp({ precision: 3, mode: 'string' })
+    /** Timestamp when last updated (uses $defaultFn since column lacks DB default) */
+    updatedAt: timestamp({ precision: 3 })
       .notNull()
-      .$onUpdate(() => new Date().toISOString()),
+      .$defaultFn(() => new Date())
+      .$onUpdate(() => new Date()),
 
     /** Organization this value belongs to (denormalized for query performance) */
     organizationId: text()
@@ -71,8 +69,8 @@ export const FieldValue = pgTable(
     /** Boolean value for CHECKBOX fields */
     valueBoolean: boolean(),
 
-    /** Date/time value for DATE, DATETIME, TIME fields */
-    valueDate: timestamp({ precision: 3, mode: 'string' }),
+    /** Date/time value for DATE, DATETIME, TIME fields (with timezone for correct UTC handling) */
+    valueDate: timestamp({ precision: 3, withTimezone: true, mode: 'string' }),
 
     /** JSON value for FILE, CURRENCY (with code), ADDRESS_STRUCT, and complex types */
     valueJson: jsonb(),

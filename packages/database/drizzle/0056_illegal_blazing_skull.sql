@@ -1,0 +1,1 @@
+ALTER TABLE "FieldValue" ALTER COLUMN "updatedAt" DROP DEFAULT;
