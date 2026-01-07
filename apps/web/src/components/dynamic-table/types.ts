@@ -18,6 +18,7 @@ export type {
   CurrencyColumnFormatting,
   DateColumnFormatting,
   NumberColumnFormatting,
+  PhoneColumnFormatting,
   ColumnFormatting,
   KanbanColumnSettings,
   KanbanViewConfig,
@@ -28,7 +29,7 @@ export type {
 /**
  * Field types that support formatting
  */
-export const FORMATTABLE_FIELD_TYPES = ['CURRENCY', 'DATE', 'DATETIME', 'TIME', 'NUMBER'] as const
+export const FORMATTABLE_FIELD_TYPES = ['CURRENCY', 'DATE', 'DATETIME', 'TIME', 'NUMBER', 'PHONE_INTL'] as const
 export type FormattableFieldType = (typeof FORMATTABLE_FIELD_TYPES)[number]
 
 // ============================================================================

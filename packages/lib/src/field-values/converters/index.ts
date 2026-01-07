@@ -41,6 +41,11 @@ export interface FieldOptions {
   copyValue?: boolean
 
   // ─────────────────────────────────────────────────────────────
+  // PHONE (flat)
+  // ─────────────────────────────────────────────────────────────
+  phoneFormat?: 'raw' | 'national' | 'international'
+
+  // ─────────────────────────────────────────────────────────────
   // SELECT (flat)
   // ─────────────────────────────────────────────────────────────
   maxItemsShown?: number
@@ -107,6 +112,9 @@ export type BooleanFieldOptions = Pick<FieldOptions, 'checkboxStyle' | 'trueLabe
 /** Options for TEXT fields */
 export type TextFieldOptions = Pick<FieldOptions, 'truncateLength' | 'copyValue'>
 
+/** Options for PHONE fields */
+export type PhoneFieldOptions = Pick<FieldOptions, 'phoneFormat'>
+
 /** Options for SELECT/MULTI_SELECT/TAGS fields */
 export type SelectFieldOptions = Pick<FieldOptions, 'maxItemsShown' | 'truncateLabel'>
 
@@ -160,6 +168,7 @@ import { dateConverter } from './date'
 import { selectConverter } from './select'
 import { relationshipConverter } from './relationship'
 import { jsonConverter, nameConverter, fileConverter } from './json'
+import { phoneConverter } from './phone'
 
 /**
  * Map of all converters keyed by FieldType.
@@ -170,7 +179,7 @@ export const converters: Record<FieldType, FieldValueConverter> = {
   TEXT: textConverter,
   EMAIL: textConverter,
   URL: textConverter,
-  PHONE_INTL: textConverter,
+  PHONE_INTL: phoneConverter,
   ADDRESS: textConverter,
   RICH_TEXT: textConverter,
 
@@ -211,4 +220,5 @@ export {
   jsonConverter,
   nameConverter,
   fileConverter,
+  phoneConverter,
 }

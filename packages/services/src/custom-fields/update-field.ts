@@ -157,13 +157,14 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
       }
     }
 
-    // Handle flat display options for CHECKBOX, NUMBER, DATE, DATETIME, TIME
+    // Handle flat display options for CHECKBOX, NUMBER, DATE, DATETIME, TIME, PHONE_INTL
     if (
       fieldType === FieldTypeEnum.CHECKBOX ||
       fieldType === FieldTypeEnum.NUMBER ||
       fieldType === FieldTypeEnum.DATE ||
       fieldType === FieldTypeEnum.DATETIME ||
-      fieldType === FieldTypeEnum.TIME
+      fieldType === FieldTypeEnum.TIME ||
+      fieldType === FieldTypeEnum.PHONE_INTL
     ) {
       if (options !== undefined && !Array.isArray(options) && !('file' in options) && !('currency' in options)) {
         // Merge flat display options directly into fieldOptions
@@ -179,6 +180,7 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
         if (displayOpts.format !== undefined) fieldOptions.format = displayOpts.format
         if (displayOpts.timeFormat !== undefined) fieldOptions.timeFormat = displayOpts.timeFormat
         if (displayOpts.includeTime !== undefined) fieldOptions.includeTime = displayOpts.includeTime
+        if (displayOpts.phoneFormat !== undefined) fieldOptions.phoneFormat = displayOpts.phoneFormat
       }
     }
 

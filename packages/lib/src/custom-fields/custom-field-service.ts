@@ -12,7 +12,11 @@ import {
   type RelationshipOptions,
 } from '@auxx/services/custom-fields'
 import type { FieldType } from '@auxx/database/types'
-import type { SelectOption, FileOptions, DisplayOptions } from '@auxx/services/custom-fields'
+import type {
+  SelectOption,
+  FileOptions,
+  DisplayOptions,
+} from '@auxx/services/custom-fields'
 import type { CurrencyOptions } from '@auxx/types/custom-field'
 
 /**
@@ -68,7 +72,7 @@ export class CustomFieldService {
       description?: string
       required?: boolean
       defaultValue?: string
-      options?: SelectOption[] | { file: FileOptions } | { currency: CurrencyOptions }
+      options?: SelectOption[] | { file: FileOptions } | { currency: CurrencyOptions } | DisplayOptions
       addressComponents?: string[]
       icon?: string
       isCustom?: boolean

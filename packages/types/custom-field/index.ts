@@ -130,6 +130,8 @@ export const displayOptionsSchema = z.object({
   checkboxStyle: z.enum(['icon', 'text', 'icon-text']).optional(),
   trueLabel: z.string().optional(),
   falseLabel: z.string().optional(),
+  // PHONE display options
+  phoneFormat: z.enum(['raw', 'national', 'international']).optional(),
 })
 
 /** Display options type */

@@ -15,6 +15,7 @@ export {
   currencyFormattingSchema,
   dateFormattingSchema,
   numberFormattingSchema,
+  phoneFormattingSchema,
 } from './view-config'
 
 export type {
@@ -26,4 +27,5 @@ export type {
   CurrencyColumnFormatting,
   DateColumnFormatting,
   NumberColumnFormatting,
+  PhoneColumnFormatting,
 } from './view-config'

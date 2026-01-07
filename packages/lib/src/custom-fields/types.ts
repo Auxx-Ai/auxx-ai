@@ -318,6 +318,7 @@ export const moneyFieldOptionsSchema = baseFieldOptionsSchema.extend({
 export const phoneFieldOptionsSchema = baseFieldOptionsSchema.extend({
   country: z.string().optional(),
   format: z.string().optional(),
+  phoneFormat: z.enum(['raw', 'national', 'international']).optional(),
 })
 export const checkboxFieldOptionsSchema = baseFieldOptionsSchema.extend({
   label: z.string().optional(),

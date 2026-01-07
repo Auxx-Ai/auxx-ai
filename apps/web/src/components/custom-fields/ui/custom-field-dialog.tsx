@@ -66,6 +66,7 @@ import {
   DateTimeFormattingEditor,
   TimeFormattingEditor,
   BooleanFormattingEditor,
+  PhoneFormattingEditor,
 } from './formatting-editors'
 import type { FieldOptions } from '@auxx/lib/field-values/client'
 
@@ -322,6 +323,7 @@ export function CustomFieldDialog({
         // DATE/DATETIME: format
         // TIME: timeFormat
         // CHECKBOX: displayAs, trueLabel, falseLabel
+        // PHONE_INTL: phoneFormat
         if (editingField.options) {
           const opts = editingField.options
           initDisplayOptions = {
@@ -337,6 +339,8 @@ export function CustomFieldDialog({
             // Boolean options
             trueLabel: opts.trueLabel,
             falseLabel: opts.falseLabel,
+            // Phone options
+            phoneFormat: opts.phoneFormat,
           }
         }
         setDisplayOptions(initDisplayOptions)
@@ -428,6 +432,7 @@ export function CustomFieldDialog({
     // DATE/DATETIME: format
     // TIME: timeFormat
     // CHECKBOX: displayAs, trueLabel, falseLabel
+    // PHONE_INTL: phoneFormat
     if (Object.keys(displayOptions).length > 0) {
       // Filter out undefined values from displayOptions
       const filteredDisplayOptions = Object.fromEntries(
@@ -479,6 +484,7 @@ export function CustomFieldDialog({
       FieldType.DATETIME,
       FieldType.TIME,
       FieldType.CHECKBOX,
+      FieldType.PHONE_INTL,
     ].includes(type)
   }
 
@@ -495,6 +501,8 @@ export function CustomFieldDialog({
         return <TimeFormattingEditor options={displayOptions} onChange={setDisplayOptions} />
       case FieldType.CHECKBOX:
         return <BooleanFormattingEditor options={displayOptions} onChange={setDisplayOptions} />
+      case FieldType.PHONE_INTL:
+        return <PhoneFormattingEditor options={displayOptions} onChange={setDisplayOptions} />
       default:
         return null
     }

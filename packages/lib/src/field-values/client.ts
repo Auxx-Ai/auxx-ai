@@ -30,6 +30,7 @@ export {
   type BooleanFieldOptions,
   type TextFieldOptions,
   type SelectFieldOptions,
+  type PhoneFieldOptions,
 } from './formatter'
 
 // Converters (for direct access if needed)

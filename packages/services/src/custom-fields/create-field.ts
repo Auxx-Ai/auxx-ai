@@ -15,6 +15,7 @@ import {
   type SelectOption,
   type CurrencyOptions,
   type FileOptions,
+  type DisplayOptions,
 } from './types'
 import { FieldType as FieldTypeEnum, ModelTypeValues } from '@auxx/database/enums'
 import type { FieldType } from '@auxx/database/types'
@@ -31,7 +32,8 @@ export interface CreateCustomFieldInput {
   description?: string
   required?: boolean
   defaultValue?: string
-  options?: SelectOption[] | { file: FileOptions } | { currency: CurrencyOptions }
+  /** Field options - select options, file config, currency config, or flat display options */
+  options?: SelectOption[] | { file: FileOptions } | { currency: CurrencyOptions } | DisplayOptions
   addressComponents?: string[]
   icon?: string
   isCustom?: boolean
@@ -154,6 +156,33 @@ export async function createCustomField(input: CreateCustomFieldInput) {
   if (type === FieldTypeEnum.CURRENCY) {
     if (options && !Array.isArray(options) && 'currency' in options) {
       fieldOptions.currency = (options as { currency: any }).currency
+    }
+  }
+
+  // Handle flat display options for CHECKBOX, NUMBER, DATE, DATETIME, TIME, PHONE_INTL
+  if (
+    type === FieldTypeEnum.CHECKBOX ||
+    type === FieldTypeEnum.NUMBER ||
+    type === FieldTypeEnum.DATE ||
+    type === FieldTypeEnum.DATETIME ||
+    type === FieldTypeEnum.TIME ||
+    type === FieldTypeEnum.PHONE_INTL
+  ) {
+    if (options && !Array.isArray(options) && !('file' in options) && !('currency' in options)) {
+      // Merge flat display options directly into fieldOptions
+      const displayOpts = options as DisplayOptions
+      if (displayOpts.checkboxStyle !== undefined) fieldOptions.checkboxStyle = displayOpts.checkboxStyle
+      if (displayOpts.trueLabel !== undefined) fieldOptions.trueLabel = displayOpts.trueLabel
+      if (displayOpts.falseLabel !== undefined) fieldOptions.falseLabel = displayOpts.falseLabel
+      if (displayOpts.decimals !== undefined) fieldOptions.decimals = displayOpts.decimals
+      if (displayOpts.useGrouping !== undefined) fieldOptions.useGrouping = displayOpts.useGrouping
+      if (displayOpts.displayAs !== undefined) fieldOptions.displayAs = displayOpts.displayAs
+      if (displayOpts.prefix !== undefined) fieldOptions.prefix = displayOpts.prefix
+      if (displayOpts.suffix !== undefined) fieldOptions.suffix = displayOpts.suffix
+      if (displayOpts.format !== undefined) fieldOptions.format = displayOpts.format
+      if (displayOpts.timeFormat !== undefined) fieldOptions.timeFormat = displayOpts.timeFormat
+      if (displayOpts.includeTime !== undefined) fieldOptions.includeTime = displayOpts.includeTime
+      if (displayOpts.phoneFormat !== undefined) fieldOptions.phoneFormat = displayOpts.phoneFormat
     }
   }
 

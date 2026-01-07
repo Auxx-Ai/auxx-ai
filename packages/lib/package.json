@@ -176,6 +176,7 @@
     "jsdom": "catalog:",
     "jsep": "^1.4.0",
     "json-logic-js": "^2.0.5",
+    "libphonenumber-js": "catalog:",
     "lru-cache": "11.1.0",
     "lucide-react": "catalog:",
     "mailgun.js": "^12.0.1",

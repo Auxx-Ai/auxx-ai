@@ -2,7 +2,6 @@
 
 import { useMemo } from 'react'
 import { format, formatDistanceToNow } from 'date-fns'
-import { formatPhoneNumber } from 'react-phone-number-input'
 import { formatCurrency, formatBytes, type CurrencyDisplayOptions } from '@auxx/utils'
 import { CheckSquare, Paperclip } from 'lucide-react'
 import { Badge } from '@auxx/ui/components/badge'
@@ -15,16 +14,19 @@ import { ItemsCellView } from '~/components/ui/items-list-view'
 import { useRelationship } from '~/components/resources'
 import {
   formatToRawValue,
+  formatToDisplayValue,
   extractRelationshipData,
   type NumberFieldOptions,
   type DateFieldOptions,
   type BooleanFieldOptions,
+  type PhoneFieldOptions,
 } from '@auxx/lib/field-values/client'
 import type {
   ColumnFormatting,
   CurrencyColumnFormatting,
   DateColumnFormatting,
   NumberColumnFormatting,
+  PhoneColumnFormatting,
 } from '../types'
 
 /** Select option type for tags/select renderers */
@@ -285,13 +287,31 @@ export function renderEmailValue(value: unknown): React.ReactNode {
 }
 
 /**
- * Render phone value as copyable link with formatted display
+ * Render phone value as copyable link with formatted display.
+ * Uses phoneFormat option from column formatting or field options.
  */
-export function renderPhoneValue(value: unknown): React.ReactNode {
+export function renderPhoneValue(
+  value: unknown,
+  formatting?: PhoneColumnFormatting,
+  config?: CellConfig
+): React.ReactNode {
   if (value == null || value === '') return <EmptyCell />
 
   const phone = String(value)
-  const formatted = formatPhoneNumber(phone) || phone
+
+  // Merge column formatting with field options (column takes precedence)
+  const opts: PhoneFieldOptions = {
+    ...(config?.options as PhoneFieldOptions | undefined),
+    phoneFormat: formatting?.phoneFormat ?? (config?.options as PhoneFieldOptions | undefined)?.phoneFormat,
+  }
+
+  // Use converter for display formatting
+  const formatted = formatToDisplayValue(
+    { type: 'text', value: phone },
+    'PHONE_INTL',
+    opts
+  ) as string || phone
+
   return (
     <CellPadding expandDirection="horizontal">
       <CopyableLinkCell displayText={formatted} value={phone} type="phone" />
@@ -510,7 +530,7 @@ const cellRenderers: Record<string, CellRenderer> = {
 
   // Text types with special rendering
   EMAIL: (value) => renderEmailValue(value),
-  PHONE_INTL: (value) => renderPhoneValue(value),
+  PHONE_INTL: (value, formatting, config) => renderPhoneValue(value, formatting as PhoneColumnFormatting, config),
   URL: (value) => renderUrlValue(value),
 
   // Boolean - pass config for displayOptions

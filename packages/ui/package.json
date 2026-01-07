@@ -133,7 +133,7 @@
     "vaul": "^1.1.2",
     "react-day-picker": "^9.8.1",
     "react-phone-number-input": "^3.4.12",
-    "libphonenumber-js": "^1.12.8",
+    "libphonenumber-js": "catalog:",
     "input-otp": "^1.4.2",
     "cmdk": "1.1.1",
     "recharts": "^2.15.4",

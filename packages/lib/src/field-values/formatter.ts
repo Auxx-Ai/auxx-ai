@@ -286,4 +286,5 @@ export {
   type BooleanFieldOptions,
   type TextFieldOptions,
   type SelectFieldOptions,
+  type PhoneFieldOptions,
 } from './converters'

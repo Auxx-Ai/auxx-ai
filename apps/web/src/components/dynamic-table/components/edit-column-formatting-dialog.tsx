@@ -25,16 +25,19 @@ import {
   DateFormattingEditor,
   DateTimeFormattingEditor,
   TimeFormattingEditor,
+  PhoneFormattingEditor,
 } from '~/components/custom-fields/ui/formatting-editors'
 import type {
   NumberFieldOptions,
   DateFieldOptions,
+  PhoneFieldOptions,
 } from '@auxx/lib/field-values/client'
 import type {
   ColumnFormatting,
   CurrencyColumnFormatting,
   DateColumnFormatting,
   NumberColumnFormatting,
+  PhoneColumnFormatting,
   FormattableFieldType,
 } from '../types'
 
@@ -84,6 +87,25 @@ function dateDisplayOptionsToColumn(opts: DateFieldOptions, includeTime?: boolea
     type: 'date',
     format: opts.format ?? 'medium',
     includeTime: includeTime ?? opts.includeTime ?? false,
+  }
+}
+
+/**
+ * Convert PhoneColumnFormatting to PhoneFieldOptions
+ */
+function columnToPhoneDisplayOptions(formatting: PhoneColumnFormatting | null): PhoneFieldOptions {
+  return {
+    phoneFormat: formatting?.phoneFormat ?? 'national',
+  }
+}
+
+/**
+ * Convert PhoneFieldOptions to PhoneColumnFormatting
+ */
+function phoneDisplayOptionsToColumn(opts: PhoneFieldOptions): PhoneColumnFormatting {
+  return {
+    type: 'phone',
+    phoneFormat: opts.phoneFormat ?? 'national',
   }
 }
 
@@ -173,6 +195,12 @@ export function EditColumnFormattingDialog({
           <NumberFormattingEditor
             options={columnToNumberDisplayOptions(formatting as NumberColumnFormatting | null)}
             onChange={(opts) => setFormatting(numberDisplayOptionsToColumn(opts))}
+          />
+        )}
+        {fieldType === 'PHONE_INTL' && (
+          <PhoneFormattingEditor
+            options={columnToPhoneDisplayOptions(formatting as PhoneColumnFormatting | null)}
+            onChange={(opts) => setFormatting(phoneDisplayOptionsToColumn(opts))}
           />
         )}
 
