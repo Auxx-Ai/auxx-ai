@@ -9,12 +9,12 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { FieldGroup, Field, FieldLabel } from '@auxx/ui/components/field'
-import type { DateDisplayOptions } from '@auxx/lib/field-values/client'
+import type { DateFieldOptions } from '@auxx/lib/field-values/client'
 
 /** Props for TimeFormattingEditor */
 interface TimeFormattingEditorProps {
-  options: DateDisplayOptions
-  onChange: (options: DateDisplayOptions) => void
+  options: DateFieldOptions
+  onChange: (options: DateFieldOptions) => void
 }
 
 /**
@@ -22,7 +22,7 @@ interface TimeFormattingEditorProps {
  * Controls time format (12h or 24h).
  */
 export function TimeFormattingEditor({ options, onChange }: TimeFormattingEditorProps) {
-  const current: DateDisplayOptions = {
+  const current: DateFieldOptions = {
     timeFormat: options.timeFormat ?? '12h',
   }
 
@@ -33,7 +33,7 @@ export function TimeFormattingEditor({ options, onChange }: TimeFormattingEditor
         <Select
           value={current.timeFormat ?? '12h'}
           onValueChange={(v) =>
-            onChange({ ...current, timeFormat: v as DateDisplayOptions['timeFormat'] })
+            onChange({ ...current, timeFormat: v as DateFieldOptions['timeFormat'] })
           }>
           <SelectTrigger>
             <SelectValue placeholder="Select time format" />

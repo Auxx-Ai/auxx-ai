@@ -6,7 +6,7 @@ import { usePropertyContext } from '../property-provider'
 import DisplayWrapper from './display-wrapper'
 import { FieldOptionButton } from './field-option-button'
 import { FieldType } from '@auxx/database/enums'
-import { converters, type DateDisplayOptions } from '@auxx/lib/field-values/client'
+import { converters, type DateFieldOptions } from '@auxx/lib/field-values/client'
 
 /**
  * DisplayDate component
@@ -16,12 +16,12 @@ import { converters, type DateDisplayOptions } from '@auxx/lib/field-values/clie
 export function DisplayDate() {
   const { value, field, commitValue } = usePropertyContext()
   // Read display options from field.options (flat structure)
-  const opts = field.options as DateDisplayOptions | undefined
+  const opts = field.options as DateFieldOptions | undefined
 
   if (!value) return null
 
   // Build display options based on field type
-  const displayOpts: DateDisplayOptions = {
+  const displayOpts: DateFieldOptions = {
     ...opts,
     // For TIME fields, use 'time-only' format
     format: field.type === FieldType.TIME ? 'time-only' : (opts?.format ?? 'medium'),

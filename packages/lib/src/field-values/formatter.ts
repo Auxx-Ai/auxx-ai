@@ -7,7 +7,6 @@ import {
   type FieldValueConverter,
   type ConverterOptions,
   type FieldOptions,
-  type DisplayOptions,
 } from './converters'
 
 /**
@@ -280,12 +279,11 @@ function deepEqual(a: unknown, b: unknown): boolean {
 }
 
 // Re-export types for convenience
-export type { ConverterOptions, FieldOptions, DisplayOptions, FieldValueConverter }
+export type { ConverterOptions, FieldOptions, FieldValueConverter }
 export {
-  type TextDisplayOptions,
-  type NumberDisplayOptions,
-  type CurrencyDisplayOptions,
-  type BooleanDisplayOptions,
-  type DateDisplayOptions,
-  type SelectDisplayOptions,
+  type NumberFieldOptions,
+  type DateFieldOptions,
+  type BooleanFieldOptions,
+  type TextFieldOptions,
+  type SelectFieldOptions,
 } from './converters'

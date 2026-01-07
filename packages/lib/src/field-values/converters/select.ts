@@ -1,7 +1,7 @@
 // packages/lib/src/field-values/converters/select.ts
 
 import type { TypedFieldValueInput, TypedFieldValue, OptionFieldValue } from '@auxx/types/field-value'
-import type { FieldValueConverter, ConverterOptions, SelectDisplayOptions } from './index'
+import type { FieldValueConverter, ConverterOptions, SelectFieldOptions } from './index'
 
 /**
  * Converter for select-based field types:
@@ -101,7 +101,7 @@ export const selectConverter: FieldValueConverter = {
    * Convert TypedFieldValue to display value.
    * Returns the label if available, otherwise the option ID.
    */
-  toDisplayValue(value: TypedFieldValue, displayOptions?: SelectDisplayOptions): string {
+  toDisplayValue(value: TypedFieldValue, displayOptions?: SelectFieldOptions): string {
     if (!value) {
       return ''
     }
@@ -145,7 +145,7 @@ function findOptionId(
 /**
  * Apply truncation to label if specified in display options.
  */
-function applyTruncation(label: string, displayOptions?: SelectDisplayOptions): string {
+function applyTruncation(label: string, displayOptions?: SelectFieldOptions): string {
   if (!displayOptions?.truncateLabel) {
     return label
   }

@@ -1,7 +1,7 @@
 // packages/lib/src/field-values/converters/text.ts
 
 import type { TypedFieldValueInput, TypedFieldValue, TextFieldValue } from '@auxx/types/field-value'
-import type { FieldValueConverter, TextDisplayOptions } from './index'
+import type { FieldValueConverter, TextFieldOptions } from './index'
 
 /**
  * Converter for text-based field types:
@@ -69,7 +69,7 @@ export const textConverter: FieldValueConverter = {
    * Convert TypedFieldValue to display string.
    * Applies display options like truncation if provided.
    */
-  toDisplayValue(value: TypedFieldValue, displayOptions?: TextDisplayOptions): string {
+  toDisplayValue(value: TypedFieldValue, displayOptions?: TextFieldOptions): string {
     if (!value) {
       return ''
     }

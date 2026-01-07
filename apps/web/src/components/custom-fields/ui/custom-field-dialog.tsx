@@ -67,14 +67,10 @@ import {
   TimeFormattingEditor,
   BooleanFormattingEditor,
 } from './formatting-editors'
-import type {
-  NumberDisplayOptions,
-  DateDisplayOptions,
-  BooleanDisplayOptions,
-} from '@auxx/lib/field-values/client'
+import type { FieldOptions } from '@auxx/lib/field-values/client'
 
-/** Merged display options type for internal state */
-type DisplayOptions = NumberDisplayOptions & DateDisplayOptions & BooleanDisplayOptions
+/** Display options type for internal state */
+type DisplayOptions = FieldOptions
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
 
 /** Field data for editing */

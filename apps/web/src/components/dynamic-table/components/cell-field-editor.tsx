@@ -13,7 +13,7 @@ import {
 import { useFieldPopoverHandlers } from '~/components/fields/use-field-popover-handlers'
 import { getInputComponentForFieldType } from '~/components/fields/inputs/get-input-component'
 import { getFieldTypeMinWidth, getFieldTypeMaxWidth } from '@auxx/lib/custom-fields/types'
-
+import { FieldType } from '@auxx/database/enums'
 interface CellFieldEditorProps {
   rowId: string
   columnId: string
@@ -94,7 +94,13 @@ function CellFieldEditorInner({
 
   // Get input component from shared function
   const InputComponent = getInputComponentForFieldType(field.type)
-
+  // if (field.type === FieldType.TEXT) {
+  //   return (
+  //     <div className="absolute inset-0 border border-red-500 z-50 bg-background">
+  //       {InputComponent}
+  //     </div>
+  //   )
+  // }
   return (
     <Popover open={true}>
       <PopoverPrimitive.Anchor asChild>

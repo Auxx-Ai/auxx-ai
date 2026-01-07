@@ -10,12 +10,12 @@ import {
 } from '@auxx/ui/components/select'
 import { Input } from '@auxx/ui/components/input'
 import { FieldGroup, Field, FieldLabel } from '@auxx/ui/components/field'
-import type { BooleanDisplayOptions } from '@auxx/lib/field-values/client'
+import type { BooleanFieldOptions } from '@auxx/lib/field-values/client'
 
 /** Props for BooleanFormattingEditor */
 interface BooleanFormattingEditorProps {
-  options: BooleanDisplayOptions
-  onChange: (options: BooleanDisplayOptions) => void
+  options: BooleanFieldOptions
+  onChange: (options: BooleanFieldOptions) => void
 }
 
 /**
@@ -23,7 +23,7 @@ interface BooleanFormattingEditorProps {
  * Controls display style (icon, text, or both) and custom labels.
  */
 export function BooleanFormattingEditor({ options, onChange }: BooleanFormattingEditorProps) {
-  const current: BooleanDisplayOptions = {
+  const current: BooleanFieldOptions = {
     checkboxStyle: options.checkboxStyle ?? 'icon-text',
     trueLabel: options.trueLabel ?? 'True',
     falseLabel: options.falseLabel ?? 'False',
@@ -36,7 +36,7 @@ export function BooleanFormattingEditor({ options, onChange }: BooleanFormatting
         <Select
           value={current.checkboxStyle ?? 'icon-text'}
           onValueChange={(v) =>
-            onChange({ ...current, checkboxStyle: v as BooleanDisplayOptions['checkboxStyle'] })
+            onChange({ ...current, checkboxStyle: v as BooleanFieldOptions['checkboxStyle'] })
           }>
           <SelectTrigger>
             <SelectValue placeholder="Select display style" />

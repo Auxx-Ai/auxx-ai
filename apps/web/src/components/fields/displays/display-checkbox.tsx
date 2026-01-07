@@ -2,7 +2,7 @@
 import { Check, X } from 'lucide-react'
 import { usePropertyContext } from '../property-provider'
 import DisplayWrapper from './display-wrapper'
-import type { BooleanDisplayOptions } from '@auxx/lib/field-values/client'
+import type { BooleanFieldOptions } from '@auxx/lib/field-values/client'
 
 /**
  * DisplayCheckbox component
@@ -13,7 +13,7 @@ import type { BooleanDisplayOptions } from '@auxx/lib/field-values/client'
 export function DisplayCheckbox() {
   const { value, field } = usePropertyContext()
   // Read display options from field.options (flat structure)
-  const opts = field.options as BooleanDisplayOptions | undefined
+  const opts = field.options as BooleanFieldOptions | undefined
   const checkboxStyle = opts?.checkboxStyle ?? 'icon-text'
   const trueLabel = opts?.trueLabel ?? 'True'
   const falseLabel = opts?.falseLabel ?? 'False'

@@ -27,8 +27,8 @@ import {
   TimeFormattingEditor,
 } from '~/components/custom-fields/ui/formatting-editors'
 import type {
-  NumberDisplayOptions,
-  DateDisplayOptions,
+  NumberFieldOptions,
+  DateFieldOptions,
 } from '@auxx/lib/field-values/client'
 import type {
   ColumnFormatting,
@@ -39,9 +39,9 @@ import type {
 } from '../types'
 
 /**
- * Convert NumberColumnFormatting to NumberDisplayOptions
+ * Convert NumberColumnFormatting to NumberFieldOptions
  */
-function columnToNumberDisplayOptions(formatting: NumberColumnFormatting | null): NumberDisplayOptions {
+function columnToNumberDisplayOptions(formatting: NumberColumnFormatting | null): NumberFieldOptions {
   return {
     decimals: formatting?.decimalPlaces ?? 2,
     useGrouping: formatting?.useGrouping ?? true,
@@ -52,9 +52,9 @@ function columnToNumberDisplayOptions(formatting: NumberColumnFormatting | null)
 }
 
 /**
- * Convert NumberDisplayOptions to NumberColumnFormatting
+ * Convert NumberFieldOptions to NumberColumnFormatting
  */
-function numberDisplayOptionsToColumn(opts: NumberDisplayOptions): NumberColumnFormatting {
+function numberDisplayOptionsToColumn(opts: NumberFieldOptions): NumberColumnFormatting {
   return {
     type: 'number',
     decimalPlaces: opts.decimals ?? 2,
@@ -66,20 +66,20 @@ function numberDisplayOptionsToColumn(opts: NumberDisplayOptions): NumberColumnF
 }
 
 /**
- * Convert DateColumnFormatting to DateDisplayOptions
+ * Convert DateColumnFormatting to DateFieldOptions
  */
-function columnToDateDisplayOptions(formatting: DateColumnFormatting | null): DateDisplayOptions {
+function columnToDateDisplayOptions(formatting: DateColumnFormatting | null): DateFieldOptions {
   return {
     format: formatting?.format ?? 'medium',
     includeTime: formatting?.includeTime ?? false,
-    timeFormat: (formatting as DateDisplayOptions)?.timeFormat ?? '12h',
+    timeFormat: (formatting as DateFieldOptions)?.timeFormat ?? '12h',
   }
 }
 
 /**
- * Convert DateDisplayOptions to DateColumnFormatting
+ * Convert DateFieldOptions to DateColumnFormatting
  */
-function dateDisplayOptionsToColumn(opts: DateDisplayOptions, includeTime?: boolean): DateColumnFormatting {
+function dateDisplayOptionsToColumn(opts: DateFieldOptions, includeTime?: boolean): DateColumnFormatting {
   return {
     type: 'date',
     format: opts.format ?? 'medium',

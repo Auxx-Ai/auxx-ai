@@ -15,14 +15,12 @@ export {
   areValuesEqual,
   type ConverterOptions,
   type FieldOptions,
-  type DisplayOptions,
   type FieldValueConverter,
-  type TextDisplayOptions,
-  type NumberDisplayOptions,
-  type CurrencyDisplayOptions,
-  type BooleanDisplayOptions,
-  type DateDisplayOptions,
-  type SelectDisplayOptions,
+  type NumberFieldOptions,
+  type DateFieldOptions,
+  type BooleanFieldOptions,
+  type TextFieldOptions,
+  type SelectFieldOptions,
 } from './formatter'
 
 // Converters (for direct access if needed)

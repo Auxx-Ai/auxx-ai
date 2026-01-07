@@ -88,62 +88,27 @@ export interface FieldOptions {
 }
 
 // ─────────────────────────────────────────────────────────────
-// LEGACY DISPLAY OPTIONS TYPES (for backward compatibility)
-// These are deprecated - use FieldOptions instead
+// NARROWED FIELD OPTIONS (Pick from FieldOptions)
+// Use these in components/converters that work with specific field types
 // ─────────────────────────────────────────────────────────────
 
-/** @deprecated Use FieldOptions instead */
-export interface TextDisplayOptions {
-  truncateLength?: number
-  copyValue?: boolean
-}
+/** Options for NUMBER fields */
+export type NumberFieldOptions = Pick<
+  FieldOptions,
+  'decimals' | 'useGrouping' | 'displayAs' | 'prefix' | 'suffix'
+>
 
-/** @deprecated Use FieldOptions instead */
-export interface NumberDisplayOptions {
-  decimals?: number
-  useGrouping?: boolean
-  displayAs?: 'number' | 'percentage' | 'compact' | 'bytes'
-  prefix?: string
-  suffix?: string
-}
+/** Options for DATE/DATETIME/TIME fields */
+export type DateFieldOptions = Pick<FieldOptions, 'format' | 'timeFormat' | 'includeTime' | 'timeZone'>
 
-/** @deprecated Use FieldOptions instead */
-export interface CurrencyDisplayOptions extends NumberDisplayOptions {
-  prefix?: string
-  suffix?: string
-  symbolPosition?: 'before' | 'after'
-}
+/** Options for CHECKBOX fields */
+export type BooleanFieldOptions = Pick<FieldOptions, 'checkboxStyle' | 'trueLabel' | 'falseLabel'>
 
-/** @deprecated Use FieldOptions instead */
-export interface BooleanDisplayOptions {
-  checkboxStyle?: 'icon' | 'text' | 'icon-text'
-  trueLabel?: string
-  falseLabel?: string
-}
+/** Options for TEXT fields */
+export type TextFieldOptions = Pick<FieldOptions, 'truncateLength' | 'copyValue'>
 
-/** @deprecated Use FieldOptions instead */
-export interface DateDisplayOptions {
-  format?: 'short' | 'medium' | 'long' | 'relative' | 'iso' | 'time-only'
-  includeTime?: boolean
-  timeZone?: string
-  timeFormat?: '12h' | '24h'
-}
-
-/** @deprecated Use FieldOptions instead */
-export interface SelectDisplayOptions {
-  displayAs?: 'chip' | 'list'
-  maxItemsShown?: number
-  truncateLabel?: boolean
-}
-
-/** @deprecated Use FieldOptions instead */
-export type DisplayOptions =
-  | TextDisplayOptions
-  | NumberDisplayOptions
-  | CurrencyDisplayOptions
-  | BooleanDisplayOptions
-  | DateDisplayOptions
-  | SelectDisplayOptions
+/** Options for SELECT/MULTI_SELECT/TAGS fields */
+export type SelectFieldOptions = Pick<FieldOptions, 'maxItemsShown' | 'truncateLabel'>
 
 /**
  * Converter options passed to toTypedInput

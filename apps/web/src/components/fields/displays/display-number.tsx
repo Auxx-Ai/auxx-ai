@@ -1,7 +1,7 @@
 // apps/web/src/components/fields/displays/display-number.tsx
 import DisplayWrapper from './display-wrapper'
 import { usePropertyContext } from '../property-provider'
-import { converters, type NumberDisplayOptions } from '@auxx/lib/field-values/client'
+import { converters, type NumberFieldOptions } from '@auxx/lib/field-values/client'
 
 /**
  * DisplayNumber component
@@ -9,7 +9,7 @@ import { converters, type NumberDisplayOptions } from '@auxx/lib/field-values/cl
  */
 export function DisplayNumber() {
   const { value, field } = usePropertyContext()
-  const opts = field.options as NumberDisplayOptions | undefined
+  const opts = field.options as NumberFieldOptions | undefined
 
   if (value === null || value === undefined) {
     return <DisplayWrapper copyValue={null}>-</DisplayWrapper>
@@ -22,11 +22,8 @@ export function DisplayNumber() {
 
   // Use the converter to format the display value
   const typedValue = { type: 'number' as const, value: num }
+
   const formatted = converters.NUMBER.toDisplayValue(typedValue, opts)
 
-  return (
-    <DisplayWrapper copyValue={String(value)}>
-      {formatted}
-    </DisplayWrapper>
-  )
+  return <DisplayWrapper copyValue={String(value)}>{formatted}</DisplayWrapper>
 }

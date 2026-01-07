@@ -16,9 +16,9 @@ import { useRelationship } from '~/components/resources'
 import {
   formatToRawValue,
   extractRelationshipData,
-  type NumberDisplayOptions,
-  type DateDisplayOptions,
-  type BooleanDisplayOptions,
+  type NumberFieldOptions,
+  type DateFieldOptions,
+  type BooleanFieldOptions,
 } from '@auxx/lib/field-values/client'
 import type {
   ColumnFormatting,
@@ -124,7 +124,7 @@ export function renderDateValue(
       return <CellPadding expandDirection="horizontal">{String(value)}</CellPadding>
     }
 
-    const opts = config?.options as DateDisplayOptions | undefined
+    const opts = config?.options as DateFieldOptions | undefined
     // Column formatting takes precedence over field.options
     const dateFormat = formatting?.format ?? opts?.format ?? 'medium'
     const includeTime = formatting?.includeTime ?? opts?.includeTime ?? false
@@ -166,7 +166,7 @@ export function renderTimeValue(value: unknown, config?: CellConfig): React.Reac
     if (isNaN(date.getTime())) {
       return <CellPadding expandDirection="horizontal">{String(value)}</CellPadding>
     }
-    const opts = config?.options as DateDisplayOptions | undefined
+    const opts = config?.options as DateFieldOptions | undefined
     const timeFormat = opts?.timeFormat ?? '12h'
     const formatStr = timeFormat === '24h' ? 'HH:mm' : 'h:mm a'
     return <CellPadding expandDirection="horizontal">{format(date, formatStr)}</CellPadding>
@@ -195,7 +195,7 @@ export function renderNumberValue(
     )
   }
 
-  const opts = config?.options as NumberDisplayOptions | undefined
+  const opts = config?.options as NumberFieldOptions | undefined
   // Column formatting takes precedence over field.options
   const decimalPlaces = formatting?.decimalPlaces ?? opts?.decimals ?? 2
   const useGrouping = formatting?.useGrouping ?? opts?.useGrouping ?? true
@@ -318,7 +318,7 @@ export function renderUrlValue(value: unknown): React.ReactNode {
  * Render checkbox/boolean value with options from field.options (flat structure)
  */
 export function renderCheckboxValue(value: unknown, config?: CellConfig): React.ReactNode {
-  const opts = config?.options as BooleanDisplayOptions | undefined
+  const opts = config?.options as BooleanFieldOptions | undefined
   const checkboxStyle = opts?.checkboxStyle ?? 'icon-text'
   const trueLabel = opts?.trueLabel ?? 'True'
   const falseLabel = opts?.falseLabel ?? 'False'

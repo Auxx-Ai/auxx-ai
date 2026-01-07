@@ -9,12 +9,12 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { FieldGroup, Field, FieldLabel } from '@auxx/ui/components/field'
-import type { DateDisplayOptions } from '@auxx/lib/field-values/client'
+import type { DateFieldOptions } from '@auxx/lib/field-values/client'
 
 /** Props for DateTimeFormattingEditor */
 interface DateTimeFormattingEditorProps {
-  options: DateDisplayOptions
-  onChange: (options: DateDisplayOptions) => void
+  options: DateFieldOptions
+  onChange: (options: DateFieldOptions) => void
 }
 
 /**
@@ -22,7 +22,7 @@ interface DateTimeFormattingEditorProps {
  * Controls date format preset. Time is always included for DATETIME fields.
  */
 export function DateTimeFormattingEditor({ options, onChange }: DateTimeFormattingEditorProps) {
-  const current: DateDisplayOptions = {
+  const current: DateFieldOptions = {
     format: options.format ?? 'medium',
     includeTime: true, // Always true for DATETIME
   }
@@ -34,7 +34,7 @@ export function DateTimeFormattingEditor({ options, onChange }: DateTimeFormatti
         <Select
           value={current.format ?? 'medium'}
           onValueChange={(v) =>
-            onChange({ ...current, format: v as DateDisplayOptions['format'] })
+            onChange({ ...current, format: v as DateFieldOptions['format'] })
           }>
           <SelectTrigger>
             <SelectValue placeholder="Select date format" />

@@ -9,12 +9,12 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { FieldGroup, Field, FieldLabel } from '@auxx/ui/components/field'
-import type { NumberDisplayOptions } from '@auxx/lib/field-values/client'
+import type { NumberFieldOptions } from '@auxx/lib/field-values/client'
 
 /** Props for NumberFormattingEditor */
 interface NumberFormattingEditorProps {
-  options: NumberDisplayOptions
-  onChange: (options: NumberDisplayOptions) => void
+  options: NumberFieldOptions
+  onChange: (options: NumberFieldOptions) => void
 }
 
 /**
@@ -22,7 +22,7 @@ interface NumberFormattingEditorProps {
  * Controls decimal places, grouping, display format, prefix/suffix.
  */
 export function NumberFormattingEditor({ options, onChange }: NumberFormattingEditorProps) {
-  const current: NumberDisplayOptions = {
+  const current: NumberFieldOptions = {
     decimals: options.decimals ?? 0,
     useGrouping: options.useGrouping ?? true,
     displayAs: options.displayAs ?? 'number',
@@ -70,7 +70,7 @@ export function NumberFormattingEditor({ options, onChange }: NumberFormattingEd
         <Select
           value={current.displayAs ?? 'number'}
           onValueChange={(v) =>
-            onChange({ ...current, displayAs: v as NumberDisplayOptions['displayAs'] })
+            onChange({ ...current, displayAs: v as NumberFieldOptions['displayAs'] })
           }>
           <SelectTrigger>
             <SelectValue />
