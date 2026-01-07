@@ -138,6 +138,84 @@ export const displayOptionsSchema = z.object({
 export type DisplayOptions = z.infer<typeof displayOptionsSchema>
 
 // =============================================================================
+// FIELD TYPE → DISPLAY OPTIONS MAPPING
+// =============================================================================
+
+/**
+ * Maps each field type to its supported display option keys.
+ * This is the SINGLE place to define which options each field type supports.
+ *
+ * To add a new option:
+ * 1. Add it to displayOptionsSchema above
+ * 2. Add the key to the relevant field type(s) below
+ * That's it!
+ */
+export const FIELD_TYPE_DISPLAY_OPTIONS: Partial<Record<string, (keyof DisplayOptions)[]>> = {
+  [FieldTypeEnum.NUMBER]: ['decimals', 'useGrouping', 'displayAs', 'prefix', 'suffix'],
+  [FieldTypeEnum.DATE]: ['format'],
+  [FieldTypeEnum.DATETIME]: ['format', 'timeFormat', 'includeTime'],
+  [FieldTypeEnum.TIME]: ['format', 'timeFormat'],
+  [FieldTypeEnum.CHECKBOX]: ['checkboxStyle', 'trueLabel', 'falseLabel'],
+  [FieldTypeEnum.PHONE_INTL]: ['phoneFormat'],
+}
+
+/**
+ * Check if a field type supports display options
+ */
+export function supportsDisplayOptions(fieldType: string): boolean {
+  return fieldType in FIELD_TYPE_DISPLAY_OPTIONS
+}
+
+/**
+ * Get the display option keys supported by a field type
+ */
+export function getDisplayOptionKeys(fieldType: string): (keyof DisplayOptions)[] {
+  return FIELD_TYPE_DISPLAY_OPTIONS[fieldType] ?? []
+}
+
+/**
+ * Type guard to check if options object is a DisplayOptions (not SelectOption[], file, or currency)
+ */
+export function isDisplayOptions(options: unknown): options is DisplayOptions {
+  if (!options || typeof options !== 'object') return false
+  if (Array.isArray(options)) return false
+  if ('file' in options) return false
+  if ('currency' in options) return false
+  return true
+}
+
+/**
+ * Merge display options into field options, only copying keys that are:
+ * 1. Supported by the field type
+ * 2. Not undefined in the source options
+ *
+ * @param fieldType - The field type
+ * @param displayOpts - The display options to merge from
+ * @param fieldOptions - The field options object to merge into
+ * @returns The merged field options
+ */
+export function mergeDisplayOptions(
+  fieldType: string,
+  displayOpts: DisplayOptions | undefined,
+  fieldOptions: Record<string, unknown>
+): Record<string, unknown> {
+  if (!displayOpts || !supportsDisplayOptions(fieldType)) {
+    return fieldOptions
+  }
+
+  const allowedKeys = getDisplayOptionKeys(fieldType)
+  const merged = { ...fieldOptions }
+
+  for (const key of allowedKeys) {
+    if (displayOpts[key] !== undefined) {
+      merged[key] = displayOpts[key]
+    }
+  }
+
+  return merged
+}
+
+// =============================================================================
 // FIELD OPTIONS UNION (for tRPC and service layer)
 // =============================================================================
 

@@ -31,12 +31,9 @@ import { useTableContext } from '../context/table-context'
 import { EditColumnLabelDialog } from './edit-column-label-dialog'
 import { EditColumnFormattingDialog } from './edit-column-formatting-dialog'
 import type { Header } from '@tanstack/react-table'
-import type {
-  ExtendedColumnDef,
-  ColumnFormatting,
-  FormattableFieldType,
-  FORMATTABLE_FIELD_TYPES,
-} from '../types'
+import type { ExtendedColumnDef, ColumnFormatting, FormattableFieldType } from '../types'
+import { FORMATTABLE_FIELD_TYPES } from '../types'
+
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 
 interface HeaderCellProps<TData> {
@@ -92,7 +89,7 @@ function HeaderCellOptionsDropdown<TData>({
   // Check if this column supports formatting
   const fieldType = columnDef.fieldType
   const isFormattable =
-    fieldType && ['CURRENCY', 'DATE', 'DATETIME', 'TIME', 'NUMBER'].includes(fieldType)
+    fieldType && (FORMATTABLE_FIELD_TYPES as readonly string[]).includes(fieldType)
 
   return (
     <DropdownMenu>

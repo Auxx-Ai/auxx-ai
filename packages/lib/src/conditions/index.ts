@@ -16,6 +16,7 @@ export {
   dateFormattingSchema,
   numberFormattingSchema,
   phoneFormattingSchema,
+  checkboxFormattingSchema,
 } from './view-config'
 
 export type {
@@ -28,4 +29,5 @@ export type {
   DateColumnFormatting,
   NumberColumnFormatting,
   PhoneColumnFormatting,
+  CheckboxColumnFormatting,
 } from './view-config'

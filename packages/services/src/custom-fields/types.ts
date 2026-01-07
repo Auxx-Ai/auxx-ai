@@ -32,6 +32,11 @@ export {
   // Display options (flat structure for NUMBER, DATE, CHECKBOX, etc.)
   displayOptionsSchema,
   type DisplayOptions,
+  FIELD_TYPE_DISPLAY_OPTIONS,
+  supportsDisplayOptions,
+  getDisplayOptionKeys,
+  isDisplayOptions,
+  mergeDisplayOptions,
   // Field options union
   fieldOptionsUnionSchema,
   // Relationship types

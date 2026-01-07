@@ -26,11 +26,13 @@ import {
   DateTimeFormattingEditor,
   TimeFormattingEditor,
   PhoneFormattingEditor,
+  BooleanFormattingEditor,
 } from '~/components/custom-fields/ui/formatting-editors'
 import type {
   NumberFieldOptions,
   DateFieldOptions,
   PhoneFieldOptions,
+  BooleanFieldOptions,
 } from '@auxx/lib/field-values/client'
 import type {
   ColumnFormatting,
@@ -38,6 +40,7 @@ import type {
   DateColumnFormatting,
   NumberColumnFormatting,
   PhoneColumnFormatting,
+  CheckboxColumnFormatting,
   FormattableFieldType,
 } from '../types'
 
@@ -106,6 +109,29 @@ function phoneDisplayOptionsToColumn(opts: PhoneFieldOptions): PhoneColumnFormat
   return {
     type: 'phone',
     phoneFormat: opts.phoneFormat ?? 'national',
+  }
+}
+
+/**
+ * Convert CheckboxColumnFormatting to BooleanFieldOptions
+ */
+function columnToCheckboxDisplayOptions(formatting: CheckboxColumnFormatting | null): BooleanFieldOptions {
+  return {
+    checkboxStyle: formatting?.checkboxStyle ?? 'icon-text',
+    trueLabel: formatting?.trueLabel ?? 'True',
+    falseLabel: formatting?.falseLabel ?? 'False',
+  }
+}
+
+/**
+ * Convert BooleanFieldOptions to CheckboxColumnFormatting
+ */
+function checkboxDisplayOptionsToColumn(opts: BooleanFieldOptions): CheckboxColumnFormatting {
+  return {
+    type: 'checkbox',
+    checkboxStyle: opts.checkboxStyle ?? 'icon-text',
+    trueLabel: opts.trueLabel ?? 'True',
+    falseLabel: opts.falseLabel ?? 'False',
   }
 }
 
@@ -201,6 +227,12 @@ export function EditColumnFormattingDialog({
           <PhoneFormattingEditor
             options={columnToPhoneDisplayOptions(formatting as PhoneColumnFormatting | null)}
             onChange={(opts) => setFormatting(phoneDisplayOptionsToColumn(opts))}
+          />
+        )}
+        {fieldType === 'CHECKBOX' && (
+          <BooleanFormattingEditor
+            options={columnToCheckboxDisplayOptions(formatting as CheckboxColumnFormatting | null)}
+            onChange={(opts) => setFormatting(checkboxDisplayOptionsToColumn(opts))}
           />
         )}
 

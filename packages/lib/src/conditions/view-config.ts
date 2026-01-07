@@ -39,12 +39,21 @@ export const phoneFormattingSchema = z.object({
   phoneFormat: z.enum(['raw', 'national', 'international']).optional(),
 })
 
+/** Checkbox formatting schema */
+export const checkboxFormattingSchema = z.object({
+  type: z.literal('checkbox'),
+  checkboxStyle: z.enum(['icon', 'text', 'icon-text']).optional(),
+  trueLabel: z.string().optional(),
+  falseLabel: z.string().optional(),
+})
+
 /** Combined column formatting schema */
 export const columnFormattingSchema = z.union([
   currencyFormattingSchema,
   dateFormattingSchema,
   numberFormattingSchema,
   phoneFormattingSchema,
+  checkboxFormattingSchema,
 ])
 
 // ============================================================================
@@ -98,6 +107,7 @@ export type CurrencyColumnFormatting = z.infer<typeof currencyFormattingSchema>
 export type DateColumnFormatting = z.infer<typeof dateFormattingSchema>
 export type NumberColumnFormatting = z.infer<typeof numberFormattingSchema>
 export type PhoneColumnFormatting = z.infer<typeof phoneFormattingSchema>
+export type CheckboxColumnFormatting = z.infer<typeof checkboxFormattingSchema>
 export type ColumnFormatting = z.infer<typeof columnFormattingSchema>
 export type KanbanColumnSettings = z.infer<typeof kanbanColumnSettingsSchema>
 export type KanbanViewConfig = z.infer<typeof kanbanConfigSchema>

@@ -14,6 +14,9 @@ import {
   type CurrencyOptions,
   type FileOptions,
   type DisplayOptions,
+  supportsDisplayOptions,
+  isDisplayOptions,
+  mergeDisplayOptions,
 } from './types'
 import { checkExistingDuplicates } from './check-unique-value'
 
@@ -158,30 +161,8 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
     }
 
     // Handle flat display options for CHECKBOX, NUMBER, DATE, DATETIME, TIME, PHONE_INTL
-    if (
-      fieldType === FieldTypeEnum.CHECKBOX ||
-      fieldType === FieldTypeEnum.NUMBER ||
-      fieldType === FieldTypeEnum.DATE ||
-      fieldType === FieldTypeEnum.DATETIME ||
-      fieldType === FieldTypeEnum.TIME ||
-      fieldType === FieldTypeEnum.PHONE_INTL
-    ) {
-      if (options !== undefined && !Array.isArray(options) && !('file' in options) && !('currency' in options)) {
-        // Merge flat display options directly into fieldOptions
-        const displayOpts = options as DisplayOptions
-        if (displayOpts.checkboxStyle !== undefined) fieldOptions.checkboxStyle = displayOpts.checkboxStyle
-        if (displayOpts.trueLabel !== undefined) fieldOptions.trueLabel = displayOpts.trueLabel
-        if (displayOpts.falseLabel !== undefined) fieldOptions.falseLabel = displayOpts.falseLabel
-        if (displayOpts.decimals !== undefined) fieldOptions.decimals = displayOpts.decimals
-        if (displayOpts.useGrouping !== undefined) fieldOptions.useGrouping = displayOpts.useGrouping
-        if (displayOpts.displayAs !== undefined) fieldOptions.displayAs = displayOpts.displayAs
-        if (displayOpts.prefix !== undefined) fieldOptions.prefix = displayOpts.prefix
-        if (displayOpts.suffix !== undefined) fieldOptions.suffix = displayOpts.suffix
-        if (displayOpts.format !== undefined) fieldOptions.format = displayOpts.format
-        if (displayOpts.timeFormat !== undefined) fieldOptions.timeFormat = displayOpts.timeFormat
-        if (displayOpts.includeTime !== undefined) fieldOptions.includeTime = displayOpts.includeTime
-        if (displayOpts.phoneFormat !== undefined) fieldOptions.phoneFormat = displayOpts.phoneFormat
-      }
+    if (supportsDisplayOptions(fieldType) && options !== undefined && isDisplayOptions(options)) {
+      Object.assign(fieldOptions, mergeDisplayOptions(fieldType, options, {}))
     }
 
     updatedOptions = fieldOptions
