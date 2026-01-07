@@ -74,7 +74,7 @@ export function TableBody<TData extends object>({
           <ColumnDndProvider table={table} visibleColumns={visibleColumns}>
             <div
               className={cn(
-                'sticky z-21 min-w-full from-white to-white/50 bg-gradient-to-b dark:from-primary-100 dark:to-primary-100/50 backdrop-blur border-b border-primary-200/50',
+                'sticky z-21 min-w-full from-white to-white/50 bg-gradient-to-b dark:from-[#2c313a] dark:to-[#2c313a] backdrop-blur border-b border-primary-200/50 dark:border-[#1e2227]',
                 hideToolbar ? 'top-0' : 'top-11'
               )}>
               {table.getHeaderGroups().map((headerGroup) => (
@@ -92,7 +92,7 @@ export function TableBody<TData extends object>({
                       return (
                         <div
                           key={header.id}
-                          className="sticky shrink-0 z-30 backdrop-blur bg-background/40"
+                          className="sticky shrink-0 z-30 backdrop-blur bg-background/40 dark:bg-transparent"
                           style={{ left: header.column.getStart('left') }}>
                           <HeaderCellWrapper header={header} />
                         </div>

@@ -12,7 +12,7 @@ const inputVariants = cva(
     variants: {
       variant: {
         default:
-          'h-8 border-primary-200 focus:border-primary-300 bg-primary-50 dark:bg-primary-100 focus:ring-primary-400 placeholder:text-primary-500',
+          'h-8 border-primary-200 dark:border-[#2c313a] focus:border-primary-300 bg-primary-50 dark:bg-[#1e2227] focus:ring-primary-400 placeholder:text-primary-500',
         secondary: 'bg-muted/50 hover:bg-muted focus-visible:bg-muted focus-visible:ring-0',
         transparent:
           'h-9 border-none bg-transparent shadow-none focus-visible:ring-0 placeholder:text-primary-400',

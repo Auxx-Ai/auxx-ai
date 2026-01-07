@@ -46,7 +46,7 @@ export function HeaderCellWrapper<TData>({ header }: HeaderCellWrapperProps<TDat
         aria-describedby="header-tooltip">
         <div
           className={cn(
-            header.index === 0 ? '' : 'border-l border-foreground-200/80',
+            header.index === 0 ? '' : 'border-l border-foreground-200/80 dark:border-foreground/10',
             'pr-3 h-full relative py-1 w-full'
           )}>
           {header.isPlaceholder ? null : <HeaderCell header={header} isDragging={isDragging} />}

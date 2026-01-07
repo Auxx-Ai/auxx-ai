@@ -101,7 +101,7 @@ function HeaderCellOptionsDropdown<TData>({
           variant="ghost"
           size="icon"
           className={cn(
-            'flex-none inline-flex items-center justify-center rounded-md text-sm transition-colors font-medium disabled:pointer-events-none disabled:opacity-60 disabled:bg-primary-50 gap-2 relative bg-primary-100 hover:bg-primary-200 p-0 size-5'
+            'flex-none inline-flex items-center justify-center rounded-md text-sm transition-colors font-medium disabled:pointer-events-none disabled:opacity-60 disabled:bg-primary-50 gap-2 relative bg-primary-100 dark:bg-background dark:text-sidebar-foreground hover:bg-primary-200 p-0 size-5'
           )}
           aria-label={`Sort options for ${headerContent}`}>
           <ChevronDown className="size-3 flex-none" />
@@ -303,7 +303,7 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
           />
         </div>
       )}
-      <div className="font-medium text-xs pl-3 flex text-zinc-600 select-none z-10">
+      <div className="font-medium text-xs pl-3 flex text-zinc-600 dark:text-sidebar-foreground select-none z-10">
         <div className="header-title w-full truncate flex items-center gap-1">
           {/* Column type icon */}
           {Icon && <Icon className="mr-1 inline-block size-3 text-zinc-400" />}
@@ -318,7 +318,7 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
                 <Button
                   variant="ghost"
                   size="icon-xs"
-                  className="ml-1 bg-primary-100 hover:bg-primary-200 size-5 rounded-md"
+                  className="ml-1 bg-primary-100 dark:bg-background hover:bg-primary-200 size-5 rounded-md"
                   onClick={(e) => {
                     e.stopPropagation()
                     onAddNew()

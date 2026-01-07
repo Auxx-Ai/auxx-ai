@@ -20,7 +20,7 @@ function SidebarSecondary({ items, baseUrl, title, current }: Props) {
 
   return (
     // <div className='flex h-full min-h-screen w-[16rem] overflow-auto border-r bg-sidebar text-sidebar-foreground'>
-    <div className="flex md:w-[16rem] overflow-auto md:border-r bg-neutral-50 dark:bg-primary-100 text-sidebar-foreground">
+    <div className="flex md:w-[16rem] overflow-auto md:border-r bg-neutral-50 dark:bg-sidebar text-sidebar-foreground">
       <div className="flex w-full flex-col">
         {/* Mobile toggle button */}
         {isMobile && (
@@ -92,12 +92,12 @@ function createSidebarGroup(
               href={`${baseUrl}/${item.slug}`}
               data-active={item.slug == current}
               className={cn(
-                'peer/menu-button flex h-7 w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-hidden ring-sidebar-ring text-neutral-500',
-                'transition-[width,height,padding] hover:bg-black/5 dark:hover:bg-primary-100 hover:text-foreground focus-visible:ring-2',
-                'active:bg-black/5 dark:active:bg-primary-200 active:text-foreground disabled:pointer-events-none disabled:opacity-50',
+                'peer/menu-button flex h-7 w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-hidden ring-sidebar-ring text-neutral-500 dark:text-sidebar-foreground',
+                'transition-[width,height,padding] hover:bg-black/5 dark:hover:bg-sidebar-accent hover:text-foreground dark:hover:text-sidebar-accent-foreground focus-visible:ring-2',
+                'active:bg-black/5 dark:active:bg-sidebar-accent active:text-foreground disabled:pointer-events-none disabled:opacity-50',
                 'group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50',
-                'data-[active=true]:bg-black/5 dark:data-[active=true]:bg-primary-200 dark:data-[active=true]:hover:bg-primary-300/60 data-[active=true]:text-foreground',
-                'data-[state=open]:hover:bg-black/5 data-[state=open]:hover:text-foreground',
+                'data-[active=true]:bg-black/5 dark:data-[active=true]:bg-sidebar-accent dark:data-[active=true]:hover:bg-sidebar-accent data-[active=true]:text-foreground',
+                'data-[state=open]:hover:bg-black/5 data-[state=open]:hover:text-foreground ',
                 'group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0'
               )}>
               {item.icon}
