@@ -154,7 +154,7 @@ export function normalizeRelationshipValue(value: unknown): RelationshipFieldVal
 
 /**
  * Convert raw value to RelationshipFieldValueInput for mutations.
- * Delegates from convertToTypedInput() in value-converter.ts.
+ * Used by relationshipConverter in converters/relationship.ts.
  */
 export function convertRawToRelationshipInput(
   obj: unknown

@@ -1,13 +1,18 @@
 // apps/web/src/components/fields/inputs/relationship-input-field.tsx
 
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { usePropertyContext } from '../property-provider'
 import { useFieldNavigationOptional } from '../field-navigation-context'
-import { useRelationship } from '~/components/resources'
+import {
+  useRelationship,
+  useResourceProvider,
+  buildRelationshipKey,
+  getRelationshipStoreState,
+} from '~/components/resources'
 import { useResourceIdFromField } from '../hooks/use-resource-id-from-field'
 import { extractRelationshipData } from '@auxx/lib/field-values/client'
 import { api } from '~/trpc/react'
-import { Check } from 'lucide-react'
+import { Check, Plus } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import {
   Command,
@@ -16,10 +21,13 @@ import {
   CommandItem,
   CommandList,
   CommandSeparator,
+  CommandGroup,
 } from '@auxx/ui/components/command'
 import { cn } from '@auxx/ui/lib/utils'
-import type { ResourcePickerItem } from '@auxx/lib/resources/client'
-
+import { isCustomResource, type ResourcePickerItem, type ResourceField } from '@auxx/lib/resources/client'
+import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
+import type { FieldType } from '@auxx/database/types'
+import { transformResourceFieldToCustomField } from '~/components/custom-fields/context/entity-records-context'
 /**
  * Input component for RELATIONSHIP field type
  * Displays an inline searchable list with selected items at top.
@@ -33,10 +41,6 @@ export function RelationshipInputField() {
   const { value, field, commitValue, onBeforeClose } = usePropertyContext()
   const nav = useFieldNavigationOptional()
   const [search, setSearch] = useState('')
-
-  // Debug logging
-  console.log('[RelationshipInputField] field.options:', field.options)
-
   // Capture keys while open (list uses arrows)
   useEffect(() => {
     nav?.setPopoverCapturing(true)
@@ -79,6 +83,51 @@ export function RelationshipInputField() {
   // Determine resourceId using hook - returns { tableId, entityDefinitionId? } or null
   const resourceRef = useResourceIdFromField(field)
 
+  // Dialog state for inline create
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+
+  // Get resource by ID to determine label and if inline create is supported
+  const { getResourceById } = useResourceProvider()
+
+  // Get the related resource for label and inline create capability
+  const relatedResource = useMemo(() => {
+    if (!resourceRef) return null
+    return getResourceById(resourceRef.tableId)
+  }, [resourceRef, getResourceById])
+
+  // Only custom resources support inline create (system resources have dedicated flows)
+  const canInlineCreate = relatedResource && isCustomResource(relatedResource)
+
+  // Build entity definition for the create dialog (only for custom resources)
+  const entityDefinitionForDialog = useMemo(() => {
+    if (!relatedResource || !isCustomResource(relatedResource)) return null
+
+    // Transform fields to CustomField format
+    // Type cast needed: CustomField.type is string but compatible with FieldType values
+    const fields = relatedResource.fields
+      .filter((f): f is ResourceField & { id: string } => !!f.id)
+      .map((field, index) => transformResourceFieldToCustomField(field, index))
+
+    return {
+      id: relatedResource.entityDefinitionId,
+      singular: relatedResource.label,
+      plural: relatedResource.plural,
+      icon: relatedResource.icon,
+      color: relatedResource.color,
+      customFields: fields as unknown as Array<{
+        id: string
+        name: string
+        type: FieldType
+        description?: string | null
+        required?: boolean | null
+        position?: number | null
+        active?: boolean | null
+        defaultValue?: string | null
+        options?: unknown
+      }>,
+    }
+  }, [relatedResource])
+
   // For useRelationship, use tableId directly (either system resource or UUID, no prefix needed)
   const resourceIdForHydration = useMemo(() => {
     if (!resourceRef) return null
@@ -101,11 +150,10 @@ export function RelationshipInputField() {
     return map
   }, [selectedIdsArray, hydratedSelectedItems])
 
-  // Always fetch search results - pass either tableId or apiSlug
+  // Always fetch search results
   const { data: searchResults, isLoading } = api.resource.search.useQuery(
     {
-      tableId: resourceRef?.tableId,
-      apiSlug: resourceRef?.apiSlug,
+      tableId: resourceRef?.tableId ?? '',
       search,
       limit: 20,
     },
@@ -206,6 +254,60 @@ export function RelationshipInputField() {
     setCurrentSelectedIds(newSelected)
   }
 
+  /**
+   * Open the create dialog for inline entity creation
+   */
+  const handleOpenCreateDialog = () => {
+    setIsCreateDialogOpen(true)
+  }
+
+  // Get tRPC utils for fetching
+  const utils = api.useUtils()
+
+  /**
+   * Handle newly created entity instance
+   * - Fetches the new item for hydration
+   * - Adds to relationship store
+   * - Selects the new item
+   * - Closes the dialog
+   */
+  const handleCreatedInstance = useCallback(
+    async (instanceId: string) => {
+      if (!resourceRef) return
+
+      try {
+        // Fetch the newly created item to get display info
+        const newItem = await utils.resource.getById.fetch({
+          tableId: resourceRef.tableId,
+          id: instanceId,
+        })
+
+        if (newItem) {
+          // Add to relationship store for immediate hydration
+          const key = buildRelationshipKey(resourceRef.tableId, instanceId)
+          getRelationshipStoreState().addHydratedItems({ [key]: newItem })
+        }
+      } catch (error) {
+        // Non-critical: item will be fetched on next hydration cycle
+        console.warn('Failed to fetch newly created item:', error)
+      }
+
+      // Select the new item
+      if (isSingleSelect) {
+        setCurrentSelectedIds(new Set([instanceId]))
+      } else {
+        setCurrentSelectedIds((prev) => new Set([...prev, instanceId]))
+      }
+
+      // Update initial selected IDs to keep item in "Selected Items" section
+      setInitialSelectedIds((prev) => new Set([...prev, instanceId]))
+
+      // Close dialog
+      setIsCreateDialogOpen(false)
+    },
+    [resourceRef, isSingleSelect, utils]
+  )
+
   if (!resourceRef) {
     return <span className="text-muted-foreground p-2">Invalid relationship config</span>
   }
@@ -222,7 +324,7 @@ export function RelationshipInputField() {
 
           {/* Selected Items Section */}
           {hasSelectedSection && (
-            <div className="p-1" aria-label="Selected Items">
+            <CommandGroup aria-label="Selected Items">
               {initiallySelectedItems.map((item) => (
                 <CommandItem
                   key={item.id}
@@ -243,13 +345,13 @@ export function RelationshipInputField() {
                   </div>
                   <Check
                     className={cn(
-                      'h-4 w-4',
+                      'size-4',
                       currentSelectedIds.has(item.id) ? 'opacity-100' : 'opacity-0'
                     )}
                   />
                 </CommandItem>
               ))}
-            </div>
+            </CommandGroup>
           )}
 
           {/* Separator between sections */}
@@ -257,7 +359,7 @@ export function RelationshipInputField() {
 
           {/* Available Items Section */}
           {hasResultsSection && (
-            <div className="p-1" aria-label="Results">
+            <CommandGroup aria-label="Available Items">
               {availableItems.map((item) => (
                 <CommandItem
                   key={item.id}
@@ -284,10 +386,32 @@ export function RelationshipInputField() {
                   />
                 </CommandItem>
               ))}
-            </div>
+            </CommandGroup>
+          )}
+          {/* Create Option (only for custom resources) */}
+          {canInlineCreate && (
+            <>
+              {(hasSelectedSection || hasResultsSection) && <CommandSeparator />}
+              <CommandGroup aria-label="Create">
+                <CommandItem onSelect={handleOpenCreateDialog}>
+                  <Plus />
+                  Create {relatedResource?.label ?? 'Item'}
+                </CommandItem>
+              </CommandGroup>
+            </>
           )}
         </CommandList>
       </Command>
+
+      {/* Inline Create Dialog */}
+      {entityDefinitionForDialog && (
+        <EntityInstanceDialog
+          open={isCreateDialogOpen}
+          onOpenChange={setIsCreateDialogOpen}
+          entityDefinition={entityDefinitionForDialog}
+          onSaved={handleCreatedInstance}
+        />
+      )}
     </div>
   )
 }

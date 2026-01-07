@@ -13,10 +13,9 @@ import {
 import { Button } from '@auxx/ui/components/button'
 import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
 import { FieldInputRow } from './field-input-row'
-import { toastError } from '@auxx/ui/components/toast'
-import { api } from '~/trpc/react'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
 import { useDirtyCheck } from '~/hooks/use-dirty-state'
+import { useSaveFieldValue } from '~/hooks/use-save-field-value'
 import type { FieldType } from '@auxx/database/types'
 
 /**
@@ -32,6 +31,7 @@ interface CustomFieldDef {
   active?: boolean | null
   defaultValue?: string | null
   options?: unknown
+  isUnique?: boolean | null
 }
 
 /**
@@ -159,8 +159,14 @@ export function BulkUpdateEntityInstanceDialog({
   entityDefinition,
   onSaved,
 }: BulkUpdateEntityInstanceDialogProps) {
-  const utils = api.useUtils()
   const instanceCount = selectedInstances.length
+
+  // Use hook for store-synced bulk updates
+  const { saveBulkMultipleFields } = useSaveFieldValue({
+    resourceType: 'entity',
+    entityDefId: entityDefinition.id,
+    modelType: 'entity',
+  })
 
   // Field values state: { fieldId: value }
   const [values, setValues] = useState<Record<string, unknown>>({})
@@ -210,15 +216,6 @@ export function BulkUpdateEntityInstanceDialog({
     }
   }, [open, selectedInstances, sortedFields, setInitial])
 
-  // Bulk set values mutation
-  const bulkSetValues = api.fieldValue.setBulk.useMutation({
-    onError: (error) => {
-      toastError({ title: 'Failed to update values', description: error.message })
-    },
-  })
-
-  const isPending = bulkSetValues.isPending
-
   /**
    * Handle field value change
    */
@@ -230,37 +227,30 @@ export function BulkUpdateEntityInstanceDialog({
   /**
    * Handle form submission
    * Only submit fields that were explicitly modified
+   * Fire-and-forget: updates store optimistically, closes dialog immediately
    */
-  const handleSubmit = async () => {
-    // Build values array from modified fields only
-    const valuesToSave = Array.from(modifiedFields)
-      .filter((fieldId) => {
-        const value = values[fieldId]
-        return value !== undefined && value !== null && value !== ''
-      })
-      .map((fieldId) => ({ fieldId, value: values[fieldId] }))
+  const handleSubmit = () => {
+    const resourceIds = selectedInstances.map((i) => i.id)
 
-    if (valuesToSave.length === 0) {
-      // Nothing to update
+    // Build field values array with types
+    const fieldValues = Array.from(modifiedFields)
+      .map((fieldId) => {
+        const field = sortedFields.find((f) => f.id === fieldId)
+        const value = values[fieldId]
+        return { fieldId, value, fieldType: field?.type }
+      })
+      .filter((fv) => fv.value !== undefined && fv.value !== null && fv.value !== '')
+
+    if (fieldValues.length === 0) {
       onOpenChange(false)
       return
     }
 
-    try {
-      await bulkSetValues.mutateAsync({
-        resourceIds: selectedInstances.map((i) => i.id),
-        values: valuesToSave,
-        modelType: 'entity',
-      })
+    // Fire-and-forget: updates store optimistically, API call runs in background
+    saveBulkMultipleFields(resourceIds, fieldValues)
 
-      // Invalidate queries
-      await utils.entityInstance.list.invalidate()
-
-      onSaved?.()
-      onOpenChange(false)
-    } catch {
-      // Errors handled by mutation onError
-    }
+    onSaved?.()
+    onOpenChange(false)
   }
 
   /**
@@ -289,16 +279,22 @@ export function BulkUpdateEntityInstanceDialog({
           </DialogHeader>
 
           <VarEditorField className="p-0">
-            {sortedFields.map((field) => (
-              <FieldInputRow
-                key={field.id}
-                field={field}
-                value={values[field.id] ?? ''}
-                onChange={handleFieldChange}
-                disabled={isPending}
-                placeholder={getPlaceholder(field.id)}
-              />
-            ))}
+            {sortedFields.map((field) => {
+              // Disable unique fields when editing multiple instances (would violate uniqueness)
+              const isUniqueDisabled = field.isUnique && instanceCount > 1
+              return (
+                <FieldInputRow
+                  key={field.id}
+                  field={isUniqueDisabled
+                    ? { ...field, description: 'Unique fields cannot be bulk edited' }
+                    : field}
+                  value={values[field.id] ?? ''}
+                  onChange={handleFieldChange}
+                  placeholder={getPlaceholder(field.id)}
+                  disabled={isUniqueDisabled}
+                />
+              )
+            })}
           </VarEditorField>
 
           {sortedFields.length === 0 && (
@@ -312,16 +308,13 @@ export function BulkUpdateEntityInstanceDialog({
               type="button"
               size="sm"
               variant="ghost"
-              onClick={guardedClose}
-              disabled={isPending}>
+              onClick={guardedClose}>
               Cancel
             </Button>
             <Button
               size="sm"
               variant="outline"
               onClick={handleSubmit}
-              loading={isPending}
-              loadingText="Updating..."
               disabled={sortedFields.length === 0 || modifiedFields.size === 0}>
               Update {instanceCount} {instanceCount === 1 ? entityDefinition.singular : entityDefinition.plural}
             </Button>

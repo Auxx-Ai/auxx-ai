@@ -12,23 +12,48 @@ import type {
   RelationshipFieldValue,
 } from '@auxx/types/field-value'
 import type { SelectOption } from '@auxx/types/custom-field'
+import type { FieldValueRow } from './types'
 
-// Re-export converter utilities for client use (now includes rowToTypedValue)
+// NEW: Centralized Formatter API (preferred)
 export {
-  convertToTypedInput,
-  getDisplayValue,
-  rowToTypedValue,
-  type FieldValueRow,
-} from './value-converter'
+  formatToTypedInput,
+  formatToRawValue,
+  formatToDisplayValue,
+  isMultiValueFieldType,
+  extractValues,
+  isValueEmpty,
+  areValuesEqual,
+  type ConverterOptions,
+  type FieldOptions,
+  type DisplayOptions,
+  type TextDisplayOptions,
+  type NumberDisplayOptions,
+  type CurrencyDisplayOptions,
+  type BooleanDisplayOptions,
+  type DateDisplayOptions,
+  type SelectDisplayOptions,
+} from './formatter'
 
-// Re-export relationship field utilities for client use
+// Converters (for direct access if needed)
+export { converters } from './converters'
+
+// Re-export relationship type guards from converter (centralized location)
+export {
+  isRelationshipFieldValue,
+  isRelationshipFieldValueArray,
+  isRelationshipRawValue,
+  type RelationshipRawValue,
+} from './converters/relationship'
+
+// Row types (for inferTypedValueFromRow)
+export type { FieldValueRow } from './types'
+
+// Legacy relationship field utilities
 export {
   extractRelationshipData,
   normalizeRelationshipValue,
   validateRelationshipValue,
   validateEntityDefinitionId,
-  isRelationshipFieldValue,
-  isRelationshipFieldValueArray,
   convertRawToRelationshipInput,
   type RelationshipData,
 } from './relationship-field'

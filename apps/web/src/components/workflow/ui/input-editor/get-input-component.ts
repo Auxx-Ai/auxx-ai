@@ -14,6 +14,7 @@ import {
   CurrencyInput,
   AddressInput,
   TagsInput,
+  PhoneInput,
 } from '~/components/workflow/nodes/shared/node-inputs'
 
 /**
@@ -28,8 +29,9 @@ export function getInputComponent(type: BaseType) {
     case BaseType.STRING:
     case BaseType.EMAIL:
     case BaseType.URL:
-    case BaseType.PHONE:
       return StringInput
+    case BaseType.PHONE:
+      return PhoneInput
     case BaseType.NUMBER:
       return NumberInput
     case BaseType.BOOLEAN:
@@ -107,8 +109,7 @@ export function getSpecificPropsForType(
     case BaseType.URL:
       return { validationType: 'url' }
 
-    case BaseType.PHONE:
-      return { validationType: 'phone' }
+    // BaseType.PHONE uses dedicated PhoneInput component, no special props needed
 
     case BaseType.ENUM:
       return { options: fieldOptions?.enum || [] }

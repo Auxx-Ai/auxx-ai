@@ -20,8 +20,9 @@ import { ModelTypes } from '@auxx/types/custom-field'
 import DrawerComments from '~/components/global/comments/drawer-comments'
 import { TimelineTab } from '~/components/timeline'
 import { createCustomEntityType } from '@auxx/lib/timeline/client'
-import { getDisplayValue } from '@auxx/lib/field-values/client'
+import { formatToDisplayValue } from '@auxx/lib/field-values/client'
 import type { TypedFieldValue } from '@auxx/types/field-value'
+import { useCustomFieldValue } from '~/stores/custom-field-value-store'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
@@ -86,6 +87,24 @@ export function EntityRecordDrawer({
 
   const { resource, entityDefinitionId, customFields } = useEntityRecords()
 
+  // Get display field IDs
+  const primaryFieldId = resource?.display.primaryDisplayField?.id
+  const secondaryFieldId = resource?.display.secondaryDisplayField?.id
+
+  // Subscribe to store values for display fields (reactive updates when fields change)
+  const primaryStoreValue = useCustomFieldValue(
+    'entity',
+    instance?.id ?? '',
+    primaryFieldId ?? '',
+    entityDefinitionId
+  )
+  const secondaryStoreValue = useCustomFieldValue(
+    'entity',
+    instance?.id ?? '',
+    secondaryFieldId ?? '',
+    entityDefinitionId
+  )
+
   // Counter for focusing comments composer
   const [focusComposerTrigger, setFocusComposerTrigger] = React.useState(0)
 
@@ -104,46 +123,73 @@ export function EntityRecordDrawer({
 
   /**
    * Get display name using primaryDisplayField from resource
-   * Values are now TypedFieldValue format (not legacy { data: x })
+   * Subscribes to store for reactive updates, falls back to preloaded values
    */
   const displayName = React.useMemo(() => {
+    const primaryField = resource?.display.primaryDisplayField
+
+    // First: try store value (reactive updates)
+    if (primaryField?.id && primaryStoreValue !== undefined) {
+      const display = formatToDisplayValue(
+        primaryStoreValue as TypedFieldValue,
+        primaryField.fieldType || 'TEXT'
+      )
+      if (display) return display
+    }
+
+    // Second: try preloaded values from instance
     if (!instance?._originalValues) return null
 
-    // If resource has primaryDisplayField, use that field's value
-    const primaryFieldId = resource?.display.primaryDisplayField?.id
-    if (primaryFieldId) {
-      const primaryValue = instance._originalValues.find((v) => v.fieldId === primaryFieldId)
+    if (primaryField?.id) {
+      const primaryValue = instance._originalValues.find((v) => v.fieldId === primaryField.id)
       if (primaryValue?.value) {
-        // Value is TypedFieldValue - use getDisplayValue
-        const display = getDisplayValue(primaryValue.value as TypedFieldValue)
+        const display = formatToDisplayValue(
+          primaryValue.value as TypedFieldValue,
+          primaryField.fieldType || 'TEXT'
+        )
         if (display) return display
       }
     }
 
-    // Fallback: use first non-empty value
+    // Fallback: use first non-empty value (assume TEXT type for display)
     const firstValue = instance._originalValues.find((v) => {
       if (!v.value) return false
-      const display = getDisplayValue(v.value as TypedFieldValue)
+      const display = formatToDisplayValue(v.value as TypedFieldValue, 'TEXT')
       return display != null && display !== ''
     })
     if (!firstValue) return null
 
-    return getDisplayValue(firstValue.value as TypedFieldValue)
-  }, [instance?._originalValues, resource?.display.primaryDisplayField?.id])
+    return formatToDisplayValue(firstValue.value as TypedFieldValue, 'TEXT')
+  }, [instance?._originalValues, resource?.display.primaryDisplayField, primaryStoreValue])
 
   /**
    * Get secondary display value (optional subtitle)
-   * Values are now TypedFieldValue format (not legacy { data: x })
+   * Subscribes to store for reactive updates, falls back to preloaded values
    */
   const secondaryDisplay = React.useMemo(() => {
-    const secondaryFieldId = resource?.display.secondaryDisplayField?.id
-    if (!instance?._originalValues || !secondaryFieldId) return null
+    const secondaryField = resource?.display.secondaryDisplayField
+    if (!secondaryField?.id) return null
 
-    const secondaryValue = instance._originalValues.find((v) => v.fieldId === secondaryFieldId)
+    // First: try store value (reactive updates)
+    if (secondaryStoreValue !== undefined) {
+      const display = formatToDisplayValue(
+        secondaryStoreValue as TypedFieldValue,
+        secondaryField.fieldType || 'TEXT'
+      )
+      if (display) return display
+    }
+
+    // Second: try preloaded values from instance
+    if (!instance?._originalValues) return null
+
+    const secondaryValue = instance._originalValues.find((v) => v.fieldId === secondaryField.id)
     if (!secondaryValue?.value) return null
 
-    return getDisplayValue(secondaryValue.value as TypedFieldValue)
-  }, [instance?._originalValues, resource?.display.secondaryDisplayField?.id])
+    return formatToDisplayValue(
+      secondaryValue.value as TypedFieldValue,
+      secondaryField.fieldType || 'TEXT'
+    )
+  }, [instance?._originalValues, resource?.display.secondaryDisplayField, secondaryStoreValue])
 
   // Memoize the createdAt text to avoid recalculating on every render
   const createdAtText = React.useMemo(

@@ -15,7 +15,7 @@ import {
   type CurrencyOptions,
   type FileOptions,
 } from './types'
-import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
+import { FieldType as FieldTypeEnum, ModelTypeValues } from '@auxx/database/enums'
 import type { FieldType } from '@auxx/database/types'
 import type { CustomFieldEntity } from '@auxx/database/models'
 
@@ -260,29 +260,17 @@ async function createRelationshipFieldWithInverse(input: {
   let relatedModelType = relationship.relatedModelType
   let relatedEntityDefinitionId = relationship.relatedEntityDefinitionId
 
-  // Handle unified relatedResourceId format (preferred over legacy fields)
+  // Handle relatedResourceId - either a system ModelType or an entityDefinitionId
   if (relatedResourceId) {
-    if (relatedResourceId.startsWith('entity_')) {
-      // Custom entity - need to look up entityDefinitionId by apiSlug
-      const apiSlug = relatedResourceId.replace('entity_', '')
-      const entityDef = await database.query.EntityDefinition.findFirst({
-        where: (defs, { eq, and }) =>
-          and(eq(defs.apiSlug, apiSlug), eq(defs.organizationId, organizationId)),
-      })
+    const isSystemModelType = (ModelTypeValues as readonly string[]).includes(relatedResourceId)
 
-      if (!entityDef) {
-        return err({
-          code: 'NOT_FOUND' as const,
-          message: `Entity definition not found: ${apiSlug}`,
-        })
-      }
-
-      relatedEntityDefinitionId = entityDef.id
-      relatedModelType = null
-    } else {
-      // System resource - relatedResourceId IS the ModelType
+    if (isSystemModelType) {
       relatedModelType = relatedResourceId as ModelType
       relatedEntityDefinitionId = null
+    } else {
+      // It's an entityDefinitionId
+      relatedEntityDefinitionId = relatedResourceId
+      relatedModelType = null
     }
   }
 

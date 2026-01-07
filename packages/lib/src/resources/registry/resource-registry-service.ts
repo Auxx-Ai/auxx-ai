@@ -26,6 +26,7 @@ type CustomFieldRecord = {
   modelType: string
   entityDefinitionId: string | null
   isUnique: boolean
+  sortOrder: string | null
 }
 
 /** EntityDefinition with display field relations and customFields loaded */
@@ -144,9 +145,6 @@ export class ResourceRegistryService {
   // Performance optimization: Cache by apiSlug for fast lookup
   private apiSlugCache: Map<string, CustomResource> = new Map()
 
-  // Performance optimization: Cache entity slug map
-  private entitySlugMap: Map<string, string> | null = null
-
   constructor(organizationId: string, db: Database) {
     this.organizationId = organizationId
     this.db = db
@@ -160,7 +158,6 @@ export class ResourceRegistryService {
     this.fieldCache.clear()
     this.resourceCache.clear()
     this.apiSlugCache.clear()
-    this.entitySlugMap = null
   }
 
   /**
@@ -200,19 +197,13 @@ export class ResourceRegistryService {
       }
     }
 
-    // Build lookup map: entityDefinitionId -> apiSlug (for relationship targetTable resolution)
-    const entityIdToSlug = new Map(entityDefinitions.map((d) => [d.id, d.apiSlug]))
-
     // System resources with merged fields (static registry + organization custom fields)
     const systemResources: SystemResource[] = RESOURCE_TABLE_REGISTRY.map((r) => {
       const tableId = r.id as TableId
       const fieldRegistry = RESOURCE_FIELD_REGISTRY[tableId]
       const staticFields = fieldRegistry ? Object.values(fieldRegistry) : []
       const orgCustomFields = fieldsByModelType.get(tableId) ?? []
-      const customResourceFields = this.mapCustomFieldsToResourceFields(
-        orgCustomFields,
-        entityIdToSlug
-      )
+      const customResourceFields = this.mapCustomFieldsToResourceFields(orgCustomFields)
 
       return {
         ...toSystemResourceBase(tableId),
@@ -226,7 +217,7 @@ export class ResourceRegistryService {
       ...toCustomResourceBase(def),
       fields: [
         ...getEntityInstanceFields(),
-        ...this.mapCustomFieldsToResourceFields(fieldsByEntityId.get(def.id) ?? [], entityIdToSlug),
+        ...this.mapCustomFieldsToResourceFields(fieldsByEntityId.get(def.id) ?? []),
       ],
     }))
 
@@ -260,15 +251,12 @@ export class ResourceRegistryService {
       },
     })
 
-    // Build lookup map for relationship targetTable resolution
-    const entityIdToSlug = new Map(entityDefinitions.map((d) => [d.id, d.apiSlug]))
-
     // Include implicit EntityInstance system fields (id, createdAt, updatedAt) before custom fields
     return (entityDefinitions as EntityDefinitionWithFields[]).map((def) => ({
       ...toCustomResourceBase(def),
       fields: [
         ...getEntityInstanceFields(),
-        ...this.mapCustomFieldsToResourceFields(def.customFields, entityIdToSlug),
+        ...this.mapCustomFieldsToResourceFields(def.customFields),
       ],
     }))
   }
@@ -297,17 +285,13 @@ export class ResourceRegistryService {
 
     if (!entityDef) return null
 
-    // Load all entity definitions for relationship targetTable resolution
-    const entityIdToSlug = await this.getEntitySlugMap()
-
     // Include implicit EntityInstance system fields (id, createdAt, updatedAt) before custom fields
     return {
       ...toCustomResourceBase(entityDef as EntityDefinitionWithFields),
       fields: [
         ...getEntityInstanceFields(),
         ...this.mapCustomFieldsToResourceFields(
-          (entityDef as EntityDefinitionWithFields).customFields,
-          entityIdToSlug
+          (entityDef as EntityDefinitionWithFields).customFields
         ),
       ],
     }
@@ -373,10 +357,8 @@ export class ResourceRegistryService {
         orderBy: (f, { asc }) => [asc(f.sortOrder)],
       })
 
-      const entityIdToSlug = await this.getEntitySlugMap()
       const customResourceFields = this.mapCustomFieldsToResourceFields(
-        customFields as CustomFieldRecord[],
-        entityIdToSlug
+        customFields as CustomFieldRecord[]
       )
 
       resource = {
@@ -404,15 +386,13 @@ export class ResourceRegistryService {
       })
 
       if (entityDef) {
-        const entityIdToSlug = await this.getEntitySlugMap()
         // Include implicit EntityInstance system fields before custom fields
         resource = {
           ...toCustomResourceBase(entityDef as EntityDefinitionWithFields),
           fields: [
             ...getEntityInstanceFields(),
             ...this.mapCustomFieldsToResourceFields(
-              (entityDef as EntityDefinitionWithFields).customFields,
-              entityIdToSlug
+              (entityDef as EntityDefinitionWithFields).customFields
             ),
           ],
         }
@@ -485,10 +465,8 @@ export class ResourceRegistryService {
         orderBy: (f, { asc }) => [asc(f.sortOrder)],
       })
 
-      const entityIdToSlug = await this.getEntitySlugMap()
       const customResourceFields = this.mapCustomFieldsToResourceFields(
-        customFields as CustomFieldRecord[],
-        entityIdToSlug
+        customFields as CustomFieldRecord[]
       )
 
       fields = [...staticFields, ...customResourceFields]
@@ -510,13 +488,11 @@ export class ResourceRegistryService {
       })
 
       if (entityDef) {
-        const entityIdToSlug = await this.getEntitySlugMap()
         // Include implicit EntityInstance system fields before custom fields
         fields = [
           ...getEntityInstanceFields(),
           ...this.mapCustomFieldsToResourceFields(
-            entityDef.customFields as CustomFieldRecord[],
-            entityIdToSlug
+            entityDef.customFields as CustomFieldRecord[]
           ),
         ]
       }
@@ -546,57 +522,53 @@ export class ResourceRegistryService {
   }
 
   /**
-   * Get entity definition ID to apiSlug lookup map
-   * Used for resolving relationship targetTable for custom entities.
-   *
-   * Result is cached to avoid repeated DB lookups.
-   */
-  private async getEntitySlugMap(): Promise<Map<string, string>> {
-    // Return cached map if available
-    if (this.entitySlugMap) {
-      return this.entitySlugMap
-    }
-
-    const defs = await this.db.query.EntityDefinition.findMany({
-      where: (d, { eq, isNull, and }) =>
-        and(eq(d.organizationId, this.organizationId), isNull(d.archivedAt)),
-      columns: { id: true, apiSlug: true },
-    })
-
-    this.entitySlugMap = new Map(defs.map((d) => [d.id, d.apiSlug]))
-    return this.entitySlugMap
-  }
-
-  /**
    * Map CustomField records to ResourceField format
-   * Resolves relationship targetTable using entityIdToSlug lookup
+   * Adds convenience properties and normalizes options for UI consumption
    */
-  private mapCustomFieldsToResourceFields(
-    customFields: CustomFieldRecord[],
-    entityIdToSlug: Map<string, string>
-  ): ResourceField[] {
+  private mapCustomFieldsToResourceFields(customFields: CustomFieldRecord[]): ResourceField[] {
     return customFields.map((field) => {
       const baseType = mapFieldTypeToBaseType(field.type)
 
-      // Build relationship config with proper targetTable resolution
+      // Check if this is a select-type field
+      const isSelectType =
+        field.type === FieldTypeEnum.SINGLE_SELECT ||
+        field.type === FieldTypeEnum.MULTI_SELECT ||
+        field.type === FieldTypeEnum.TAGS
+
+      // Extract raw options from field
+      const rawOptions = field.options as {
+        options?: {
+          value: string
+          label: string
+          color?: string
+          targetTimeInStatus?: { value: number; unit: 'days' | 'months' | 'years' }
+          celebration?: boolean
+        }[]
+        relationship?: {
+          relatedModelType?: string
+          relatedEntityDefinitionId?: string
+          relationshipType?: 'belongs_to' | 'has_one' | 'has_many'
+        }
+      }
+
+      // Build relationship config for workflow engine (top-level)
       let relationship: ResourceField['relationship']
-      if (field.type === FieldTypeEnum.RELATIONSHIP) {
-        const rel = (
-          field.options as {
-            relationship?: {
-              relatedModelType?: string
-              relatedEntityDefinitionId?: string
-              relationshipType?: 'belongs_to' | 'has_one' | 'has_many'
-            }
+      // Build normalized relationship for UI (in options)
+      let optionsRelationship:
+        | {
+            relatedEntityDefinitionId?: string
+            relatedModelType?: string
+            relationshipType?: 'belongs_to' | 'has_one' | 'has_many'
           }
-        )?.relationship
+        | undefined
+
+      if (field.type === FieldTypeEnum.RELATIONSHIP) {
+        const rel = rawOptions?.relationship
 
         let targetTable: string | undefined
         if (rel?.relatedModelType) {
-          // System resource (e.g., "contact", "ticket")
           targetTable = rel.relatedModelType
         } else if (rel?.relatedEntityDefinitionId) {
-          // Custom entity - use UUID directly (no prefix)
           targetTable = rel.relatedEntityDefinitionId
         }
 
@@ -604,52 +576,84 @@ export class ResourceRegistryService {
           relationship = {
             targetTable,
             cardinality: rel?.relationshipType === 'has_many' ? 'one-to-many' : 'many-to-one',
-            // Preserve the original entity definition IDs from CustomField
-            // These are needed by the frontend to correctly store relationship values
             relatedEntityDefinitionId: rel?.relatedEntityDefinitionId,
             relatedModelType: rel?.relatedModelType,
           }
         }
+
+        // Normalized relationship for UI consumers
+        optionsRelationship = {
+          relatedEntityDefinitionId: rel?.relatedEntityDefinitionId,
+          relatedModelType: rel?.relatedModelType,
+          relationshipType: rel?.relationshipType,
+        }
+      }
+
+      // Build enumValues for workflow engine (uses dbValue)
+      const enumValues = isSelectType
+        ? rawOptions?.options?.map((o) => ({
+            dbValue: o.value,
+            label: o.label,
+            color: o.color,
+            targetTimeInStatus: o.targetTimeInStatus,
+            celebration: o.celebration,
+          }))
+        : undefined
+
+      // Build normalized options for UI (uses value key, includes relationship)
+      const normalizedOptions: ResourceField['options'] = {
+        // Spread existing flat display options (checkboxStyle, decimals, format, etc.)
+        ...(field.options as ResourceField['options']),
+        // Normalized enum options for UI (uses 'value' key instead of 'dbValue')
+        options: isSelectType
+          ? rawOptions?.options?.map((o) => ({
+              value: o.value,
+              label: o.label,
+              color: o.color,
+              targetTimeInStatus: o.targetTimeInStatus,
+              celebration: o.celebration,
+            }))
+          : undefined,
+        // Normalized relationship for UI consumers
+        relationship: optionsRelationship,
       }
 
       return {
-        id: field.id, // Database field ID for CRUD operations
-        key: field.name, // Human-readable name for variable paths
+        // Core identifiers
+        id: field.id,
+        key: field.name,
         label: field.name,
         type: baseType,
-        fieldType: field.type, // Preserve original FieldType for value storage type determination
+        fieldType: field.type,
         description: field.description ?? undefined,
+
+        // Convenience properties (avoid needing transforms)
+        name: field.name,
+        sortOrder: field.sortOrder ?? undefined,
+        active: true,
+        isUnique: field.isUnique,
+        required: field.required,
+
+        // Capabilities
         capabilities: {
           filterable: true,
           sortable: true,
           creatable: true,
           updatable: true,
           required: field.required,
+          isUnique: field.isUnique,
         },
-        enumValues:
-          field.type === FieldTypeEnum.SINGLE_SELECT ||
-          field.type === FieldTypeEnum.MULTI_SELECT ||
-          field.type === FieldTypeEnum.TAGS
-            ? (
-                field.options as {
-                  options?: {
-                    value: string
-                    label: string
-                    color?: string
-                    targetTimeInStatus?: { value: number; unit: 'days' | 'months' | 'years' }
-                    celebration?: boolean
-                  }[]
-                }
-              )?.options?.map((o) => ({
-                dbValue: o.value,
-                label: o.label,
-                color: o.color,
-                targetTimeInStatus: o.targetTimeInStatus,
-                celebration: o.celebration,
-              }))
-            : undefined,
+
+        // enumValues for workflow engine (uses dbValue)
+        enumValues,
+
+        // Top-level relationship for workflow engine
         relationship,
-        // Unique custom fields can be used as identifiers for import matching
+
+        // Normalized options for UI (includes options.options with value key, options.relationship)
+        options: normalizedOptions,
+
+        // Import identifier
         isIdentifier: field.isUnique,
       }
     })

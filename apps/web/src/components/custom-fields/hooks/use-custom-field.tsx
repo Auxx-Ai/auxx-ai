@@ -15,7 +15,11 @@ export function useCustomField({ modelType, entityDefinitionId }: UseCustomField
   const utils = api.useUtils()
 
   // API hooks - include entityDefinitionId for custom entities
-  const { data: fields, refetch, isLoading } = api.customField.getAll.useQuery({
+  const {
+    data: fields,
+    refetch,
+    isLoading,
+  } = api.customField.getAll.useQuery({
     modelType,
     entityDefinitionId,
   })
@@ -52,6 +56,7 @@ export function useCustomField({ modelType, entityDefinitionId }: UseCustomField
       invalidateResourceDefinitions()
     },
     onError: (error) => {
+      console.log('Error updating custom field:', error)
       toastError({ title: 'Error updating custom field', description: error.message })
     },
   })

@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from '@auxx/ui/components/dialog'
 import { Button } from '@auxx/ui/components/button'
+import { FieldGroup, Field, FieldLabel } from '@auxx/ui/components/field'
 import {
   Select,
   SelectContent,
@@ -18,8 +19,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { FieldGroup, Field, FieldLabel } from '@auxx/ui/components/field'
 import { CurrencyPicker } from '~/components/pickers/currency-picker'
+import {
+  NumberFormattingEditor,
+  DateFormattingEditor,
+  DateTimeFormattingEditor,
+  TimeFormattingEditor,
+} from '~/components/custom-fields/ui/formatting-editors'
+import type {
+  NumberDisplayOptions,
+  DateDisplayOptions,
+} from '@auxx/lib/field-values/client'
 import type {
   ColumnFormatting,
   CurrencyColumnFormatting,
@@ -27,6 +37,55 @@ import type {
   NumberColumnFormatting,
   FormattableFieldType,
 } from '../types'
+
+/**
+ * Convert NumberColumnFormatting to NumberDisplayOptions
+ */
+function columnToNumberDisplayOptions(formatting: NumberColumnFormatting | null): NumberDisplayOptions {
+  return {
+    decimals: formatting?.decimalPlaces ?? 2,
+    useGrouping: formatting?.useGrouping ?? true,
+    displayAs: formatting?.displayAs ?? 'number',
+    prefix: formatting?.prefix ?? '',
+    suffix: formatting?.suffix ?? '',
+  }
+}
+
+/**
+ * Convert NumberDisplayOptions to NumberColumnFormatting
+ */
+function numberDisplayOptionsToColumn(opts: NumberDisplayOptions): NumberColumnFormatting {
+  return {
+    type: 'number',
+    decimalPlaces: opts.decimals ?? 2,
+    useGrouping: opts.useGrouping ?? true,
+    displayAs: opts.displayAs ?? 'number',
+    prefix: opts.prefix ?? '',
+    suffix: opts.suffix ?? '',
+  }
+}
+
+/**
+ * Convert DateColumnFormatting to DateDisplayOptions
+ */
+function columnToDateDisplayOptions(formatting: DateColumnFormatting | null): DateDisplayOptions {
+  return {
+    format: formatting?.format ?? 'medium',
+    includeTime: formatting?.includeTime ?? false,
+    timeFormat: (formatting as DateDisplayOptions)?.timeFormat ?? '12h',
+  }
+}
+
+/**
+ * Convert DateDisplayOptions to DateColumnFormatting
+ */
+function dateDisplayOptionsToColumn(opts: DateDisplayOptions, includeTime?: boolean): DateColumnFormatting {
+  return {
+    type: 'date',
+    format: opts.format ?? 'medium',
+    includeTime: includeTime ?? opts.includeTime ?? false,
+  }
+}
 
 /** Props for EditColumnFormattingDialog component */
 interface EditColumnFormattingDialogProps {
@@ -92,16 +151,28 @@ export function EditColumnFormattingDialog({
             onChange={(f) => setFormatting(f)}
           />
         )}
-        {(fieldType === 'DATE' || fieldType === 'DATETIME' || fieldType === 'TIME') && (
+        {fieldType === 'DATE' && (
           <DateFormattingEditor
-            formatting={formatting as DateColumnFormatting | null}
-            onChange={(f) => setFormatting(f)}
+            options={columnToDateDisplayOptions(formatting as DateColumnFormatting | null)}
+            onChange={(opts) => setFormatting(dateDisplayOptionsToColumn(opts))}
+          />
+        )}
+        {fieldType === 'DATETIME' && (
+          <DateTimeFormattingEditor
+            options={columnToDateDisplayOptions(formatting as DateColumnFormatting | null)}
+            onChange={(opts) => setFormatting(dateDisplayOptionsToColumn(opts, true))}
+          />
+        )}
+        {fieldType === 'TIME' && (
+          <TimeFormattingEditor
+            options={columnToDateDisplayOptions(formatting as DateColumnFormatting | null)}
+            onChange={(opts) => setFormatting(dateDisplayOptionsToColumn(opts))}
           />
         )}
         {fieldType === 'NUMBER' && (
           <NumberFormattingEditor
-            formatting={formatting as NumberColumnFormatting | null}
-            onChange={(f) => setFormatting(f)}
+            options={columnToNumberDisplayOptions(formatting as NumberColumnFormatting | null)}
+            onChange={(opts) => setFormatting(numberDisplayOptionsToColumn(opts))}
           />
         )}
 
@@ -218,138 +289,3 @@ function CurrencyFormattingEditor({
   )
 }
 
-/** Props for DateFormattingEditor */
-interface DateFormattingEditorProps {
-  formatting: DateColumnFormatting | null
-  onChange: (f: DateColumnFormatting) => void
-}
-
-/**
- * Date formatting sub-editor
- */
-function DateFormattingEditor({ formatting, onChange }: DateFormattingEditorProps) {
-  const current: DateColumnFormatting = {
-    type: 'date',
-    format: formatting?.format ?? 'medium',
-    includeTime: formatting?.includeTime ?? false,
-  }
-
-  return (
-    <div className="rounded-xl    space-y-4">
-      <FieldGroup className="gap-3">
-        <Field>
-          <FieldLabel>Date Format</FieldLabel>
-          <Select
-            value={current.format}
-            onValueChange={(v) =>
-              onChange({ ...current, format: v as DateColumnFormatting['format'] })
-            }>
-            <SelectTrigger>
-              <SelectValue placeholder="Select date format" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="short">Short (12/1/24)</SelectItem>
-              <SelectItem value="medium">Medium (Dec 1, 2024)</SelectItem>
-              <SelectItem value="long">Long (December 1, 2024)</SelectItem>
-              <SelectItem value="relative">Relative (2 days ago)</SelectItem>
-              <SelectItem value="iso">ISO (2024-12-01)</SelectItem>
-            </SelectContent>
-          </Select>
-        </Field>
-
-        <Field>
-          <FieldLabel>Include Time</FieldLabel>
-          <Select
-            value={current.includeTime ? 'yes' : 'no'}
-            onValueChange={(v) => onChange({ ...current, includeTime: v === 'yes' })}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="no">Date only</SelectItem>
-              <SelectItem value="yes">Date and time</SelectItem>
-            </SelectContent>
-          </Select>
-        </Field>
-      </FieldGroup>
-    </div>
-  )
-}
-
-/** Props for NumberFormattingEditor */
-interface NumberFormattingEditorProps {
-  formatting: NumberColumnFormatting | null
-  onChange: (f: NumberColumnFormatting) => void
-}
-
-/**
- * Number formatting sub-editor
- */
-function NumberFormattingEditor({ formatting, onChange }: NumberFormattingEditorProps) {
-  const current: NumberColumnFormatting = {
-    type: 'number',
-    decimalPlaces: formatting?.decimalPlaces ?? 2,
-    useGrouping: formatting?.useGrouping ?? true,
-    displayAs: formatting?.displayAs ?? 'number',
-    prefix: formatting?.prefix ?? '',
-    suffix: formatting?.suffix ?? '',
-  }
-
-  return (
-    <div className=" space-y-4">
-      <FieldGroup className="gap-3">
-        <Field>
-          <FieldLabel>Decimal Places</FieldLabel>
-          <Select
-            value={String(current.decimalPlaces)}
-            onValueChange={(v) => onChange({ ...current, decimalPlaces: parseInt(v, 10) })}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="0">0 (1234)</SelectItem>
-              <SelectItem value="1">1 (1234.5)</SelectItem>
-              <SelectItem value="2">2 (1234.56)</SelectItem>
-              <SelectItem value="3">3 (1234.567)</SelectItem>
-              <SelectItem value="4">4 (1234.5678)</SelectItem>
-            </SelectContent>
-          </Select>
-        </Field>
-
-        <Field>
-          <FieldLabel>Thousand Separators</FieldLabel>
-          <Select
-            value={current.useGrouping ? 'yes' : 'no'}
-            onValueChange={(v) => onChange({ ...current, useGrouping: v === 'yes' })}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="yes">With separators (1,234.56)</SelectItem>
-              <SelectItem value="no">No separators (1234.56)</SelectItem>
-            </SelectContent>
-          </Select>
-        </Field>
-
-        <Field>
-          <FieldLabel>Display As</FieldLabel>
-          <Select
-            value={current.displayAs}
-            onValueChange={(v) =>
-              onChange({ ...current, displayAs: v as NumberColumnFormatting['displayAs'] })
-            }>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="number">Number (1234.56)</SelectItem>
-              <SelectItem value="percentage">Percentage (12.35%)</SelectItem>
-              <SelectItem value="compact">Compact (1.2K)</SelectItem>
-              <SelectItem value="bytes">Bytes (1.21 KB)</SelectItem>
-            </SelectContent>
-          </Select>
-        </Field>
-      </FieldGroup>
-    </div>
-  )
-}

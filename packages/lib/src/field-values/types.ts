@@ -36,6 +36,8 @@ export interface SetValueWithBuiltInInput {
   modelType: ModelType
   /** Whether to publish events (default: true) */
   publishEvents?: boolean
+  /** Skip inverse relationship sync (used by bulk operations that handle sync separately) */
+  skipInverseSync?: boolean
 }
 
 /**
@@ -48,6 +50,8 @@ export interface SetValuesForEntityInput {
   modelType: ModelType
   /** Whether to publish events (default: true) */
   publishEvents?: boolean
+  /** Skip inverse relationship sync (used by bulk operations that handle sync separately) */
+  skipInverseSync?: boolean
 }
 
 /**
@@ -87,6 +91,8 @@ export interface SetValueWithTypeInput {
   fieldId: string
   fieldType: string
   value: TypedFieldValueInput | TypedFieldValueInput[] | null
+  /** Skip inverse relationship sync (used by bulk operations that handle sync separately) */
+  skipInverseSync?: boolean
 }
 
 /** Input for adding a value to a multi-value field */

@@ -154,8 +154,12 @@ export function createCustomFieldColumns<T extends { id: string }>(
       const columnId = `customField_${field.id}`
       const fieldId = field.id!
 
-      // Convert enumValues to options format for select renderers
-      const enumOptions = field.enumValues?.map((e) => ({ label: e.label, value: e.dbValue }))
+      // Build options object for cell renderer
+      // For SELECT fields: convert enumValues to options array format
+      // For other fields: pass field.options directly (contains display options)
+      const cellOptions = field.enumValues
+        ? { options: field.enumValues.map((e) => ({ label: e.label, value: e.dbValue })) }
+        : field.options
 
       return {
         id: columnId,
@@ -180,7 +184,7 @@ export function createCustomFieldColumns<T extends { id: string }>(
             fieldId={fieldId}
             fieldType={fieldType}
             columnId={columnId}
-            options={enumOptions}
+            options={cellOptions}
           />
         ),
       } satisfies ExtendedColumnDef<T>

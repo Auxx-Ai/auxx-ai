@@ -111,6 +111,31 @@ export const fileOptionsSchema = z.object({
 export type FileOptions = z.infer<typeof fileOptionsSchema>
 
 // =============================================================================
+// DISPLAY OPTIONS (flat structure in field.options)
+// =============================================================================
+
+/** Zod schema for flat display options stored in field.options */
+export const displayOptionsSchema = z.object({
+  // NUMBER display options
+  decimals: z.number().int().min(0).max(10).optional(),
+  useGrouping: z.boolean().optional(),
+  displayAs: z.enum(['number', 'percentage', 'compact', 'bytes']).optional(),
+  prefix: z.string().optional(),
+  suffix: z.string().optional(),
+  // DATE/DATETIME/TIME display options
+  format: z.enum(['short', 'medium', 'long', 'relative', 'iso', 'time-only']).optional(),
+  timeFormat: z.enum(['12h', '24h']).optional(),
+  includeTime: z.boolean().optional(),
+  // CHECKBOX display options
+  checkboxStyle: z.enum(['icon', 'text', 'icon-text']).optional(),
+  trueLabel: z.string().optional(),
+  falseLabel: z.string().optional(),
+})
+
+/** Display options type */
+export type DisplayOptions = z.infer<typeof displayOptionsSchema>
+
+// =============================================================================
 // FIELD OPTIONS UNION (for tRPC and service layer)
 // =============================================================================
 
@@ -119,6 +144,8 @@ export const fieldOptionsUnionSchema = z.union([
   z.array(selectOptionSchema),
   z.object({ file: fileOptionsSchema }),
   z.object({ currency: currencyOptionsSchema }),
+  // Flat display options for NUMBER, DATE, DATETIME, TIME, CHECKBOX
+  displayOptionsSchema,
 ])
 
 // =============================================================================

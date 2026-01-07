@@ -17,6 +17,7 @@ import { toastError } from '@auxx/ui/components/toast'
 import { api } from '~/trpc/react'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
 import { useDirtyCheck } from '~/hooks/use-dirty-state'
+import { useSaveFieldValue } from '~/hooks/use-save-field-value'
 import type { FieldType } from '@auxx/database/types'
 
 /**
@@ -155,15 +156,15 @@ export function EntityInstanceDialog({
     },
   })
 
-  // Batch set field values mutation
-  const setFieldValues = api.fieldValue.setMany.useMutation({
-    onError: (error) => {
-      toastError({ title: 'Failed to save values', description: error.message })
-    },
+  // Save field values with Zustand store sync
+  const { saveMultipleAsync, isPending: isSavingFields } = useSaveFieldValue({
+    resourceType: 'entity',
+    entityDefId: entityDefinition.id,
+    modelType: 'entity',
   })
 
   // Combined pending state
-  const isPending = createInstance.isPending || setFieldValues.isPending
+  const isPending = createInstance.isPending || isSavingFields
 
   /**
    * Handle field value change
@@ -221,17 +222,17 @@ export function EntityInstanceDialog({
         instanceId = created.id
       }
 
-      // Save all field values using batch setValues
+      // Save all field values with Zustand store sync
       const valuesToSave = Object.entries(values)
         .filter(([_, value]) => value !== undefined && value !== null && value !== '')
-        .map(([fieldId, value]) => ({ fieldId, value }))
+        .map(([fieldId, value]) => {
+          const field = sortedFields.find((f) => f.id === fieldId)
+          return { fieldId, value, fieldType: field?.type }
+        })
 
       if (valuesToSave.length > 0) {
-        await setFieldValues.mutateAsync({
-          resourceId: instanceId,
-          values: valuesToSave,
-          modelType: 'entity',
-        })
+        const success = await saveMultipleAsync(instanceId, valuesToSave)
+        if (!success) return // Error already handled by hook
       }
 
       // Invalidate queries

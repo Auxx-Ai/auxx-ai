@@ -55,6 +55,9 @@ export {
   // File options
   fileOptionsSchema,
   type FileOptions,
+  // Display options (flat structure for NUMBER, DATE, CHECKBOX, etc.)
+  displayOptionsSchema,
+  type DisplayOptions,
   // Field options union
   fieldOptionsUnionSchema,
 } from './types'

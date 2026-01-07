@@ -118,9 +118,14 @@ export function useUnsavedChangesGuard({
 
   /**
    * Handle click outside - prevent close and show confirmation if dirty
+   * Ignores clicks on toast notifications
    */
   const handleInteractOutside = useCallback(
     (event: Event) => {
+      // Ignore clicks on toast notifications
+      if (event.target instanceof HTMLElement && event.target.closest('[data-toast-container]')) {
+        return
+      }
       if (isDirty) {
         event.preventDefault()
         guardedClose()

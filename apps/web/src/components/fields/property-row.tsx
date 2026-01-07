@@ -7,64 +7,18 @@ import { DisplayField } from './displays/display-field'
 import { useCallback, useMemo } from 'react'
 import { FieldInput } from './field-input'
 import { usePropertyContext } from './property-provider'
-import { FieldType } from '@auxx/database/enums'
+import { isValueEmpty } from '@auxx/lib/field-values/client'
 import { Skeleton } from '@auxx/ui/components/skeleton'
+import { Badge } from '@auxx/ui/components/badge'
+
 /**
- * Returns true if the value for a given field is considered empty, depending on the field type.
- * @param field The field definition object (must have a 'type' property)
- * @param value The unwrapped value to check
+ * Returns true if the value for a given field is considered empty.
+ * Uses centralized formatter for consistent empty checking.
+ * @param fieldType The field type string
+ * @param value The value to check (raw or TypedFieldValue)
  */
-function isFieldEmpty(
-  field: {
-    type: string
-  },
-  value: any
-): boolean {
-  // FieldType.
-  switch (field.type) {
-    case FieldType.TEXT:
-    case FieldType.EMAIL:
-    case FieldType.URL:
-    case FieldType.ADDRESS:
-    case FieldType.PHONE_INTL:
-    case FieldType.RICH_TEXT:
-      return !value || String(value).trim() === ''
-    case FieldType.NUMBER:
-      return value === null || value === undefined || value === ''
-    case FieldType.DATE:
-    case FieldType.DATETIME:
-    case FieldType.TIME:
-      return !value || isNaN(new Date(value).getTime())
-    case FieldType.SINGLE_SELECT:
-      return value === null || value === undefined || value === ''
-    case FieldType.MULTI_SELECT:
-      return !Array.isArray(value) || value.length === 0
-    case FieldType.CHECKBOX:
-      return value === null || value === undefined
-    case FieldType.TAGS:
-      return (
-        !Array.isArray(value) ||
-        value.length === 0 ||
-        value.every((tag) => !tag || String(tag).trim() === '')
-      )
-    case FieldType.ADDRESS_STRUCT:
-      return (
-        value === null ||
-        value === undefined ||
-        (typeof value === 'object' &&
-          Object.values(value).every((v) => v === null || v === undefined || v === ''))
-      )
-    case FieldType.FILE: {
-      // FILE fields store { attachmentIds: string[] | string | null }
-      if (!value) return true
-      const ids = value.attachmentIds
-      if (!ids) return true
-      if (Array.isArray(ids)) return ids.length === 0
-      return false
-    }
-    default:
-      return value === null || value === undefined
-  }
+function isFieldEmpty(fieldType: string, value: any): boolean {
+  return isValueEmpty(value, fieldType)
 }
 /**
  * Renders the interactive row for a single property, including label, icon, and value.
@@ -116,8 +70,13 @@ function PropertyRow({
         {Icon && (
           <Icon className="h-4 w-4 text-neutral-400 group-data-[active]/row-wrapper:text-foreground shrink-0" />
         )}
-        <div className="w-[120px] text-sm text-neutral-400 group-data-[active]/row-wrapper:text-foreground shrink-0">
-          <div className="truncate">{field.name}</div>
+        <div className="w-[120px] flex items-center text-sm text-neutral-400 group-data-[active]/row-wrapper:text-foreground shrink-0">
+          <div className="truncate me-1">{field.name}</div>
+          {field.isUnique && (
+            <Badge size="xs" variant="purple">
+              U
+            </Badge>
+          )}
         </div>
       </div>
       <div className="min-w-0 relative flex text-sm flex-1">
@@ -126,9 +85,9 @@ function PropertyRow({
             <LoadingFieldSkeleton />
           ) : !field.readOnly ? (
             <FieldInput>
-              {!isFieldEmpty(field, value) ? <DisplayField /> : <EmptyField />}
+              {!isFieldEmpty(field.type, value) ? <DisplayField /> : <EmptyField />}
             </FieldInput>
-          ) : !isFieldEmpty(field, value) ? (
+          ) : !isFieldEmpty(field.type, value) ? (
             <DisplayField />
           ) : (
             <EmptyField />

@@ -16,6 +16,7 @@ export { ThreadInput, transformThreadToWorkflowInput } from './thread-input'
 export { CurrencyInput } from './currency-input'
 export { AddressInput } from './address-input'
 export { TagsInput } from './tags-input'
+export { PhoneInput } from './phone-input'
 
 // Export complex input components
 export { MessageInput } from './message-input'

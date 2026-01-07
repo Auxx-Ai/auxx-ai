@@ -46,65 +46,7 @@ import {
 } from '~/stores/custom-field-value-store'
 import type { StoreConfig } from './property-provider'
 import type { TypedFieldValue } from '@auxx/types/field-value'
-import { convertToTypedInput } from '@auxx/lib/field-values/client'
-
-/**
- * Transform ResourceField to CustomField format for EntityFields compatibility
- */
-function transformResourceFieldForEntityFields(
-  field: ResourceField & { id: string },
-  index: number
-): any {
-  // Use preserved fieldType from ResourceField if available, otherwise fallback to mapping BaseType
-  const fieldType = field.fieldType || mapBaseTypeToFieldType(field.type)
-
-  // Build options object from ResourceField properties
-  const options: Record<string, unknown> = {}
-
-  // Handle enum values for select fields
-  if (field.enumValues && field.enumValues.length > 0) {
-    options.options = field.enumValues.map((e) => ({
-      label: e.label,
-      value: e.dbValue,
-    }))
-  }
-
-  // Handle relationship configuration
-  if (field.relationship) {
-    // Map cardinality to relationshipType
-    let relationshipType: 'belongs_to' | 'has_one' | 'has_many' = 'belongs_to'
-    if (field.relationship.cardinality === 'one-to-many') {
-      relationshipType = 'has_many'
-    } else if (field.relationship.cardinality === 'one-to-one') {
-      relationshipType = 'has_one'
-    }
-
-    options.relationship = {
-      // Use the preserved relatedEntityDefinitionId from ResourceField
-      // For custom entities: UUID (e.g., "xw53y13fbov3dhdenzqlft2u")
-      // For system resources: undefined (use relatedModelType instead)
-      relatedEntityDefinitionId: field.relationship.relatedEntityDefinitionId,
-      // Use the preserved relatedModelType from ResourceField
-      // For system resources: model type (e.g., "contact", "ticket")
-      // For custom entities: undefined (use relatedEntityDefinitionId instead)
-      relatedModelType: field.relationship.relatedModelType,
-      // Add relationshipType for single/multi select behavior
-      relationshipType,
-    }
-  }
-
-  return {
-    id: field.id,
-    name: field.label,
-    type: fieldType,
-    options: Object.keys(options).length > 0 ? options : undefined,
-    position: index,
-    active: true,
-    required: field.capabilities?.required,
-    description: field.description,
-    defaultValue: field.defaultValue,
-  }
-}
+import { formatToTypedInput, isMultiValueFieldType } from '@auxx/lib/field-values/client'
 
 /** Pre-loaded field value from entity instance */
 interface PreloadedFieldValue {
@@ -143,7 +85,7 @@ function EntityFields({
   modelType,
   entityId,
   entityDefinitionId,
-  preloadedValues,
+  preloadedValues: values,
   preloadedFields,
   createdAt,
   updatedAt,
@@ -170,7 +112,6 @@ function EntityFields({
     Record<string, { valueId?: string; value: StoredFieldValue }>
   >({})
   const [builtInValues, setBuiltInValues] = useState<Record<string, StoredFieldValue>>({})
-  const [errors, setErrors] = useState<Record<string, string | null>>({})
   const [isValid, setIsValid] = useState(true)
   const closeHandlersRef = useRef<Record<string, () => void>>({})
   const openProviderIdRef = useRef<string | null>(null)
@@ -216,9 +157,7 @@ function EntityFields({
 
   // Get fields from ResourceProvider (single source of truth)
   const { resources } = useAllResources()
-  const resourceFields = useMemo(() => {
-    if (preloadedFields) return null // Explicit preload takes precedence
-
+  const fields = useMemo(() => {
     let resource
     if (isEntityInstance && entityDefinitionId) {
       // Custom entity: look up by entityDefinitionId
@@ -235,25 +174,15 @@ function EntityFields({
     // Filter to only custom fields (those with id set) and transform to expected format
     return resource.fields
       .filter((f): f is ResourceField & { id: string } => !!f.id)
-      .map((field, index) => transformResourceFieldForEntityFields(field, index))
+      .map((field) => ({
+        ...field,
+        type: field.fieldType || mapBaseTypeToFieldType(field.type),
+        name: field.name ?? field.label,
+      }))
   }, [resources, modelType, isEntityInstance, entityDefinitionId, preloadedFields])
 
-  // Use preloaded fields first, then ResourceProvider fields (single source of truth)
-  const fields = preloadedFields ?? resourceFields
-
-  // Fetch only values (field definitions come from useAllResources via resourceFields)
-  // const {
-  //   data: fetchedValues,
-  //   refetch: refetchValues,
-  //   isLoading: valuesLoading,
-  // } = api.fieldValue.getValues.useQuery(
-  //   { entityId: entityId || '', fieldIds: fields?.map((f: any) => f.id) ?? [] },
-  //   { enabled: !!entityId && !isEntityInstance && !preloadedValues && !!fields }
-  // )
-
   // Use preloaded values for entity instances
-  const values = preloadedValues
-  // const values = preloadedValues ?? fetchedValues
+  // const values = preloadedValues
 
   // Unified mutation for both built-in and custom fields
   const setValueMutation = api.fieldValue.set.useMutation({
@@ -288,8 +217,10 @@ function EntityFields({
         })
       }
 
-      // Convert raw value to TypedFieldValue
-      const typedValue = convertToTypedInput(rawValue, field.type, field.options?.options)
+      // Convert raw value to TypedFieldValue using centralized formatter
+      const typedValue = formatToTypedInput(rawValue, field.type, {
+        selectOptions: field.options?.options,
+      })
       builtInValueMap[field.id] = typedValue as StoredFieldValue
     })
 
@@ -319,15 +250,39 @@ function EntityFields({
         })
       } else {
         // Data from preloadedValues - array with field metadata
-        entries.forEach((value: any) => {
-          const typedValue = value.value as StoredFieldValue
+        // Group by fieldId first since multi-value fields have one row per value
+        const groupedByField: Record<string, Array<{ id: string; value: any }>> = {}
+        entries.forEach((entry: any) => {
+          if (!groupedByField[entry.fieldId]) {
+            groupedByField[entry.fieldId] = []
+          }
+          groupedByField[entry.fieldId].push({ id: entry.id, value: entry.value })
+        })
 
-          valueMap[value.fieldId] = {
-            valueId: value.id, // CustomFieldValue.id for linking attachments
-            value: typedValue, // TypedFieldValue directly
+        // Build a field type lookup for determining if a field is multi-value
+        const fieldTypeLookup = new Map<string, string>()
+        if (fields) {
+          fields.forEach((f: any) => fieldTypeLookup.set(f.id, f.type))
+        }
+
+        // Convert grouped values - use array for multi-value fields, single for others
+        Object.entries(groupedByField).forEach(([fieldId, fieldEntries]) => {
+          const fieldType = fieldTypeLookup.get(fieldId)
+          const isMultiValue = fieldType && isMultiValueFieldType(fieldType)
+
+          // Multi-value fields always store as array (even with 1 value)
+          // Single-value fields store just the value
+          const typedValue: StoredFieldValue =
+            isMultiValue || fieldEntries.length > 1
+              ? fieldEntries.map((e) => e.value)
+              : fieldEntries[0].value
+
+          valueMap[fieldId] = {
+            valueId: fieldEntries[0].id, // Use first entry's id for attachments
+            value: typedValue,
           }
           storeEntries.push({
-            key: buildValueKey(resourceType, entityId, value.fieldId, entityDefinitionId),
+            key: buildValueKey(resourceType, entityId, fieldId, entityDefinitionId),
             value: typedValue,
           })
         })
@@ -340,7 +295,7 @@ function EntityFields({
         setValues(storeEntries)
       }
     }
-  }, [values, entityId, resourceType, entityDefinitionId, setValues])
+  }, [values, entityId, resourceType, entityDefinitionId, setValues, fields])
 
   // Sync sortedCustomFields with fetched fields
   useEffect(() => {
@@ -490,11 +445,7 @@ function EntityFields({
       })
 
       // Update each affected field's sortOrder using generic update mutation
-      await Promise.all(
-        newOrder.map(({ id, sortOrder }) =>
-          update.mutateAsync({ id, sortOrder })
-        )
-      )
+      await Promise.all(newOrder.map(({ id, sortOrder }) => update.mutateAsync({ id, sortOrder })))
     }
   }
 
@@ -520,7 +471,7 @@ function EntityFields({
   const handleSaveField = async (fieldData: any) => {
     if (editingField) {
       // Update existing field
-      await update.mutateAsync({ ...fieldData, id: editingField.id })
+      const result = await update.mutateAsync({ ...fieldData, id: editingField.id })
     } else {
       // Create new field
       const values = {

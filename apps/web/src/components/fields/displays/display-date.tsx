@@ -1,32 +1,19 @@
 // apps/web/src/components/fields/displays/display-date.tsx
-import { format, parseISO, parse } from 'date-fns'
+import { parseISO, parse } from 'date-fns'
 import { usePropertyContext } from '../property-provider'
 import DisplayWrapper from './display-wrapper'
 import { FieldType } from '@auxx/database/enums'
-
-/**
- * Get the appropriate format string based on field type
- */
-const getFormatString = (fieldType: string): string => {
-  switch (fieldType) {
-    case FieldType.TIME:
-      return 'hh:mm a' // 12:30 PM
-    case FieldType.DATETIME:
-      return 'PPP hh:mm a' // Dec 16, 2025 12:30 PM
-    case FieldType.DATE:
-    default:
-      return 'PPP' // Dec 16, 2025
-  }
-}
+import { converters, type DateDisplayOptions } from '@auxx/lib/field-values/client'
 
 /**
  * DisplayDate component
- * Renders a formatted date/time/datetime value
+ * Renders a formatted date/time/datetime value using the dateConverter
  * Works for FieldType.DATE, FieldType.DATETIME, and FieldType.TIME
  */
 export function DisplayDate() {
   const { value, field } = usePropertyContext()
-  const formatStr = getFormatString(field.type)
+  // Read display options from field.options (flat structure)
+  const opts = field.options as DateDisplayOptions | undefined
 
   if (!value) return null
 
@@ -44,11 +31,22 @@ export function DisplayDate() {
   // Validate parsed date
   if (isNaN(date.getTime())) return null
 
-  const formattedDate = format(date, formatStr)
+  // Build display options based on field type
+  const displayOpts: DateDisplayOptions = {
+    ...opts,
+    // For TIME fields, use 'time-only' format
+    format: field.type === FieldType.TIME ? 'time-only' : (opts?.format ?? 'medium'),
+    // For DATETIME fields, always include time
+    includeTime: field.type === FieldType.DATETIME || opts?.includeTime,
+  }
+
+  // Use the converter to format the display value
+  const typedValue = { type: 'date' as const, value: date.toISOString() }
+  const formatted = converters.DATE.toDisplayValue(typedValue, displayOpts)
 
   return (
-    <DisplayWrapper className="" copyValue={formattedDate}>
-      {formattedDate}
+    <DisplayWrapper copyValue={formatted}>
+      {formatted}
     </DisplayWrapper>
   )
 }

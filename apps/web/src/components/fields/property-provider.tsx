@@ -17,9 +17,8 @@ import {
   type StoredFieldValue,
 } from '~/stores/custom-field-value-store'
 import { useSaveFieldValue } from '~/hooks/use-save-field-value'
-import { normalizeRelationshipValue } from '@auxx/lib/field-values/client'
+import { formatToRawValue } from '@auxx/lib/field-values/client'
 import type { ModelType } from '@auxx/types/custom-field'
-import { extractValue, type TypedFieldValue } from '@auxx/types/field-value'
 
 /**
  * property-provider.tsx
@@ -125,69 +124,17 @@ interface PropertyProviderProps {
 }
 
 /**
- * Extract raw value from TypedFieldValue.
- * Strict mode - throws if legacy { data: x } format is received.
- * Also accepts already-extracted raw primitives (string, number, boolean).
+ * Extract raw value from TypedFieldValue using centralized formatter.
+ * Handles TypedFieldValue, arrays, and raw values.
+ * @param val - The value from store or props (TypedFieldValue or raw)
+ * @param fieldType - The field type for proper extraction
  */
-function extractRawValue(val: StoredFieldValue | null | undefined): unknown {
+function extractRawValue(val: StoredFieldValue | null | undefined, fieldType: string): unknown {
   if (val === null || val === undefined) return null
 
-  // STRICT: Reject legacy { data: x } wrapper format
-  if (typeof val === 'object' && 'data' in val && !('type' in val)) {
-    throw new Error(
-      `[PropertyProvider] Legacy { data: x } format detected. ` +
-        `All values must be TypedFieldValue. Received: ${JSON.stringify(val)}`
-    )
-  }
-
-  // Handle TypedFieldValue array (e.g., multi-select, tags, relationship)
-  if (Array.isArray(val)) {
-    // Check if it's an array of TypedFieldValue or already raw values
-    if (val.length > 0 && typeof val[0] === 'object' && val[0] !== null && 'type' in val[0]) {
-      const first = val[0] as TypedFieldValue
-      // Normalize RELATIONSHIP fields to always return arrays using centralized utility
-      if (first.type === 'relationship') {
-        return normalizeRelationshipValue(val)
-      }
-      // For other types, extract primitive values
-      return val.map((v) => extractValue(v as TypedFieldValue))
-    }
-    // Already an array of raw values (e.g., string[])
-    return val
-  }
-
-  // Handle single TypedFieldValue
-  if (typeof val === 'object' && 'type' in val) {
-    const typed = val as TypedFieldValue
-    // Normalize RELATIONSHIP fields to always return arrays using centralized utility
-    if (typed.type === 'relationship') {
-      return normalizeRelationshipValue(val)
-    }
-    // For other types, extract primitive value
-    return extractValue(typed)
-  }
-
-  // Accept raw primitives (already extracted or from default values)
-  if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') {
-    return val
-  }
-
-  // Accept Date objects
-  if (val instanceof Date) {
-    return val.toISOString()
-  }
-
-  // Accept plain objects as raw values (e.g., { firstName, lastName } for NAME field)
-  // These are already-extracted JSON values
-  if (typeof val === 'object') {
-    return val
-  }
-
-  // STRICT: Reject unexpected format
-  throw new Error(
-    `[PropertyProvider] Unexpected value format. Expected TypedFieldValue or raw value. ` +
-      `Received: ${JSON.stringify(val)}`
-  )
+  // Use centralized formatter for extraction
+  // formatToRawValue handles TypedFieldValue, arrays, and raw values
+  return formatToRawValue(val, fieldType)
 }
 
 /**
@@ -285,8 +232,8 @@ export function PropertyProvider({
   // For store mode: storeValue is TypedFieldValue - extract raw value for component use
   // For legacy mode: initialValue may be { data: x } wrapper - extract the raw value
   const effectiveInitialValue = useStore
-    ? extractRawValue(storeValue)
-    : extractRawValue(initialValue)
+    ? extractRawValue(storeValue, field.type)
+    : extractRawValue(initialValue, field.type)
 
   // ─── State ───
   const [currentValue, setCurrentValue] = useState<any>(effectiveInitialValue)
@@ -306,21 +253,21 @@ export function PropertyProvider({
   useEffect(() => {
     if (useStore && storeValue !== undefined) {
       // Extract raw value from TypedFieldValue for component use
-      const rawValue = extractRawValue(storeValue)
+      const rawValue = extractRawValue(storeValue, field.type)
       setCurrentValue(rawValue)
       setServerValue(rawValue)
       setIsDirty(false)
     }
-  }, [useStore, storeValue])
+  }, [useStore, storeValue, field.type])
 
   // Sync local state when initialValue changes (legacy mode - e.g., after a refresh or data refetch)
   useEffect(() => {
     if (useStore) return // Skip for store-integrated mode
-    const extracted = extractRawValue(initialValue)
+    const extracted = extractRawValue(initialValue, field.type)
     setCurrentValue(extracted)
     setServerValue(extracted)
     setIsDirty(false)
-  }, [initialValue, useStore])
+  }, [initialValue, useStore, field.type])
 
   // ─── Core Actions ───
 
@@ -348,10 +295,11 @@ export function PropertyProvider({
       // 2. Fire mutation in BACKGROUND (no await, no blocking)
       if (useStore) {
         // Use store-integrated save (optimistic + background mutation)
-        storeSave(field.id, newValue)
+        storeSave(field.id, newValue, field.type)
         // Store handles the optimistic update, so also update local serverValue
         setServerValue(newValue)
       } else if (mutate) {
+        console.warn('LEGACY SAVING')
         // Legacy: direct mutation - pass raw value directly (no { data: x } wrapping)
         setIsSaving(true)
         mutate(newValue)
@@ -371,7 +319,7 @@ export function PropertyProvider({
           })
       }
     },
-    [effectiveIsSaving, serverValue, useStore, storeSave, field.id, mutate]
+    [effectiveIsSaving, serverValue, useStore, storeSave, field.id, field.type, mutate]
   )
 
   /**
@@ -421,7 +369,7 @@ export function PropertyProvider({
       // Fire mutation in background
       if (useStore) {
         // Use store-integrated save (optimistic + background mutation)
-        storeSave(field.id, newValue)
+        storeSave(field.id, newValue, field.type)
         setServerValue(newValue)
       } else if (mutate) {
         // Legacy: direct mutation - pass raw value directly (no { data: x } wrapping)
@@ -441,7 +389,7 @@ export function PropertyProvider({
           })
       }
     },
-    [effectiveIsSaving, serverValue, useStore, storeSave, field.id, mutate]
+    [effectiveIsSaving, serverValue, useStore, storeSave, field.id, field.type, mutate]
   )
 
   /**
@@ -470,7 +418,7 @@ export function PropertyProvider({
 
       // Use async save path
       if (useStore) {
-        const result = await storeSaveAsync(field.id, newValue)
+        const result = await storeSaveAsync(field.id, newValue, field.type)
         setServerValue(newValue)
         return result
       } else if (mutate) {
@@ -494,7 +442,7 @@ export function PropertyProvider({
 
       return undefined
     },
-    [effectiveIsSaving, serverValue, useStore, storeSaveAsync, field.id, mutate]
+    [effectiveIsSaving, serverValue, useStore, storeSaveAsync, field.id, field.type, mutate]
   )
 
   /**

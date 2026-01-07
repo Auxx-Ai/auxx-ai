@@ -20,7 +20,16 @@ import {
   deleteFieldValues,
   type FieldWithDefinition,
 } from '@auxx/services'
-import { convertToTypedInput, getDisplayValue } from './value-converter'
+import { formatToTypedInput, formatToDisplayValue } from './formatter'
+import {
+  getExistingRelatedIds,
+  batchGetExistingRelatedIds,
+  syncInverseRelationships,
+  syncInverseRelationshipsBulk,
+  type InverseFieldInfo,
+  type BulkRelationshipUpdate,
+} from './relationship-sync'
+import type { RelationshipConfig } from '@auxx/types/custom-field'
 import { FieldValueValidator, fieldValueSchemas } from './field-value-validator'
 import { isBuiltInField, getBuiltInFieldHandler } from '../custom-fields/built-in-fields'
 import { checkUniqueValueTyped } from '../custom-fields/check-unique-value-typed'
@@ -139,12 +148,10 @@ export class FieldValueService {
     // 1. Get field definition (cached)
     const field = await this.getField(fieldId)
 
-    // 2. Convert raw value to typed input using field type
-    const typedInput = convertToTypedInput(
-      value,
-      field.type,
-      field.options as SelectOption[] | undefined
-    )
+    // 2. Convert raw value to typed input using formatter
+    const typedInput = formatToTypedInput(value, field.type, {
+      selectOptions: field.options as { id?: string; value: string; label: string }[] | undefined,
+    })
 
     // Handle null/delete case
     if (typedInput === null) {
@@ -230,10 +237,27 @@ export class FieldValueService {
    * });
    */
   async setValueWithType(params: SetValueWithTypeInput): Promise<TypedFieldValue[]> {
-    const { entityId, fieldId, fieldType, value } = params
+    const { entityId, fieldId, fieldType, value, skipInverseSync = false } = params
 
     // Get field definition for displayName update (cached)
     const field = await this.getField(fieldId)
+
+    // ═══ For relationships: capture old values and get inverse info ═══
+    let oldRelatedIds: string[] = []
+    let inverseInfo: InverseFieldInfo | null = null
+
+    if (fieldType === 'RELATIONSHIP' && !skipInverseSync) {
+      inverseInfo = await this.getInverseInfoFromField(field)
+
+      // Only capture old values if we have an inverse to sync
+      if (inverseInfo) {
+        oldRelatedIds = await getExistingRelatedIds(
+          { db: this.db, organizationId: this.organizationId },
+          entityId,
+          fieldId
+        )
+      }
+    }
 
     // Delete existing values for this entityId + fieldId
     await this.db
@@ -249,6 +273,15 @@ export class FieldValueService {
     // If value is null, we're done (deletion)
     if (value === null) {
       await this.maybeUpdateDisplayValue(entityId, field, null)
+
+      // Sync inverse if we had old relationships
+      if (inverseInfo && oldRelatedIds.length > 0) {
+        await syncInverseRelationships(
+          { db: this.db, organizationId: this.organizationId },
+          { entityId, oldRelatedIds, newRelatedIds: [], inverseInfo }
+        )
+      }
+
       return []
     }
 
@@ -256,6 +289,15 @@ export class FieldValueService {
     const values = Array.isArray(value) ? value : [value]
     if (values.length === 0) {
       await this.maybeUpdateDisplayValue(entityId, field, null)
+
+      // Sync inverse if we had old relationships
+      if (inverseInfo && oldRelatedIds.length > 0) {
+        await syncInverseRelationships(
+          { db: this.db, organizationId: this.organizationId },
+          { entityId, oldRelatedIds, newRelatedIds: [], inverseInfo }
+        )
+      }
+
       return []
     }
 
@@ -274,6 +316,21 @@ export class FieldValueService {
 
     // Update display value if this is a display field
     await this.maybeUpdateDisplayValue(entityId, field, value)
+
+    // ═══ Sync inverse relationships ═══
+    if (inverseInfo) {
+      const newRelatedIds = values
+        .filter(
+          (v): v is { type: 'relationship'; relatedEntityId: string; relatedEntityDefinitionId: string } =>
+            v.type === 'relationship' && !!v.relatedEntityId
+        )
+        .map((v) => v.relatedEntityId)
+
+      await syncInverseRelationships(
+        { db: this.db, organizationId: this.organizationId },
+        { entityId, oldRelatedIds, newRelatedIds, inverseInfo }
+      )
+    }
 
     return result
   }
@@ -543,7 +600,7 @@ export class FieldValueService {
    * });
    */
   async setValueWithBuiltIn(params: SetValueWithBuiltInInput): Promise<SetValueResult> {
-    const { entityId, fieldId, value, modelType, publishEvents = true } = params
+    const { entityId, fieldId, value, modelType, publishEvents = true, skipInverseSync = false } = params
 
     // 1. Check if built-in field
     if (isBuiltInField(fieldId, modelType)) {
@@ -595,6 +652,7 @@ export class FieldValueService {
       fieldId,
       fieldType: field.type,
       value: typedValue,
+      skipInverseSync,
     })
 
     // 7. Publish event for contacts (use first value for event compat)
@@ -697,7 +755,7 @@ export class FieldValueService {
    * });
    */
   async setValuesForEntity(params: SetValuesForEntityInput): Promise<SetValuesResult[]> {
-    const { entityId, values, modelType, publishEvents = true } = params
+    const { entityId, values, modelType, publishEvents = true, skipInverseSync = false } = params
 
     // Filter out undefined values
     const validValues = values.filter((v) => v.value !== undefined)
@@ -750,6 +808,7 @@ export class FieldValueService {
             value: v.value,
             modelType,
             publishEvents,
+            skipInverseSync,
           })
           results.push({ fieldId: v.fieldId, ...result })
         } catch (error) {
@@ -844,7 +903,38 @@ export class FieldValueService {
     const uniqueFieldIds = [...new Set(customFieldIds)]
     await Promise.all(uniqueFieldIds.map((id) => this.getField(id).catch(() => null)))
 
-    // Set values for all entities in parallel
+    // ═══ Identify relationship fields and prepare for bulk sync ═══
+    const relationshipFields: Array<{
+      fieldId: string
+      field: FieldWithDefinition
+      inverseInfo: InverseFieldInfo
+      rawValue: unknown
+    }> = []
+
+    for (const v of validValues) {
+      const field = this.fieldCache.get(v.fieldId)
+      if (field?.type === 'RELATIONSHIP') {
+        const inverseInfo = await this.getInverseInfoFromField(field)
+        if (inverseInfo) {
+          relationshipFields.push({ fieldId: v.fieldId, field, inverseInfo, rawValue: v.value })
+        }
+      }
+    }
+
+    // ═══ Batch capture old relationship values (1 query per relationship field) ═══
+    const oldRelatedIdsMap = new Map<string, Map<string, string[]>>() // fieldId → (entityId → oldIds[])
+
+    for (const rf of relationshipFields) {
+      const oldIds = await batchGetExistingRelatedIds(
+        { db: this.db, organizationId: this.organizationId },
+        entityIds,
+        rf.fieldId
+      )
+      oldRelatedIdsMap.set(rf.fieldId, oldIds)
+    }
+
+    // ═══ Set values for all entities in parallel ═══
+    // Skip inverse sync here - we'll do bulk sync at the end
     const results = await Promise.allSettled(
       entityIds.map((entityId) =>
         this.setValuesForEntity({
@@ -852,12 +942,63 @@ export class FieldValueService {
           values: validValues,
           modelType,
           publishEvents: false, // Don't spam events for bulk operations
+          skipInverseSync: true, // Bulk sync handled separately below
         })
       )
     )
 
+    // ═══ Bulk sync inverse relationships (aggregated across all entities) ═══
+    for (const rf of relationshipFields) {
+      const oldIdsForField = oldRelatedIdsMap.get(rf.fieldId)
+      if (!oldIdsForField) continue
+
+      // Extract new related IDs from the raw value
+      const newRelatedIds = this.extractRelatedIdsFromRaw(rf.rawValue)
+
+      // Build bulk updates array
+      const updates: BulkRelationshipUpdate[] = entityIds.map((entityId) => ({
+        entityId,
+        oldRelatedIds: oldIdsForField.get(entityId) ?? [],
+        newRelatedIds, // Same new value for all entities in bulk operation
+      }))
+
+      // Execute bulk sync (minimal queries)
+      await syncInverseRelationshipsBulk(
+        { db: this.db, organizationId: this.organizationId },
+        { updates, inverseInfo: rf.inverseInfo }
+      )
+    }
+
     const count = results.filter((r) => r.status === 'fulfilled').length
     return { count }
+  }
+
+  /**
+   * Extract related entity IDs from a raw relationship value.
+   * Handles various input formats (string, object, array).
+   */
+  private extractRelatedIdsFromRaw(value: unknown): string[] {
+    if (!value) return []
+
+    if (Array.isArray(value)) {
+      return value
+        .map((v) => {
+          if (typeof v === 'string') return v
+          if (typeof v === 'object' && v !== null && 'relatedEntityId' in v) {
+            return (v as { relatedEntityId: string }).relatedEntityId
+          }
+          return null
+        })
+        .filter((id): id is string => id !== null)
+    }
+
+    if (typeof value === 'string') return [value]
+
+    if (typeof value === 'object' && value !== null && 'relatedEntityId' in value) {
+      return [(value as { relatedEntityId: string }).relatedEntityId]
+    }
+
+    return []
   }
 
   /**
@@ -1287,6 +1428,34 @@ export class FieldValueService {
   }
 
   /**
+   * Extract inverse field info from a cached field definition.
+   * Returns null if field is not a relationship or has no inverse configured.
+   */
+  private async getInverseInfoFromField(field: FieldWithDefinition): Promise<InverseFieldInfo | null> {
+    if (field.type !== 'RELATIONSHIP') return null
+
+    const relationship = (field.options as Record<string, unknown>)?.relationship as
+      | RelationshipConfig
+      | undefined
+    if (!relationship?.inverseFieldId) return null
+
+    // Use existing cached getField() for the inverse field
+    const inverseField = await this.getField(relationship.inverseFieldId)
+    const inverseRelationship = (inverseField.options as Record<string, unknown>)?.relationship as
+      | RelationshipConfig
+      | undefined
+
+    // Source entity definition is the type of entity we're currently updating
+    const sourceEntityDefinitionId = field.entityDefinitionId ?? field.modelType ?? ''
+
+    return {
+      inverseFieldId: relationship.inverseFieldId,
+      inverseRelationshipType: inverseRelationship?.relationshipType ?? 'has_many',
+      sourceEntityDefinitionId,
+    }
+  }
+
+  /**
    * Batch validate relationships efficiently.
    * Collects all relationship validations and does them in a single DB query.
    * Returns a map for quick lookup during individual validations.
@@ -1446,7 +1615,7 @@ export class FieldValueService {
         const structureResult = fieldValueSchemas.relationship.safeParse(value)
         if (!structureResult.success) throwValidationError(structureResult)
 
-        const { relatedEntityId, relatedEntityDefinitionId } = structureResult.data
+        const { relatedEntityId, relatedEntityDefinitionId } = structureResult.data!
 
         // Check batch validation cache first (if preBatchValidateRelationships was called)
         if (this.batchRelationshipValidationCache.has(relatedEntityId)) {
@@ -1562,8 +1731,10 @@ export class FieldValueService {
           }
         }
       } else {
-        displayValue =
-          getDisplayValue(typedValue, field.options as SelectOption[] | undefined) || null
+        // Use centralized formatter for display value computation
+        displayValue = formatToDisplayValue(typedValue, field.type, field.options as any) as
+          | string
+          | null
       }
     }
 

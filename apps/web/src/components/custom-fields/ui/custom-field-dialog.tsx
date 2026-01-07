@@ -60,6 +60,21 @@ import { AddressComponentsEditor } from './address-component-editor'
 import { FileOptionsEditor, type FileOptions } from './file-options-editor'
 import { RelationshipFieldEditor, type RelationshipOptions } from './relationship-field-editor'
 import { CurrencyOptionsEditor, type CurrencyOptions } from './currency-options-editor'
+import {
+  NumberFormattingEditor,
+  DateFormattingEditor,
+  DateTimeFormattingEditor,
+  TimeFormattingEditor,
+  BooleanFormattingEditor,
+} from './formatting-editors'
+import type {
+  NumberDisplayOptions,
+  DateDisplayOptions,
+  BooleanDisplayOptions,
+} from '@auxx/lib/field-values/client'
+
+/** Merged display options type for internal state */
+type DisplayOptions = NumberDisplayOptions & DateDisplayOptions & BooleanDisplayOptions
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
 
 /** Field data for editing */
@@ -103,6 +118,7 @@ export function CustomFieldDialog({
 }: CustomFieldDialogProps) {
   const isEditing = !!editingField
 
+  console.log('CustomFieldDialog render, editingField:', editingField)
   // Form setup
   const form = useForm<CustomFieldFormValues>({
     resolver: standardSchemaResolver(customFieldFormSchema),
@@ -119,7 +135,9 @@ export function CustomFieldDialog({
   })
 
   // States for complex field options
-  const [options, setOptions] = useState<Array<{ label: string; value: string; color?: SelectOptionColor }>>([])
+  const [options, setOptions] = useState<
+    Array<{ label: string; value: string; color?: SelectOptionColor }>
+  >([])
   const [addressComponents, setAddressComponents] = useState<string[]>([
     'street1',
     'street2',
@@ -145,6 +163,8 @@ export function CustomFieldDialog({
     displayType: 'symbol',
     groups: 'default',
   })
+  const [displayOptions, setDisplayOptions] = useState<DisplayOptions>({})
+  const [showDisplayOptions, setShowDisplayOptions] = useState(false)
 
   // Track initial values for extra state (not managed by react-hook-form)
   const [initialExtraState, setInitialExtraState] = useState<{
@@ -153,6 +173,7 @@ export function CustomFieldDialog({
     fileOptions: FileOptions
     relationshipOptions: RelationshipOptions
     currencyOptions: CurrencyOptions
+    displayOptions: DisplayOptions
   } | null>(null)
 
   // Check if extra state (outside react-hook-form) has changed
@@ -167,8 +188,25 @@ export function CustomFieldDialog({
       JSON.stringify(relationshipOptions) !== JSON.stringify(initialExtraState.relationshipOptions)
     const currencyChanged =
       JSON.stringify(currencyOptions) !== JSON.stringify(initialExtraState.currencyOptions)
-    return optionsChanged || addressChanged || fileChanged || relationshipChanged || currencyChanged
-  }, [options, addressComponents, fileOptions, relationshipOptions, currencyOptions, initialExtraState])
+    const displayOptionsChanged =
+      JSON.stringify(displayOptions) !== JSON.stringify(initialExtraState.displayOptions)
+    return (
+      optionsChanged ||
+      addressChanged ||
+      fileChanged ||
+      relationshipChanged ||
+      currencyChanged ||
+      displayOptionsChanged
+    )
+  }, [
+    options,
+    addressComponents,
+    fileOptions,
+    relationshipOptions,
+    currencyOptions,
+    displayOptions,
+    initialExtraState,
+  ])
 
   // Combined dirty state: form fields OR extra state changed
   const isDirty = form.formState.isDirty || isExtraStateDirty
@@ -188,7 +226,14 @@ export function CustomFieldDialog({
   useEffect(() => {
     if (open) {
       let initOptions: Array<{ label: string; value: string; color?: SelectOptionColor }> = []
-      let initAddressComponents: string[] = ['street1', 'street2', 'city', 'state', 'zipCode', 'country']
+      let initAddressComponents: string[] = [
+        'street1',
+        'street2',
+        'city',
+        'state',
+        'zipCode',
+        'country',
+      ]
       let initFileOptions: FileOptions = {
         allowMultiple: false,
         maxFiles: undefined,
@@ -206,6 +251,7 @@ export function CustomFieldDialog({
         displayType: 'symbol',
         groups: 'default',
       }
+      let initDisplayOptions: DisplayOptions = {}
 
       if (editingField) {
         // Edit mode: populate form with existing field data
@@ -275,6 +321,31 @@ export function CustomFieldDialog({
           }
         }
         setCurrencyOptions(initCurrencyOptions)
+
+        // Load display options from field.options (flat structure)
+        // NUMBER: decimals, useGrouping, displayAs, prefix, suffix
+        // DATE/DATETIME: format
+        // TIME: timeFormat
+        // CHECKBOX: displayAs, trueLabel, falseLabel
+        if (editingField.options) {
+          const opts = editingField.options
+          initDisplayOptions = {
+            // Number options
+            decimals: opts.decimals,
+            useGrouping: opts.useGrouping,
+            displayAs: opts.displayAs,
+            prefix: opts.prefix,
+            suffix: opts.suffix,
+            // Date options
+            format: opts.format,
+            timeFormat: opts.timeFormat,
+            // Boolean options
+            trueLabel: opts.trueLabel,
+            falseLabel: opts.falseLabel,
+          }
+        }
+        setDisplayOptions(initDisplayOptions)
+        setShowDisplayOptions(false)
       } else {
         // Create mode: reset to defaults
         form.reset({
@@ -292,6 +363,8 @@ export function CustomFieldDialog({
         setFileOptions(initFileOptions)
         setRelationshipOptions(initRelationshipOptions)
         setCurrencyOptions(initCurrencyOptions)
+        setDisplayOptions(initDisplayOptions)
+        setShowDisplayOptions(false)
       }
 
       // Set baseline for dirty checking
@@ -301,6 +374,7 @@ export function CustomFieldDialog({
         fileOptions: initFileOptions,
         relationshipOptions: initRelationshipOptions,
         currencyOptions: initCurrencyOptions,
+        displayOptions: initDisplayOptions,
       })
     }
   }, [open, editingField, form])
@@ -311,7 +385,7 @@ export function CustomFieldDialog({
   // Get selected field type option for display
   const selectedTypeOption = fieldTypeOptions.find((opt) => opt.value === selectedType)
 
-  // Clear default value and reset isUnique when type changes (in create mode only)
+  // Clear default value, reset isUnique, and reset displayOptions when type changes (in create mode only)
   useEffect(() => {
     if (!isEditing) {
       form.setValue('defaultValue', '')
@@ -319,6 +393,9 @@ export function CustomFieldDialog({
       if (!canFieldBeUnique(selectedType, relationshipOptions.relationshipType)) {
         form.setValue('isUnique', false)
       }
+      // Reset displayOptions and close panel when type changes
+      setDisplayOptions({})
+      setShowDisplayOptions(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedType, isEditing])
@@ -349,6 +426,21 @@ export function CustomFieldDialog({
 
     if (values.type === FieldType.CURRENCY) {
       submitObj.options = { currency: currencyOptions }
+    }
+
+    // Merge display options flat into options for supported field types
+    // NUMBER: decimals, useGrouping, displayAs, prefix, suffix
+    // DATE/DATETIME: format
+    // TIME: timeFormat
+    // CHECKBOX: displayAs, trueLabel, falseLabel
+    if (Object.keys(displayOptions).length > 0) {
+      // Filter out undefined values from displayOptions
+      const filteredDisplayOptions = Object.fromEntries(
+        Object.entries(displayOptions).filter(([_, v]) => v !== undefined)
+      )
+      if (Object.keys(filteredDisplayOptions).length > 0) {
+        submitObj.options = { ...submitObj.options, ...filteredDisplayOptions }
+      }
     }
 
     await onSave(submitObj)
@@ -384,8 +476,68 @@ export function CustomFieldDialog({
     }
   }
 
+  /** Check if field type supports display options */
+  const supportsDisplayOptions = (type: FieldTypeType): boolean => {
+    return [
+      FieldType.NUMBER,
+      FieldType.DATE,
+      FieldType.DATETIME,
+      FieldType.TIME,
+      FieldType.CHECKBOX,
+    ].includes(type)
+  }
+
+  /** Render the actual display options editor content */
+  const renderDisplayOptionsContent = () => {
+    switch (selectedType) {
+      case FieldType.NUMBER:
+        return <NumberFormattingEditor options={displayOptions} onChange={setDisplayOptions} />
+      case FieldType.DATE:
+        return <DateFormattingEditor options={displayOptions} onChange={setDisplayOptions} />
+      case FieldType.DATETIME:
+        return <DateTimeFormattingEditor options={displayOptions} onChange={setDisplayOptions} />
+      case FieldType.TIME:
+        return <TimeFormattingEditor options={displayOptions} onChange={setDisplayOptions} />
+      case FieldType.CHECKBOX:
+        return <BooleanFormattingEditor options={displayOptions} onChange={setDisplayOptions} />
+      default:
+        return null
+    }
+  }
+
+  /** Render display options section with toggle button */
+  const renderDisplayOptionsEditor = () => {
+    if (!supportsDisplayOptions(selectedType)) return null
+
+    return (
+      <div className="space-y-3">
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full justify-between"
+          onClick={() => setShowDisplayOptions(!showDisplayOptions)}>
+          <span>Display Options</span>
+          <ChevronDown
+            className={`size-4 transition-transform ${showDisplayOptions ? 'rotate-180' : ''}`}
+          />
+        </Button>
+        {showDisplayOptions && (
+          <div className="rounded-lg border p-3">{renderDisplayOptionsContent()}</div>
+        )}
+      </div>
+    )
+  }
+
+  // Watch isUnique to hide default value when unique is checked
+  const isUnique = form.watch('isUnique')
+
   /** Render type-aware default value input */
   const renderDefaultValueInput = () => {
+    // Hide default value in edit mode or for unique fields
+    if (isEditing || isUnique) {
+      return null
+    }
+
     // These types don't support default values
     if (
       selectedType === FieldType.ADDRESS_STRUCT ||
@@ -485,160 +637,176 @@ export function CustomFieldDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent size={selectedType === FieldType.RELATIONSHIP ? 'xxl' : 'md'} position="tc" {...guardProps}>
-        {/* className="max-h-3/4 overflow-y-auto" */}
-        <DialogHeader>
-          <DialogTitle>{isEditing ? 'Edit Custom Field' : 'Create Custom Field'}</DialogTitle>
-          <DialogDescription>
-            {isEditing ? 'Update the field settings below.' : 'Configure your new custom field.'}
-          </DialogDescription>
-        </DialogHeader>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)}>
-            <FieldGroup className="gap-4">
-              {/* Field Type Selector - Only shown in create mode */}
-              {!isEditing && (
-                <Field>
-                  <FieldLabel>Field Type</FieldLabel>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" className="w-full justify-between">
-                        <span className="flex items-center gap-2">
-                          {selectedTypeOption && <selectedTypeOption.icon className="size-4" />}
-                          {selectedTypeOption?.label || 'Select type'}
-                        </span>
-                        <ChevronDown className="size-4 opacity-50" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-[220px]" align="start">
-                      {Object.entries(FIELD_TYPE_GROUPS).map(([groupName, types]) => (
-                        <DropdownMenuGroup key={groupName}>
-                          <DropdownMenuLabel className="text-xs text-muted-foreground">
-                            {groupName}
-                          </DropdownMenuLabel>
-                          {types.map((type) => {
-                            const option = fieldTypeOptions.find((opt) => opt.value === type)
-                            if (!option) return null
-                            return (
-                              <DropdownMenuItem
-                                key={option.value}
-                                onClick={() => form.setValue('type', option.value)}
-                                className="flex items-start gap-2 ps-1">
-                                <div className="rounded-full ring-1 ring-ring bg-secondary flex items-center justify-center size-5">
-                                  <option.icon className="size-3 shrink-0" />
-                                </div>
-                                <span className="font-medium">{option.label}</span>
-                              </DropdownMenuItem>
-                            )
-                          })}
-                        </DropdownMenuGroup>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </Field>
-              )}
-
-              {/* Field Name and Description - hidden for RELATIONSHIP (handled in RelationshipFieldEditor) */}
-              {selectedType !== FieldType.RELATIONSHIP && (
-                <>
-                  <FormField
-                    control={form.control}
-                    name="name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Field Name</FormLabel>
-                        <FormControl>
-                          <Input placeholder="e.g., Work Phone" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="description"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Description (Optional)</FormLabel>
-                        <FormControl>
-                          <Textarea
-                            placeholder="Description or help text for this field"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </>
-              )}
-
-              {/* Required Switch */}
-              <FormField
-                control={form.control}
-                name="required"
-                render={({ field }) => (
-                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-xl border px-3 py-1.5">
-                    <FormControl>
-                      <Switch checked={field.value} onCheckedChange={field.onChange} size="sm" />
-                    </FormControl>
-                    <div className="space-y-1 leading-none">
-                      <FormLabel>Required Field</FormLabel>
-                      <FormDescription>Make this field mandatory</FormDescription>
-                    </div>
-                  </FormItem>
+        <DialogContent
+          size={selectedType === FieldType.RELATIONSHIP ? 'xxl' : 'md'}
+          position="tc"
+          {...guardProps}>
+          {/* className="max-h-3/4 overflow-y-auto" */}
+          <DialogHeader>
+            <DialogTitle>{isEditing ? 'Edit Custom Field' : 'Create Custom Field'}</DialogTitle>
+            <DialogDescription>
+              {isEditing ? 'Update the field settings below.' : 'Configure your new custom field.'}
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(handleSubmit)}>
+              <FieldGroup className="gap-4">
+                {/* Field Type Selector - Only shown in create mode */}
+                {!isEditing && (
+                  <Field>
+                    <FieldLabel>Field Type</FieldLabel>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" className="w-full justify-between">
+                          <span className="flex items-center gap-2">
+                            {selectedTypeOption && <selectedTypeOption.icon className="size-4" />}
+                            {selectedTypeOption?.label || 'Select type'}
+                          </span>
+                          <ChevronDown className="size-4 opacity-50" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className="w-[220px]" align="start">
+                        {Object.entries(FIELD_TYPE_GROUPS).map(([groupName, types]) => (
+                          <DropdownMenuGroup key={groupName}>
+                            <DropdownMenuLabel className="text-xs text-muted-foreground">
+                              {groupName}
+                            </DropdownMenuLabel>
+                            {types.map((type) => {
+                              const option = fieldTypeOptions.find((opt) => opt.value === type)
+                              if (!option) return null
+                              return (
+                                <DropdownMenuItem
+                                  key={option.value}
+                                  onClick={() => form.setValue('type', option.value)}
+                                  className="flex items-start gap-2 ps-1">
+                                  <div className="rounded-full ring-1 ring-ring bg-secondary flex items-center justify-center size-5">
+                                    <option.icon className="size-3 shrink-0" />
+                                  </div>
+                                  <span className="font-medium">{option.label}</span>
+                                </DropdownMenuItem>
+                              )
+                            })}
+                          </DropdownMenuGroup>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </Field>
                 )}
-              />
 
-              {/* Unique Switch - only shown for uniqueable field types */}
-              {canFieldBeUnique(selectedType, relationshipOptions.relationshipType) && (
+                {/* Field Name and Description - hidden for RELATIONSHIP (handled in RelationshipFieldEditor) */}
+                {selectedType !== FieldType.RELATIONSHIP && (
+                  <>
+                    <FormField
+                      control={form.control}
+                      name="name"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Field Name</FormLabel>
+                          <FormControl>
+                            <Input placeholder="e.g., Work Phone" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="description"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Description (Optional)</FormLabel>
+                          <FormControl>
+                            <Textarea
+                              placeholder="Description or help text for this field"
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </>
+                )}
+
+                {/* Required Switch */}
                 <FormField
                   control={form.control}
-                  name="isUnique"
+                  name="required"
                   render={({ field }) => (
                     <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-xl border px-3 py-1.5">
                       <FormControl>
                         <Switch checked={field.value} onCheckedChange={field.onChange} size="sm" />
                       </FormControl>
                       <div className="space-y-1 leading-none">
-                        <FormLabel>Unique Value</FormLabel>
-                        <FormDescription>
-                          Only one record can have this value. Can be used to match records during import.
-                        </FormDescription>
+                        <FormLabel>Required Field</FormLabel>
+                        <FormDescription>Make this field mandatory</FormDescription>
                       </div>
                     </FormItem>
                   )}
                 />
-              )}
 
-              {/* Type-specific editors */}
-              {renderTypeSpecificEditors()}
+                {/* Unique Switch - only shown for uniqueable field types */}
+                {canFieldBeUnique(selectedType, relationshipOptions.relationshipType) && (
+                  <FormField
+                    control={form.control}
+                    name="isUnique"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-xl border px-3 py-1.5">
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                            size="sm"
+                          />
+                        </FormControl>
+                        <div className="space-y-1 leading-none">
+                          <FormLabel>Unique Value</FormLabel>
+                          <FormDescription>
+                            Only one record can have this value. Can be used to match records during
+                            import.
+                            {isEditing && !editingField?.isUnique && field.value && (
+                              <span className="block mt-1 text-orange-500">
+                                Existing values will be checked for duplicates and may error.
+                              </span>
+                            )}
+                          </FormDescription>
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+                )}
 
-              {/* Default Value - rendered after type-specific options */}
-              {renderDefaultValueInput()}
-            </FieldGroup>
+                {/* Type-specific editors */}
+                {renderTypeSpecificEditors()}
 
-            <DialogFooter>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={guardedClose}
-                disabled={isPending}>
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                type="submit"
-                variant="outline"
-                loading={isPending}
-                loadingText={isEditing ? 'Saving...' : 'Creating...'}>
-                {isEditing ? 'Save Changes' : 'Create Field'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </Form>
+                {/* Default Value - rendered after type-specific options */}
+                {renderDefaultValueInput()}
+
+                {/* Display options editors for supported field types */}
+                {renderDisplayOptionsEditor()}
+              </FieldGroup>
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={guardedClose}
+                  disabled={isPending}>
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  type="submit"
+                  variant="outline"
+                  loading={isPending}
+                  loadingText={isEditing ? 'Saving...' : 'Creating...'}>
+                  {isEditing ? 'Save Changes' : 'Create Field'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
         </DialogContent>
       </Dialog>
       <ConfirmDialog />

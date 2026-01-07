@@ -1,18 +1,22 @@
 // packages/lib/src/field-values/display-field-service.ts
 
 import { database, schema, type Database } from '@auxx/database'
-import { eq, and, gt } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 import {
   batchUpdateDisplayValues,
   clearDisplayValues,
 } from '@auxx/services/entity-instances'
-import { getDisplayValue, rowToTypedValue, type FieldValueRow } from './value-converter'
+import { formatToDisplayValue } from './formatter'
 import {
   type DisplayFieldType,
   type RecalculateDisplayFieldResult,
   DISPLAY_FIELD_CONFIG,
 } from './display-field-types'
-import type { SelectOption } from '@auxx/types'
+import { ResourceRegistryService } from '../resources/registry/resource-registry-service'
+import { FieldValueService } from './field-value-service'
+import type { ResourceField } from '../resources/registry/field-types'
+import type { CustomResource } from '../resources/registry/types'
+import type { TypedFieldValue } from '@auxx/types'
 
 const BATCH_SIZE = 100
 
@@ -23,12 +27,21 @@ const BATCH_SIZE = 100
  */
 export class DisplayFieldService {
   private db: Database
+  private registryService: ResourceRegistryService
+  private fieldValueService: FieldValueService
 
   constructor(
     private readonly organizationId: string,
     db: Database = database
   ) {
     this.db = db
+    this.registryService = new ResourceRegistryService(organizationId, db)
+    this.fieldValueService = new FieldValueService(
+      organizationId,
+      undefined,
+      db,
+      this.registryService
+    )
   }
 
   /**
@@ -41,26 +54,21 @@ export class DisplayFieldService {
   ): Promise<RecalculateDisplayFieldResult> {
     const config = DISPLAY_FIELD_CONFIG[displayFieldType]
 
-    // 1. Get entity definition with the relevant display field relation
-    const entityDefWithField = await this.db.query.EntityDefinition.findFirst({
-      where: (ed, { eq: eqOp, and: andOp }) =>
-        andOp(eqOp(ed.id, entityDefinitionId), eqOp(ed.organizationId, this.organizationId)),
-      with: {
-        ...(displayFieldType === 'primary' && { primaryDisplayField: true }),
-        ...(displayFieldType === 'secondary' && { secondaryDisplayField: true }),
-        ...(displayFieldType === 'avatar' && { avatarField: true }),
-      },
-    })
+    // 1. Get full resource with fields from registry
+    const resource = await this.registryService.getById(entityDefinitionId)
 
-    if (!entityDefWithField) {
+    if (!resource || resource.type !== 'custom') {
       throw new Error(`Entity definition not found: ${entityDefinitionId}`)
     }
 
-    const fieldId = entityDefWithField[config.definitionColumn] as string | null
-    const field = this.getFieldFromEntityDef(entityDefWithField, displayFieldType)
+    // 2. Get the display field ID and full field definition
+    const displayFieldId = this.getDisplayFieldId(resource, displayFieldType)
+    const field = displayFieldId
+      ? resource.fields.find((f) => f.id === displayFieldId)
+      : null
 
-    // 2. If no field configured, clear all values
-    if (!fieldId || !field) {
+    // 3. If no field configured, clear all values
+    if (!displayFieldId || !field) {
       await clearDisplayValues({
         entityDefinitionId,
         organizationId: this.organizationId,
@@ -84,7 +92,7 @@ export class DisplayFieldService {
     let updated = 0
     let cursor: string | undefined
 
-    // 3. Process instances in batches
+    // 4. Process instances in batches
     while (true) {
       const instances = await this.db.query.EntityInstance.findMany({
         where: (ei, { eq: eqOp, and: andOp, gt: gtOp }) => {
@@ -105,34 +113,31 @@ export class DisplayFieldService {
       const instanceIds = instances.map((i) => i.id)
       cursor = instanceIds[instanceIds.length - 1]
 
-      // 4. Get field values for this batch
-      const fieldValues = await this.db.query.FieldValue.findMany({
-        where: (fv, { eq: eqOp, and: andOp, inArray: inArr }) =>
-          andOp(
-            inArr(fv.entityId, instanceIds),
-            eqOp(fv.fieldId, fieldId),
-            eqOp(fv.organizationId, this.organizationId)
-          ),
-        orderBy: (fv, { asc }) => asc(fv.sortKey),
+      // 5. Use FieldValueService.batchGetValues() - no more raw rows!
+      const batchResult = await this.fieldValueService.batchGetValues({
+        resourceType: 'entity',
+        entityDefId: entityDefinitionId,
+        resourceIds: instanceIds,
+        fieldIds: [displayFieldId],
       })
 
-      // Group by entityId
-      const valuesByEntity = new Map<string, typeof fieldValues>()
-      for (const fv of fieldValues) {
-        const existing = valuesByEntity.get(fv.entityId) ?? []
-        existing.push(fv)
-        valuesByEntity.set(fv.entityId, existing)
+      // Group by entityId for easy lookup
+      const valuesByEntity = new Map<string, TypedFieldValue | TypedFieldValue[]>()
+      for (const result of batchResult.values) {
+        if (result.value) {
+          valuesByEntity.set(result.resourceId, result.value)
+        }
       }
 
-      // 5. Compute display values using existing utilities
+      // 6. Compute display values using properly typed field
       const updates = new Map<string, string | null>()
       for (const instanceId of instanceIds) {
-        const rows = valuesByEntity.get(instanceId) ?? []
-        const displayValue = this.computeDisplayValue(rows as FieldValueRow[], field, displayFieldType)
+        const typedValue = valuesByEntity.get(instanceId) ?? null
+        const displayValue = this.computeDisplayValue(typedValue, field, displayFieldType)
         updates.set(instanceId, displayValue)
       }
 
-      // 6. Batch update
+      // 7. Batch update
       const result = await batchUpdateDisplayValues({
         organizationId: this.organizationId,
         updates,
@@ -163,53 +168,54 @@ export class DisplayFieldService {
   }
 
   /**
-   * Extract the field definition from entity def based on display field type.
+   * Get the field ID for a display field type from CustomResource.
    */
-  private getFieldFromEntityDef(
-    entityDef: Record<string, unknown>,
+  private getDisplayFieldId(
+    resource: CustomResource,
     displayFieldType: DisplayFieldType
-  ): { type: string; options: unknown } | null {
+  ): string | null {
     switch (displayFieldType) {
       case 'primary':
-        return entityDef.primaryDisplayField as { type: string; options: unknown } | null
+        return resource.display.primaryDisplayField?.id ?? null
       case 'secondary':
-        return entityDef.secondaryDisplayField as { type: string; options: unknown } | null
+        return resource.display.secondaryDisplayField?.id ?? null
       case 'avatar':
-        return entityDef.avatarField as { type: string; options: unknown } | null
+        return resource.display.avatarField?.id ?? null
     }
   }
 
   /**
-   * Compute display value from field value rows.
-   * Uses existing rowToTypedValue and getDisplayValue utilities.
+   * Compute display value from already-typed field values.
+   * No more raw rows - FieldValueService handles the conversion.
    */
   private computeDisplayValue(
-    rows: FieldValueRow[],
-    field: { type: string; options: unknown },
+    typedValue: TypedFieldValue | TypedFieldValue[] | null,
+    field: ResourceField,
     displayFieldType: DisplayFieldType
   ): string | null {
-    if (rows.length === 0) return null
+    if (!typedValue) return null
 
     // For avatar fields, extract URL directly
     if (displayFieldType === 'avatar') {
-      const row = rows[0]!
-      if (row.valueText) return row.valueText
-      if (row.valueJson) {
-        const json = row.valueJson as Record<string, unknown>
-        if (typeof json.url === 'string') return json.url
+      const single = Array.isArray(typedValue) ? typedValue[0] : typedValue
+      if (!single) return null
+
+      if (single.type === 'text') {
+        return single.value || null
+      }
+      if (single.type === 'json') {
+        const json = single.value as Record<string, unknown>
+        if (typeof json?.url === 'string') return json.url
       }
       return null
     }
 
-    // Convert rows to TypedFieldValue using existing utility
-    const typedValues = rows.map((row) => rowToTypedValue(row, field.type))
+    // Use fieldType from ResourceField (properly typed FieldType enum)
+    const fieldType = field.fieldType ?? 'TEXT'
 
-    // Use existing getDisplayValue for consistency
-    const displayValue = getDisplayValue(
-      typedValues.length === 1 ? typedValues[0]! : typedValues,
-      field.options as SelectOption[] | undefined
-    )
+    // Use centralized formatter with properly typed options
+    const displayValue = formatToDisplayValue(typedValue, fieldType, field.options)
 
-    return displayValue || null
+    return typeof displayValue === 'string' ? displayValue : null
   }
 }

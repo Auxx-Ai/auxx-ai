@@ -44,18 +44,17 @@ import {
 import { useSaveFieldValue } from '~/hooks/use-save-field-value'
 import { useCustomField } from '~/components/custom-fields/hooks/use-custom-field'
 import { toastError } from '@auxx/ui/components/toast'
-import { extractValue, type TypedFieldValue } from '@auxx/types/field-value'
+import { formatToRawValue } from '@auxx/lib/field-values/client'
+import { FieldType } from '@auxx/database/enums'
 
 /**
- * Extract raw value from TypedFieldValue or return value as-is.
+ * Extract raw value from TypedFieldValue using centralized formatter.
  * Used for column grouping and drag operations.
  */
 function extractRawValue(value: unknown): unknown {
   if (value == null) return null
-  if (typeof value === 'object' && 'type' in (value as Record<string, unknown>)) {
-    return extractValue(value as TypedFieldValue)
-  }
-  return value
+  // Use SINGLE_SELECT since kanban groups by select fields
+  return formatToRawValue(value, FieldType.SINGLE_SELECT)
 }
 
 

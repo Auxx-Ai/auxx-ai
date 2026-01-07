@@ -4,8 +4,43 @@
 export { FieldValueService } from './field-value-service'
 export { DisplayFieldService } from './display-field-service'
 
-// Utilities
-export { convertToTypedInput, getDisplayValue, rowToTypedValue } from './value-converter'
+// NEW: Centralized Formatter API (preferred)
+export {
+  formatToTypedInput,
+  formatToRawValue,
+  formatToDisplayValue,
+  isMultiValueFieldType,
+  extractValues,
+  isValueEmpty,
+  areValuesEqual,
+  type ConverterOptions,
+  type FieldOptions,
+  type DisplayOptions,
+  type FieldValueConverter,
+  type TextDisplayOptions,
+  type NumberDisplayOptions,
+  type CurrencyDisplayOptions,
+  type BooleanDisplayOptions,
+  type DateDisplayOptions,
+  type SelectDisplayOptions,
+} from './formatter'
+
+// Converters (for direct access if needed)
+export {
+  converters,
+  textConverter,
+  numberConverter,
+  currencyConverter,
+  booleanConverter,
+  dateConverter,
+  selectConverter,
+  relationshipConverter,
+  jsonConverter,
+  nameConverter,
+  fileConverter,
+} from './converters'
+
+// Row types (exported from types.ts, not value-converter.ts)
 export {
   extractRelationshipData,
   normalizeRelationshipValue,
@@ -16,6 +51,20 @@ export {
   convertRawToRelationshipInput,
   type RelationshipData,
 } from './relationship-field'
+
+// Relationship sync (bidirectional integrity)
+export {
+  getExistingRelatedIds,
+  batchGetExistingRelatedIds,
+  syncInverseRelationships,
+  syncInverseRelationshipsBulk,
+  type RelationshipSyncContext,
+  type InverseFieldInfo,
+  type SyncInverseInput,
+  type InverseSyncResult,
+  type BulkRelationshipUpdate,
+  type BulkSyncInput,
+} from './relationship-sync'
 
 // Display field types and config
 export type {

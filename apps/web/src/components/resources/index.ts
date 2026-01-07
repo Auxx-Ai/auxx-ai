@@ -24,6 +24,7 @@ export {
 export {
   buildRelationshipKey,
   parseRelationshipKey,
+  getRelationshipStoreState,
   // Record store utilities
   useRecordStore,
   getRecordStoreState,

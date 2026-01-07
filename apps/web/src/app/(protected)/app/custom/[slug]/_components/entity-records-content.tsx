@@ -17,7 +17,12 @@ import {
   MoreVertical,
 } from 'lucide-react'
 import { useEntityInstanceOperations } from '~/hooks/use-entity-instance-operations'
-import { DynamicView, DynamicTableFooter, CustomFieldCell, PrimaryCell } from '~/components/dynamic-table'
+import {
+  DynamicView,
+  DynamicTableFooter,
+  CustomFieldCell,
+  PrimaryCell,
+} from '~/components/dynamic-table'
 import type { ExtendedColumnDef, CellSelectionConfig } from '~/components/dynamic-table'
 import type { StoreConfig } from '~/components/fields/property-provider'
 import { ModelTypes } from '@auxx/types/custom-field'
@@ -52,7 +57,7 @@ import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-t
 import { useCustomFieldValueSyncer } from '~/hooks/use-custom-field-value-syncer'
 import { useCustomFieldValueStore } from '~/stores/custom-field-value-store'
 import { useSaveFieldValue } from '~/hooks/use-save-field-value'
-import { getDisplayValue } from '@auxx/lib/field-values/client'
+import { formatToDisplayValue } from '@auxx/lib/field-values/client'
 import type { TypedFieldValue } from '@auxx/types/field-value'
 import type { EntityRow } from './types'
 
@@ -192,23 +197,6 @@ export function EntityRecordsContent() {
   // which calls batchGetValues and returns properly formatted TypedFieldValue.
   // This eliminates the need for manual row-to-TypedFieldValue conversion here.
 
-  /**
-   * Sync selectedInstance with fresh data when instances changes
-   * This ensures drawer shows updated data after workflow completion or inline edits
-   */
-  useEffect(() => {
-    if (selectedInstance && instances.length > 0) {
-      const freshInstance = instances.find((i) => i.id === selectedInstance.id)
-      if (freshInstance) {
-        const currentValuesJson = JSON.stringify(selectedInstance._originalValues)
-        const freshValuesJson = JSON.stringify(freshInstance._originalValues)
-        if (currentValuesJson !== freshValuesJson) {
-          setSelectedInstance(freshInstance)
-        }
-      }
-    }
-  }, [instances, selectedInstance])
-
   // Cell value saving with optimistic updates
   const { saveValue } = useSaveFieldValue({
     resourceType: 'entity',
@@ -246,6 +234,7 @@ export function EntityRecordsContent() {
    * Handle row selection change
    */
   const handleRowSelectionChange = useCallback((selectedRows: Set<string>) => {
+    console.log('Row selection changed:', selectedRows)
     setSelectedRowIds(selectedRows)
   }, [])
 
@@ -347,17 +336,15 @@ export function EntityRecordsContent() {
             const value = getValue(row.original.id, primaryField.id)
             const displayValue = (() => {
               if (value == null) return null
-              // Handle TypedFieldValue from store
+              // Handle TypedFieldValue from store using centralized formatter
               if (typeof value === 'object' && 'type' in value) {
-                return getDisplayValue(value as TypedFieldValue) || null
+                return formatToDisplayValue(value as TypedFieldValue, primaryField.type) || null
               }
               // Handle raw value (fallback)
               return String(value)
             })()
             return (
-              <PrimaryCell
-                value={displayValue}
-                onTitleClick={() => handleOpenDrawer(row.original)}>
+              <PrimaryCell value={displayValue} onTitleClick={() => handleOpenDrawer(row.original)}>
                 <DropdownMenuItem onClick={() => handleOpenEditDialog(row.original)}>
                   <SquarePen />
                   Edit
@@ -367,7 +354,9 @@ export function EntityRecordsContent() {
                   Archive
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem variant="destructive" onClick={() => handleDelete(row.original.id)}>
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => handleDelete(row.original.id)}>
                   <Trash2 />
                   Delete
                 </DropdownMenuItem>
@@ -632,7 +621,6 @@ export function EntityRecordsContent() {
               enableFiltering
               isLoading={instancesLoading || isLoadingFields}
               onRowSelectionChange={handleRowSelectionChange}
-              rowSelection={selectedRowIds}
               showRowNumbers={false}
               importHref={`/app/custom/${slug}/import`}
               onColumnVisibilityChange={setColumnVisibility}

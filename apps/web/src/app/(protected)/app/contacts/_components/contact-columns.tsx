@@ -3,10 +3,7 @@
 'use client'
 
 import { Badge } from '@auxx/ui/components/badge'
-import {
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from '@auxx/ui/components/dropdown-menu'
+import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
 import {
   User,
   Mail,
@@ -96,12 +93,16 @@ export function createContactColumns(actions: ContactColumnActions): ExtendedCol
               Merge With Another
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" onClick={() => actions.onMarkAsSpam(row.original.id)}>
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={() => actions.onMarkAsSpam(row.original.id)}>
               <ShieldAlert />
               Mark as Spam
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" onClick={() => actions.onDelete(row.original.id)}>
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={() => actions.onDelete(row.original.id)}>
               <Trash2 />
               Delete Contact
             </DropdownMenuItem>
@@ -141,13 +142,15 @@ export function createContactColumns(actions: ContactColumnActions): ExtendedCol
         const isEmpty =
           value === '{}' ||
           (typeof value === 'object' && value !== null && Object.keys(value).length === 0)
-        return <FormattedCell value={isEmpty ? null : value} fieldType="PHONE" columnId="phone" />
+        return (
+          <FormattedCell value={isEmpty ? null : value} fieldType="PHONE_INTL" columnId="phone" />
+        )
       },
       enableSorting: true,
       enableResizing: true,
       size: 150,
       columnType: 'phone',
-      fieldType: 'PHONE',
+      fieldType: 'PHONE_INTL',
       icon: Smartphone,
     },
     {

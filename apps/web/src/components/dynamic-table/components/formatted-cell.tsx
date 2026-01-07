@@ -9,14 +9,16 @@ import { renderCellValue } from '../utils/cell-renderers'
 import { ExpandableCell } from './expandable-cell'
 import type { ColumnFormatting } from '../types'
 import type { CurrencyDisplayOptions } from '@auxx/utils'
-
 /**
- * Config for field-specific data passed to renderers
+ * Config for field-specific data passed to renderers.
+ * Display options (decimals, format, displayAs, etc.) are read from the
+ * options object directly (flat structure) as fallback when no column
+ * formatting is specified.
  */
 export interface CellConfig {
-  /** Field options - select options array or full field.options object */
-  options?: unknown
-  /** Currency display options */
+  /** Field options - contains select options array OR flat display options (decimals, format, etc.) */
+  options?: Record<string, unknown>
+  /** Currency display options (from field.options.currency) */
   currency?: CurrencyDisplayOptions
   /** Items for ItemsCellView (groups, sources, etc.) */
   items?: Array<{ id: string; [key: string]: unknown }>

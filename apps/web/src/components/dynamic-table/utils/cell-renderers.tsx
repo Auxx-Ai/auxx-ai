@@ -6,13 +6,20 @@ import { formatPhoneNumber } from 'react-phone-number-input'
 import { formatCurrency, formatBytes, type CurrencyDisplayOptions } from '@auxx/utils'
 import { CheckSquare, Paperclip } from 'lucide-react'
 import { Badge } from '@auxx/ui/components/badge'
+import { Skeleton } from '@auxx/ui/components/skeleton'
+import { isSystemResourceId } from '@auxx/lib/resources/client'
 import { CopyableLinkCell } from '../components/copyable-link-cell'
 import { CellPadding, type CellConfig } from '../components/formatted-cell'
 import { TagsCellView } from '~/components/ui/tags-view'
 import { ItemsCellView } from '~/components/ui/items-list-view'
 import { useRelationship } from '~/components/resources'
-import { extractValue, type TypedFieldValue } from '@auxx/types/field-value'
-import { extractRelationshipData } from '@auxx/lib/field-values/client'
+import {
+  formatToRawValue,
+  extractRelationshipData,
+  type NumberDisplayOptions,
+  type DateDisplayOptions,
+  type BooleanDisplayOptions,
+} from '@auxx/lib/field-values/client'
 import type {
   ColumnFormatting,
   CurrencyColumnFormatting,
@@ -29,64 +36,51 @@ type SelectOption = { label: string; value: string }
  * Standardized format:
  * - System resources: store model type string (e.g., "contact", "ticket")
  * - Custom entities: store UUID of EntityDefinition
- *
- * Fallback: If value doesn't have entityDefinitionId (old data), tries to determine it
- * from column formatting or falls back to showing IDs.
  */
-function RelationshipCellContent({ value, columnId }: { value: unknown; columnId?: string }) {
+function RelationshipCellContent({ value }: { value: unknown }) {
   // Extract IDs and entityDefinitionId from value using centralized utility
   const { ids, entityDefinitionId } = useMemo(() => extractRelationshipData(value), [value])
+
   // Convert entityDefinitionId to resourceId for useRelationship
-  // System resources: "contact" -> use as-is
-  // Custom entities: UUID -> convert to "entity_{slug}" (or pass through, let hook handle it)
   const resourceId = useMemo(() => {
-    let defId = entityDefinitionId
+    if (!entityDefinitionId) return null
 
-    // If entityDefinitionId is empty, try to infer from column formatting
-    // This handles old database records that don't have relatedEntityDefinitionId populated
-    if (!defId && columnId) {
-      // Format: could include resource type info in columnId or formatting
-      // For now, return null - without proper field metadata, we can't determine the resource type
+    // System resources: normalize plural to singular (e.g., "contacts" -> "contact")
+    if (isSystemResourceId(entityDefinitionId)) {
+      return entityDefinitionId.replace(/s$/, '')
     }
 
-    if (!defId) return null
-
-    // Check if it's a known system resource first
-    const systemResources = [
-      'contact',
-      'contacts',
-      'ticket',
-      'tickets',
-      'user',
-      'users',
-      'thread',
-      'threads',
-    ]
-    if (systemResources.includes(defId)) {
-      return defId.replace(/s$/, '') // normalize plural to singular
-    }
-
-    // It's a custom entity UUID - use directly (no entity_ prefix)
-    return defId
-  }, [entityDefinitionId, columnId])
+    // Custom resources: use UUID directly
+    return entityDefinitionId
+  }, [entityDefinitionId])
 
   const { items: hydratedItems, isLoading } = useRelationship(resourceId, ids)
 
-  const items = ids.map((id, i) => ({
-    id,
-    displayName: hydratedItems[i]?.displayName ?? id.slice(-6),
-    isNotFound: !hydratedItems[i],
-  }))
+  // Map items with per-item loading state
+  // hydratedItems[i] can be: ResourcePickerItem (found), null (not found), undefined (loading)
+  const items = ids.map((id, i) => {
+    const hydrated = hydratedItems[i]
+    return {
+      id,
+      displayName: hydrated?.displayName ?? id.slice(-6),
+      isLoading: hydrated === undefined, // undefined = still loading
+      isNotFound: hydrated === null, // null = not found
+    }
+  })
 
   return (
     <ItemsCellView
       items={items}
       isLoading={isLoading && items.length === 0}
-      renderItem={(item) => (
-        <Badge variant="pill" shape="tag" className="text-xs">
-          {item.isNotFound ? item.id : item.displayName}
-        </Badge>
-      )}
+      renderItem={(item) =>
+        item.isLoading ? (
+          <Skeleton className="h-5 w-16 rounded" />
+        ) : (
+          <Badge variant="pill" shape="tag" className="text-xs">
+            {item.isNotFound ? item.id : item.displayName}
+          </Badge>
+        )
+      }
     />
   )
 }
@@ -114,11 +108,13 @@ export function EmptyCell() {
 }
 
 /**
- * Render date value with optional formatting override
+ * Render date value with optional formatting override.
+ * Uses options from field.options (flat structure) as fallback when no column formatting is specified.
  */
 export function renderDateValue(
   value: unknown,
-  formatting?: DateColumnFormatting
+  formatting?: DateColumnFormatting,
+  config?: CellConfig
 ): React.ReactNode {
   if (value == null || value === '') return <EmptyCell />
 
@@ -128,8 +124,10 @@ export function renderDateValue(
       return <CellPadding expandDirection="horizontal">{String(value)}</CellPadding>
     }
 
-    const dateFormat = formatting?.format ?? 'medium'
-    const includeTime = formatting?.includeTime ?? false
+    const opts = config?.options as DateDisplayOptions | undefined
+    // Column formatting takes precedence over field.options
+    const dateFormat = formatting?.format ?? opts?.format ?? 'medium'
+    const includeTime = formatting?.includeTime ?? opts?.includeTime ?? false
 
     let formatted: string
     switch (dateFormat) {
@@ -158,9 +156,9 @@ export function renderDateValue(
 }
 
 /**
- * Render time-only value
+ * Render time-only value with optional timeFormat from field.options (flat structure)
  */
-export function renderTimeValue(value: unknown): React.ReactNode {
+export function renderTimeValue(value: unknown, config?: CellConfig): React.ReactNode {
   if (value == null || value === '') return <EmptyCell />
 
   try {
@@ -168,18 +166,23 @@ export function renderTimeValue(value: unknown): React.ReactNode {
     if (isNaN(date.getTime())) {
       return <CellPadding expandDirection="horizontal">{String(value)}</CellPadding>
     }
-    return <CellPadding expandDirection="horizontal">{format(date, 'h:mm a')}</CellPadding>
+    const opts = config?.options as DateDisplayOptions | undefined
+    const timeFormat = opts?.timeFormat ?? '12h'
+    const formatStr = timeFormat === '24h' ? 'HH:mm' : 'h:mm a'
+    return <CellPadding expandDirection="horizontal">{format(date, formatStr)}</CellPadding>
   } catch {
     return <CellPadding expandDirection="horizontal">{String(value)}</CellPadding>
   }
 }
 
 /**
- * Render number value with optional formatting override
+ * Render number value with optional formatting override.
+ * Uses options from field.options (flat structure) as fallback when no column formatting is specified.
  */
 export function renderNumberValue(
   value: unknown,
-  formatting?: NumberColumnFormatting
+  formatting?: NumberColumnFormatting,
+  config?: CellConfig
 ): React.ReactNode {
   if (value == null || value === '') return <EmptyCell />
 
@@ -192,11 +195,13 @@ export function renderNumberValue(
     )
   }
 
-  const decimalPlaces = formatting?.decimalPlaces ?? 2
-  const useGrouping = formatting?.useGrouping ?? true
-  const displayAs = formatting?.displayAs ?? 'number'
-  const prefix = formatting?.prefix ?? ''
-  const suffix = formatting?.suffix ?? ''
+  const opts = config?.options as NumberDisplayOptions | undefined
+  // Column formatting takes precedence over field.options
+  const decimalPlaces = formatting?.decimalPlaces ?? opts?.decimals ?? 2
+  const useGrouping = formatting?.useGrouping ?? opts?.useGrouping ?? true
+  const displayAs = formatting?.displayAs ?? opts?.displayAs ?? 'number'
+  const prefix = formatting?.prefix ?? opts?.prefix ?? ''
+  const suffix = formatting?.suffix ?? opts?.suffix ?? ''
 
   let formatted: string
 
@@ -310,16 +315,47 @@ export function renderUrlValue(value: unknown): React.ReactNode {
 }
 
 /**
- * Render checkbox/boolean value
+ * Render checkbox/boolean value with options from field.options (flat structure)
  */
-export function renderCheckboxValue(value: unknown): React.ReactNode {
+export function renderCheckboxValue(value: unknown, config?: CellConfig): React.ReactNode {
+  const opts = config?.options as BooleanDisplayOptions | undefined
+  const checkboxStyle = opts?.checkboxStyle ?? 'icon-text'
+  const trueLabel = opts?.trueLabel ?? 'True'
+  const falseLabel = opts?.falseLabel ?? 'False'
+
+  // Text-only display
+  if (checkboxStyle === 'text') {
+    return (
+      <CellPadding expandDirection="horizontal">
+        <span className="text-muted-foreground">{value ? trueLabel : falseLabel}</span>
+      </CellPadding>
+    )
+  }
+
+  // Icon-only display
+  if (checkboxStyle === 'icon') {
+    return (
+      <CellPadding expandDirection="horizontal">
+        {value ? (
+          <CheckSquare className="size-4 text-green-600" />
+        ) : (
+          <div className="size-4 border rounded" />
+        )}
+      </CellPadding>
+    )
+  }
+
+  // Icon with text display (default)
   return (
     <CellPadding expandDirection="horizontal">
-      {value ? (
-        <CheckSquare className="size-4 text-green-600" />
-      ) : (
-        <div className="size-4 border rounded" />
-      )}
+      <div className="flex items-center gap-2">
+        {value ? (
+          <CheckSquare className="size-4 text-green-600" />
+        ) : (
+          <div className="size-4 border rounded" />
+        )}
+        <span className="text-muted-foreground">{value ? trueLabel : falseLabel}</span>
+      </div>
     </CellPadding>
   )
 }
@@ -426,8 +462,8 @@ export function renderFileValue(value: unknown): React.ReactNode {
 }
 
 /**
- * Render plain text value
- * Handles TypedFieldValue and raw values (no legacy format support)
+ * Render plain text value.
+ * Value is already extracted by unwrapValue() via formatToRawValue().
  */
 export function renderTextValue(value: unknown): React.ReactNode {
   // Handle null/undefined
@@ -435,25 +471,14 @@ export function renderTextValue(value: unknown): React.ReactNode {
     return <EmptyCell />
   }
 
-  // Handle objects
+  // Handle empty strings
+  if (typeof value === 'string' && value.trim() === '') {
+    return <EmptyCell />
+  }
+
+  // Handle objects - should be rare since unwrapValue extracts raw values
   if (typeof value === 'object') {
-    const objValue = value as Record<string, unknown>
-
-    // Check for TypedFieldValue (has 'type' property)
-    if ('type' in objValue) {
-      const extracted = extractValue(value as TypedFieldValue)
-      return renderTextValue(extracted)
-    }
-
-    // STRICT: Reject legacy .data wrapper format
-    if ('data' in objValue) {
-      console.error(
-        '[renderTextValue] Legacy { data: x } format detected. All values must be TypedFieldValue.'
-      )
-      return <EmptyCell />
-    }
-
-    // For other objects, show empty state (don't stringify to [object Object])
+    // For non-primitive objects, show empty state
     return <EmptyCell />
   }
 
@@ -470,25 +495,26 @@ export function renderTextValue(value: unknown): React.ReactNode {
  * All renderers handle their own padding via CellPadding
  */
 const cellRenderers: Record<string, CellRenderer> = {
-  // Date types
-  DATE: (value, formatting) => renderDateValue(value, formatting as DateColumnFormatting),
-  DATETIME: (value, formatting) =>
-    renderDateValue(value, { ...(formatting as DateColumnFormatting), includeTime: true }),
-  TIME: (value) => renderTimeValue(value),
+  // Date types - pass config for displayOptions fallback
+  DATE: (value, formatting, config) =>
+    renderDateValue(value, formatting as DateColumnFormatting, config),
+  DATETIME: (value, formatting, config) =>
+    renderDateValue(value, { ...(formatting as DateColumnFormatting), includeTime: true }, config),
+  TIME: (value, _, config) => renderTimeValue(value, config),
 
-  // Numeric types
-  NUMBER: (value, formatting) => renderNumberValue(value, formatting as NumberColumnFormatting),
+  // Numeric types - pass config for displayOptions fallback
+  NUMBER: (value, formatting, config) =>
+    renderNumberValue(value, formatting as NumberColumnFormatting, config),
   CURRENCY: (value, formatting, config) =>
     renderCurrencyValue(value, formatting as CurrencyColumnFormatting, config),
 
   // Text types with special rendering
   EMAIL: (value) => renderEmailValue(value),
-  PHONE: (value) => renderPhoneValue(value),
   PHONE_INTL: (value) => renderPhoneValue(value),
   URL: (value) => renderUrlValue(value),
 
-  // Boolean
-  CHECKBOX: (value) => renderCheckboxValue(value),
+  // Boolean - pass config for displayOptions
+  CHECKBOX: (value, _, config) => renderCheckboxValue(value, config),
 
   // Select/Tags types - use TagsCellView which handles its own layout (no CellPadding needed)
   // Options can be passed as array directly or as field.options object with .options property
@@ -541,61 +567,14 @@ const cellRenderers: Record<string, CellRenderer> = {
 }
 
 /**
- * Extract raw value from TypedFieldValue.
- * Strict mode - rejects legacy { data: x } format.
- *
- * Special handling: RELATIONSHIP fields preserve full TypedFieldValue objects
- * because RelationshipCellContent needs relatedEntityDefinitionId to hydrate display names.
+ * Extract raw value from TypedFieldValue using centralized formatter.
+ * For RELATIONSHIP fields, returns array with {relatedEntityId, relatedEntityDefinitionId}.
+ * @param value - The value (TypedFieldValue or raw)
+ * @param fieldType - The field type for proper extraction
  */
-function unwrapValue(value: unknown): unknown {
+function unwrapValue(value: unknown, fieldType: string): unknown {
   if (value === null || value === undefined) return null
-
-  // STRICT: Reject legacy { data: x } wrapper format
-  if (
-    typeof value === 'object' &&
-    'data' in (value as Record<string, unknown>) &&
-    !('type' in (value as Record<string, unknown>))
-  ) {
-    console.error(
-      '[CellRenderer] Legacy { data: x } format detected. All values must be TypedFieldValue.'
-    )
-    return null
-  }
-
-  // Handle TypedFieldValue array (e.g., multi-select, tags)
-  if (Array.isArray(value)) {
-    // Check if it's an array of TypedFieldValue objects
-    if (
-      value.length > 0 &&
-      typeof value[0] === 'object' &&
-      value[0] !== null &&
-      'type' in value[0]
-    ) {
-      const first = value[0] as TypedFieldValue
-      // For RELATIONSHIP fields, keep full object - renderer needs relatedEntityDefinitionId
-      if (first.type === 'relationship') {
-        return value  // ✓ Keep full TypedFieldValue objects
-      }
-      // For other types, extract raw values as before
-      return value.map((v) => extractValue(v as TypedFieldValue))
-    }
-    // Already an array of raw values (could be empty or pre-extracted)
-    return value
-  }
-
-  // Handle single TypedFieldValue
-  if (typeof value === 'object' && 'type' in (value as Record<string, unknown>)) {
-    const typed = value as TypedFieldValue
-    // For RELATIONSHIP fields, keep full object
-    if (typed.type === 'relationship') {
-      return value  // ✓ Keep full TypedFieldValue object
-    }
-    // For other types, extract raw value
-    return extractValue(typed)
-  }
-
-  // Already a raw value (string, number, boolean, etc.)
-  return value
+  return formatToRawValue(value, fieldType)
 }
 
 /**
@@ -608,11 +587,13 @@ export function renderCellValue(
   formatting?: ColumnFormatting,
   config?: CellConfig
 ): React.ReactNode {
-  // Extract raw value from TypedFieldValue
-  const actualValue = unwrapValue(value)
+  const type = fieldType ?? 'TEXT'
+
+  // Extract raw value from TypedFieldValue using centralized formatter
+  const actualValue = unwrapValue(value, type)
 
   // Get renderer for field type, fallback to TEXT
-  const renderer = cellRenderers[fieldType ?? 'TEXT'] ?? cellRenderers.TEXT
+  const renderer = cellRenderers[type] ?? cellRenderers.TEXT
   return renderer && renderer(actualValue, formatting, config)
 }
 

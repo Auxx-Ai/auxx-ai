@@ -6,9 +6,7 @@ import { CustomFieldService } from '@auxx/lib/custom-fields'
 import {
   ModelTypes,
   ModelTypeValues,
-  selectOptionSchema,
-  currencyOptionsSchema,
-  fileOptionsSchema,
+  fieldOptionsUnionSchema,
 } from '@auxx/types/custom-field'
 import { FieldType } from '@auxx/database/enums'
 
@@ -64,13 +62,7 @@ export const customFieldRouter = createTRPCRouter({
         required: z.boolean().optional(),
         isUnique: z.boolean().optional(),
         defaultValue: z.string().optional(),
-        options: z
-          .union([
-            z.array(selectOptionSchema),
-            z.object({ file: fileOptionsSchema }),
-            z.object({ currency: currencyOptionsSchema }),
-          ])
-          .optional(),
+        options: fieldOptionsUnionSchema.optional(),
         addressComponents: z.array(z.string()).optional(),
         icon: z.string().optional(),
         isCustom: z.boolean().optional(),
@@ -111,13 +103,7 @@ export const customFieldRouter = createTRPCRouter({
         required: z.boolean().optional(),
         isUnique: z.boolean().optional(),
         defaultValue: z.string().optional(),
-        options: z
-          .union([
-            z.array(selectOptionSchema),
-            z.object({ file: fileOptionsSchema }),
-            z.object({ currency: currencyOptionsSchema }),
-          ])
-          .optional(),
+        options: fieldOptionsUnionSchema.optional(),
         addressComponents: z.array(z.string()).optional(),
         icon: z.string().optional(),
         isCustom: z.boolean().optional(),

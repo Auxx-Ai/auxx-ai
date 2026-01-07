@@ -11,7 +11,7 @@ import { mapBaseTypeToFieldType } from '@auxx/lib/workflow-engine/client'
  * Custom field type compatible with existing consumers
  * Derived from ResourceField with properties transformed for backward compatibility
  */
-interface CustomField {
+export interface CustomField {
   id: string
   name: string
   type: string
@@ -24,14 +24,13 @@ interface CustomField {
       celebration?: boolean
     }>
     relationship?: {
-      targetTable?: string
       relatedEntityDefinitionId?: string
       relatedModelType?: string
       relationshipType?: 'belongs_to' | 'has_one' | 'has_many'
     }
     currency?: Record<string, unknown>
   }
-  position: number
+  sortOrder: string
   active: boolean
   required?: boolean
   description?: string
@@ -40,12 +39,15 @@ interface CustomField {
 /**
  * Transform ResourceField to CustomField format for backward compatibility
  */
-function transformResourceFieldToCustomField(field: ResourceField, index: number): CustomField {
+export function transformResourceFieldToCustomField(
+  field: ResourceField,
+  index: number
+): CustomField {
   // Convert BaseType to FieldType for display purposes
   const fieldType = mapBaseTypeToFieldType(field.type)
 
-  // Build options object from ResourceField properties
-  const options: CustomField['options'] = {}
+  // Start with field.options as base (contains flat display options like checkboxStyle, decimals, format, etc.)
+  const options: NonNullable<CustomField['options']> = { ...field.options! }
 
   // Handle enum values for select fields (including kanban metadata)
   if (field.enumValues && field.enumValues.length > 0) {
@@ -60,10 +62,6 @@ function transformResourceFieldToCustomField(field: ResourceField, index: number
 
   // Handle relationship configuration
   if (field.relationship) {
-    const isSystemResource = ['contact', 'ticket', 'thread', 'user'].includes(
-      field.relationship.targetTable
-    )
-
     // Map cardinality to relationshipType
     let relationshipType: 'belongs_to' | 'has_one' | 'has_many' = 'belongs_to'
     if (field.relationship.cardinality === 'one-to-many') {
@@ -73,10 +71,8 @@ function transformResourceFieldToCustomField(field: ResourceField, index: number
     }
 
     options.relationship = {
-      // targetTable is already the resourceId we need (e.g., "entity_orders", "contact")
-      targetTable: field.relationship.targetTable,
-      relatedEntityDefinitionId: !isSystemResource ? field.relationship.targetTable : undefined,
-      relatedModelType: isSystemResource ? field.relationship.targetTable : undefined,
+      relatedEntityDefinitionId: field.relationship.relatedEntityDefinitionId,
+      relatedModelType: field.relationship.relatedModelType,
       relationshipType,
     }
   }
@@ -85,8 +81,8 @@ function transformResourceFieldToCustomField(field: ResourceField, index: number
     id: field.id!,
     name: field.label,
     type: fieldType,
-    options: Object.keys(options).length > 0 ? options : undefined,
-    position: index, // Position is implicit from array order
+    options,
+    sortOrder: String(index), // Position is implicit from array order
     active: true, // ResourceField doesn't track active state, assume active
     required: field.capabilities?.required,
     description: field.description,

@@ -353,11 +353,7 @@ export function useCustomFieldValue(
   entityDefId?: string
 ): StoredFieldValue | undefined {
   const key = buildValueKey(resourceType, resourceId, fieldId, entityDefId)
-  const value = useCustomFieldValueStore((state) => state.values[key])
-  if (Array.isArray(value) && value.length > 0 && typeof value[0] === 'string') {
-    console.warn('[useCustomFieldValue] WARNING: Store has string array for key', key, 'value:', value)
-  }
-  return value
+  return useCustomFieldValueStore((state) => state.values[key])
 }
 
 /**

@@ -117,7 +117,7 @@ export const contactFieldConfig: EntityModelConfig = {
     {
       id: 'phone',
       name: 'Phone number',
-      type: FieldTypeEnum.PHONE,
+      type: FieldTypeEnum.PHONE_INTL,
       icon: Phone,
       readOnly: false,
       required: false,

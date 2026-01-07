@@ -175,6 +175,7 @@ const CountrySelect = ({
       <PopoverTrigger asChild>
         <button
           type="button"
+          data-slot="country-select"
           disabled={disabled}
           aria-label="Select country"
           className={cn(

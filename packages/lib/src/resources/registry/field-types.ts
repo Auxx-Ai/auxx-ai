@@ -3,6 +3,7 @@
 import { BaseType } from '../types'
 import type { TargetTimeInStatus } from '@auxx/services/custom-fields'
 import type { FieldType } from '@auxx/database/types'
+import type { FieldOptions } from '../../field-values/converters'
 
 /**
  * Enum value with UI metadata
@@ -54,6 +55,8 @@ export interface FieldCapabilities {
   updatable: boolean
   /** Required for create operation */
   required?: boolean
+  /** Field must contain unique values */
+  isUnique?: boolean
 }
 
 /**
@@ -174,6 +177,10 @@ export interface ResourceField {
   /** Available enum values with labels */
   enumValues?: EnumValue[]
 
+  // Field options (display options, currency config, etc.)
+  /** Field options from CustomField.options - contains display options (checkboxStyle, decimals, format, etc.) */
+  options?: FieldOptions
+
   // Capabilities (what can be done with this field)
   capabilities: FieldCapabilities
 
@@ -224,6 +231,25 @@ export interface ResourceField {
    * @optional
    */
   isIdentifier?: boolean
+
+  // ─────────────────────────────────────────────────────────────
+  // CONVENIENCE PROPERTIES (for unified consumption, avoid transforms)
+  // ─────────────────────────────────────────────────────────────
+
+  /** Human-readable name (alias for 'label' for consumer compatibility) */
+  name?: string
+
+  /** Explicit sort order for field lists (lexicographic string for fractional indexing) */
+  sortOrder?: string
+
+  /** Whether field is currently active/visible (default: true) */
+  active?: boolean
+
+  /** Whether field must contain unique values (convenience for capabilities.isUnique) */
+  isUnique?: boolean
+
+  /** Whether field is required (convenience for capabilities.required) */
+  required?: boolean
 }
 
 /**

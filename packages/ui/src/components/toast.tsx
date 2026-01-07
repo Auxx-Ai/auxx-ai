@@ -14,7 +14,16 @@ export interface ToastActionButton {
   label: string
   onClick: (dismiss: () => void) => void
   className?: string
-  variant?: 'default' | 'destructive' | 'destructive-hover' | 'info' | 'outline' | 'secondary' | 'ghost' | 'link' | 'input'
+  variant?:
+    | 'default'
+    | 'destructive'
+    | 'destructive-hover'
+    | 'info'
+    | 'outline'
+    | 'secondary'
+    | 'ghost'
+    | 'link'
+    | 'input'
   size?: 'default' | 'xs' | 'sm' | 'lg' | 'icon' | 'icon-xs' | 'icon-sm'
 }
 
@@ -120,7 +129,9 @@ function toast(options: CustomToastOptions) {
 function Toast(props: ToastProps) {
   const { title, description, button, id, icon, actions } = props
   const [isShow, setIsShow] = useState(false)
-  const showMore = useCallback(() => {
+  const showMore = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    console.log('Toggling isShow from')
     setIsShow((bool) => !bool)
   }, [])
 
@@ -129,7 +140,10 @@ function Toast(props: ToastProps) {
   }, [id])
 
   return (
-    <div className="flex rounded-2xl bg-white dark:bg-primary-400 shadow-lg shadow-black/10 ring-1 ring-black/5 w-full md:max-w-[350px] min-w-[300px] items-start ps-2 p-1.5 gap-2">
+    <div
+      data-toast-container
+      style={{ pointerEvents: 'auto' }}
+      className="flex rounded-2xl bg-white dark:bg-primary-400 shadow-lg shadow-black/10 ring-1 ring-black/5 w-full md:max-w-[350px] min-w-[300px] items-start ps-2 p-1.5 gap-2">
       <div className="mt-[2px]">{icon}</div>
       <div className="flex flex-1 items-start flex-col gap-2">
         <div className="w-full flex items-center justify-start gap-2 mt-[2px]">
@@ -150,9 +164,7 @@ function Toast(props: ToastProps) {
         </div>
         {isShow && <div className=" text-sm text-primary-600">{description}</div>}
         {actions && (
-          <div className="flex gap-2 w-full flex-wrap">
-            {renderActions(actions, dismiss)}
-          </div>
+          <div className="flex gap-2 w-full flex-wrap">{renderActions(actions, dismiss)}</div>
         )}
       </div>
       <div>
