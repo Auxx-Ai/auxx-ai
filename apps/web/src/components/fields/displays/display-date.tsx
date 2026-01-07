@@ -20,20 +20,6 @@ export function DisplayDate() {
 
   if (!value) return null
 
-  // Parse date based on format
-  // let date: Date
-  // if (value instanceof Date) {
-  //   date = value
-  // } else if (typeof value === 'string') {
-  //   // Try ISO format first (e.g., 2024-01-15T10:30:00.000Z), then yyyy-MM-dd
-  //   date = value.includes('T') ? parseISO(value) : parse(value, 'yyyy-MM-dd', new Date())
-  // } else {
-  //   return null
-  // }
-
-  // Validate parsed date
-  // if (isNaN(date.getTime())) return null
-
   // Build display options based on field type
   const displayOpts: DateDisplayOptions = {
     ...opts,

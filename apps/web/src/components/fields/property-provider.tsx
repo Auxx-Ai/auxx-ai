@@ -216,6 +216,19 @@ export function PropertyProvider({
     : null
   const storeValue = useCustomFieldValueStore((s) => (storeKey ? s.values[storeKey] : undefined))
 
+  // Field metadata provider for relationship sync
+  // The field object already contains options.relationship from the registry
+  const getFieldMetadata = useCallback(
+    (fieldId: string) => {
+      if (fieldId !== field.id) return undefined
+      return {
+        type: field.fieldType || field.type,
+        relationship: field.options?.relationship,
+      }
+    },
+    [field]
+  )
+
   // Use store save hook if applicable
   const {
     saveFieldValue: storeSave,
@@ -226,6 +239,7 @@ export function PropertyProvider({
     resourceId: storeConfig?.resourceId,
     entityDefId: storeConfig?.entityDefId,
     modelType: storeConfig?.modelType ?? ('contact' as ModelType),
+    getFieldMetadata,
   })
 
   // Determine the actual initial value: store value takes precedence if using store

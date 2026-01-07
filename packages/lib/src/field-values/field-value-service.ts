@@ -1452,6 +1452,7 @@ export class FieldValueService {
       inverseFieldId: relationship.inverseFieldId,
       inverseRelationshipType: inverseRelationship?.relationshipType ?? 'has_many',
       sourceEntityDefinitionId,
+      sourceFieldId: field.id,
     }
   }
 

@@ -156,11 +156,34 @@ export function EntityInstanceDialog({
     },
   })
 
+  // Field metadata provider for relationship sync
+  const getFieldMetadata = useCallback(
+    (fieldId: string) => {
+      const field = entityDefinition.customFields.find((f) => f.id === fieldId)
+      if (!field) return undefined
+      const fieldOptions = field.options as {
+        relationship?: {
+          isInverse?: boolean
+          inverseFieldId?: string
+          relationshipType?: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
+          relatedEntityDefinitionId?: string
+          relatedModelType?: string
+        }
+      }
+      return {
+        type: field.type,
+        relationship: fieldOptions?.relationship,
+      }
+    },
+    [entityDefinition.customFields]
+  )
+
   // Save field values with Zustand store sync
   const { saveMultipleAsync, isPending: isSavingFields } = useSaveFieldValue({
     resourceType: 'entity',
     entityDefId: entityDefinition.id,
     modelType: 'entity',
+    getFieldMetadata,
   })
 
   // Combined pending state

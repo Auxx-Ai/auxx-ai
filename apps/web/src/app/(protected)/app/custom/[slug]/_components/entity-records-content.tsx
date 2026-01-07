@@ -197,11 +197,31 @@ export function EntityRecordsContent() {
   // which calls batchGetValues and returns properly formatted TypedFieldValue.
   // This eliminates the need for manual row-to-TypedFieldValue conversion here.
 
+  // Field metadata provider for relationship sync
+  const getFieldMetadata = useCallback(
+    (fieldId: string) => {
+      const field = customFields.find((f) => f.id === fieldId)
+      if (!field) return undefined
+      return {
+        type: field.type,
+        relationship: field.options?.relationship as {
+          isInverse?: boolean
+          inverseFieldId?: string
+          relationshipType?: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
+          relatedEntityDefinitionId?: string
+          relatedModelType?: string
+        },
+      }
+    },
+    [customFields]
+  )
+
   // Cell value saving with optimistic updates
   const { saveValue } = useSaveFieldValue({
     resourceType: 'entity',
     entityDefId: entityDefinitionId,
     modelType: 'entity',
+    getFieldMetadata,
   })
 
   /**

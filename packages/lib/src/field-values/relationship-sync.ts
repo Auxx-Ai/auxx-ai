@@ -23,6 +23,8 @@ export interface InverseFieldInfo {
   inverseRelationshipType: RelationshipType
   /** The entity definition ID that the inverse field points TO (source entity's type) */
   sourceEntityDefinitionId: string
+  /** The source field's ID (for cascade cleanup when inverse is single-value) */
+  sourceFieldId: string
 }
 
 /** Input for single entity sync operation */
@@ -180,6 +182,7 @@ export async function syncInverseRelationships(
       inverseRelationshipType: inverseInfo.inverseRelationshipType,
       sourceEntityDefinitionId: inverseInfo.sourceEntityDefinitionId,
       additions: new Map(addedIds.map((targetId) => [targetId, new Set([entityId])])),
+      sourceFieldId: inverseInfo.sourceFieldId,
     })
   }
 
@@ -252,6 +255,7 @@ export async function syncInverseRelationshipsBulk(
       inverseRelationshipType,
       sourceEntityDefinitionId,
       additions,
+      sourceFieldId: inverseInfo.sourceFieldId,
     })
   }
 }
@@ -319,6 +323,8 @@ interface BatchAddParams {
   sourceEntityDefinitionId: string
   /** Map: targetEntityId → Set of sourceEntityIds to add to that target's inverse */
   additions: Map<string, Set<string>>
+  /** The source field's ID (for cascade cleanup when inverse is single-value) */
+  sourceFieldId: string
 }
 
 /**
@@ -337,7 +343,7 @@ async function batchAddToInverse(
   ctx: RelationshipSyncContext,
   params: BatchAddParams
 ): Promise<void> {
-  const { inverseFieldId, inverseRelationshipType, sourceEntityDefinitionId, additions } = params
+  const { inverseFieldId, inverseRelationshipType, sourceEntityDefinitionId, additions, sourceFieldId } = params
 
   if (additions.size === 0) return
 
@@ -368,7 +374,52 @@ async function batchAddToInverse(
       finalValue.set(targetId, sourceId) // Last wins
     }
 
-    // 1 DELETE: Clear all existing values for these targets
+    // ═══ CASCADE: Get existing inverse values to find old owners ═══
+    // Before clearing the inverse values, we need to remove targets from old owners
+    const existingInverse = await ctx.db
+      .select({
+        entityId: schema.FieldValue.entityId,        // targetId (e.g., ProductX)
+        relatedEntityId: schema.FieldValue.relatedEntityId, // oldOwnerId (e.g., Vendor1)
+      })
+      .from(schema.FieldValue)
+      .where(
+        and(
+          inArray(schema.FieldValue.entityId, allTargetIds),
+          eq(schema.FieldValue.fieldId, inverseFieldId),
+          eq(schema.FieldValue.organizationId, ctx.organizationId)
+        )
+      )
+
+    // Build map: oldOwnerId → targetIds to remove from that owner's has_many field
+    const cascadeRemovals = new Map<string, string[]>()
+    for (const row of existingInverse) {
+      if (row.relatedEntityId) {
+        const newOwner = finalValue.get(row.entityId)
+        // Only cascade if old owner differs from new owner
+        if (newOwner && row.relatedEntityId !== newOwner) {
+          if (!cascadeRemovals.has(row.relatedEntityId)) {
+            cascadeRemovals.set(row.relatedEntityId, [])
+          }
+          cascadeRemovals.get(row.relatedEntityId)!.push(row.entityId)
+        }
+      }
+    }
+
+    // ═══ CASCADE DELETE: Remove targets from old owners' has_many fields ═══
+    for (const [oldOwnerId, targetIds] of cascadeRemovals) {
+      await ctx.db
+        .delete(schema.FieldValue)
+        .where(
+          and(
+            eq(schema.FieldValue.entityId, oldOwnerId),
+            eq(schema.FieldValue.fieldId, sourceFieldId),
+            inArray(schema.FieldValue.relatedEntityId, targetIds),
+            eq(schema.FieldValue.organizationId, ctx.organizationId)
+          )
+        )
+    }
+
+    // DELETE: Clear all existing inverse values for these targets
     await ctx.db
       .delete(schema.FieldValue)
       .where(
@@ -379,7 +430,7 @@ async function batchAddToInverse(
         )
       )
 
-    // 1 batch INSERT: Insert all new values
+    // batch INSERT: Insert all new values
     await ctx.db.insert(schema.FieldValue).values(
       [...finalValue.entries()].map(([targetId, sourceId]) => ({
         organizationId: ctx.organizationId,

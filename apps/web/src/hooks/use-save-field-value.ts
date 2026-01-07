@@ -11,6 +11,20 @@ import {
 import { toastError } from '@auxx/ui/components/toast'
 import { formatToTypedInput, formatToRawValue, isMultiValueFieldType } from '@auxx/lib/field-values/client'
 import type { ModelType } from '@auxx/types/custom-field'
+import { useRelationshipSync, extractRelatedIds, type InverseSyncInfo } from './use-relationship-sync'
+import { getInverseCardinality, type RelationshipType } from '@auxx/utils'
+
+/** Field metadata for relationship sync */
+interface FieldMetadata {
+  type: string
+  relationship?: {
+    isInverse?: boolean
+    inverseFieldId?: string
+    relationshipType?: RelationshipType
+    relatedEntityDefinitionId?: string
+    relatedModelType?: string
+  }
+}
 
 interface UseSaveFieldValueOptions {
   resourceType: ResourceType
@@ -20,6 +34,8 @@ interface UseSaveFieldValueOptions {
   modelType: ModelType
   /** Optional callback after successful save */
   onSuccess?: () => void
+  /** Optional field metadata provider for relationship sync */
+  getFieldMetadata?: (fieldId: string) => FieldMetadata | undefined
 }
 
 /**
@@ -28,13 +44,16 @@ interface UseSaveFieldValueOptions {
  * Automatically rolls back on error.
  */
 export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
-  const { resourceType, resourceId: defaultResourceId, entityDefId, modelType, onSuccess } = options
+  const { resourceType, resourceId: defaultResourceId, entityDefId, modelType, onSuccess, getFieldMetadata } = options
 
   // Get store actions
   const setValue = useCustomFieldValueStore((s) => s.setValue)
   const setValueOptimistic = useCustomFieldValueStore((s) => s.setValueOptimistic)
   const confirmOptimistic = useCustomFieldValueStore((s) => s.confirmOptimistic)
   const rollbackOptimistic = useCustomFieldValueStore((s) => s.rollbackOptimistic)
+
+  // Relationship sync hook
+  const { syncInverseCache } = useRelationshipSync()
 
   // Mutations
   const mutation = api.fieldValue.set.useMutation()
@@ -71,11 +90,68 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
     (resourceId: string, fieldId: string, value: StoredFieldValue | unknown, fieldType?: string): void => {
       const key = buildValueKey(resourceType, resourceId, fieldId, entityDefId)
 
+      // Capture old value for relationship sync rollback
+      const oldValue = useCustomFieldValueStore.getState().values[key]
+
       // 1. Optimistic update to store (convert to TypedFieldValue format)
       const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
       setValueOptimistic(key, typedValue)
 
-      // 2. Fire mutation in background with raw value (API handles conversion)
+      // 2. Sync inverse relationships for RELATIONSHIP fields
+      let inverseInfo: InverseSyncInfo | null = null
+      let oldIds: string[] = []
+      let newIds: string[] = []
+
+      if (fieldType === 'RELATIONSHIP' && entityDefId) {
+        const metadata = getFieldMetadata?.(fieldId)
+        const rel = metadata?.relationship
+
+        console.log('[RelSync] Checking relationship field', {
+          fieldId,
+          hasMetadata: !!metadata,
+          relationship: rel,
+          hasInverseFieldId: !!rel?.inverseFieldId,
+        })
+
+        // Sync if we have inverse field config (works from either side - no isInverse check needed)
+        if (rel?.inverseFieldId && rel.relationshipType && rel.relatedEntityDefinitionId) {
+          oldIds = extractRelatedIds(oldValue)
+          newIds = extractRelatedIds(typedValue)
+
+          console.log('[RelSync] Triggering inverse sync', {
+            resourceId,
+            fieldId,
+            oldIds,
+            newIds,
+            relationshipType: rel.relationshipType,
+            inverseFieldId: rel.inverseFieldId,
+            isInverse: rel.isInverse,
+          })
+
+          inverseInfo = {
+            inverseFieldId: rel.inverseFieldId,
+            inverseRelationshipType: getInverseCardinality(rel.relationshipType),
+            sourceEntityDefinitionId: entityDefId,
+            targetEntityDefId: rel.relatedEntityDefinitionId,
+            sourceFieldId: fieldId,
+          }
+
+          syncInverseCache({
+            sourceEntityId: resourceId,
+            oldRelatedIds: oldIds,
+            newRelatedIds: newIds,
+            inverseInfo,
+          })
+        } else {
+          console.log('[RelSync] Skipping inverse sync - missing config', {
+            hasInverseFieldId: !!rel?.inverseFieldId,
+            hasRelationshipType: !!rel?.relationshipType,
+            hasRelatedEntityDefId: !!rel?.relatedEntityDefinitionId,
+          })
+        }
+      }
+
+      // 3. Fire mutation in background with raw value (API handles conversion)
       const rawValue = getRawValue(value, fieldType)
       mutation.mutate(
         {
@@ -102,7 +178,26 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
             onSuccess?.()
           },
           onError: (error) => {
+            console.log('[RelSync] Mutation error, rolling back', { key, hasInverseInfo: !!inverseInfo })
+
+            // Rollback primary field
             rollbackOptimistic(key)
+
+            // Rollback inverse cache (swap old/new to reverse the sync)
+            if (inverseInfo) {
+              console.log('[RelSync] Rolling back inverse cache', {
+                resourceId,
+                swappedOldIds: newIds,
+                swappedNewIds: oldIds,
+              })
+              syncInverseCache({
+                sourceEntityId: resourceId,
+                oldRelatedIds: newIds,
+                newRelatedIds: oldIds,
+                inverseInfo,
+              })
+            }
+
             toastError({
               title: 'Error saving field',
               description: error.message || 'Could not save this field value',
@@ -121,6 +216,8 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
       confirmOptimistic,
       rollbackOptimistic,
       onSuccess,
+      getFieldMetadata,
+      syncInverseCache,
     ]
   )
 
@@ -154,9 +251,66 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
     async (resourceId: string, fieldId: string, value: StoredFieldValue | unknown, fieldType?: string): Promise<{ ids: string[] } | undefined> => {
       const key = buildValueKey(resourceType, resourceId, fieldId, entityDefId)
 
+      // Capture old value for relationship sync rollback
+      const oldValue = useCustomFieldValueStore.getState().values[key]
+
       // Optimistic update with TypedFieldValue format
       const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
       setValueOptimistic(key, typedValue)
+
+      // Sync inverse relationships for RELATIONSHIP fields
+      let inverseInfo: InverseSyncInfo | null = null
+      let oldIds: string[] = []
+      let newIds: string[] = []
+
+      if (fieldType === 'RELATIONSHIP' && entityDefId) {
+        const metadata = getFieldMetadata?.(fieldId)
+        const rel = metadata?.relationship
+
+        console.log('[RelSync] (async) Checking relationship field', {
+          fieldId,
+          hasMetadata: !!metadata,
+          relationship: rel,
+          hasInverseFieldId: !!rel?.inverseFieldId,
+        })
+
+        // Sync if we have inverse field config (works from either side - no isInverse check needed)
+        if (rel?.inverseFieldId && rel.relationshipType && rel.relatedEntityDefinitionId) {
+          oldIds = extractRelatedIds(oldValue)
+          newIds = extractRelatedIds(typedValue)
+
+          console.log('[RelSync] (async) Triggering inverse sync', {
+            resourceId,
+            fieldId,
+            oldIds,
+            newIds,
+            relationshipType: rel.relationshipType,
+            inverseFieldId: rel.inverseFieldId,
+            isInverse: rel.isInverse,
+          })
+
+          inverseInfo = {
+            inverseFieldId: rel.inverseFieldId,
+            inverseRelationshipType: getInverseCardinality(rel.relationshipType),
+            sourceEntityDefinitionId: entityDefId,
+            targetEntityDefId: rel.relatedEntityDefinitionId,
+            sourceFieldId: fieldId,
+          }
+
+          syncInverseCache({
+            sourceEntityId: resourceId,
+            oldRelatedIds: oldIds,
+            newRelatedIds: newIds,
+            inverseInfo,
+          })
+        } else {
+          console.log('[RelSync] (async) Skipping inverse sync - missing config', {
+            hasInverseFieldId: !!rel?.inverseFieldId,
+            hasRelationshipType: !!rel?.relationshipType,
+            hasRelatedEntityDefId: !!rel?.relatedEntityDefinitionId,
+          })
+        }
+      }
 
       try {
         const rawValue = getRawValue(value, fieldType)
@@ -182,7 +336,26 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
         onSuccess?.()
         return { ids: (result as { ids: string[] })?.ids ?? [] }
       } catch (error: unknown) {
+        console.log('[RelSync] (async) Mutation error, rolling back', { key, hasInverseInfo: !!inverseInfo })
+
+        // Rollback primary field
         rollbackOptimistic(key)
+
+        // Rollback inverse cache (swap old/new to reverse the sync)
+        if (inverseInfo) {
+          console.log('[RelSync] (async) Rolling back inverse cache', {
+            resourceId,
+            swappedOldIds: newIds,
+            swappedNewIds: oldIds,
+          })
+          syncInverseCache({
+            sourceEntityId: resourceId,
+            oldRelatedIds: newIds,
+            newRelatedIds: oldIds,
+            inverseInfo,
+          })
+        }
+
         const errorMessage = error instanceof Error ? error.message : 'Could not save this field value'
         toastError({
           title: 'Error saving field',
@@ -201,6 +374,8 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
       confirmOptimistic,
       rollbackOptimistic,
       onSuccess,
+      getFieldMetadata,
+      syncInverseCache,
     ]
   )
 

@@ -581,12 +581,9 @@ export class ResourceRegistryService {
           }
         }
 
-        // Normalized relationship for UI consumers
-        optionsRelationship = {
-          relatedEntityDefinitionId: rel?.relatedEntityDefinitionId,
-          relatedModelType: rel?.relatedModelType,
-          relationshipType: rel?.relationshipType,
-        }
+        // Pass through full relationship config for UI consumers
+        // Includes: isInverse, inverseFieldId, displayFieldId, relatedModelType, relationshipType, relatedEntityDefinitionId
+        optionsRelationship = rel
       }
 
       // Build enumValues for workflow engine (uses dbValue)

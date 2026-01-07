@@ -26,7 +26,13 @@ export interface CustomField {
     relationship?: {
       relatedEntityDefinitionId?: string
       relatedModelType?: string
-      relationshipType?: 'belongs_to' | 'has_one' | 'has_many'
+      relationshipType?: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
+      /** Whether this is the inverse side of the relationship */
+      isInverse?: boolean
+      /** Field ID on the related entity that points back */
+      inverseFieldId?: string
+      /** Field to display for related entities */
+      displayFieldId?: string
     }
     currency?: Record<string, unknown>
   }
@@ -60,21 +66,10 @@ export function transformResourceFieldToCustomField(
     }))
   }
 
-  // Handle relationship configuration
-  if (field.relationship) {
-    // Map cardinality to relationshipType
-    let relationshipType: 'belongs_to' | 'has_one' | 'has_many' = 'belongs_to'
-    if (field.relationship.cardinality === 'one-to-many') {
-      relationshipType = 'has_many'
-    } else if (field.relationship.cardinality === 'one-to-one') {
-      relationshipType = 'has_one'
-    }
-
-    options.relationship = {
-      relatedEntityDefinitionId: field.relationship.relatedEntityDefinitionId,
-      relatedModelType: field.relationship.relatedModelType,
-      relationshipType,
-    }
+  // Handle relationship configuration - pass through full options.relationship from resource registry
+  // This includes: isInverse, inverseFieldId, displayFieldId, relationshipType, relatedEntityDefinitionId, relatedModelType
+  if (field.options?.relationship) {
+    options.relationship = field.options.relationship as CustomField['options']['relationship']
   }
 
   return {

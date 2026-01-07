@@ -5,6 +5,7 @@ import { eq, and, desc, isNull } from 'drizzle-orm'
 import { ok, err } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
+import { getInverseCardinality } from '@auxx/utils'
 import {
   ModelTypes,
   type ModelType,
@@ -40,24 +41,6 @@ export interface CreateCustomFieldInput {
   relationship?: RelationshipOptions
   /** Whether this field must contain unique values within its scope */
   isUnique?: boolean
-}
-
-/**
- * Get inverse cardinality for a relationship type
- */
-function getInverseCardinality(
-  type: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
-): 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many' {
-  switch (type) {
-    case 'belongs_to':
-      return 'has_many'
-    case 'has_one':
-      return 'has_one'
-    case 'has_many':
-      return 'belongs_to'
-    case 'many_to_many':
-      return 'many_to_many' // Symmetric - both sides are many_to_many
-  }
 }
 
 /**

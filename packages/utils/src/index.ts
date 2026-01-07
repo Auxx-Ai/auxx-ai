@@ -122,6 +122,13 @@ export { parseBoolean } from './parse'
 // Retry utilities
 export { withRetry } from './retry'
 
+// Relationship utilities
+export {
+  getInverseCardinality,
+  isSingleValueRelationship,
+  type RelationshipType,
+} from './relationships'
+
 // String utilities
 export {
   titleize,

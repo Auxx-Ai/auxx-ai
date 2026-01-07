@@ -231,11 +231,31 @@ export function KanbanView<TData extends KanbanRow>({
     [storeValues, resourceType, entityDefinitionId]
   )
 
+  // Field metadata provider for relationship sync (required by hook, but kanban only changes SINGLE_SELECT)
+  const getFieldMetadata = useCallback(
+    (fieldId: string) => {
+      const field = customFields.find((f) => f.id === fieldId)
+      if (!field) return undefined
+      return {
+        type: field.type,
+        relationship: field.options?.relationship as {
+          isInverse?: boolean
+          inverseFieldId?: string
+          relationshipType?: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
+          relatedEntityDefinitionId?: string
+          relatedModelType?: string
+        },
+      }
+    },
+    [customFields]
+  )
+
   // useSaveFieldValue for internal card moves with optimistic updates
   const { saveBulkValues } = useSaveFieldValue({
     resourceType,
     entityDefId: entityDefinitionId,
     modelType,
+    getFieldMetadata,
   })
 
   // useCustomField for column option mutations (label, color, etc.)

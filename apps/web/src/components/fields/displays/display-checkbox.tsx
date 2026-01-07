@@ -18,7 +18,7 @@ export function DisplayCheckbox() {
   const trueLabel = opts?.trueLabel ?? 'True'
   const falseLabel = opts?.falseLabel ?? 'False'
   const label = value ? trueLabel : falseLabel
-  console.log('DisplayCheckbox render, value:', field)
+
   // Text-only display
   if (checkboxStyle === 'text') {
     return (
