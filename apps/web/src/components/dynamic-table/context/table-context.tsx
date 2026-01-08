@@ -7,6 +7,7 @@ import type { Table } from '@tanstack/react-table'
 import type { TableView, BulkAction, DragDropConfig, ColumnFormatting } from '../types'
 import type { ModelType, SelectOptionColor } from '@auxx/types/custom-field'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import type { CustomField } from '~/components/custom-fields/context/entity-records-context'
 
 /** Select field for kanban grouping */
 interface SelectField {
@@ -14,13 +15,6 @@ interface SelectField {
   name: string
   type?: string
   options?: { options?: Array<{ value: string; label: string; color?: SelectOptionColor }> }
-}
-
-/** Custom field definition for kanban card display */
-interface CustomField {
-  id: string
-  name: string
-  type: string
 }
 
 interface TableContextValue<TData = any> {

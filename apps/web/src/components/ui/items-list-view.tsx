@@ -118,7 +118,9 @@ export function ItemsCellView<T extends ItemsListItem>({
   // Empty state
   if (!isLoading && normalizedItems.length === 0) {
     return (
-      <div className={cn('relative w-full min-h-9 flex items-center ps-3', className)}>
+      <div
+        data-slot="expandable-cell-inner"
+        className={cn('relative w-full min-h-9 flex items-center ps-3', className)}>
         {emptyContent ?? <span className="text-muted-foreground">-</span>}
       </div>
     )
@@ -127,7 +129,9 @@ export function ItemsCellView<T extends ItemsListItem>({
   // Loading state
   if (isLoading && normalizedItems.length === 0) {
     return (
-      <div className={cn('relative w-full min-h-9 flex items-center ps-3 gap-1', className)}>
+      <div
+        data-slot="expandable-cell-inner"
+        className={cn('relative w-full min-h-9 flex items-center ps-3 gap-1', className)}>
         {Array.from({ length: loadingCount }).map((_, i) => (
           <Skeleton key={i} className="h-5 w-16 rounded" />
         ))}
@@ -137,6 +141,7 @@ export function ItemsCellView<T extends ItemsListItem>({
 
   return (
     <div
+      data-slot="expandable-cell-inner"
       className={cn('relative min-w-full w-full min-h-9 group/items-list flex text-sm', className)}>
       {/* Items */}
       <div className="flex items-center gap-1 w-full overflow-hidden ps-3 py-0.5 px-0.5 shrink-0 mask-r-from-[calc(100%-32px)] mask-r-to-[100%]">
@@ -161,6 +166,7 @@ export function ItemsCellView<T extends ItemsListItem>({
       {/* Expanded view - shows when cell is selected */}
       <div
         data-self-overlay
+        data-slot="expandable-cell-inner"
         className={cn(
           'absolute left-0 top-0 z-15 min-h-9',
           'hidden [.cell-selected_&]:flex',

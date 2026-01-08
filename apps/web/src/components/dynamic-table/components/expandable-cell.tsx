@@ -30,7 +30,9 @@ export function ExpandableCell({
   const isHorizontalOnly = expandDirection === 'horizontal'
 
   return (
-    <div className={cn('relative min-w-full w-full min-h-9 flex text-sm')}>
+    <div
+      data-slot="expandable-cell"
+      className={cn('relative min-w-full w-full min-h-9 flex text-sm')}>
       {/* Collapsed view - truncated */}
       <div
         className={cn('flex items-center w-full overflow-hidden text-ellipsis whitespace-nowrap')}>

@@ -130,15 +130,12 @@ export interface KanbanSelectOption {
   celebration?: boolean
 }
 
-/** Custom field definition for kanban */
-export interface KanbanCustomField {
-  id: string
-  name: string
-  type: string
-  options?: {
-    options?: KanbanSelectOption[]
-  }
-}
+// Re-export CustomField from entity-records-context for kanban usage
+import type { CustomField } from '~/components/custom-fields/context/entity-records-context'
+export type { CustomField }
+
+/** @deprecated Use CustomField instead */
+export type KanbanCustomField = CustomField
 
 /** Drag item type for kanban DnD */
 export type KanbanDragItemType = 'card' | 'column'
@@ -310,11 +307,7 @@ export interface DynamicTableProps<TData = any> {
   }>
 
   /** All custom fields for kanban card display */
-  customFields?: Array<{
-    id: string
-    name: string
-    type: string
-  }>
+  customFields?: CustomField[]
 
   /** Primary display field ID for kanban cards */
   primaryFieldId?: string

@@ -3,4 +3,5 @@
 export { KanbanView } from './kanban-view'
 export { KanbanColumn } from './kanban-column'
 export { KanbanCard } from './kanban-card'
+export { KanbanCardField } from './kanban-card-field'
 export { KanbanColumnSettings } from './kanban-column-settings'

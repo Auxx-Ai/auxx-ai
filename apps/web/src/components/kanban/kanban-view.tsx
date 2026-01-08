@@ -32,7 +32,7 @@ import {
   type KanbanViewConfig,
   type KanbanRow,
   type KanbanSelectOption,
-  type KanbanCustomField,
+  type CustomField,
   type KanbanDragItemType,
 } from '../dynamic-table/types'
 import type { SelectOption as RawSelectOption, TargetTimeInStatus, ModelType } from '@auxx/types/custom-field'
@@ -65,9 +65,9 @@ interface KanbanViewProps<TData extends KanbanRow> {
   /** Kanban configuration */
   config: KanbanViewConfig
   /** Custom field used for grouping (SINGLE_SELECT) */
-  groupByField: KanbanCustomField
+  groupByField: CustomField
   /** All custom fields for card display */
-  customFields: KanbanCustomField[]
+  customFields: CustomField[]
   /** Primary display field ID */
   primaryFieldId?: string
   /** Entity label (singular) for "New X" buttons */
@@ -107,9 +107,13 @@ interface KanbanDragOverlayProps<TData extends KanbanRow> {
     draggedCards?: TData[]
     dragWidth?: number
   } | null
-  cardFields: KanbanCustomField[]
-  getPrimaryValue: (card: TData) => unknown
-  getValue: (rowId: string, fieldId: string) => unknown
+  cardFields: CustomField[]
+  /** Resource type for store subscription */
+  resourceType: ResourceType
+  /** Entity definition ID (required for 'entity' resourceType) */
+  entityDefId?: string
+  /** Primary field ID for card title */
+  primaryFieldId?: string
 }
 
 /**
@@ -119,8 +123,9 @@ interface KanbanDragOverlayProps<TData extends KanbanRow> {
 function KanbanDragOverlay<TData extends KanbanRow>({
   activeItem,
   cardFields,
-  getPrimaryValue,
-  getValue,
+  resourceType,
+  entityDefId,
+  primaryFieldId,
 }: KanbanDragOverlayProps<TData>) {
   const draggedCards = activeItem?.draggedCards ?? []
   const { getItemStyle, indices, showBadge, totalCount } = useStackedDragOverlay({
@@ -157,9 +162,11 @@ function KanbanDragOverlay<TData extends KanbanRow>({
                   }}>
                   <KanbanCard
                     id={card.id}
-                    title={String(getPrimaryValue(card) ?? 'Untitled')}
                     fields={cardFields}
-                    getValue={(fieldId) => getValue(card.id, fieldId)}
+                    resourceType={resourceType}
+                    entityDefId={entityDefId}
+                    primaryFieldId={primaryFieldId}
+                    editable={false}
                     isDragging
                   />
                 </div>
@@ -564,26 +571,13 @@ export function KanbanView<TData extends KanbanRow>({
     setOverId(null)
   }, [])
 
-  // Get primary display value for a card
-  const getPrimaryValue = useCallback(
-    (card: TData) => {
-      if (!primaryFieldId) return card.id
-      return getValue(card.id, primaryFieldId)
-    },
-    [primaryFieldId, getValue]
-  )
-
-  // Get card fields to display (exclude primary and groupBy)
+  // Get card fields to display - only explicitly configured fields (no defaults)
   const cardFields = useMemo(() => {
-    if (config.cardFields?.length) {
-      return config.cardFields
-        .map((id) => customFields.find((f) => f.id === id))
-        .filter(Boolean) as CustomField[]
-    }
-    return customFields
-      .filter((f) => f.id !== primaryFieldId && f.id !== config.groupByFieldId)
-      .slice(0, 2)
-  }, [config.cardFields, customFields, primaryFieldId, config.groupByFieldId])
+    if (!config.cardFields?.length) return []
+    return config.cardFields
+      .map((id) => customFields.find((f) => f.id === id))
+      .filter((f): f is CustomField => f !== undefined)
+  }, [config.cardFields, customFields])
 
   // Track which cards are being dragged (for placeholder styling on multi-select)
   const draggingCardIds = useMemo(() => {
@@ -644,10 +638,11 @@ export function KanbanView<TData extends KanbanRow>({
                   <KanbanCard
                     key={card.id}
                     id={card.id}
-                    title={String(getPrimaryValue(card) ?? 'Untitled')}
                     fields={cardFields}
                     updatedAt={card.updatedAt}
-                    getValue={(fieldId) => getValue(card.id, fieldId)}
+                    resourceType={resourceType}
+                    entityDefId={entityDefinitionId}
+                    primaryFieldId={primaryFieldId}
                     onClick={() => onCardClick?.(card)}
                     isSelected={selectedCardIds.has(card.id)}
                     onSelectChange={(selected) => handleCardSelectChange(card.id, selected)}
@@ -688,10 +683,11 @@ export function KanbanView<TData extends KanbanRow>({
                     <KanbanCard
                       key={card.id}
                       id={card.id}
-                      title={String(getPrimaryValue(card) ?? 'Untitled')}
                       fields={cardFields}
                       updatedAt={card.updatedAt}
-                      getValue={(fieldId) => getValue(card.id, fieldId)}
+                      resourceType={resourceType}
+                      entityDefId={entityDefinitionId}
+                      primaryFieldId={primaryFieldId}
                       onClick={() => onCardClick?.(card)}
                       isSelected={selectedCardIds.has(card.id)}
                       onSelectChange={(selected) => handleCardSelectChange(card.id, selected)}
@@ -722,8 +718,9 @@ export function KanbanView<TData extends KanbanRow>({
         <KanbanDragOverlay
           activeItem={activeItem}
           cardFields={cardFields}
-          getPrimaryValue={getPrimaryValue}
-          getValue={getValue}
+          resourceType={resourceType}
+          entityDefId={entityDefinitionId}
+          primaryFieldId={primaryFieldId}
         />
       </DndContext>
     </div>

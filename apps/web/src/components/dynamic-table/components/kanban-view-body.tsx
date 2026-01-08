@@ -103,26 +103,17 @@ export function KanbanViewBody<TData extends KanbanRow>() {
   // Get data from table rows
   const data = table.getRowModel().rows.map((row) => row.original) as TData[]
 
-  // Convert selectField to format expected by KanbanView
+  // Convert selectField to format expected by KanbanView (CustomField type)
   const groupByFieldForKanban = useMemo(
     () => ({
       id: groupByField.id,
       name: groupByField.name,
-      type: groupByField.type ?? 'SINGLE_SELECT',
+      type: (groupByField.type ?? 'SINGLE_SELECT') as import('@auxx/database/types').FieldType,
       options: groupByField.options,
+      sortOrder: '0',
+      active: true,
     }),
     [groupByField]
-  )
-
-  // Convert customFields to format expected by KanbanView
-  const customFieldsForKanban = useMemo(
-    () =>
-      (customFields ?? []).map((f) => ({
-        id: f.id,
-        name: f.name,
-        type: f.type,
-      })),
-    [customFields]
   )
 
   return (
@@ -130,7 +121,7 @@ export function KanbanViewBody<TData extends KanbanRow>() {
       data={data}
       config={effectiveConfig}
       groupByField={groupByFieldForKanban}
-      customFields={customFieldsForKanban}
+      customFields={customFields ?? []}
       primaryFieldId={effectiveConfig.primaryFieldId ?? primaryFieldId}
       entityLabel={entityLabel}
       onCardClick={onCardClick}

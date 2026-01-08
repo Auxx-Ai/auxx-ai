@@ -8,21 +8,15 @@ import { Checkbox } from '@auxx/ui/components/checkbox'
 import { MessageSquare, CheckSquare, StickyNote, Box } from 'lucide-react'
 import { formatRelativeTime } from '@auxx/utils/date'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
-
-/** Custom field definition */
-interface CustomField {
-  id: string
-  name: string
-  type: string
-}
+import type { CustomField } from '~/components/custom-fields/context/entity-records-context'
+import { KanbanCardField } from './kanban-card-field'
+import { useCustomFieldValue, type ResourceType } from '~/stores/custom-field-value-store'
 
 /** Props for KanbanCard component */
 interface KanbanCardProps {
   id: string
-  title: string
   fields: CustomField[]
   updatedAt?: string | Date
-  getValue: (fieldId: string) => unknown
   onClick?: () => void
   onNotesClick?: () => void
   onTasksClick?: () => void
@@ -36,54 +30,25 @@ interface KanbanCardProps {
   isBeingDragged?: boolean
   /** When true, clicking the card toggles selection instead of opening drawer */
   massSelectMode?: boolean
-}
-
-/**
- * Format value for display on card
- */
-function formatValue(value: unknown, type: string): string {
-  if (value == null) return '—'
-
-  if (type === 'DATE' || type === 'DATETIME') {
-    try {
-      return new Date(String(value)).toLocaleDateString()
-    } catch {
-      return String(value)
-    }
-  }
-
-  if (type === 'CHECKBOX') {
-    return value ? '✓' : '✗'
-  }
-
-  if (type === 'CURRENCY') {
-    const num = Number(value)
-    if (!isNaN(num)) {
-      return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(num)
-    }
-  }
-
-  if (type === 'NUMBER') {
-    return String(value)
-  }
-
-  if (Array.isArray(value)) {
-    return value.join(', ')
-  }
-
-  return String(value)
+  /** Resource type for store subscription */
+  resourceType: ResourceType
+  /** Entity definition ID (required for 'entity' resourceType) */
+  entityDefId?: string
+  /** Primary field ID for card title */
+  primaryFieldId?: string
+  /** Enable inline field editing (default: true) */
+  editable?: boolean
 }
 
 /**
  * Kanban card component.
  * Features: drag handle, quick actions on hover, last activity indicator.
+ * Fetches title from store directly (self-contained and reactive).
  */
 export function KanbanCard({
   id,
-  title,
   fields,
   updatedAt,
-  getValue,
   onClick,
   onNotesClick,
   onTasksClick,
@@ -93,7 +58,19 @@ export function KanbanCard({
   onSelectChange,
   isBeingDragged = false,
   massSelectMode = false,
+  resourceType,
+  entityDefId,
+  primaryFieldId,
+  editable = true,
 }: KanbanCardProps) {
+  // Fetch title directly from store (same pattern as KanbanCardField)
+  const primaryValue = useCustomFieldValue(resourceType, id, primaryFieldId ?? '', entityDefId)
+
+  // Format title for display
+  const title =
+    primaryFieldId && primaryValue
+      ? String(formatToRawValue(primaryValue, 'TEXT') ?? 'Untitled')
+      : 'Untitled'
   const {
     attributes,
     listeners,
@@ -131,7 +108,8 @@ export function KanbanCard({
         'bg-background cursor-default dark:bg-muted border rounded-lg shadow-sm transition-all hover:shadow-md group/card select-none touch-none relative',
         isSelected && 'border-info/90 bg-info/8 dark:bg-info/10',
         isDragging && 'shadow-lg rotate-1 scale-105 ',
-        showAsPlaceholder && 'shadow-none bg-primary-200/50 dark:bg-muted dark:border-white/3 border-primary-200',
+        showAsPlaceholder &&
+          'shadow-none bg-primary-200/50 dark:bg-muted dark:border-white/3 border-primary-200',
         massSelectMode && 'cursor-pointer'
       )}>
       {/* Drag placeholder overlay */}
@@ -151,7 +129,7 @@ export function KanbanCard({
               className={cn(
                 'absolute inset-0 size-3.5 text-muted-foreground',
                 // Hide Box when: selected, hovering, or in mass select mode
-                (isSelected || massSelectMode) ? 'hidden' : 'group-hover/card:hidden'
+                isSelected || massSelectMode ? 'hidden' : 'group-hover/card:hidden'
               )}
             />
             <Checkbox
@@ -165,30 +143,36 @@ export function KanbanCard({
           </div>
 
           {/* Title - clickable to open drawer (or toggle selection in mass select mode) */}
-          <div className="flex-1 min-w-0" >
-            <h4 className={cn('font-medium text-sm leading-snug truncate', isSelected && 'font-semibold')}>{title}</h4>
+          <div className="flex-1 min-w-0">
+            <h4
+              className={cn(
+                'font-medium text-sm leading-snug truncate',
+                isSelected && 'font-semibold'
+              )}>
+              {title}
+            </h4>
           </div>
         </div>
 
-        {/* Field values (compact) - clickable */}
+        {/* Field values - uses KanbanCardField for consistent rendering and inline editing */}
         {fields.length > 0 && (
-          <div className="mt-2 pl-5 space-y-0.5" >
-            {fields.slice(0, 2).map((field) => {
-              const value = getValue(field.id)
-              if (value == null) return null
-              // Extract raw value from TypedFieldValue using centralized formatter
-              const rawValue = formatToRawValue(value, field.type)
-              return (
-                <div key={field.id} className="text-xs text-muted-foreground truncate">
-                  {formatValue(rawValue, field.type)}
-                </div>
-              )
-            })}
+          <div className="mt-2  space-y-0.5">
+            {fields.map((field) => (
+              <div key={field.id} className="text-xs text-muted-foreground truncate">
+                <KanbanCardField
+                  resourceType={resourceType}
+                  entityDefId={entityDefId}
+                  rowId={id}
+                  field={field}
+                  editable={editable && !massSelectMode && !isDragging}
+                />
+              </div>
+            ))}
           </div>
         )}
 
         {/* Footer: quick actions + last activity */}
-        <div className="mt-2 pl-5 flex items-center justify-between" >
+        <div className="mt-2 pl-5 flex items-center justify-between">
           {/* Quick actions (on hover) */}
           <div className="flex items-center gap-0.5 opacity-0 group-hover/card:opacity-100 transition-opacity">
             {onNotesClick && (
@@ -231,7 +215,11 @@ export function KanbanCard({
 
           {/* Last activity indicator */}
           {updatedAt && (
-            <div className={cn('text-xs text-muted-foreground tabular-nums', isSelected && 'text-info')}>
+            <div
+              className={cn(
+                'text-xs text-muted-foreground tabular-nums',
+                isSelected && 'text-info'
+              )}>
               {formatRelativeTime(updatedAt, true)}
             </div>
           )}
