@@ -190,14 +190,14 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
       const fieldError = showValidation ? getFieldErrorMessage(fieldPath) : undefined
       const hasError = showValidation && hasFieldErrorOfType(fieldPath, 'error')
 
-      // Build fieldOptions with enum embedded if applicable
-      const fieldOptions = field.enumValues
-        ? { enum: field.enumValues.map((ev) => ({ label: ev.label, value: ev.dbValue })) }
-        : undefined
-
-      // Derive fieldReference for RELATION types
-      const fieldReference =
-        field.type === BaseType.RELATION ? `${nodeData.resourceType}:${field.key}` : undefined
+      // Build fieldOptions with enum and fieldReference embedded if applicable
+      const fieldOptions: { enum?: Array<{ label: string; value: string }>; fieldReference?: string } = {}
+      if (field.enumValues) {
+        fieldOptions.enum = field.enumValues.map((ev) => ({ label: ev.label, value: ev.dbValue }))
+      }
+      if (field.type === BaseType.RELATION) {
+        fieldOptions.fieldReference = `${nodeData.resourceType}:${field.key}`
+      }
 
       // Determine allowed types for type filtering
       const allowedTypes: BaseType[] = []
@@ -234,8 +234,7 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
               handleFieldChange(field.key, newValue, isConstantMode)
             }}
             varType={field.type}
-            fieldReference={fieldReference}
-            fieldOptions={fieldOptions}
+            fieldOptions={Object.keys(fieldOptions).length > 0 ? fieldOptions : undefined}
             allowedTypes={allowedTypes}
             placeholderConstant={field.placeholder}
             placeholder={field.placeholder}

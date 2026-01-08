@@ -47,7 +47,7 @@ import { formatToDisplayValue } from '@auxx/lib/field-values/client'
 import type { TypedFieldValue } from '@auxx/types/field-value'
 import { useCombinedFilters } from '~/components/dynamic-table/hooks/use-combined-filters'
 import { useActiveViewConfig } from '~/components/dynamic-table/stores/view-store'
-import { useRecordList, type RecordMeta } from '~/components/resources'
+import { useRecordList, useResource, type RecordMeta } from '~/components/resources'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 
 /** Stable filter ID to prevent reference changes */
@@ -132,8 +132,12 @@ export function EntityRecordsContent() {
   const maxWidth = useDockStore((state) => state.maxWidth)
 
   // Get data from context
-  const { resource, entityDefinitionId, customFields, isLoadingResource, isLoadingFields } =
-    useEntityRecords()
+  const { customFields } = useEntityRecords()
+  const { resource, isLoading } = useResource(slug)
+
+  const entityDefinitionId: string = resource?.id ?? null
+
+  console.log(resource, isLoading)
 
   // State
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
@@ -294,7 +298,7 @@ export function EntityRecordsContent() {
   // Cell value saving with optimistic updates
   const { saveValue } = useSaveFieldValue({
     resourceType: 'entity',
-    entityDefId: entityDefinitionId,
+    entityDefId: entityDefinitionId!,
     modelType: 'entity',
     getFieldMetadata,
   })
@@ -379,7 +383,7 @@ export function EntityRecordsContent() {
         cell: ({ row }) => (
           <CustomFieldCell
             resourceType="entity"
-            entityDefId={entityDefinitionId}
+            entityDefId={entityDefinitionId!}
             rowId={row.original.id}
             fieldId={field.id}
             fieldType={field.type}
@@ -509,13 +513,6 @@ export function EntityRecordsContent() {
   )
 
   /**
-   * Get selected instances for bulk update dialog
-   */
-  const selectedInstances = useMemo(() => {
-    return items.filter((item) => selectedRowIds.has(item.id))
-  }, [items, selectedRowIds])
-
-  /**
    * Cell selection configuration for inline editing
    * Uses getValue from syncer for consistent value reads
    * Uses getStoreConfig for optimistic updates via PropertyProvider
@@ -550,55 +547,6 @@ export function EntityRecordsContent() {
   )
 
   /**
-   * Prepare entity definition with custom fields for dialog
-   */
-  const entityDefinitionForDialog = useMemo(() => {
-    if (!resource || !entityDefinitionId) return null
-    return {
-      id: entityDefinitionId,
-      singular: resource.label,
-      plural: resource.plural,
-      icon: resource.icon,
-      color: resource.color,
-      customFields: customFields.map((f) => ({
-        ...f,
-        type: f.type as FieldType,
-      })),
-    }
-  }, [resource, entityDefinitionId, customFields])
-
-  /**
-   * Prepare editing instance for dialog
-   * Reads field values from store (via getValue) instead of _originalValues
-   */
-  const editingInstanceForDialog = useMemo(() => {
-    if (!editingInstance) return null
-
-    // Build values by reading from store for each active field
-    const values = customFields
-      .filter((f) => f.active !== false)
-      .map((field) => {
-        const value = getValue(editingInstance.id, field.id)
-        return {
-          id: `${editingInstance.id}_${field.id}`,
-          fieldId: field.id,
-          value: value ?? null,
-          field: {
-            id: field.id,
-            name: field.name,
-            type: field.type as FieldType,
-          },
-        }
-      })
-
-    return {
-      id: editingInstance.id,
-      entityDefinitionId: entityDefinitionId ?? '',
-      values,
-    }
-  }, [editingInstance, customFields, getValue, entityDefinitionId])
-
-  /**
    * Empty state component
    */
   const EmptyStateComponent = useCallback(
@@ -621,7 +569,7 @@ export function EntityRecordsContent() {
   )
 
   // Loading state
-  if (isLoadingResource) {
+  if (isLoading) {
     return (
       <MainPage>
         <MainPageHeader>
@@ -706,7 +654,7 @@ export function EntityRecordsContent() {
               columns={columns}
               enableSorting
               enableFiltering
-              isLoading={instancesLoading || isLoadingRecords || isLoadingFields}
+              isLoading={instancesLoading || isLoadingRecords}
               onRowSelectionChange={handleRowSelectionChange}
               showRowNumbers={false}
               importHref={`/app/custom/${slug}/import`}
@@ -751,23 +699,23 @@ export function EntityRecordsContent() {
       </MainPage>
 
       {/* Create/Edit Dialog */}
-      {entityDefinitionForDialog && (
+      {entityDefinitionId && (
         <EntityInstanceDialog
           open={isCreateDialogOpen}
           onOpenChange={handleDialogOpenChange}
-          entityDefinition={entityDefinitionForDialog}
-          editingInstance={editingInstanceForDialog}
+          entityDefinitionId={entityDefinitionId}
+          editingInstanceId={editingInstance?.id}
           onSaved={handleDialogSaved}
         />
       )}
 
       {/* Bulk Update Dialog */}
-      {entityDefinitionForDialog && (
+      {entityDefinitionId && (
         <BulkUpdateEntityInstanceDialog
           open={isBulkUpdateDialogOpen}
           onOpenChange={setIsBulkUpdateDialogOpen}
-          selectedInstances={selectedInstances}
-          entityDefinition={entityDefinitionForDialog}
+          entityDefinitionId={entityDefinitionId}
+          selectedInstanceIds={Array.from(selectedRowIds)}
           onSaved={() => {
             refresh()
             setSelectedRowIds(new Set())

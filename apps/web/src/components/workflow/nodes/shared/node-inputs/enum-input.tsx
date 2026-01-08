@@ -1,7 +1,6 @@
 // apps/web/src/components/workflow/nodes/shared/node-inputs/enum-input.tsx
 
 import React from 'react'
-import { Label } from '@auxx/ui/components/label'
 import {
   Select,
   SelectContent,
@@ -10,8 +9,6 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { createNodeInput, type NodeInputProps } from './base-node-input'
-import { X } from 'lucide-react'
-import { Button } from '@auxx/ui/components/button'
 
 interface EnumOption {
   value: string

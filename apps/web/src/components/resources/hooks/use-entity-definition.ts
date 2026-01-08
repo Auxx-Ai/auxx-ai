@@ -25,7 +25,7 @@ interface UseEntityDefinitionResult {
  * - icon, color, display config
  */
 export function useEntityDefinition(slugOrUuid: string | null): UseEntityDefinitionResult {
-  const { customResources, getResourceById, apiSlugMap, isLoadingResources } = useResourceProvider()
+  const { customResources, getResourceById, isLoadingResources } = useResourceProvider()
 
   const resource = useMemo(() => {
     if (!slugOrUuid) return undefined
@@ -33,10 +33,6 @@ export function useEntityDefinition(slugOrUuid: string | null): UseEntityDefinit
     // Try as UUID first (direct lookup in resource map)
     const byUuid = getResourceById(slugOrUuid)
     if (byUuid?.type === 'custom') return byUuid as CustomResource
-
-    // Try as slug (search in custom resources by apiSlug)
-    const bySlug = customResources.find((r) => r.apiSlug === slugOrUuid)
-    return bySlug
   }, [slugOrUuid, getResourceById, customResources])
 
   return {

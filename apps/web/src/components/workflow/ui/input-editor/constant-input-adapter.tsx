@@ -12,12 +12,10 @@ export interface ConstantInputProps {
   value: any // Supports string, number, object (for ADDRESS, CURRENCY, etc.)
   onChange: (content: string, value: any) => void
   varType?: BaseType
-  referenceType?: 'thread' | 'participant' | 'message' | 'contact'
   placeholder?: string
   disabled?: boolean
   className?: string
-  fieldReference?: string // For RELATION type
-  fieldOptions?: FieldOptions // Full field.options object for type-specific config (enum options via fieldOptions.enum)
+  fieldOptions?: FieldOptions // Full field.options object for type-specific config (enum via fieldOptions.enum, fieldReference via fieldOptions.fieldReference)
 }
 
 /**
@@ -29,11 +27,9 @@ export const ConstantInputAdapter: React.FC<ConstantInputProps> = ({
   value,
   onChange,
   varType = BaseType.STRING,
-  referenceType,
   placeholder = 'Enter value',
   disabled = false,
   className,
-  fieldReference,
   fieldOptions,
 }) => {
   // Track validation errors from input components
@@ -78,8 +74,6 @@ export const ConstantInputAdapter: React.FC<ConstantInputProps> = ({
   // Get component-specific props based on varType
   const specificProps = getSpecificPropsForType(varType, {
     placeholder,
-    fieldReference,
-    referenceType,
     fieldOptions,
   })
 

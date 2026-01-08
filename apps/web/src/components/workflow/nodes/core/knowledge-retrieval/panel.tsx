@@ -190,7 +190,7 @@ const KnowledgeRetrievalPanelComponent: React.FC<KnowledgeRetrievalPanelProps> =
                       value={entry.datasetId}
                       onChange={(v, m) => handleDatasetChange(index, v, m)}
                       varType={BaseType.RELATION}
-                      fieldReference="dataset"
+                      fieldOptions={{ fieldReference: 'dataset' }}
                       allowedTypes={['dataset' as BaseType, BaseType.STRING]}
                       mode={VAR_MODE.PICKER}
                       placeholder="Select dataset"

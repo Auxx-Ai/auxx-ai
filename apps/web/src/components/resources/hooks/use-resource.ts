@@ -12,6 +12,7 @@ interface UseResourceResult {
 
 /**
  * Hook for getting a single resource by ID
+ * @param resourceId - Can be entityResourceId, apiSlug, or systemType (e.g. "contacts")
  */
 export function useResource(resourceId: string | null): UseResourceResult {
   const { getResourceById, isLoadingResources } = useResourceProvider()

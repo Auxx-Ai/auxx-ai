@@ -16,177 +16,85 @@ import { FieldInputRow } from './field-input-row'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
 import { useDirtyCheck } from '~/hooks/use-dirty-state'
 import { useSaveFieldValue } from '~/hooks/use-save-field-value'
-import type { FieldType } from '@auxx/database/types'
-
-/**
- * Custom field definition type
- */
-interface CustomFieldDef {
-  id: string
-  name: string
-  type: FieldType
-  description?: string | null
-  required?: boolean | null
-  position?: number | null
-  active?: boolean | null
-  defaultValue?: string | null
-  options?: unknown
-  isUnique?: boolean | null
-}
-
-/**
- * Entity definition with custom fields loaded
- */
-interface EntityDefinitionWithFields {
-  id: string
-  singular: string
-  plural: string
-  icon?: string | null
-  color?: string | null
-  customFields: CustomFieldDef[]
-}
-
-/**
- * Entity row with custom field values
- */
-interface EntityRow {
-  id: string
-  entityDefinitionId: string
-  customFieldValues: Array<{
-    fieldId: string
-    value: unknown
-  }>
-}
+import { useResource } from '~/components/resources'
+import { useCustomFieldValueSyncer } from '~/hooks/use-custom-field-value-syncer'
+import { formatToRawValue } from '@auxx/lib/field-values/client'
 
 interface BulkUpdateEntityInstanceDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** Array of selected entity instances */
-  selectedInstances: EntityRow[]
-  /** Entity definition (required) */
-  entityDefinition: EntityDefinitionWithFields
+  /** Entity definition ID */
+  entityDefinitionId: string
+  /** Array of selected entity instance IDs */
+  selectedInstanceIds: string[]
   /** Callback after successful save */
   onSaved?: () => void
 }
 
 /**
- * Extract raw value from TypedFieldValue.
- * Values are now TypedFieldValue format (not legacy { data: x })
- */
-function extractRawValue(value: unknown): unknown {
-  if (value === null || value === undefined) return null
-
-  // Handle TypedFieldValue array (multi-select, tags, relationships)
-  if (Array.isArray(value)) {
-    return value.map((v: any) => {
-      if (v && typeof v === 'object' && 'type' in v) {
-        // For relationships, preserve the full object structure
-        if (v.type === 'relationship') {
-          return {
-            relatedEntityId: v.relatedEntityId,
-            relatedEntityDefinitionId: v.relatedEntityDefinitionId,
-          }
-        }
-        return v.optionId ?? v.value
-      }
-      return v
-    })
-  }
-
-  // Handle single TypedFieldValue
-  if (typeof value === 'object' && 'type' in value) {
-    const tv = value as {
-      type: string
-      value?: any
-      optionId?: string
-      relatedEntityId?: string
-      relatedEntityDefinitionId?: string
-    }
-
-    // For relationships, preserve the full object structure
-    if (tv.type === 'relationship') {
-      return {
-        relatedEntityId: tv.relatedEntityId,
-        relatedEntityDefinitionId: tv.relatedEntityDefinitionId,
-      }
-    }
-
-    return tv.optionId ?? tv.value
-  }
-
-  return value
-}
-
-/**
- * Compute initial values based on selected instances
- * If all instances have the same value for a field, use that value
- * Otherwise, mark the field as "varies"
- */
-function computeInitialValues(
-  instances: EntityRow[],
-  fields: CustomFieldDef[]
-): Record<string, { value: unknown; varies: boolean }> {
-  const result: Record<string, { value: unknown; varies: boolean }> = {}
-
-  for (const field of fields) {
-    const values = instances.map((instance) => {
-      const fieldValue = instance.customFieldValues?.find((v) => v.fieldId === field.id)
-      return extractRawValue(fieldValue?.value)
-    })
-
-    // Check if all values are the same
-    const firstValue = values[0]
-    const allSame = values.every((v) => JSON.stringify(v) === JSON.stringify(firstValue))
-
-    result[field.id] = {
-      value: allSame ? firstValue : undefined,
-      varies: !allSame,
-    }
-  }
-
-  return result
-}
-
-/**
- * Dialog for bulk updating entity instances
- * Shows field values with <Varies> placeholder when values differ
- * Only submits fields that were explicitly modified
+ * Dialog for bulk updating entity instances.
+ * Shows field values with <Varies> placeholder when values differ.
+ * Only submits fields that were explicitly modified.
  */
 export function BulkUpdateEntityInstanceDialog({
   open,
   onOpenChange,
-  selectedInstances,
-  entityDefinition,
+  entityDefinitionId,
+  selectedInstanceIds,
   onSaved,
 }: BulkUpdateEntityInstanceDialogProps) {
-  const instanceCount = selectedInstances.length
+  const instanceCount = selectedInstanceIds.length
+
+  // Get resource definition with fields
+  const { resource } = useResource(entityDefinitionId)
+
+  // Get editable fields (exclude system fields like id, createdAt, updatedAt)
+  const editableFields = useMemo(() => {
+    if (!resource) return []
+    return resource.fields
+      .filter((f): f is typeof f & { id: string } => f.capabilities?.creatable !== false && !!f.id)
+      .sort((a, b) => (a.sortOrder ?? '').localeCompare(b.sortOrder ?? ''))
+  }, [resource])
+
+  // Column IDs for syncer
+  const customFieldColumnIds = useMemo(
+    () => editableFields.map((f) => `customField_${f.id}`),
+    [editableFields]
+  )
+
+  // Get values from store for all selected instances
+  const { getValue } = useCustomFieldValueSyncer({
+    resourceType: 'entity',
+    entityDefId: entityDefinitionId,
+    rowIds: selectedInstanceIds,
+    customFieldColumnIds,
+    columnVisibility: {},
+    enabled: selectedInstanceIds.length > 0 && editableFields.length > 0,
+  })
 
   // Field metadata provider for relationship sync
   const getFieldMetadata = useCallback(
     (fieldId: string) => {
-      const field = entityDefinition.customFields.find((f) => f.id === fieldId)
+      const field = editableFields.find((f) => f.id === fieldId)
       if (!field) return undefined
-      const fieldOptions = field.options as {
-        relationship?: {
+      return {
+        type: field.fieldType ?? 'TEXT',
+        relationship: field.options?.relationship as {
           isInverse?: boolean
           inverseFieldId?: string
           relationshipType?: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
           relatedEntityDefinitionId?: string
           relatedModelType?: string
-        }
-      }
-      return {
-        type: field.type,
-        relationship: fieldOptions?.relationship,
+        },
       }
     },
-    [entityDefinition.customFields]
+    [editableFields]
   )
 
   // Use hook for store-synced bulk updates
   const { saveBulkMultipleFields } = useSaveFieldValue({
     resourceType: 'entity',
-    entityDefId: entityDefinition.id,
+    entityDefId: entityDefinitionId,
     modelType: 'entity',
     getFieldMetadata,
   })
@@ -195,7 +103,9 @@ export function BulkUpdateEntityInstanceDialog({
   const [values, setValues] = useState<Record<string, unknown>>({})
 
   // Track initial values with varies state
-  const [initialState, setInitialState] = useState<Record<string, { value: unknown; varies: boolean }>>({})
+  const [initialState, setInitialState] = useState<
+    Record<string, { value: unknown; varies: boolean }>
+  >({})
 
   // Track which fields have been modified by the user
   const [modifiedFields, setModifiedFields] = useState<Set<string>>(new Set())
@@ -214,17 +124,29 @@ export function BulkUpdateEntityInstanceDialog({
     onConfirmedClose: handleConfirmedClose,
   })
 
-  // Sort custom fields by position
-  const sortedFields = useMemo(() => {
-    return [...(entityDefinition.customFields || [])]
-      .filter((f) => f.active !== false)
-      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
-  }, [entityDefinition.customFields])
-
-  // Initialize form values when dialog opens
+  // Compute initial values from store when dialog opens
   useEffect(() => {
-    if (open && selectedInstances.length > 0) {
-      const computed = computeInitialValues(selectedInstances, sortedFields)
+    if (open && selectedInstanceIds.length > 0) {
+      const computed: Record<string, { value: unknown; varies: boolean }> = {}
+
+      for (const field of editableFields) {
+        const fieldValues = selectedInstanceIds.map((id) => {
+          const storeValue = getValue(id, field.id)
+          return formatToRawValue(storeValue, field.fieldType ?? 'TEXT')
+        })
+
+        // Check if all values are the same
+        const firstValue = fieldValues[0]
+        const allSame = fieldValues.every(
+          (v) => JSON.stringify(v) === JSON.stringify(firstValue)
+        )
+
+        computed[field.id] = {
+          value: allSame ? firstValue : undefined,
+          varies: !allSame,
+        }
+      }
+
       setInitialState(computed)
 
       // Set initial values (undefined for varying fields)
@@ -237,7 +159,7 @@ export function BulkUpdateEntityInstanceDialog({
       setInitial(initValues)
       setModifiedFields(new Set())
     }
-  }, [open, selectedInstances, sortedFields, setInitial])
+  }, [open, selectedInstanceIds, editableFields, setInitial, getValue])
 
   /**
    * Handle field value change
@@ -248,19 +170,17 @@ export function BulkUpdateEntityInstanceDialog({
   }
 
   /**
-   * Handle form submission
-   * Only submit fields that were explicitly modified
-   * Fire-and-forget: updates store optimistically, closes dialog immediately
+   * Handle form submission.
+   * Only submit fields that were explicitly modified.
+   * Fire-and-forget: updates store optimistically, closes dialog immediately.
    */
   const handleSubmit = () => {
-    const resourceIds = selectedInstances.map((i) => i.id)
-
     // Build field values array with types
     const fieldValues = Array.from(modifiedFields)
       .map((fieldId) => {
-        const field = sortedFields.find((f) => f.id === fieldId)
+        const field = editableFields.find((f) => f.id === fieldId)
         const value = values[fieldId]
-        return { fieldId, value, fieldType: field?.type }
+        return { fieldId, value, fieldType: field?.fieldType }
       })
       .filter((fv) => fv.value !== undefined && fv.value !== null && fv.value !== '')
 
@@ -270,7 +190,7 @@ export function BulkUpdateEntityInstanceDialog({
     }
 
     // Fire-and-forget: updates store optimistically, API call runs in background
-    saveBulkMultipleFields(resourceIds, fieldValues)
+    saveBulkMultipleFields(selectedInstanceIds, fieldValues)
 
     onSaved?.()
     onOpenChange(false)
@@ -287,30 +207,36 @@ export function BulkUpdateEntityInstanceDialog({
     return undefined
   }
 
+  const resourceLabel = resource?.label ?? 'Record'
+  const resourcePlural = resource?.plural ?? 'Records'
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent size="md" position="tc" {...guardProps}>
           <DialogHeader>
             <DialogTitle>
-              Edit {instanceCount} {instanceCount === 1 ? entityDefinition.singular : entityDefinition.plural}
+              Edit {instanceCount} {instanceCount === 1 ? resourceLabel : resourcePlural}
             </DialogTitle>
             <DialogDescription>
-              Update field values for the selected {instanceCount === 1 ? entityDefinition.singular.toLowerCase() : entityDefinition.plural.toLowerCase()}.
+              Update field values for the selected{' '}
+              {instanceCount === 1 ? resourceLabel.toLowerCase() : resourcePlural.toLowerCase()}.
               Fields showing &lt;Varies&gt; have different values across selections.
             </DialogDescription>
           </DialogHeader>
 
           <VarEditorField className="p-0">
-            {sortedFields.map((field) => {
+            {editableFields.map((field) => {
               // Disable unique fields when editing multiple instances (would violate uniqueness)
               const isUniqueDisabled = field.isUnique && instanceCount > 1
               return (
                 <FieldInputRow
                   key={field.id}
-                  field={isUniqueDisabled
-                    ? { ...field, description: 'Unique fields cannot be bulk edited' }
-                    : field}
+                  field={
+                    isUniqueDisabled
+                      ? { ...field, description: 'Unique fields cannot be bulk edited' }
+                      : field
+                  }
                   value={values[field.id] ?? ''}
                   onChange={handleFieldChange}
                   placeholder={getPlaceholder(field.id)}
@@ -320,26 +246,22 @@ export function BulkUpdateEntityInstanceDialog({
             })}
           </VarEditorField>
 
-          {sortedFields.length === 0 && (
+          {editableFields.length === 0 && (
             <div className="text-sm text-muted-foreground text-center py-8">
               No fields defined for this entity type.
             </div>
           )}
 
           <DialogFooter>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={guardedClose}>
+            <Button type="button" size="sm" variant="ghost" onClick={guardedClose}>
               Cancel
             </Button>
             <Button
               size="sm"
               variant="outline"
               onClick={handleSubmit}
-              disabled={sortedFields.length === 0 || modifiedFields.size === 0}>
-              Update {instanceCount} {instanceCount === 1 ? entityDefinition.singular : entityDefinition.plural}
+              disabled={editableFields.length === 0 || modifiedFields.size === 0}>
+              Update {instanceCount} {instanceCount === 1 ? resourceLabel : resourcePlural}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -26,7 +26,7 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { cn } from '@auxx/ui/lib/utils'
-import { getSortOptionsForFieldType } from '../utils/constants'
+import { getSortOptionsForFieldType, SORT_OPTIONS } from '../utils/constants'
 import { useTableContext } from '../context/table-context'
 import { EditColumnLabelDialog } from './edit-column-label-dialog'
 import { EditColumnFormattingDialog } from './edit-column-formatting-dialog'
@@ -35,6 +35,7 @@ import type { ExtendedColumnDef, ColumnFormatting, FormattableFieldType } from '
 import { FORMATTABLE_FIELD_TYPES } from '../types'
 
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import type { FieldType } from '@auxx/database/types'
 
 interface HeaderCellProps<TData> {
   header: Header<TData, unknown>
@@ -64,7 +65,7 @@ function HeaderCellOptionsDropdown<TData>({
   column: Header<TData, unknown>['column']
   columnDef: ExtendedColumnDef<TData>
   isSorted: false | 'asc' | 'desc'
-  sortOptions: (typeof SORT_OPTIONS)[string]
+  sortOptions: (typeof SORT_OPTIONS)[FieldType]
   canSort: boolean
   canFilter: boolean
   canHide: boolean
@@ -106,7 +107,7 @@ function HeaderCellOptionsDropdown<TData>({
       <DropdownMenuContent align="start" className="w-[180px]">
         {canSort && (
           <>
-            {sortOptions.map((option) => {
+            {sortOptions!.map((option) => {
               const OptionIcon = option.icon
               const isActive = isSorted === option.value
 

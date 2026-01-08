@@ -135,11 +135,9 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
     placeholder = 'Start typing',
     placeholderConstant = 'Enter value',
     varType,
-    referenceType,
     allowConstant = true,
-    fieldReference, // For RELATION type
-    fieldOptions, // Full field.options for type-specific config (enum options via fieldOptions.enum)
-    allowedTypes = [], // NEW: Type filtering
+    fieldOptions, // Full field.options for type-specific config (enum via fieldOptions.enum, fieldReference via fieldOptions.fieldReference)
+    allowedTypes = [], // Type filtering
     mode = VAR_MODE.RICH,
     isConstantMode: controlledIsConstantMode,
     onConstantModeChange,
@@ -318,8 +316,6 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
             value={constantValue}
             onChange={handleConstantInputChange}
             varType={varType}
-            referenceType={referenceType}
-            fieldReference={fieldReference}
             fieldOptions={fieldOptions}
             placeholder={placeholderConstant}
             disabled={disabled || readOnly}

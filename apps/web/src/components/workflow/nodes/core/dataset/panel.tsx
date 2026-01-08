@@ -107,7 +107,7 @@ const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) =>
                 value={nodeData.datasetId || ''}
                 onChange={(v, m) => handleFieldChange('datasetId', v, m)}
                 varType={BaseType.RELATION}
-                fieldReference="dataset"
+                fieldOptions={{ fieldReference: 'dataset' }}
                 allowedTypes={['dataset' as BaseType, BaseType.STRING]}
                 mode={VAR_MODE.PICKER}
                 placeholder="Select dataset"

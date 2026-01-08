@@ -56,7 +56,7 @@ export function CopyableLinkCell({ displayText, value, type, className }: Copyab
   const maskWidth = '50px'
 
   return (
-    <div className={cn('group/link relative w-fit max-w-full overflow-hidden', className)}>
+    <div className={cn('group/link w-fit relative max-w-full overflow-hidden', className)}>
       {/* Content with hover background */}
       <div className="group-hover/link:bg-primary-50 rounded-md flex items-center w-full px-1 ">
         <span className="whitespace-nowrap truncate cursor-default">{displayText}</span>

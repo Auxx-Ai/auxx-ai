@@ -78,19 +78,21 @@ const MultipleValueInput: React.FC<MultipleValueInputProps> = ({
             className="flex-1"
             allowConstant={config.allowConstantToggle}
             defaultIsConstantMode={true}
-            fieldOptions={
-              field.enumValues
-                ? {
-                    enum: field.enumValues.map((enumValue) => {
-                      if (typeof enumValue === 'string') {
-                        return { label: enumValue, value: enumValue }
-                      }
-                      return { label: enumValue.label, value: enumValue.dbValue }
-                    }),
+            fieldOptions={(() => {
+              const opts: { enum?: Array<{ label: string; value: string }>; fieldReference?: string } = {}
+              if (field.enumValues) {
+                opts.enum = field.enumValues.map((enumValue) => {
+                  if (typeof enumValue === 'string') {
+                    return { label: enumValue, value: enumValue }
                   }
-                : undefined
-            }
-            fieldReference={field.fieldReference}
+                  return { label: enumValue.label, value: enumValue.dbValue }
+                })
+              }
+              if (field.fieldReference) {
+                opts.fieldReference = field.fieldReference
+              }
+              return Object.keys(opts).length > 0 ? opts : undefined
+            })()}
           />
           <Button
             variant="destructive-hover"

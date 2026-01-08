@@ -85,6 +85,8 @@ export interface FieldOptions {
     minLength?: number
     maxLength?: number
   }
+  /** For RELATION/REFERENCE types - reference to field in registry */
+  fieldReference?: string
 }
 
 /**
@@ -95,12 +97,10 @@ export function getSpecificPropsForType(
   varType: BaseType,
   commonProps: {
     placeholder?: string
-    fieldReference?: string
-    referenceType?: 'thread' | 'participant' | 'message' | 'contact'
     fieldOptions?: FieldOptions
   }
 ): Record<string, any> {
-  const { placeholder, fieldReference, referenceType, fieldOptions } = commonProps
+  const { placeholder, fieldOptions } = commonProps
 
   switch (varType) {
     case BaseType.EMAIL:
@@ -125,13 +125,9 @@ export function getSpecificPropsForType(
 
     case BaseType.RELATION:
     case BaseType.REFERENCE:
-      // For RELATION types, pass fieldReference and targetTable
-      // These are extracted by parseVariable() from variable.reference
+      // For RELATION types, pass fieldReference from fieldOptions
       return {
-        fieldReference,
-        referenceType,
-        // Note: RelationInput expects targetTable prop
-        // which should be provided by the caller
+        fieldReference: fieldOptions?.fieldReference,
       }
 
     case BaseType.FILE:

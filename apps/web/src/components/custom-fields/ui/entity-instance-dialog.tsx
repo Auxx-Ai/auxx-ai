@@ -18,81 +18,64 @@ import { api } from '~/trpc/react'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
 import { useDirtyCheck } from '~/hooks/use-dirty-state'
 import { useSaveFieldValue } from '~/hooks/use-save-field-value'
-import type { FieldType } from '@auxx/database/types'
-
-/**
- * Custom field definition type
- */
-interface CustomFieldDef {
-  id: string
-  name: string
-  type: FieldType
-  description?: string | null
-  required?: boolean | null
-  position?: number | null
-  active?: boolean | null
-  defaultValue?: string | null
-  options?: unknown
-}
-
-/**
- * Entity definition with custom fields loaded
- */
-interface EntityDefinitionWithFields {
-  id: string
-  singular: string
-  plural: string
-  icon?: string | null
-  color?: string | null
-  customFields: CustomFieldDef[]
-}
-
-/**
- * Field value from entity instance
- */
-interface FieldValue {
-  id: string
-  fieldId: string
-  value: unknown
-  field: CustomFieldDef
-}
-
-/**
- * Entity instance with field values
- */
-interface EntityInstanceWithValues {
-  id: string
-  entityDefinitionId: string
-  values?: FieldValue[]
-}
+import { useResource } from '~/components/resources'
+import { useCustomFieldValueSyncer } from '~/hooks/use-custom-field-value-syncer'
+import { formatToRawValue } from '@auxx/lib/field-values/client'
 
 interface EntityInstanceDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** Entity definition (required) */
-  entityDefinition: EntityDefinitionWithFields
-  /** Existing instance for edit mode, null for create */
-  editingInstance?: EntityInstanceWithValues | null
+  /** Entity definition ID */
+  entityDefinitionId: string
+  /** Existing instance ID for edit mode, null/undefined for create */
+  editingInstanceId?: string | null
   /** Callback after successful save */
   onSaved?: (instanceId: string) => void
 }
 
 /**
- * Dialog for creating/editing entity instances
- * Uses VarEditorFieldRow + ConstantInputAdapter for form fields
+ * Dialog for creating/editing entity instances.
+ * Uses useResource to get field definitions and useCustomFieldValueSyncer for values.
  */
 export function EntityInstanceDialog({
   open,
   onOpenChange,
-  entityDefinition,
-  editingInstance = null,
+  entityDefinitionId,
+  editingInstanceId,
   onSaved,
 }: EntityInstanceDialogProps) {
-  const isEditing = !!editingInstance
+  const isEditing = !!editingInstanceId
   const utils = api.useUtils()
 
+  // Get resource definition with fields
+  const { resource } = useResource(entityDefinitionId)
+
+  // Get editable fields (exclude system fields like id, createdAt, updatedAt)
+  const editableFields = useMemo(() => {
+    if (!resource) return []
+    return resource.fields
+      .filter((f): f is typeof f & { id: string } => f.capabilities?.creatable !== false && !!f.id)
+      .sort((a, b) => (a.sortOrder ?? '').localeCompare(b.sortOrder ?? ''))
+  }, [resource])
+
+  // Column IDs for syncer
+  const customFieldColumnIds = useMemo(
+    () => editableFields.map((f) => `customField_${f.id}`),
+    [editableFields]
+  )
+
+  // Get values from store for edit mode
+  const { getValue } = useCustomFieldValueSyncer({
+    resourceType: 'entity',
+    entityDefId: entityDefinitionId,
+    rowIds: editingInstanceId ? [editingInstanceId] : [],
+    customFieldColumnIds,
+    columnVisibility: {},
+    enabled: !!editingInstanceId && editableFields.length > 0,
+  })
+
   // Field values state: { fieldId: value }
-  const [values, setValues] = useState<Record<string, any>>({})
+  const [values, setValues] = useState<Record<string, unknown>>({})
 
   // Validation state: { fieldId: errorMessage }
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -114,40 +97,34 @@ export function EntityInstanceDialog({
     onConfirmedClose: handleConfirmedClose,
   })
 
-  // Sort custom fields by position
-  const sortedFields = useMemo(() => {
-    return [...(entityDefinition.customFields || [])]
-      .filter((f) => f.active !== false)
-      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
-  }, [entityDefinition.customFields])
-
   // Initialize form values when dialog opens
   useEffect(() => {
     if (open) {
-      let initValues: Record<string, any> = {}
+      const initValues: Record<string, unknown> = {}
 
-      if (editingInstance?.values) {
-        // Edit mode: populate from existing values
-        for (const fv of editingInstance.values) {
-          // Extract raw value from TypedFieldValue
-          const rawValue = extractRawValue(fv.value)
-          initValues[fv.fieldId] = rawValue
+      if (editingInstanceId) {
+        // Edit mode: populate from store values
+        for (const field of editableFields) {
+          const storeValue = getValue(editingInstanceId, field.id)
+          if (storeValue !== undefined && storeValue !== null) {
+            initValues[field.id] = formatToRawValue(storeValue, field.fieldType ?? 'TEXT')
+          }
         }
       } else {
         // Create mode: use default values
-        for (const field of sortedFields) {
-          if (field.defaultValue) {
+        for (const field of editableFields) {
+          if (field.defaultValue !== undefined) {
             initValues[field.id] = field.defaultValue
           }
         }
       }
 
       setValues(initValues)
-      setInitial(initValues) // Set baseline for dirty checking
+      setInitial(initValues)
       setErrors({})
       setTouched(new Set())
     }
-  }, [open, editingInstance, sortedFields, setInitial])
+  }, [open, editingInstanceId, editableFields, setInitial, getValue])
 
   // Create instance mutation
   const createInstance = api.entityInstance.create.useMutation({
@@ -159,29 +136,20 @@ export function EntityInstanceDialog({
   // Field metadata provider for relationship sync
   const getFieldMetadata = useCallback(
     (fieldId: string) => {
-      const field = entityDefinition.customFields.find((f) => f.id === fieldId)
+      const field = editableFields.find((f) => f.id === fieldId)
       if (!field) return undefined
-      const fieldOptions = field.options as {
-        relationship?: {
-          isInverse?: boolean
-          inverseFieldId?: string
-          relationshipType?: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
-          relatedEntityDefinitionId?: string
-          relatedModelType?: string
-        }
-      }
       return {
-        type: field.type,
-        relationship: fieldOptions?.relationship,
+        type: field.fieldType!,
+        relationship: field.options?.relationship,
       }
     },
-    [entityDefinition.customFields]
+    [editableFields]
   )
 
   // Save field values with Zustand store sync
   const { saveMultipleAsync, isPending: isSavingFields } = useSaveFieldValue({
     resourceType: 'entity',
-    entityDefId: entityDefinition.id,
+    entityDefId: entityDefinitionId,
     modelType: 'entity',
     getFieldMetadata,
   })
@@ -192,7 +160,7 @@ export function EntityInstanceDialog({
   /**
    * Handle field value change
    */
-  const handleFieldChange = (fieldId: string, value: any) => {
+  const handleFieldChange = (fieldId: string, value: unknown) => {
     setValues((prev) => ({ ...prev, [fieldId]: value }))
     setTouched((prev) => new Set(prev).add(fieldId))
 
@@ -212,11 +180,12 @@ export function EntityInstanceDialog({
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {}
 
-    for (const field of sortedFields) {
-      if (field.required) {
-        const value = values[field.id]
+    for (const field of editableFields) {
+      const isRequired = field.required ?? field.capabilities?.required
+      if (isRequired) {
+        const value = values[field.id!]
         if (value === undefined || value === null || value === '') {
-          newErrors[field.id] = `${field.name} is required`
+          newErrors[field.id!] = `${field.label} is required`
         }
       }
     }
@@ -234,13 +203,13 @@ export function EntityInstanceDialog({
     try {
       let instanceId: string
 
-      if (isEditing && editingInstance) {
+      if (isEditing && editingInstanceId) {
         // Edit mode: just update values
-        instanceId = editingInstance.id
+        instanceId = editingInstanceId
       } else {
         // Create mode: create instance first
         const created = await createInstance.mutateAsync({
-          entityDefinitionId: entityDefinition.id,
+          entityDefinitionId,
         })
         instanceId = created.id
       }
@@ -249,8 +218,8 @@ export function EntityInstanceDialog({
       const valuesToSave = Object.entries(values)
         .filter(([_, value]) => value !== undefined && value !== null && value !== '')
         .map(([fieldId, value]) => {
-          const field = sortedFields.find((f) => f.id === fieldId)
-          return { fieldId, value, fieldType: field?.type }
+          const field = editableFields.find((f) => f.id === fieldId)
+          return { fieldId, value, fieldType: field?.fieldType }
         })
 
       if (valuesToSave.length > 0) {
@@ -268,118 +237,71 @@ export function EntityInstanceDialog({
     }
   }
 
+  const resourceLabel = resource?.label ?? 'Record'
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent size="md" position="tc" {...guardProps}>
-        <DialogHeader>
-          <DialogTitle>
-            {isEditing ? `Edit ${entityDefinition.singular}` : `New ${entityDefinition.singular}`}
-          </DialogTitle>
-          <DialogDescription>
-            {isEditing
-              ? `Update the ${entityDefinition.singular.toLowerCase()} details below.`
-              : `Enter the details for the new ${entityDefinition.singular.toLowerCase()}.`}
-          </DialogDescription>
-        </DialogHeader>
+          <DialogHeader>
+            <DialogTitle>
+              {isEditing ? `Edit ${resourceLabel}` : `New ${resourceLabel}`}
+            </DialogTitle>
+            <DialogDescription>
+              {isEditing
+                ? `Update the ${resourceLabel.toLowerCase()} details below.`
+                : `Enter the details for the new ${resourceLabel.toLowerCase()}.`}
+            </DialogDescription>
+          </DialogHeader>
 
-        <VarEditorField className="p-0">
-          {sortedFields.map((field) => (
-            <FieldInputRow
-              key={field.id}
-              field={field}
-              value={values[field.id] ?? ''}
-              onChange={handleFieldChange}
-              validationError={
-                touched.has(field.id) || Object.keys(errors).length > 0
-                  ? errors[field.id]
-                  : undefined
-              }
-              validationType="error"
-              disabled={isPending}
-            />
-          ))}
-        </VarEditorField>
+          <VarEditorField className="p-0">
+            {editableFields.map((field) => (
+              <FieldInputRow
+                key={field.id}
+                field={field}
+                value={values[field.id] ?? ''}
+                onChange={handleFieldChange}
+                validationError={
+                  touched.has(field.id) || Object.keys(errors).length > 0
+                    ? errors[field.id]
+                    : undefined
+                }
+                validationType="error"
+                disabled={isPending}
+              />
+            ))}
+          </VarEditorField>
 
-        {sortedFields.length === 0 && (
-          <div className="text-sm text-muted-foreground text-center py-8">
-            No fields defined for this entity type.
-            <br />
-            Add custom fields in the entity definition settings.
-          </div>
-        )}
+          {editableFields.length === 0 && (
+            <div className="text-sm text-muted-foreground text-center py-8">
+              No fields defined for this entity type.
+              <br />
+              Add custom fields in the entity definition settings.
+            </div>
+          )}
 
-        <DialogFooter>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={guardedClose}
-            disabled={isPending}>
-            Cancel
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleSubmit}
-            loading={isPending}
-            loadingText={isEditing ? 'Saving...' : 'Creating...'}
-            disabled={sortedFields.length === 0}>
-            {isEditing ? 'Save Changes' : `Create ${entityDefinition.singular}`}
-          </Button>
-        </DialogFooter>
+          <DialogFooter>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={guardedClose}
+              disabled={isPending}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleSubmit}
+              loading={isPending}
+              loadingText={isEditing ? 'Saving...' : 'Creating...'}
+              disabled={editableFields.length === 0}>
+              {isEditing ? 'Save Changes' : `Create ${resourceLabel}`}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
       <ConfirmDialog />
     </>
   )
-}
-
-/**
- * Extract raw value from TypedFieldValue.
- * Values are now TypedFieldValue format (not legacy { data: x })
- * For relationships, preserves the full object with both relatedEntityId and relatedEntityDefinitionId.
- */
-function extractRawValue(value: unknown): any {
-  if (value === null || value === undefined) return null
-
-  // Handle TypedFieldValue array (multi-select, tags, relationships)
-  if (Array.isArray(value)) {
-    return value.map((v: any) => {
-      if (v && typeof v === 'object' && 'type' in v) {
-        // For relationships, preserve the full object structure
-        if (v.type === 'relationship') {
-          return {
-            relatedEntityId: v.relatedEntityId,
-            relatedEntityDefinitionId: v.relatedEntityDefinitionId,
-          }
-        }
-        return v.optionId ?? v.value
-      }
-      return v
-    })
-  }
-
-  // Handle single TypedFieldValue
-  if (typeof value === 'object' && 'type' in value) {
-    const tv = value as {
-      type: string
-      value?: any
-      optionId?: string
-      relatedEntityId?: string
-      relatedEntityDefinitionId?: string
-    }
-
-    // For relationships, preserve the full object structure
-    if (tv.type === 'relationship') {
-      return {
-        relatedEntityId: tv.relatedEntityId,
-        relatedEntityDefinitionId: tv.relatedEntityDefinitionId,
-      }
-    }
-
-    return tv.optionId ?? tv.value
-  }
-
-  return value
 }

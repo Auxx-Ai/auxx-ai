@@ -16,13 +16,8 @@ interface ResourceContextValue {
   customResources: CustomResource[]
   /** Loading state for resources */
   isLoadingResources: boolean
-  /** Get resource by ID */
+  /** Get resource by id, apiSlug, or entityResourceId */
   getResourceById: (id: string) => Resource | undefined
-
-  /** Map: resourceId → entityDefinitionId (unified for both system and custom) */
-  resourceIdToEntityDefIdMap: Map<string, string>
-  /** Map: UUID → apiSlug (custom entities only) */
-  apiSlugMap: Map<string, string>
 
   /** Request hydration for relationship items (batch fetched on demand) */
   requestRelationshipHydration: (items: Array<{ resourceId: string; id: string }>) => void
@@ -56,10 +51,15 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
     refetchOnWindowFocus: false,
   })
 
-  // Memoize resource lookups
+  // Memoize resource lookups (by id and apiSlug)
   const resourceMap = useMemo(() => {
     const map = new Map<string, Resource>()
-    resourcesQuery.data?.forEach((r) => map.set(r.id, r))
+    resourcesQuery.data?.forEach((r) => {
+      map.set(r.id, r)
+      if (isCustomResource(r) && r.apiSlug) {
+        map.set(r.apiSlug, r)
+      }
+    })
     return map
   }, [resourcesQuery.data])
 
@@ -68,34 +68,8 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
     () => (resourcesQuery.data ?? []).filter(isCustomResource),
     [resourcesQuery.data]
   )
-
+  /** Get resource by id, apiSlug, or entityResourceId */
   const getResourceById = useCallback((id: string) => resourceMap.get(id), [resourceMap])
-
-  // Build maps for resource ID resolution
-  const resourceIdToEntityDefIdMap = useMemo(() => {
-    const map = new Map<string, string>()
-    if (resourcesQuery.data) {
-      for (const resource of resourcesQuery.data) {
-        // System: id === entityDefinitionId
-        // Custom: id is UUID, entityDefinitionId is also UUID (same value)
-        const entityDefId = resource.entityDefinitionId || resource.id
-        map.set(resource.id, entityDefId)
-      }
-    }
-    return map
-  }, [resourcesQuery.data])
-
-  const apiSlugMap = useMemo(() => {
-    const map = new Map<string, string>()
-    if (resourcesQuery.data) {
-      for (const resource of resourcesQuery.data) {
-        if (isCustomResource(resource) && resource.apiSlug) {
-          map.set(resource.id, resource.apiSlug) // UUID → slug
-        }
-      }
-    }
-    return map
-  }, [resourcesQuery.data])
 
   // === RELATIONSHIP ITEMS BATCHING ===
   const [relationshipBatch, setRelationshipBatch] = useState<
@@ -159,8 +133,6 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
       customResources,
       isLoadingResources: resourcesQuery.isLoading,
       getResourceById,
-      resourceIdToEntityDefIdMap,
-      apiSlugMap,
       requestRelationshipHydration,
       invalidateRelationship,
       refetch,
@@ -170,8 +142,6 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
       resourcesQuery.isLoading,
       customResources,
       getResourceById,
-      resourceIdToEntityDefIdMap,
-      apiSlugMap,
       requestRelationshipHydration,
       invalidateRelationship,
       refetch,

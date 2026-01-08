@@ -105,12 +105,7 @@ export interface VarEditorProps {
   className?: string
   varType?: BaseType
   itemType?: BaseType
-  referenceType?: 'thread' | 'participant' | 'message' | 'contact'
-
-  // Field reference for RELATION types
-  /** Reference to field in registry (format: "resourceType:fieldKey") for RELATION type */
-  fieldReference?: string
-  /** Full field.options object for type-specific config (enum options via fieldOptions.enum) */
+  /** Full field.options object for type-specific config (enum via fieldOptions.enum, fieldReference via fieldOptions.fieldReference) */
   fieldOptions?: FieldOptions
 
   // Type filtering

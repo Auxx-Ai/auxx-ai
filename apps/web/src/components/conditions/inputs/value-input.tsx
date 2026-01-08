@@ -32,16 +32,19 @@ const ValueInput = ({
   const renderVarEditor = (varType: BaseType, useField?: FieldDefinition) => {
     const targetField = useField || field
 
-    const fieldOptions = targetField.enumValues
-      ? {
-          enum: targetField.enumValues.map((enumValue) => {
-            if (typeof enumValue === 'string') {
-              return { label: enumValue, value: enumValue }
-            }
-            return { label: enumValue.label, value: enumValue.dbValue }
-          }),
+    // Build fieldOptions with enum and fieldReference embedded if applicable
+    const fieldOptions: { enum?: Array<{ label: string; value: string }>; fieldReference?: string } = {}
+    if (targetField.enumValues) {
+      fieldOptions.enum = targetField.enumValues.map((enumValue) => {
+        if (typeof enumValue === 'string') {
+          return { label: enumValue, value: enumValue }
         }
-      : undefined
+        return { label: enumValue.label, value: enumValue.dbValue }
+      })
+    }
+    if (targetField.fieldReference) {
+      fieldOptions.fieldReference = targetField.fieldReference
+    }
 
     const allowedTypes: (BaseType | string)[] = []
 
@@ -67,8 +70,7 @@ const ValueInput = ({
         className={className}
         allowConstant={config.allowConstantToggle}
         defaultIsConstantMode={condition.isConstant}
-        fieldOptions={fieldOptions}
-        fieldReference={targetField.fieldReference}
+        fieldOptions={Object.keys(fieldOptions).length > 0 ? fieldOptions : undefined}
         allowedTypes={allowedTypes}
       />
     )
