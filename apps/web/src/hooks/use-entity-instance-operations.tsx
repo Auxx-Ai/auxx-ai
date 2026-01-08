@@ -1,12 +1,11 @@
 // apps/web/src/hooks/use-entity-instance-operations.tsx
 'use client'
 
-import { useCallback, useMemo } from 'react'
+import { useCallback, useRef } from 'react'
 import { api } from '~/trpc/react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCustomField } from '~/components/custom-fields/hooks/use-custom-field'
-import { inferTypedValueFromRow, type FieldValueRow } from '@auxx/lib/field-values/client'
 import type { EntityRow } from '~/app/(protected)/app/custom/[slug]/_components/types'
 
 /**
@@ -23,14 +22,13 @@ interface UseEntityInstanceOperationsOptions {
   onDrawerClose?: () => void
   /** Callback when row selection should be cleared */
   onClearSelection?: () => void
+  /** Callback to refresh data after mutations */
+  onRefetch?: () => void
 }
 
-/** Page size for infinite query */
-const PAGE_SIZE = 100
-
 /**
- * Hook that handles entity instance CRUD operations, data fetching, and confirmations.
- * Extracts mutation and handler logic from entity-records-content.tsx.
+ * Hook that handles entity instance mutation operations and confirmations.
+ * Data fetching is handled separately via useRecordList in the parent component.
  */
 export function useEntityInstanceOperations(options: UseEntityInstanceOperationsOptions) {
   const {
@@ -39,6 +37,7 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
     resourcePlural,
     onDrawerClose,
     onClearSelection,
+    onRefetch,
   } = options
 
   const utils = api.useUtils()
@@ -54,70 +53,12 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
   })
 
   // ============================================================
-  // Data Fetching
-  // ============================================================
-
-  const {
-    data,
-    isLoading,
-    isFetchingNextPage,
-    hasNextPage,
-    fetchNextPage,
-    refetch,
-  } = api.entityInstance.list.useInfiniteQuery(
-    { entityDefinitionId: entityDefinitionId ?? '', includeArchived: false, limit: PAGE_SIZE },
-    {
-      enabled: !!entityDefinitionId,
-      getNextPageParam: (lastPage) => lastPage?.nextCursor ?? null,
-    }
-  )
-
-  /** Flatten pages to get all raw instances */
-  const rawInstances = useMemo(() => {
-    return data?.pages?.flatMap((page) => page.items) ?? []
-  }, [data])
-
-  /** Transform instances to have customFieldValues for column compatibility */
-  const instances: EntityRow[] = useMemo(() => {
-    return rawInstances.map((instance) => {
-      // Convert raw FieldValue rows to objects with TypedFieldValue
-      const typedValues = (instance.typedValues ?? []).map((row) => ({
-        id: row.id,
-        fieldId: row.fieldId,
-        value: inferTypedValueFromRow(row as FieldValueRow),
-      }))
-
-      return {
-        id: instance.id,
-        entityDefinitionId: instance.entityDefinitionId,
-        createdAt: instance.createdAt,
-        updatedAt: instance.updatedAt,
-        archivedAt: instance.archivedAt,
-        // Cells read from store via syncer
-        customFieldValues: typedValues.map((v) => ({
-          fieldId: v.fieldId,
-          value: null, // Values come from store, not row data
-        })),
-        // Converted values with TypedFieldValue for drawer display
-        _originalValues: typedValues,
-      }
-    })
-  }, [rawInstances])
-
-  /** Handle scrolling to bottom - load more data */
-  const handleScrollToBottom = useCallback(() => {
-    if (hasNextPage && !isFetchingNextPage && !isLoading) {
-      fetchNextPage()
-    }
-  }, [hasNextPage, isFetchingNextPage, isLoading, fetchNextPage])
-
-  // ============================================================
   // Mutations
   // ============================================================
 
   const archiveInstance = api.entityInstance.archive.useMutation({
     onSuccess: () => {
-      utils.entityInstance.list.invalidate()
+      onRefetch?.()
     },
     onError: (error) => {
       toastError({ title: 'Failed to archive', description: error.message })
@@ -126,16 +67,20 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
 
   const deleteInstance = api.entityInstance.delete.useMutation({
     onSuccess: () => {
-      utils.entityInstance.list.invalidate()
+      onRefetch?.()
     },
     onError: (error) => {
       toastError({ title: 'Failed to delete', description: error.message })
     },
   })
 
+  // Refs for stable callback access (avoids recreating callbacks when mutations change)
+  const deleteInstanceRef = useRef(deleteInstance)
+  deleteInstanceRef.current = deleteInstance
+
   const bulkDeleteInstances = api.entityInstance.bulkDelete.useMutation({
     onSuccess: () => {
-      utils.entityInstance.list.invalidate()
+      onRefetch?.()
       onClearSelection?.()
     },
     onError: (error) => {
@@ -145,7 +90,7 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
 
   const bulkArchiveInstances = api.entityInstance.bulkArchive.useMutation({
     onSuccess: () => {
-      utils.entityInstance.list.invalidate()
+      onRefetch?.()
       onClearSelection?.()
     },
     onError: (error) => {
@@ -227,7 +172,7 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
     [confirmArchive, resourceLabel, resourcePlural, bulkArchiveInstances]
   )
 
-  /** Handle delete from drawer with confirmation */
+  /** Handle delete from drawer with confirmation (uses ref for stable callback) */
   const handleDrawerDelete = useCallback(
     async (instanceId: string) => {
       const confirmed = await confirmDelete({
@@ -238,11 +183,11 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
         destructive: true,
       })
       if (confirmed) {
-        deleteInstance.mutate({ id: instanceId })
+        deleteInstanceRef.current.mutate({ id: instanceId })
         onDrawerClose?.()
       }
     },
-    [confirmDelete, resourceLabel, deleteInstance, onDrawerClose]
+    [confirmDelete, resourceLabel, onDrawerClose]
   )
 
   /** Handle saving a new custom field */
@@ -253,24 +198,15 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
         modelType: 'entity',
         entityDefinitionId,
       })
+      // Invalidate custom fields query
       utils.customField.getByEntityDefinition.invalidate({ entityDefinitionId })
+      // Also refresh data to pick up new column
+      onRefetch?.()
     },
-    [createField, entityDefinitionId, utils]
+    [createField, entityDefinitionId, utils, onRefetch]
   )
 
   return {
-    // Data
-    instances,
-    rawInstances,
-    isLoading,
-    isFetchingNextPage,
-    hasNextPage,
-
-    // Actions
-    refetch,
-    fetchNextPage,
-    handleScrollToBottom,
-
     // Single instance operations
     handleArchive,
     handleDelete,

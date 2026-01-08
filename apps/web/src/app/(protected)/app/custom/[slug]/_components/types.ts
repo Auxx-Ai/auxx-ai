@@ -2,7 +2,7 @@
 
 /**
  * Row data type for the entity table
- * Normalized to have customFieldValues for compatibility with existing column helpers
+ * Field values are stored in customFieldValueStore and accessed via syncer/getValue
  */
 export interface EntityRow {
   id: string
@@ -10,11 +10,12 @@ export interface EntityRow {
   createdAt: string
   updatedAt: string
   archivedAt: string | null
+  /** @deprecated Values come from store via syncer, not from row data */
   customFieldValues: Array<{
     fieldId: string
     value: unknown
   }>
-  /** Original values array from API */
+  /** @deprecated No longer populated - use getValue from store instead */
   _originalValues: Array<{
     id: string
     fieldId: string

@@ -1,7 +1,9 @@
 // apps/web/src/stores/custom-field-value-store.ts
 
+import { useCallback, useMemo } from 'react'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
+import { useShallow } from 'zustand/react/shallow'
 import type { TypedFieldValue } from '@auxx/types/field-value'
 
 /** Resource types that support custom fields */
@@ -74,11 +76,7 @@ interface CustomFieldValueState {
   // ─────────────────────────────────────────────────────────────────
 
   /** Invalidate a single resource (after updating a contact/ticket/entity) */
-  invalidateResource: (
-    resourceType: ResourceType,
-    resourceId: string,
-    entityDefId?: string
-  ) => void
+  invalidateResource: (resourceType: ResourceType, resourceId: string, entityDefId?: string) => void
 
   /** Invalidate a specific field across all resources (after field definition change) */
   invalidateField: (fieldId: string) => void
@@ -371,7 +369,7 @@ export function useCustomFieldValueLoading(
 
 /**
  * Get multiple values for a single resource (e.g., for entity-fields.tsx drawer).
- * Returns a stable object reference when values haven't changed.
+ * Uses stable selector with useShallow for memoization to prevent infinite loops.
  */
 export function useResourceFieldValues(
   resourceType: ResourceType,
@@ -379,12 +377,24 @@ export function useResourceFieldValues(
   fieldIds: string[],
   entityDefId?: string
 ): Record<string, StoredFieldValue | undefined> {
-  return useCustomFieldValueStore((state) => {
-    const result: Record<string, StoredFieldValue | undefined> = {}
-    for (const fieldId of fieldIds) {
-      const key = buildValueKey(resourceType, resourceId, fieldId, entityDefId)
-      result[fieldId] = state.values[key]
-    }
-    return result
-  })
+  // Stabilize inputs - only change selector when actual content changes
+  const fieldIdsKey = fieldIds.join(',')
+
+  // Create stable selector that only changes when inputs change
+  const selector = useCallback(
+    (state: CustomFieldValueState) => {
+      const result: Record<string, StoredFieldValue | undefined> = {}
+      for (const fieldId of fieldIds) {
+        const key = buildValueKey(resourceType, resourceId, fieldId, entityDefId)
+        result[fieldId] = state.values[key]
+      }
+      return result
+    },
+    [fieldIdsKey, resourceType, resourceId, entityDefId]
+  )
+
+  // Wrap stable selector with useShallow for shallow comparison
+  const memoizedSelector = useShallow(selector)
+
+  return useCustomFieldValueStore(memoizedSelector)
 }

@@ -67,8 +67,8 @@ export function useCustomFieldValueSyncer(
   const setValues = useCustomFieldValueStore((s) => s.setValues)
   const startLoading = useCustomFieldValueStore((s) => s.startLoading)
   const finishLoading = useCustomFieldValueStore((s) => s.finishLoading)
-  const values = useCustomFieldValueStore((s) => s.values)
-  const loadingBatches = useCustomFieldValueStore((s) => s.loadingBatches)
+  // NOTE: Don't subscribe to values/loadingBatches - use getState() imperatively
+  // Subscribing would cause re-renders on every value change
 
   const pendingFetchRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -79,23 +79,25 @@ export function useCustomFieldValueSyncer(
       .map((colId) => colId.replace('customField_', ''))
   }, [customFieldColumnIds, columnVisibility])
 
-  // Check if a key is loading
+  // Helper to check if a key is loading (uses getState, not subscription)
   const isKeyLoading = useCallback(
     (key: string) => {
+      const { loadingBatches } = useCustomFieldValueStore.getState()
       for (const batch of Object.values(loadingBatches)) {
         if (batch.keys.has(key)) return true
       }
       return false
     },
-    [loadingBatches]
+    []
   )
 
-  // Compute which keys need fetching (not in store and not loading)
-  const neededKeys = useMemo(() => {
+  // Compute needed keys imperatively inside effect (not as reactive dependency)
+  const computeNeededKeys = useCallback(() => {
     if (!enabled || visibleFieldIds.length === 0 || rowIds.length === 0) {
       return []
     }
 
+    const { values } = useCustomFieldValueStore.getState()
     const keys: string[] = []
     for (const rowId of rowIds) {
       for (const fieldId of visibleFieldIds) {
@@ -106,14 +108,14 @@ export function useCustomFieldValueSyncer(
       }
     }
     return keys
-  }, [enabled, visibleFieldIds, rowIds, resourceType, entityDefId, values, isKeyLoading])
+  }, [enabled, visibleFieldIds, rowIds, resourceType, entityDefId, isKeyLoading])
 
   // Mutation for batch fetching
   const batchFetch = api.fieldValue.batchGet.useMutation()
 
-  // Debounced fetch trigger
+  // Debounced fetch trigger - runs when inputs change, computes needed keys imperatively
   useEffect(() => {
-    if (neededKeys.length === 0) return
+    if (!enabled || visibleFieldIds.length === 0 || rowIds.length === 0) return
 
     // Clear any pending fetch
     if (pendingFetchRef.current) {
@@ -122,6 +124,10 @@ export function useCustomFieldValueSyncer(
 
     // Schedule new fetch
     pendingFetchRef.current = setTimeout(async () => {
+      // Compute needed keys at fetch time (not as reactive dependency)
+      const neededKeys = computeNeededKeys()
+      if (neededKeys.length === 0) return
+
       const batchId = generateId('batch')
 
       // Mark as loading
@@ -183,26 +189,24 @@ export function useCustomFieldValueSyncer(
       }
     }
   }, [
-    neededKeys,
+    enabled,
+    visibleFieldIds,
+    rowIds,
     resourceType,
     entityDefId,
     debounceMs,
+    computeNeededKeys,
     batchFetch,
     startLoading,
     finishLoading,
     setValues,
   ])
 
-  // Keep a ref to the latest values for stable getValue
-  const valuesRef = useRef(values)
-  valuesRef.current = values
-
-  // Get value accessor - STABLE function that reads from ref
-  // This prevents column recreation when values change, improving performance
+  // Get value accessor - reads directly from store via getState (stable function)
   const getValue = useCallback(
     (rowId: string, fieldId: string): StoredFieldValue | undefined => {
       const key = buildValueKey(resourceType, rowId, fieldId, entityDefId)
-      return valuesRef.current[key]
+      return useCustomFieldValueStore.getState().values[key]
     },
     [resourceType, entityDefId]
   )

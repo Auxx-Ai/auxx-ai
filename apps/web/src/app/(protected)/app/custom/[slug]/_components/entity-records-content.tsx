@@ -1,21 +1,11 @@
 // apps/web/src/app/(protected)/app/custom/[slug]/_components/entity-records-content.tsx
 'use client'
 
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useMemo, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import type { VisibilityState } from '@tanstack/react-table'
 import { Button } from '@auxx/ui/components/button'
-import {
-  Plus,
-  Trash2,
-  Archive,
-  Database,
-  FileText,
-  SquarePen,
-  BookPlus,
-  Play,
-  MoreVertical,
-} from 'lucide-react'
+import { Plus, Trash2, Archive, Database, FileText, SquarePen, BookPlus, Play } from 'lucide-react'
 import { useEntityInstanceOperations } from '~/hooks/use-entity-instance-operations'
 import {
   DynamicView,
@@ -35,8 +25,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger,
   DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import type { FieldType } from '@auxx/database/types'
 import {
@@ -55,11 +45,42 @@ import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
 import { useCustomFieldValueSyncer } from '~/hooks/use-custom-field-value-syncer'
-import { useCustomFieldValueStore } from '~/stores/custom-field-value-store'
 import { useSaveFieldValue } from '~/hooks/use-save-field-value'
 import { formatToDisplayValue } from '@auxx/lib/field-values/client'
 import type { TypedFieldValue } from '@auxx/types/field-value'
 import type { EntityRow } from './types'
+import { useCombinedFilters } from '~/components/dynamic-table/hooks/use-combined-filters'
+import { useActiveViewConfig } from '~/components/dynamic-table/stores/view-store'
+import { useRecordList, type RecordMeta } from '~/components/resources'
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
+
+/** Stable filter ID to prevent reference changes */
+const SEARCH_FILTER_ID = 'entity-page-search-filter'
+
+/** Page size for infinite query */
+const PAGE_SIZE = 100
+
+/**
+ * Build page-level filters (search).
+ * Returns undefined if no filters (not empty array) for useRecordList compatibility.
+ */
+function buildPageFilters(params: { search?: string }): ConditionGroup[] | undefined {
+  if (!params.search) return undefined
+  return [
+    {
+      id: SEARCH_FILTER_ID,
+      logicalOperator: 'OR',
+      conditions: [
+        {
+          id: `${SEARCH_FILTER_ID}-0`,
+          fieldId: '_displayValue',
+          operator: 'contains',
+          value: params.search,
+        },
+      ],
+    },
+  ]
+}
 
 /**
  * Props for HeaderActionsDropdown component
@@ -116,8 +137,8 @@ export function EntityRecordsContent() {
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set())
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
 
-  // Drawer state
-  const [selectedInstance, setSelectedInstance] = useState<EntityRow | null>(null)
+  // Drawer state - use ID instead of full object for stability
+  const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null)
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
 
   // Kanban card selection state (lives here to persist across drawer open/close)
@@ -132,15 +153,81 @@ export function EntityRecordsContent() {
   // Workflow dialog state
   const [isWorkflowDialogOpen, setIsWorkflowDialogOpen] = useState(false)
 
-  // Entity instance operations hook (mutations, handlers, data fetching)
+  // ══════════════════════════════════════════════════════════════════════════
+  // VIEW STORE INTEGRATION
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // View store integration - tableId must match DynamicView
+  const tableId = `entity-${entityDefinitionId}`
+  const viewConfig = useActiveViewConfig(tableId)
+
+  // Build page-level filters with stable IDs
+  // Note: Search is handled by DynamicView internally, but we include for future use
+  const pageFilters = useMemo(() => buildPageFilters({}), [])
+
+  // Merge view filters with page filters
+  const combinedFilters = useCombinedFilters({ viewConfig, pageFilters })
+
+  // Get sorting from view config (already merged saved + pending)
+  const viewSorting = useMemo(() => {
+    const sorting = viewConfig?.sorting
+    return sorting?.length ? sorting : undefined
+  }, [viewConfig?.sorting])
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // DATA FETCHING
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // Query entity instances using unified record list
   const {
-    instances,
-    rawInstances,
+    items: rawItems,
     isLoading: instancesLoading,
+    isLoadingRecords,
     isFetchingNextPage,
     hasNextPage,
-    refetch,
-    handleScrollToBottom,
+    fetchNextPage,
+    refresh,
+  } = useRecordList<RecordMeta>({
+    resourceType: entityDefinitionId ?? '',
+    filters: combinedFilters,
+    sorting: viewSorting,
+    limit: PAGE_SIZE,
+    enabled: !!entityDefinitionId,
+  })
+
+  // Transform to EntityRow format
+  // Note: Field values come from customFieldValueStore via syncer, not from record
+  const instances: EntityRow[] = useMemo(() => {
+    return rawItems.map((record) => ({
+      id: record.id,
+      entityDefinitionId: entityDefinitionId ?? '',
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+      archivedAt: (record.archivedAt as string) ?? null,
+      customFieldValues: [], // Values come from store via syncer
+      _originalValues: [], // No longer used - edit dialog reads from store
+    }))
+  }, [rawItems, entityDefinitionId])
+
+  // Handle scroll to bottom - load more data
+  const handleScrollToBottom = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage && !instancesLoading) {
+      fetchNextPage()
+    }
+  }, [hasNextPage, isFetchingNextPage, instancesLoading, fetchNextPage])
+
+  // Memoized callbacks for operations hook (must be stable to prevent infinite loops)
+  const handleOperationsDrawerClose = useCallback(() => {
+    setIsDrawerOpen(false)
+    setSelectedInstanceId(null)
+  }, [])
+
+  const handleOperationsClearSelection = useCallback(() => {
+    setSelectedRowIds(new Set())
+  }, [])
+
+  // Entity instance operations hook (mutations only)
+  const {
     handleArchive,
     handleDelete,
     handleDrawerDelete,
@@ -154,11 +241,9 @@ export function EntityRecordsContent() {
     entityDefinitionId,
     resourceLabel: resource?.label,
     resourcePlural: resource?.plural,
-    onDrawerClose: () => {
-      setIsDrawerOpen(false)
-      setSelectedInstance(null)
-    },
-    onClearSelection: () => setSelectedRowIds(new Set()),
+    onDrawerClose: handleOperationsDrawerClose,
+    onClearSelection: handleOperationsClearSelection,
+    onRefetch: refresh,
   })
 
   // Get SINGLE_SELECT fields for kanban view
@@ -228,7 +313,7 @@ export function EntityRecordsContent() {
    * Handle opening drawer from primary display cell
    */
   const handleOpenDrawer = useCallback((row: EntityRow) => {
-    setSelectedInstance(row)
+    setSelectedInstanceId(row.id)
     setIsDrawerOpen(true)
   }, [])
 
@@ -246,7 +331,7 @@ export function EntityRecordsContent() {
   const handleDrawerOpenChange = useCallback((open: boolean) => {
     setIsDrawerOpen(open)
     if (!open) {
-      setSelectedInstance(null)
+      setSelectedInstanceId(null)
     }
   }, [])
 
@@ -263,8 +348,9 @@ export function EntityRecordsContent() {
    */
   const handleDialogSaved = useCallback(() => {
     setEditingInstance(null)
-    refetch()
-  }, [refetch])
+    // Note: Data refresh happens via mutation's onRefetch callback
+    // No explicit refresh() call needed here
+  }, [])
 
   /**
    * Handle dialog open change
@@ -325,10 +411,10 @@ export function EntityRecordsContent() {
    * Primary display column is first with integrated actions
    */
   const columns: ExtendedColumnDef<EntityRow>[] = useMemo(() => {
-    // Sort fields by position
+    // Sort fields by sortOrder
     const sortedFields = [...customFields]
       .filter((f) => f.active !== false)
-      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+      .sort((a, b) => (a.sortOrder ?? '').localeCompare(b.sortOrder ?? ''))
 
     // Find primary display field
     const primaryFieldId = resource?.display.primaryDisplayField?.id
@@ -354,11 +440,12 @@ export function EntityRecordsContent() {
           size: 300,
           cell: ({ row }) => {
             const value = getValue(row.original.id, primaryField.id)
-            const displayValue = (() => {
+            const displayValue: string | null = (() => {
               if (value == null) return null
               // Handle TypedFieldValue from store using centralized formatter
               if (typeof value === 'object' && 'type' in value) {
-                return formatToDisplayValue(value as TypedFieldValue, primaryField.type) || null
+                const formatted = formatToDisplayValue(value as TypedFieldValue, primaryField.type)
+                return typeof formatted === 'string' ? formatted : null
               }
               // Handle raw value (fallback)
               return String(value)
@@ -468,7 +555,7 @@ export function EntityRecordsContent() {
         modelType: ModelTypes.ENTITY,
       }),
       // Legacy path as fallback (can be removed after validation)
-      onCellValueChange: (rowId: string, columnId: string, value: unknown) => {
+      onCellValueChange: async (rowId: string, columnId: string, value: unknown) => {
         const fieldId = columnId.replace('field_', '')
         // saveValue handles optimistic update + background mutation + rollback on error
         saveValue(rowId, fieldId, value)
@@ -497,40 +584,34 @@ export function EntityRecordsContent() {
 
   /**
    * Prepare editing instance for dialog
-   * Looks up field info from customFields since _originalValues may not include it
+   * Reads field values from store (via getValue) instead of _originalValues
    */
   const editingInstanceForDialog = useMemo(() => {
     if (!editingInstance) return null
 
-    // Create a lookup map for custom fields
-    const fieldMap = new Map(customFields.map((f) => [f.id, f]))
+    // Build values by reading from store for each active field
+    const values = customFields
+      .filter((f) => f.active !== false)
+      .map((field) => {
+        const value = getValue(editingInstance.id, field.id)
+        return {
+          id: `${editingInstance.id}_${field.id}`,
+          fieldId: field.id,
+          value: value ?? null,
+          field: {
+            id: field.id,
+            name: field.name,
+            type: field.type as FieldType,
+          },
+        }
+      })
 
     return {
       id: editingInstance.id,
-      entityDefinitionId: editingInstance.entityDefinitionId,
-      values: editingInstance._originalValues
-        .map((v) => {
-          const field = fieldMap.get(v.fieldId)
-          if (!field) return null
-          return {
-            id: v.id,
-            fieldId: v.fieldId,
-            value: v.value,
-            field: {
-              id: field.id,
-              name: field.name,
-              type: field.type as FieldType,
-            },
-          }
-        })
-        .filter(Boolean) as Array<{
-        id: string
-        fieldId: string
-        value: unknown
-        field: { id: string; name: string; type: FieldType }
-      }>,
+      entityDefinitionId: entityDefinitionId ?? '',
+      values,
     }
-  }, [editingInstance, customFields])
+  }, [editingInstance, customFields, getValue, entityDefinitionId])
 
   /**
    * Empty state component
@@ -596,13 +677,14 @@ export function EntityRecordsContent() {
 
   // Build docked panel content
   const dockedPanel =
-    isDocked && isDrawerOpen && selectedInstance ? (
+    isDocked && isDrawerOpen && selectedInstanceId ? (
       <EntityRecordDrawer
         open={isDrawerOpen}
         onOpenChange={handleDrawerOpenChange}
-        instance={selectedInstance}
+        entityInstanceId={selectedInstanceId}
+        entityDefinitionId={entityDefinitionId}
         onDeleteInstance={handleDrawerDelete}
-        onMutationSuccess={refetch}
+        onMutationSuccess={refresh}
       />
     ) : undefined
 
@@ -639,7 +721,7 @@ export function EntityRecordsContent() {
               columns={columns}
               enableSorting
               enableFiltering
-              isLoading={instancesLoading || isLoadingFields}
+              isLoading={instancesLoading || isLoadingRecords || isLoadingFields}
               onRowSelectionChange={handleRowSelectionChange}
               showRowNumbers={false}
               importHref={`/app/custom/${slug}/import`}
@@ -702,7 +784,7 @@ export function EntityRecordsContent() {
           selectedInstances={selectedInstances}
           entityDefinition={entityDefinitionForDialog}
           onSaved={() => {
-            refetch()
+            refresh()
             setSelectedRowIds(new Set())
           }}
         />
@@ -726,7 +808,7 @@ export function EntityRecordsContent() {
         resourceIds={Array.from(selectedRowIds)}
         onSuccess={() => {
           setSelectedRowIds(new Set())
-          refetch()
+          refresh()
         }}
       />
 
@@ -738,9 +820,10 @@ export function EntityRecordsContent() {
         <EntityRecordDrawer
           open={isDrawerOpen}
           onOpenChange={handleDrawerOpenChange}
-          instance={selectedInstance}
+          entityInstanceId={selectedInstanceId}
+          entityDefinitionId={entityDefinitionId}
           onDeleteInstance={handleDrawerDelete}
-          onMutationSuccess={refetch}
+          onMutationSuccess={refresh}
         />
       )}
     </>

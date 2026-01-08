@@ -1,0 +1,85 @@
+// apps/web/src/components/resources/hooks/use-entity-values.ts
+
+import { useMemo } from 'react'
+import { useResourceFieldValues, type StoredFieldValue } from '~/stores/custom-field-value-store'
+import { useResourceFields } from './use-resource-fields'
+
+/** Stable empty array */
+const EMPTY_FIELD_IDS: string[] = []
+
+/** Preloaded value format expected by EntityFields */
+interface PreloadedValue {
+  id: string
+  fieldId: string
+  value: StoredFieldValue | null
+}
+
+interface UseEntityValuesOptions {
+  /** Entity definition ID (used as resourceId to get fields) */
+  entityDefinitionId: string | undefined
+  /** Entity instance ID */
+  instanceId: string | undefined
+}
+
+interface UseEntityValuesResult {
+  /** Values in preloadedValues format for EntityFields */
+  preloadedValues: PreloadedValue[]
+  /** Raw field values by fieldId */
+  fieldValues: Record<string, StoredFieldValue | undefined>
+  /** Loading state for fields */
+  isLoading: boolean
+}
+
+/**
+ * Hook to get entity field values from the store.
+ * Gets field definitions automatically via useResourceFields.
+ * Returns values in the format expected by EntityFields.preloadedValues.
+ */
+export function useEntityValues({
+  entityDefinitionId,
+  instanceId,
+}: UseEntityValuesOptions): UseEntityValuesResult {
+  // Get fields for this entity definition
+  const { fields, isLoading } = useResourceFields(entityDefinitionId ?? null)
+
+  // Get active field IDs (only custom fields have id set)
+  // Use stable key based on content to prevent re-renders from reference changes
+  const fieldIdsKey = fields
+    .filter((f) => f.id)
+    .map((f) => f.id)
+    .join(',')
+
+  const activeFieldIds = useMemo(() => {
+    const ids = fields.filter((f) => f.id).map((f) => f.id!)
+    return ids.length > 0 ? ids : EMPTY_FIELD_IDS
+  }, [fieldIdsKey])
+
+  // Get field values from store
+  const rawFieldValues = useResourceFieldValues(
+    'entity',
+    instanceId ?? '',
+    activeFieldIds,
+    entityDefinitionId
+  )
+
+  // Stabilize fieldValues - only change when actual content changes
+  const fieldValuesKey = JSON.stringify(rawFieldValues)
+  const fieldValues = useMemo(() => rawFieldValues, [fieldValuesKey])
+
+  // Transform to preloadedValues format
+  const preloadedValues = useMemo(() => {
+    if (!instanceId || !activeFieldIds.length) return []
+
+    return activeFieldIds.map((fieldId) => ({
+      id: `${instanceId}_${fieldId}`,
+      fieldId,
+      value: fieldValues[fieldId] ?? null,
+    }))
+  }, [instanceId, activeFieldIds, fieldValues])
+
+  return {
+    preloadedValues,
+    fieldValues,
+    isLoading,
+  }
+}

@@ -13,3 +13,6 @@ export { useRecord, useIsRecordLoading, useIsRecordPending } from './use-record'
 export { useRecordWithFetch } from './use-record-with-fetch'
 export { useRecordInvalidation } from './use-record-invalidation'
 export { useRecordBatchFetcher } from './use-record-batch-fetcher'
+
+// Entity field values hook
+export { useEntityValues } from './use-entity-values'

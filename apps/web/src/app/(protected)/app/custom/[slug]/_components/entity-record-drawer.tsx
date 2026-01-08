@@ -20,9 +20,7 @@ import { ModelTypes } from '@auxx/types/custom-field'
 import DrawerComments from '~/components/global/comments/drawer-comments'
 import { TimelineTab } from '~/components/timeline'
 import { createCustomEntityType } from '@auxx/lib/timeline/client'
-import { formatToDisplayValue } from '@auxx/lib/field-values/client'
-import type { TypedFieldValue } from '@auxx/types/field-value'
-import { useCustomFieldValue } from '~/stores/custom-field-value-store'
+import { useRecordWithFetch } from '~/components/resources'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
@@ -34,31 +32,16 @@ import { Section } from '@auxx/ui/components/section'
 const MemoDrawerComments = React.memo(DrawerComments)
 const MemoTimelineTab = React.memo(TimelineTab)
 
-/** Pre-loaded field value from entity instance */
-interface PreloadedFieldValue {
-  id: string
-  fieldId: string
-  value: unknown
-}
-
-/** Entity row data from the table (avoids refetch) */
-interface EntityRowData {
-  id: string
-  entityDefinitionId: string
-  createdAt: string
-  updatedAt: string
-  archivedAt: string | null
-  _originalValues: PreloadedFieldValue[]
-}
-
 /** Props for EntityRecordDrawer */
 interface EntityRecordDrawerProps {
   /** Whether the drawer is open (for controlled usage) */
   open?: boolean
   /** Callback when open state changes */
   onOpenChange?: (open: boolean) => void
-  /** Entity instance data (passed from table row - avoids refetch) */
-  instance: EntityRowData | null
+  /** Entity instance ID (stable string primitive) */
+  entityInstanceId: string | undefined
+  /** Entity definition ID (stable string primitive) */
+  entityDefinitionId: string | undefined
   /** Optional handler invoked when deleting the entity instance */
   onDeleteInstance?: (instanceId: string) => Promise<void> | void
   /** Callback after successful mutation (e.g., to refetch parent data) */
@@ -69,10 +52,11 @@ interface EntityRecordDrawerProps {
  * EntityRecordDrawer renders the right-side entity instance detail drawer with tabbed content.
  * Supports both overlay and docked modes.
  */
-export function EntityRecordDrawer({
+export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
   open,
   onOpenChange,
-  instance,
+  entityInstanceId,
+  entityDefinitionId,
   onDeleteInstance,
   onMutationSuccess,
 }: EntityRecordDrawerProps) {
@@ -85,25 +69,19 @@ export function EntityRecordDrawer({
 
   const [activeTab, setActiveTab] = useQueryState('tab', { defaultValue: 'overview' })
 
-  const { resource, entityDefinitionId, customFields } = useEntityRecords()
+  const { resource, customFields } = useEntityRecords()
 
-  // Get display field IDs
-  const primaryFieldId = resource?.display.primaryDisplayField?.id
-  const secondaryFieldId = resource?.display.secondaryDisplayField?.id
+  // Fetch entity record from cache (populated by batch fetcher when list loads)
+  // Returns displayName, secondaryDisplayValue, createdAt, updatedAt, and all field values
+  const { record: cachedRecord, isLoading: isRecordLoading } = useRecordWithFetch({
+    resourceType: entityDefinitionId ?? '',
+    id: entityInstanceId,
+    enabled: !!open && !!entityInstanceId && !!entityDefinitionId,
+  })
 
-  // Subscribe to store values for display fields (reactive updates when fields change)
-  const primaryStoreValue = useCustomFieldValue(
-    'entity',
-    instance?.id ?? '',
-    primaryFieldId ?? '',
-    entityDefinitionId
-  )
-  const secondaryStoreValue = useCustomFieldValue(
-    'entity',
-    instance?.id ?? '',
-    secondaryFieldId ?? '',
-    entityDefinitionId
-  )
+  // Display values come directly from the cached record
+  const displayName = (cachedRecord?.displayName as string) ?? null
+  const secondaryDisplay = (cachedRecord?.secondaryDisplayValue as string) ?? null
 
   // Counter for focusing comments composer
   const [focusComposerTrigger, setFocusComposerTrigger] = React.useState(0)
@@ -121,91 +99,21 @@ export function EntityRecordDrawer({
     onOpenChange?.(false)
   }, [onOpenChange])
 
-  /**
-   * Get display name using primaryDisplayField from resource
-   * Subscribes to store for reactive updates, falls back to preloaded values
-   */
-  const displayName = React.useMemo(() => {
-    const primaryField = resource?.display.primaryDisplayField
-
-    // First: try store value (reactive updates)
-    if (primaryField?.id && primaryStoreValue !== undefined) {
-      const display = formatToDisplayValue(
-        primaryStoreValue as TypedFieldValue,
-        primaryField.fieldType || 'TEXT'
-      )
-      if (display) return display
-    }
-
-    // Second: try preloaded values from instance
-    if (!instance?._originalValues) return null
-
-    if (primaryField?.id) {
-      const primaryValue = instance._originalValues.find((v) => v.fieldId === primaryField.id)
-      if (primaryValue?.value) {
-        const display = formatToDisplayValue(
-          primaryValue.value as TypedFieldValue,
-          primaryField.fieldType || 'TEXT'
-        )
-        if (display) return display
-      }
-    }
-
-    // Fallback: use first non-empty value (assume TEXT type for display)
-    const firstValue = instance._originalValues.find((v) => {
-      if (!v.value) return false
-      const display = formatToDisplayValue(v.value as TypedFieldValue, 'TEXT')
-      return display != null && display !== ''
-    })
-    if (!firstValue) return null
-
-    return formatToDisplayValue(firstValue.value as TypedFieldValue, 'TEXT')
-  }, [instance?._originalValues, resource?.display.primaryDisplayField, primaryStoreValue])
-
-  /**
-   * Get secondary display value (optional subtitle)
-   * Subscribes to store for reactive updates, falls back to preloaded values
-   */
-  const secondaryDisplay = React.useMemo(() => {
-    const secondaryField = resource?.display.secondaryDisplayField
-    if (!secondaryField?.id) return null
-
-    // First: try store value (reactive updates)
-    if (secondaryStoreValue !== undefined) {
-      const display = formatToDisplayValue(
-        secondaryStoreValue as TypedFieldValue,
-        secondaryField.fieldType || 'TEXT'
-      )
-      if (display) return display
-    }
-
-    // Second: try preloaded values from instance
-    if (!instance?._originalValues) return null
-
-    const secondaryValue = instance._originalValues.find((v) => v.fieldId === secondaryField.id)
-    if (!secondaryValue?.value) return null
-
-    return formatToDisplayValue(
-      secondaryValue.value as TypedFieldValue,
-      secondaryField.fieldType || 'TEXT'
-    )
-  }, [instance?._originalValues, resource?.display.secondaryDisplayField, secondaryStoreValue])
-
   // Memoize the createdAt text to avoid recalculating on every render
   const createdAtText = React.useMemo(
     () =>
-      instance
-        ? `Created ${formatDistanceToNow(new Date(instance.createdAt), { addSuffix: true })}`
+      cachedRecord?.createdAt
+        ? `Created ${formatDistanceToNow(new Date(cachedRecord.createdAt as string), { addSuffix: true })}`
         : null,
-    [instance]
+    [cachedRecord?.createdAt]
   )
 
   // Create the entity type for timeline (entity:definitionId format)
   const timelineEntityType = React.useMemo(() => {
-    return instance ? createCustomEntityType(instance.entityDefinitionId) : null
-  }, [instance?.entityDefinitionId])
+    return entityDefinitionId ? createCustomEntityType(entityDefinitionId) : null
+  }, [entityDefinitionId])
 
-  if (!open || !instance) return null
+  if (!open || !entityInstanceId) return null
 
   return (
     <DockableDrawer
@@ -237,7 +145,7 @@ export function EntityRecordDrawer({
             <ManualTriggerButton
               resourceType="entity"
               entitySlug={entitySlug}
-              resourceId={instance.id}
+              resourceId={entityInstanceId!}
               buttonVariant="ghost"
               buttonSize="icon-xs"
               buttonClassName="rounded-full"
@@ -248,8 +156,8 @@ export function EntityRecordDrawer({
                 variant="outline"
                 size="icon-xs"
                 onClick={() => {
-                  if (onDeleteInstance) {
-                    void onDeleteInstance(instance.id)
+                  if (onDeleteInstance && entityInstanceId) {
+                    void onDeleteInstance(entityInstanceId)
                   }
                 }}>
                 <Trash className="text-bad-500" />
@@ -282,19 +190,19 @@ export function EntityRecordDrawer({
                 />
                 <div className="flex flex-col align-start w-full">
                   <div className="text-lg font-medium text-neutral-900 dark:text-neutral-400 truncate">
-                    {instance ? (
-                      displayName || 'Untitled'
-                    ) : (
+                    {isRecordLoading ? (
                       <div className="mb-1">
                         <Skeleton className="h-6 w-80" />
                       </div>
+                    ) : (
+                      displayName || 'Untitled'
                     )}
                   </div>
                   <div className="text-xs text-neutral-500 truncate">
-                    {instance ? (
-                      secondaryDisplay || createdAtText
-                    ) : (
+                    {isRecordLoading ? (
                       <Skeleton className="h-4 w-40" />
+                    ) : (
+                      secondaryDisplay || createdAtText
                     )}
                   </div>
                 </div>
@@ -306,15 +214,14 @@ export function EntityRecordDrawer({
                       title="Overview"
                       collapsible={false}
                       icon={<Gauge className="size-4 text-muted-foreground/50" />}>
-                      {resource && entityDefinitionId && (
+                      {resource && entityDefinitionId && entityInstanceId && (
                         <EntityFields
                           modelType={ModelTypes.ENTITY}
-                          entityId={instance.id}
+                          entityId={entityInstanceId}
                           entityDefinitionId={entityDefinitionId}
-                          preloadedValues={instance._originalValues}
                           preloadedFields={customFields}
-                          createdAt={instance.createdAt}
-                          updatedAt={instance.updatedAt}
+                          createdAt={cachedRecord?.createdAt as string}
+                          updatedAt={cachedRecord?.updatedAt as string}
                           onMutationSuccess={onMutationSuccess}
                           className=""
                         />
@@ -325,14 +232,17 @@ export function EntityRecordDrawer({
 
                 <TabsContent value="timeline" className="w-full">
                   <ScrollArea className="flex-1">
-                    <MemoTimelineTab entityType={timelineEntityType!} entityId={instance.id} />
+                    <MemoTimelineTab
+                      entityType={timelineEntityType!}
+                      entityId={entityInstanceId!}
+                    />
                   </ScrollArea>
                 </TabsContent>
 
                 <TabsContent value="comments" className="w-full h-full mt-0">
                   <MemoDrawerComments
-                    entityId={instance.id}
-                    entityType={instance.entityDefinitionId}
+                    entityId={entityInstanceId!}
+                    entityType={entityDefinitionId!}
                     focusComposerTrigger={focusComposerTrigger}
                   />
                 </TabsContent>
@@ -343,4 +253,4 @@ export function EntityRecordDrawer({
       </div>
     </DockableDrawer>
   )
-}
+})

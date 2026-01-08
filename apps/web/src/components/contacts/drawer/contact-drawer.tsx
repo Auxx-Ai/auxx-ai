@@ -97,7 +97,7 @@ export function ContactDrawer({
     id: contactId,
     enabled: !!open && !!contactId,
   })
-
+  console.log('Cached contact:', cachedContact, 'Loading:', isCacheLoading)
   // Fall back to API if not in cache (for fields not included in batch fetch)
   const { data: apiContact } = api.contact.getById.useQuery(
     { id: contactId! },
