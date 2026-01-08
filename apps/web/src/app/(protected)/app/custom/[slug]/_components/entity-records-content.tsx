@@ -36,7 +36,6 @@ import {
 import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
 import { BulkUpdateEntityInstanceDialog } from '~/components/custom-fields/ui/bulk-update-entity-instance-dialog'
 import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
-import { useEntityRecords } from '~/components/custom-fields/context/entity-records-context'
 import { EntityRecordDrawer } from './entity-record-drawer'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
@@ -48,6 +47,7 @@ import type { TypedFieldValue } from '@auxx/types/field-value'
 import { useCombinedFilters } from '~/components/dynamic-table/hooks/use-combined-filters'
 import { useActiveViewConfig } from '~/components/dynamic-table/stores/view-store'
 import { useRecordList, useResource, type RecordMeta } from '~/components/resources'
+import { isCustomResource, type ResourceField } from '@auxx/lib/resources/client'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 
 /** Stable filter ID to prevent reference changes */
@@ -131,13 +131,16 @@ export function EntityRecordsContent() {
   const minWidth = useDockStore((state) => state.minWidth)
   const maxWidth = useDockStore((state) => state.maxWidth)
 
-  // Get data from context
-  const { customFields } = useEntityRecords()
+  // Get resource with fields
   const { resource, isLoading } = useResource(slug)
 
-  const entityDefinitionId: string = resource?.id ?? null
+  // Derive custom fields from resource.fields (filter to fields with id = custom fields only)
+  const customFields = useMemo(
+    () => resource?.fields.filter((f): f is ResourceField & { id: string } => !!f.id) ?? [],
+    [resource?.fields]
+  )
 
-  console.log(resource, isLoading)
+  const entityDefinitionId: string = resource?.id ?? null
 
   // State
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
@@ -244,10 +247,10 @@ export function EntityRecordsContent() {
   const selectFields = useMemo(
     () =>
       customFields
-        .filter((f) => f.type === 'SINGLE_SELECT' && f.active !== false)
+        .filter((f) => f.fieldType === 'SINGLE_SELECT' && f.active !== false)
         .map((f) => ({
           id: f.id,
-          name: f.name,
+          name: f.name ?? f.label,
           options: f.options as { options?: Array<{ id: string; label: string; color?: string }> },
         })),
     [customFields]
@@ -282,14 +285,8 @@ export function EntityRecordsContent() {
       const field = customFields.find((f) => f.id === fieldId)
       if (!field) return undefined
       return {
-        type: field.type,
-        relationship: field.options?.relationship as {
-          isInverse?: boolean
-          inverseFieldId?: string
-          relationshipType?: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
-          relatedEntityDefinitionId?: string
-          relatedModelType?: string
-        },
+        type: field.fieldType!,
+        relationship: field.options?.relationship,
       }
     },
     [customFields]
@@ -364,29 +361,29 @@ export function EntityRecordsContent() {
       // Build default formatting from field options for CURRENCY type
       const fieldOptions = field.options as { currency?: Record<string, unknown> } | undefined
       const defaultFormatting =
-        field.type === 'CURRENCY' && fieldOptions?.currency
+        field.fieldType === 'CURRENCY' && fieldOptions?.currency
           ? { type: 'currency' as const, ...fieldOptions.currency }
           : undefined
 
       return {
         id: columnId,
         accessorFn: () => undefined, // Not used for display - cells read from store
-        header: field.name,
-        fieldType: field.type as FieldType,
+        header: field.name ?? field.label,
+        fieldType: field.fieldType as FieldType,
         defaultFormatting,
-        icon: getIconForFieldType(field.type),
-        enableSorting: field.type !== 'RELATIONSHIP',
-        enableFiltering: field.type !== 'RELATIONSHIP',
+        icon: getIconForFieldType(field.fieldType!),
+        enableSorting: field.fieldType !== 'RELATIONSHIP',
+        enableFiltering: field.fieldType !== 'RELATIONSHIP',
         enableResizing: true,
         minSize: 100,
-        size: field.type === 'RELATIONSHIP' ? 180 : 150,
+        size: field.fieldType === 'RELATIONSHIP' ? 180 : 150,
         cell: ({ row }) => (
           <CustomFieldCell
             resourceType="entity"
             entityDefId={entityDefinitionId!}
             rowId={row.original.id}
             fieldId={field.id}
-            fieldType={field.type}
+            fieldType={field.fieldType!}
             columnId={columnId}
             options={field.options}
           />
@@ -406,8 +403,9 @@ export function EntityRecordsContent() {
       .filter((f) => f.active !== false)
       .sort((a, b) => (a.sortOrder ?? '').localeCompare(b.sortOrder ?? ''))
 
-    // Find primary display field
-    const primaryFieldId = resource?.display.primaryDisplayField?.id
+    // Find primary display field (only available on custom resources)
+    const primaryFieldId =
+      resource && isCustomResource(resource) ? resource.display.primaryDisplayField?.id : undefined
     const primaryField = primaryFieldId
       ? sortedFields.find((f) => f.id === primaryFieldId)
       : sortedFields[0] // Fallback to first field
@@ -418,10 +416,10 @@ export function EntityRecordsContent() {
       ? {
           id: `field_${primaryField.id}`,
           accessorFn: (row) => getValue(row.id, primaryField.id),
-          header: primaryField.name,
+          header: primaryField.name ?? primaryField.label,
           primaryCell: true,
-          fieldType: primaryField.type,
-          icon: getIconForFieldType(primaryField.type),
+          fieldType: primaryField.fieldType,
+          icon: getIconForFieldType(primaryField.fieldType!),
           enableSorting: true,
           enableResizing: true,
           enableHiding: false, // Primary column cannot be hidden
@@ -433,7 +431,10 @@ export function EntityRecordsContent() {
               if (value == null) return null
               // Handle TypedFieldValue from store using centralized formatter
               if (typeof value === 'object' && 'type' in value) {
-                const formatted = formatToDisplayValue(value as TypedFieldValue, primaryField.type)
+                const formatted = formatToDisplayValue(
+                  value as TypedFieldValue,
+                  primaryField.fieldType!
+                )
                 return typeof formatted === 'string' ? formatted : null
               }
               // Handle raw value (fallback)
@@ -470,7 +471,7 @@ export function EntityRecordsContent() {
     return primaryColumn ? [primaryColumn, ...otherColumns] : otherColumns
   }, [
     customFields,
-    resource?.display.primaryDisplayField?.id,
+    resource,
     createEntityFieldColumn,
     handleOpenDrawer,
     handleOpenEditDialog,
@@ -667,7 +668,11 @@ export function EntityRecordsContent() {
               cellSelection={cellSelectionConfig}
               selectFields={selectFields}
               customFields={customFields}
-              primaryFieldId={resource?.display.primaryDisplayField?.id}
+              primaryFieldId={
+                resource && isCustomResource(resource)
+                  ? resource.display.primaryDisplayField?.id
+                  : undefined
+              }
               entityLabel={resource?.label}
               onAddNew={() => setIsCreateDialogOpen(true)}
               onCardClick={handleOpenDrawer}

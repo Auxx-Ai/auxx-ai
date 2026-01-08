@@ -244,7 +244,7 @@ export function KanbanView<TData extends KanbanRow>({
       const field = customFields.find((f) => f.id === fieldId)
       if (!field) return undefined
       return {
-        type: field.type,
+        type: field.fieldType!,
         relationship: field.options?.relationship as {
           isInverse?: boolean
           inverseFieldId?: string

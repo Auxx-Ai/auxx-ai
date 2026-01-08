@@ -14,8 +14,9 @@ import { useParams } from 'next/navigation'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Tooltip } from '~/components/global/tooltip'
 import { EntityIcon } from '~/components/pickers/icon-picker'
-import { useEntityRecords } from '~/components/custom-fields/context/entity-records-context'
 import EntityFields from '~/components/fields/entity-fields'
+import { useResource } from '~/components/resources'
+import type { ResourceField } from '@auxx/lib/resources/client'
 import { ModelTypes } from '@auxx/types/custom-field'
 import DrawerComments from '~/components/global/comments/drawer-comments'
 import { TimelineTab } from '~/components/timeline'
@@ -69,7 +70,14 @@ export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
 
   const [activeTab, setActiveTab] = useQueryState('tab', { defaultValue: 'overview' })
 
-  const { resource, customFields } = useEntityRecords()
+  // Get resource with fields
+  const { resource } = useResource(entityDefinitionId ?? null)
+
+  // Derive custom fields from resource.fields (filter to fields with id = custom fields only)
+  const customFields = React.useMemo(
+    () => resource?.fields.filter((f): f is ResourceField & { id: string } => !!f.id) ?? [],
+    [resource?.fields]
+  )
 
   // Fetch entity record from cache (populated by batch fetcher when list loads)
   // Returns displayName, secondaryDisplayValue, createdAt, updatedAt, and all field values

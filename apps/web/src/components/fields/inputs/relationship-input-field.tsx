@@ -24,10 +24,8 @@ import {
   CommandGroup,
 } from '@auxx/ui/components/command'
 import { cn } from '@auxx/ui/lib/utils'
-import { isCustomResource, type ResourcePickerItem, type ResourceField } from '@auxx/lib/resources/client'
+import { isCustomResource, type ResourcePickerItem } from '@auxx/lib/resources/client'
 import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
-import type { FieldType } from '@auxx/database/types'
-import { transformResourceFieldToCustomField } from '~/components/custom-fields/context/entity-records-context'
 /**
  * Input component for RELATIONSHIP field type
  * Displays an inline searchable list with selected items at top.
@@ -97,36 +95,6 @@ export function RelationshipInputField() {
 
   // Only custom resources support inline create (system resources have dedicated flows)
   const canInlineCreate = relatedResource && isCustomResource(relatedResource)
-
-  // Build entity definition for the create dialog (only for custom resources)
-  const entityDefinitionForDialog = useMemo(() => {
-    if (!relatedResource || !isCustomResource(relatedResource)) return null
-
-    // Transform fields to CustomField format
-    // Type cast needed: CustomField.type is string but compatible with FieldType values
-    const fields = relatedResource.fields
-      .filter((f): f is ResourceField & { id: string } => !!f.id)
-      .map((field, index) => transformResourceFieldToCustomField(field, index))
-
-    return {
-      id: relatedResource.entityDefinitionId,
-      singular: relatedResource.label,
-      plural: relatedResource.plural,
-      icon: relatedResource.icon,
-      color: relatedResource.color,
-      customFields: fields as unknown as Array<{
-        id: string
-        name: string
-        type: FieldType
-        description?: string | null
-        required?: boolean | null
-        position?: number | null
-        active?: boolean | null
-        defaultValue?: string | null
-        options?: unknown
-      }>,
-    }
-  }, [relatedResource])
 
   // For useRelationship, use tableId directly (either system resource or UUID, no prefix needed)
   const resourceIdForHydration = useMemo(() => {
@@ -404,11 +372,11 @@ export function RelationshipInputField() {
       </Command>
 
       {/* Inline Create Dialog */}
-      {entityDefinitionForDialog && (
+      {canInlineCreate && relatedResource && (
         <EntityInstanceDialog
           open={isCreateDialogOpen}
           onOpenChange={setIsCreateDialogOpen}
-          entityDefinition={entityDefinitionForDialog}
+          entityDefinitionId={relatedResource.entityDefinitionId!}
           onSaved={handleCreatedInstance}
         />
       )}

@@ -107,11 +107,15 @@ export function KanbanViewBody<TData extends KanbanRow>() {
   const groupByFieldForKanban = useMemo(
     () => ({
       id: groupByField.id,
+      key: groupByField.id,
+      label: groupByField.name,
       name: groupByField.name,
-      type: (groupByField.type ?? 'SINGLE_SELECT') as import('@auxx/database/types').FieldType,
+      type: 'enum' as const,
+      fieldType: (groupByField.type ?? 'SINGLE_SELECT') as import('@auxx/database/types').FieldType,
       options: groupByField.options,
       sortOrder: '0',
       active: true,
+      capabilities: { filterable: true, sortable: true, creatable: true, updatable: true },
     }),
     [groupByField]
   )

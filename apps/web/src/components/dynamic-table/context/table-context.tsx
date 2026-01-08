@@ -4,10 +4,9 @@
 
 import { createContext, useContext, type ReactNode } from 'react'
 import type { Table } from '@tanstack/react-table'
-import type { TableView, BulkAction, DragDropConfig, ColumnFormatting } from '../types'
+import type { TableView, BulkAction, DragDropConfig, ColumnFormatting, CustomField } from '../types'
 import type { ModelType, SelectOptionColor } from '@auxx/types/custom-field'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
-import type { CustomField } from '~/components/custom-fields/context/entity-records-context'
 
 /** Select field for kanban grouping */
 interface SelectField {

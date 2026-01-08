@@ -13,7 +13,7 @@ import { useCellSelectionOptional } from '~/components/dynamic-table/context/cel
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
-import type { CustomField } from '~/components/custom-fields/context/entity-records-context'
+import type { CustomField } from '~/components/dynamic-table/types'
 
 /**
  * Props for KanbanCardField component
@@ -65,7 +65,7 @@ export const KanbanCardField = memo(function KanbanCardField({
   const columnId = `field_${field.id}`
 
   // Get icon for field type
-  const Icon = fieldTypeOptions.find((option) => option.value === field.type)?.icon
+  const Icon = fieldTypeOptions.find((option) => option.value === field.fieldType)?.icon
 
   // Handle click to start editing
   const handleClick = useCallback(
@@ -109,7 +109,7 @@ export const KanbanCardField = memo(function KanbanCardField({
         {isEmpty ? (
           <span className="min-h-6.5 flex items-center text-primary-400 pl-3">No value</span>
         ) : (
-          renderCellValue(value, field.type, undefined, config)
+          renderCellValue(value, field.fieldType, undefined, config)
         )}
       </div>
 

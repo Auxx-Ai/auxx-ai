@@ -130,11 +130,14 @@ export interface KanbanSelectOption {
   celebration?: boolean
 }
 
-// Re-export CustomField from entity-records-context for kanban usage
-import type { CustomField } from '~/components/custom-fields/context/entity-records-context'
-export type { CustomField }
+// Use ResourceField directly from lib (no transformation needed)
+import type { ResourceField } from '@auxx/lib/resources/client'
 
-/** @deprecated Use CustomField instead */
+/** Custom field type for kanban - now uses ResourceField directly */
+export type CustomField = ResourceField & { id: string }
+export type { ResourceField }
+
+/** @deprecated Use CustomField or ResourceField instead */
 export type KanbanCustomField = CustomField
 
 /** Drag item type for kanban DnD */

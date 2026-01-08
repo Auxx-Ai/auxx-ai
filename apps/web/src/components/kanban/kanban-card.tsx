@@ -8,7 +8,7 @@ import { Checkbox } from '@auxx/ui/components/checkbox'
 import { MessageSquare, CheckSquare, StickyNote, Box } from 'lucide-react'
 import { formatRelativeTime } from '@auxx/utils/date'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
-import type { CustomField } from '~/components/custom-fields/context/entity-records-context'
+import type { CustomField } from '~/components/dynamic-table/types'
 import { KanbanCardField } from './kanban-card-field'
 import { useCustomFieldValue, type ResourceType } from '~/stores/custom-field-value-store'
 
