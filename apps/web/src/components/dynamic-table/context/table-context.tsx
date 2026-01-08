@@ -87,7 +87,6 @@ interface TableContextValue<TData = any> {
   isLoading: boolean
   searchQuery: string
   filters: ConditionGroup[]
-  columnTypes: Record<string, string>
   columnLabels: Record<string, string>
   columnFormatting: Record<string, ColumnFormatting>
   pinnedColumnId: string | null

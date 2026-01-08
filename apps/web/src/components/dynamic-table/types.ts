@@ -5,6 +5,7 @@ import { type LucideIcon } from 'lucide-react'
 import type { StoreConfig } from '~/components/fields/property-provider'
 import type { ModelType, TargetTimeInStatus } from '@auxx/types/custom-field'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import type { FieldType } from '@auxx/database/types'
 
 // Re-export TargetTimeInStatus for backward compatibility
 export type { TargetTimeInStatus }
@@ -61,8 +62,6 @@ export interface CellSelectionConfig {
  * Extended column definition with additional metadata
  */
 export type ExtendedColumnDef<TData = any> = ColumnDef<TData> & {
-  /** Column data type for appropriate filtering and sorting */
-  columnType?: 'text' | 'number' | 'date' | 'boolean' | 'select' | 'email' | 'phone' | 'currency' | 'custom'
   /** Icon to display in column header */
   icon?: LucideIcon
   /** Enable/disable sorting for this column */
@@ -81,8 +80,8 @@ export type ExtendedColumnDef<TData = any> = ColumnDef<TData> & {
   defaultVisible?: boolean
   /** Mark this column as primary (pins left by default, can show 'New' button) */
   primaryCell?: boolean
-  /** Field type from custom fields (for formatting support) */
-  fieldType?: string
+  /** Field type - determines sorting options, cell rendering, and formatting support */
+  fieldType?: FieldType
   /** Default formatting options from field definition */
   defaultFormatting?: Partial<ColumnFormatting>
 }

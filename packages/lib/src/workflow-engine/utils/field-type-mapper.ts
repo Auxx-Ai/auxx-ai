@@ -61,7 +61,7 @@ export function mapFieldTypeToBaseType(fieldType: FieldType | string): BaseType 
  * Note: Some BaseTypes map to multiple FieldTypes (e.g., STRING → TEXT, NAME, RICH_TEXT).
  * This returns the most common/preferred FieldType for display purposes.
  */
-export function mapBaseTypeToFieldType(baseType: BaseType): string {
+export function mapBaseTypeToFieldType(baseType: BaseType): FieldType {
   switch (baseType) {
     case BaseType.STRING:
       return FieldTypeEnum.TEXT

@@ -30,37 +30,6 @@ import { mapBaseTypeToFieldType } from '@auxx/lib/workflow-engine/client'
 // HELPER FUNCTIONS
 // ─────────────────────────────────────────────────────────────────
 
-/** Map field type to column type for filtering/sorting */
-export const mapFieldTypeToColumnType = (fieldType: string): ExtendedColumnDef['columnType'] => {
-  switch (fieldType) {
-    case 'EMAIL':
-      return 'email'
-    case 'PHONE_INTL':
-      return 'phone'
-    case 'DATE':
-    case 'DATETIME':
-    case 'TIME':
-      return 'date'
-    case 'NUMBER':
-      return 'number'
-    case 'CURRENCY':
-      return 'currency'
-    case 'CHECKBOX':
-      return 'boolean'
-    case 'SINGLE_SELECT':
-    case 'MULTI_SELECT':
-      return 'select'
-    case 'TEXT':
-    case 'RICH_TEXT':
-    case 'ADDRESS_STRUCT':
-    case 'URL':
-    case 'TAGS':
-    case 'FILE':
-    default:
-      return 'text'
-  }
-}
-
 /** Get icon for field type */
 export const getIconForFieldType = (fieldType: string) => {
   switch (fieldType) {
@@ -166,7 +135,6 @@ export function createCustomFieldColumns<T extends { id: string }>(
         // accessorFn not used for display - cells read from store directly
         accessorFn: () => undefined,
         header: field.label,
-        columnType: mapFieldTypeToColumnType(fieldType),
         fieldType,
         icon: getIconForFieldType(fieldType),
         enableSorting: field.capabilities?.sortable ?? true,

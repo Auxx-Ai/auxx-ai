@@ -8,6 +8,7 @@ import type { ExtendedColumnDef } from '~/components/dynamic-table'
 import { FormattedCell } from '~/components/dynamic-table'
 import { StrategyCell } from './strategy-cell'
 import type { PlanPreviewRow, PreviewColumnMapping } from './types'
+import type { FieldType } from '@auxx/database/types'
 
 interface UsePlanPreviewColumnsOptions {
   /** Mapped columns from import job */
@@ -31,7 +32,7 @@ export function usePlanPreviewColumns(options: UsePlanPreviewColumnsOptions) {
       id: '_rowNumber',
       accessorFn: (row) => row.rowIndex + 1,
       header: '#',
-      columnType: 'number',
+      fieldType: 'NUMBER',
       icon: Hash,
       enableSorting: false,
       enableFiltering: false,
@@ -50,7 +51,7 @@ export function usePlanPreviewColumns(options: UsePlanPreviewColumnsOptions) {
       id: '_strategy',
       accessorKey: 'strategy',
       header: 'Action',
-      columnType: 'text',
+      fieldType: 'TEXT',
       enableSorting: true,
       enableFiltering: true,
       enableResize: true,
@@ -70,7 +71,7 @@ export function usePlanPreviewColumns(options: UsePlanPreviewColumnsOptions) {
         id: `field_${fieldKey}`,
         accessorFn: (row) => row.fields[fieldKey],
         header: mapping.targetFieldLabel ?? mapping.sourceColumnName ?? fieldKey,
-        columnType: mapFieldTypeToColumnType(mapping.fieldType),
+        fieldType: (mapping.fieldType?.toUpperCase() ?? 'TEXT') as FieldType,
         enableSorting: true,
         enableFiltering: false,
         enableResize: true,
@@ -88,26 +89,4 @@ export function usePlanPreviewColumns(options: UsePlanPreviewColumnsOptions) {
 
     return columns
   }, [mappings, maxFieldColumns])
-}
-
-/**
- * Map import field type to DynamicTable column type
- */
-function mapFieldTypeToColumnType(fieldType?: string): ExtendedColumnDef['columnType'] {
-  switch (fieldType?.toLowerCase()) {
-    case 'email':
-      return 'email'
-    case 'phone':
-      return 'phone'
-    case 'number':
-    case 'currency':
-      return 'number'
-    case 'date':
-    case 'datetime':
-      return 'date'
-    case 'boolean':
-      return 'boolean'
-    default:
-      return 'text'
-  }
 }

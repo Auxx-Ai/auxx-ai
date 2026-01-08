@@ -15,7 +15,13 @@ import { CellSelectionProvider, useCellSelection } from './context/cell-selectio
 import { RowSelectionProvider } from './context/row-selection-context'
 import { useViewStoreInitialized } from './stores/view-store'
 import { cn } from '@auxx/ui/lib/utils'
-import type { DynamicTableProps, ViewType, KanbanViewConfig, ViewConfig, CellSelectionState } from './types'
+import type {
+  DynamicTableProps,
+  ViewType,
+  KanbanViewConfig,
+  ViewConfig,
+  CellSelectionState,
+} from './types'
 import { Button } from '@auxx/ui/components/button'
 import { X } from 'lucide-react'
 import './styles/table.css'
@@ -236,7 +242,6 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
     searchQuery,
     setSearchQuery,
     setActiveView,
-    columnTypes,
     filters,
     setFilters,
     columnLabels,
@@ -325,7 +330,6 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
       searchQuery,
       setSearchQuery,
       setActiveView,
-      columnTypes,
       filters,
       setFilters,
       columnLabels,
@@ -390,7 +394,6 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
       searchQuery,
       setSearchQuery,
       setActiveView,
-      columnTypes,
       filters,
       setFilters,
       columnLabels,

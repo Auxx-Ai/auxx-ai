@@ -17,10 +17,7 @@ import type { ExtendedColumnDef, CellSelectionConfig } from '~/components/dynami
 import type { StoreConfig } from '~/components/fields/property-provider'
 import { ModelTypes } from '@auxx/types/custom-field'
 import { EmptyState } from '~/components/global/empty-state'
-import {
-  mapFieldTypeToColumnType,
-  getIconForFieldType,
-} from '~/components/dynamic-table/custom-field-column-factory'
+import { getIconForFieldType } from '~/components/dynamic-table/custom-field-column-factory'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,7 +45,6 @@ import { useCustomFieldValueSyncer } from '~/hooks/use-custom-field-value-syncer
 import { useSaveFieldValue } from '~/hooks/use-save-field-value'
 import { formatToDisplayValue } from '@auxx/lib/field-values/client'
 import type { TypedFieldValue } from '@auxx/types/field-value'
-import type { EntityRow } from './types'
 import { useCombinedFilters } from '~/components/dynamic-table/hooks/use-combined-filters'
 import { useActiveViewConfig } from '~/components/dynamic-table/stores/view-store'
 import { useRecordList, type RecordMeta } from '~/components/resources'
@@ -59,6 +55,14 @@ const SEARCH_FILTER_ID = 'entity-page-search-filter'
 
 /** Page size for infinite query */
 const PAGE_SIZE = 100
+
+/**
+ * Entity row type extending RecordMeta for type alignment with useRecordList
+ */
+export interface EntityRow extends RecordMeta {
+  entityDefinitionId: string
+  archivedAt: string | null
+}
 
 /**
  * Build page-level filters (search).
@@ -138,7 +142,7 @@ export function EntityRecordsContent() {
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
 
   // Drawer state - use ID instead of full object for stability
-  const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null)
+  const [selectedInstanceId, setSelectedInstanceId] = useState<string | undefined>(undefined)
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
 
   // Kanban card selection state (lives here to persist across drawer open/close)
@@ -180,7 +184,7 @@ export function EntityRecordsContent() {
 
   // Query entity instances using unified record list
   const {
-    items: rawItems,
+    items,
     isLoading: instancesLoading,
     isLoadingRecords,
     isFetchingNextPage,
@@ -195,20 +199,6 @@ export function EntityRecordsContent() {
     enabled: !!entityDefinitionId,
   })
 
-  // Transform to EntityRow format
-  // Note: Field values come from customFieldValueStore via syncer, not from record
-  const instances: EntityRow[] = useMemo(() => {
-    return rawItems.map((record) => ({
-      id: record.id,
-      entityDefinitionId: entityDefinitionId ?? '',
-      createdAt: record.createdAt,
-      updatedAt: record.updatedAt,
-      archivedAt: (record.archivedAt as string) ?? null,
-      customFieldValues: [], // Values come from store via syncer
-      _originalValues: [], // No longer used - edit dialog reads from store
-    }))
-  }, [rawItems, entityDefinitionId])
-
   // Handle scroll to bottom - load more data
   const handleScrollToBottom = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage && !instancesLoading) {
@@ -219,7 +209,7 @@ export function EntityRecordsContent() {
   // Memoized callbacks for operations hook (must be stable to prevent infinite loops)
   const handleOperationsDrawerClose = useCallback(() => {
     setIsDrawerOpen(false)
-    setSelectedInstanceId(null)
+    setSelectedInstanceId(undefined)
   }, [])
 
   const handleOperationsClearSelection = useCallback(() => {
@@ -260,7 +250,7 @@ export function EntityRecordsContent() {
   )
 
   // Row IDs for syncer
-  const rowIds = useMemo(() => instances.map((i) => i.id), [instances])
+  const rowIds = useMemo(() => items.map((i) => i.id), [items])
 
   // Custom field column IDs for syncer (uses customField_ prefix format)
   const customFieldColumnIds = useMemo(
@@ -331,7 +321,7 @@ export function EntityRecordsContent() {
   const handleDrawerOpenChange = useCallback((open: boolean) => {
     setIsDrawerOpen(open)
     if (!open) {
-      setSelectedInstanceId(null)
+      setSelectedInstanceId(undefined)
     }
   }, [])
 
@@ -339,7 +329,6 @@ export function EntityRecordsContent() {
    * Handle row selection change
    */
   const handleRowSelectionChange = useCallback((selectedRows: Set<string>) => {
-    console.log('Row selection changed:', selectedRows)
     setSelectedRowIds(selectedRows)
   }, [])
 
@@ -348,8 +337,6 @@ export function EntityRecordsContent() {
    */
   const handleDialogSaved = useCallback(() => {
     setEditingInstance(null)
-    // Note: Data refresh happens via mutation's onRefetch callback
-    // No explicit refresh() call needed here
   }, [])
 
   /**
@@ -381,8 +368,7 @@ export function EntityRecordsContent() {
         id: columnId,
         accessorFn: () => undefined, // Not used for display - cells read from store
         header: field.name,
-        columnType: mapFieldTypeToColumnType(field.type),
-        fieldType: field.type,
+        fieldType: field.type as FieldType,
         defaultFormatting,
         icon: getIconForFieldType(field.type),
         enableSorting: field.type !== 'RELATIONSHIP',
@@ -430,7 +416,6 @@ export function EntityRecordsContent() {
           accessorFn: (row) => getValue(row.id, primaryField.id),
           header: primaryField.name,
           primaryCell: true,
-          columnType: 'text',
           fieldType: primaryField.type,
           icon: getIconForFieldType(primaryField.type),
           enableSorting: true,
@@ -527,8 +512,8 @@ export function EntityRecordsContent() {
    * Get selected instances for bulk update dialog
    */
   const selectedInstances = useMemo(() => {
-    return instances.filter((instance) => selectedRowIds.has(instance.id))
-  }, [instances, selectedRowIds])
+    return items.filter((item) => selectedRowIds.has(item.id))
+  }, [items, selectedRowIds])
 
   /**
    * Cell selection configuration for inline editing
@@ -713,7 +698,7 @@ export function EntityRecordsContent() {
           dockedPanelMaxWidth={maxWidth}>
           <div className="flex-1 overflow-hidden rounded-lg bg-white dark:bg-muted/10 flex-col flex">
             <DynamicView
-              data={instances}
+              data={items}
               className="h-full flex-1"
               tableId={`entity-${entityDefinitionId}`}
               bulkActions={bulkActions}
@@ -746,8 +731,8 @@ export function EntityRecordsContent() {
               <DynamicTableFooter>
                 <div className="flex items-center justify-between px-4 py-2 text-sm text-muted-foreground">
                   <div>
-                    {instances.length}{' '}
-                    {instances.length === 1
+                    {items.length}{' '}
+                    {items.length === 1
                       ? resource.label.toLowerCase()
                       : resource.plural.toLowerCase()}
                     {hasNextPage && <span className="ml-2">(more available)</span>}

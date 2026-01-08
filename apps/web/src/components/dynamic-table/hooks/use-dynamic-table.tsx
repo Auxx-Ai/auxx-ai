@@ -23,7 +23,11 @@ import type { DynamicTableProps, ViewConfig, ExtendedColumnDef, ColumnFormatting
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { CheckboxCell } from '../components/checkbox-cell'
 import { CheckboxHeaderCell } from '../components/checkbox-header-cell'
-import { computeInitialViewConfig, normalizeViewConfig, buildViewConfig } from '../utils/view-config'
+import {
+  computeInitialViewConfig,
+  normalizeViewConfig,
+  buildViewConfig,
+} from '../utils/view-config'
 import { useTableViews, useViewStore, useViewStoreInitialized } from '../stores/view-store'
 import { useViewStorePersistence } from './use-view-store-persistence'
 
@@ -246,16 +250,6 @@ export function useDynamicTable<TData extends Record<string, any>>({
     return nextColumns
   }, [checkboxColumn, columns, enableCheckbox])
 
-  const columnTypes = useMemo(() => {
-    const types: Record<string, string> = {}
-    columns.forEach((column) => {
-      if ('accessorKey' in column && typeof column.accessorKey === 'string') {
-        types[column.accessorKey] = (column as ExtendedColumnDef).columnType ?? 'text'
-      }
-    })
-    return types
-  }, [columns])
-
   // Note: Client-side filtering removed - filtering is now handled server-side
   // Data is passed through directly; useRecordList (Plan 06) handles server-side filtering
 
@@ -348,7 +342,16 @@ export function useDynamicTable<TData extends Record<string, any>>({
         columnFormatting,
         filters: localFilters,
       }),
-    [sorting, columnVisibility, columnOrder, columnSizing, columnPinning, columnLabels, columnFormatting, localFilters]
+    [
+      sorting,
+      columnVisibility,
+      columnOrder,
+      columnSizing,
+      columnPinning,
+      columnLabels,
+      columnFormatting,
+      localFilters,
+    ]
   )
 
   // Sync table config changes to store (for table-level config, not kanban)
@@ -462,7 +465,6 @@ export function useDynamicTable<TData extends Record<string, any>>({
       : leftPinned[leftPinned.length - 1]
   }, [columnPinning])
 
-
   // Use ref for table to make toggleRowSelection stable
   const tableRef = useRef(table)
   tableRef.current = table
@@ -518,16 +520,18 @@ export function useDynamicTable<TData extends Record<string, any>>({
     // Re-apply config from the saved view
     const savedConfig = normalizeViewConfig(currentView.config)
     applyViewConfig(savedConfig)
-    lastSyncedConfigRef.current = JSON.stringify(buildViewConfig({
-      sorting: savedConfig.sorting,
-      columnVisibility: savedConfig.columnVisibility,
-      columnOrder: savedConfig.columnOrder,
-      columnSizing: savedConfig.columnSizing,
-      columnPinning: savedConfig.columnPinning,
-      columnLabels: savedConfig.columnLabels,
-      columnFormatting: savedConfig.columnFormatting,
-      filters: savedConfig.filters,
-    }))
+    lastSyncedConfigRef.current = JSON.stringify(
+      buildViewConfig({
+        sorting: savedConfig.sorting,
+        columnVisibility: savedConfig.columnVisibility,
+        columnOrder: savedConfig.columnOrder,
+        columnSizing: savedConfig.columnSizing,
+        columnPinning: savedConfig.columnPinning,
+        columnLabels: savedConfig.columnLabels,
+        columnFormatting: savedConfig.columnFormatting,
+        filters: savedConfig.filters,
+      })
+    )
   }, [applyViewConfig, currentView, resetToSaved])
 
   // saveCurrentView is now handled by useViewStorePersistence automatically
@@ -557,7 +561,6 @@ export function useDynamicTable<TData extends Record<string, any>>({
     searchQuery: globalFilter,
     setSearchQuery,
     setActiveView,
-    columnTypes,
     filters: localFilters,
     setFilters,
     columnLabels,

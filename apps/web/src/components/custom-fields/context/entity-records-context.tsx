@@ -6,6 +6,7 @@ import { createContext, useContext, useMemo } from 'react'
 import { useEntityDefinition } from '~/components/resources'
 import type { CustomResource, ResourceField } from '@auxx/lib/resources/client'
 import { mapBaseTypeToFieldType } from '@auxx/lib/workflow-engine/client'
+import type { FieldType } from '@auxx/database/types'
 
 /**
  * Custom field type compatible with existing consumers
@@ -14,7 +15,7 @@ import { mapBaseTypeToFieldType } from '@auxx/lib/workflow-engine/client'
 export interface CustomField {
   id: string
   name: string
-  type: string
+  type: FieldType
   options?: {
     options?: Array<{
       label: string

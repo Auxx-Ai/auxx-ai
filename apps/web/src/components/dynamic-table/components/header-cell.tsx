@@ -26,7 +26,7 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { cn } from '@auxx/ui/lib/utils'
-import { SORT_OPTIONS } from '../utils/constants'
+import { getSortOptionsForFieldType } from '../utils/constants'
 import { useTableContext } from '../context/table-context'
 import { EditColumnLabelDialog } from './edit-column-label-dialog'
 import { EditColumnFormattingDialog } from './edit-column-formatting-dialog'
@@ -54,7 +54,6 @@ function HeaderCellOptionsDropdown<TData>({
   canHide,
   filters,
   setFilters,
-  columnTypes,
   headerContent,
   originalLabel,
   columnLabels,
@@ -71,7 +70,6 @@ function HeaderCellOptionsDropdown<TData>({
   canHide: boolean
   filters: ConditionGroup[]
   setFilters: (filters: ConditionGroup[]) => void
-  columnTypes: Record<string, string>
   headerContent: string
   originalLabel: string
   columnLabels: Record<string, string>
@@ -244,7 +242,6 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
   const {
     filters,
     setFilters,
-    columnTypes,
     columnLabels,
     setColumnLabel,
     columnFormatting,
@@ -253,8 +250,7 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
     entityLabel,
   } = useTableContext<TData>()
 
-  const columnType = columnDef.columnType || 'text'
-  const sortOptions = SORT_OPTIONS[columnType] || SORT_OPTIONS.default
+  const sortOptions = getSortOptionsForFieldType(columnDef.fieldType)
   const Icon = columnDef.icon
 
   // Get current sort state
@@ -290,7 +286,6 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
             canHide={canHide}
             filters={filters}
             setFilters={setFilters}
-            columnTypes={columnTypes}
             headerContent={headerContent}
             originalLabel={originalLabel}
             columnLabels={columnLabels}

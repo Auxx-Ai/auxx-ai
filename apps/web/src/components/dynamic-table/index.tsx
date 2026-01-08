@@ -36,7 +36,6 @@ export { DynamicView as DynamicTable } from './dynamic-view'
 
 export {
   SORT_OPTIONS,
-  COLUMN_TYPE_ICONS,
   ROW_HEIGHT,
   TOOLBAR_HEIGHT,
   HEADER_HEIGHT,
@@ -84,24 +83,15 @@ export {
   getRenderer,
 } from './utils/cell-renderers'
 
-// Column helpers
-export {
-  createDateColumn,
-  createCurrencyColumn,
-  createNumberColumn,
-  createEmailColumn,
-  createPhoneColumn,
-  createUrlColumn,
-  createTextColumn,
-} from './utils/column-helpers'
-
 // Custom field column factory (for syncer-based custom field columns)
 export {
   createCustomFieldColumns,
-  mapFieldTypeToColumnType,
   getIconForFieldType,
   type CustomFieldColumnOptions,
 } from './custom-field-column-factory'
+
+// Sort options helper
+export { getSortOptionsForFieldType } from './utils/constants'
 
 // Import styles
 import './styles/table.css'
