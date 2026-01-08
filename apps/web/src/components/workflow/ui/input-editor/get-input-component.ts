@@ -112,7 +112,7 @@ export function getSpecificPropsForType(
     // BaseType.PHONE uses dedicated PhoneInput component, no special props needed
 
     case BaseType.ENUM:
-      return { options: fieldOptions?.enum || [] }
+      return { options: fieldOptions?.enum || fieldOptions?.options }
 
     case BaseType.DATE:
       return { type: 'date' }

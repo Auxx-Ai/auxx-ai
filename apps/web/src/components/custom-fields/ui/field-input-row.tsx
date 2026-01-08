@@ -72,7 +72,7 @@ export function FieldInputRow({
   }
 
   // Render relationship field with MultiRelationInput
-  if (fieldType === 'RELATIONSHIP' && relatedEntityDefinitionId) {
+  if (fieldType === 'RELATIONSHIP' && relationshipConfig) {
     return (
       <VarEditorFieldRow
         title={field.label}
@@ -83,30 +83,15 @@ export function FieldInputRow({
         validationType={validationType}
         showIcon>
         <MultiRelationInput
-          tableId={relatedEntityDefinitionId}
+          relationship={relationshipConfig}
           value={relationshipIds}
           onChange={handleRelationshipChange}
           placeholder={placeholder ?? `Select ${field.label.toLowerCase()}...`}
           disabled={disabled}
-          multi={isMultiRelationship}
         />
       </VarEditorFieldRow>
     )
   }
-
-  // Build fieldOptions with enum embedded if applicable
-  const fieldOptions: FieldOptions | undefined = useMemo(() => {
-    if (!field.enumValues) return field.options as FieldOptions | undefined
-
-    // Convert enumValues to enum format expected by ConstantInputAdapter
-    const enumOptions = field.enumValues.map((e) => ({
-      id: e.dbValue,
-      label: e.label,
-      color: e.color,
-    }))
-
-    return { ...(field.options as object), enum: enumOptions }
-  }, [field.enumValues, field.options])
 
   // For all other field types, use ConstantInputAdapter
   return (
@@ -124,7 +109,7 @@ export function FieldInputRow({
         varType={field.type}
         placeholder={placeholder ?? `Enter ${field.label.toLowerCase()}...`}
         disabled={disabled}
-        fieldOptions={fieldOptions}
+        fieldOptions={field.options}
       />
     </VarEditorFieldRow>
   )

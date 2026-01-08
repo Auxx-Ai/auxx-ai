@@ -21,9 +21,21 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { useRelationship } from '~/components/resources'
 
 /**
+ * Relationship config shape from field.options?.relationship
+ */
+export interface RelationshipConfigProp {
+  relatedEntityDefinitionId?: string
+  relatedModelType?: string
+  relationshipType?: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
+}
+
+/**
  * Props for MultiRelationInput
  */
 export interface MultiRelationInputProps {
+  /** Relationship config from field.options?.relationship - preferred way to configure */
+  relationship?: RelationshipConfigProp
+
   /** Resource ID for the target table (system ID or custom entity UUID) */
   resourceId?: string
 
@@ -48,7 +60,7 @@ export interface MultiRelationInputProps {
   /** Maximum items to show in the trigger before collapsing */
   maxDisplayItems?: number
 
-  /** Allow multiple selections (default: true) */
+  /** Allow multiple selections - if not provided, inferred from relationship.relationshipType */
   multi?: boolean
 
   /** IDs to exclude from search results */
@@ -62,6 +74,7 @@ export interface MultiRelationInputProps {
  * Supports selecting multiple related records with checkbox-style toggling.
  */
 export function MultiRelationInput({
+  relationship,
   resourceId,
   tableId: tableIdProp,
   value = [],
@@ -70,14 +83,31 @@ export function MultiRelationInput({
   placeholder = 'Select items...',
   className,
   maxDisplayItems = 3,
-  multi = true,
+  multi: multiProp,
   excludeIds = [],
 }: MultiRelationInputProps) {
   const [open, setOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
 
-  // Resolve tableId from props (prefer explicit tableId, then resourceId for backwards compat)
-  const tableId = tableIdProp ?? resourceId
+  // Derive tableId from relationship config or legacy props
+  const tableId = useMemo(() => {
+    if (relationship) {
+      return relationship.relatedEntityDefinitionId ?? relationship.relatedModelType ?? null
+    }
+    return tableIdProp ?? resourceId ?? null
+  }, [relationship, tableIdProp, resourceId])
+
+  // Derive multi from relationship config or explicit prop
+  const multi = useMemo(() => {
+    if (multiProp !== undefined) return multiProp
+    if (relationship?.relationshipType) {
+      return (
+        relationship.relationshipType === 'has_many' ||
+        relationship.relationshipType === 'many_to_many'
+      )
+    }
+    return true // default to multi
+  }, [multiProp, relationship?.relationshipType])
 
   // Get hydrated items for selected IDs from the store (tableId is system ID or UUID, no prefix needed)
   const { items: selectedItems, isLoading: isLoadingSelected } = useRelationship(
