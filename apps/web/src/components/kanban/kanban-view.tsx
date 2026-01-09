@@ -498,7 +498,6 @@ export function KanbanView<TData extends KanbanRow>({
   /** Handle drag over */
   const handleDragOver = useCallback((event: DragOverEvent) => {
     const { over } = event
-    console.log('[KanbanView] dragOver', over?.id)
     setOverId(over?.id?.toString() ?? null)
   }, [])
 
@@ -589,6 +588,24 @@ export function KanbanView<TData extends KanbanRow>({
   // Mass select mode: when any card is selected, clicking cards toggles selection
   const massSelectMode = selectedCardIds.size > 0
 
+  // Stable callback factories for KanbanCard memo optimization
+  // These Maps ensure each card gets the same callback reference across renders
+  const cardClickHandlers = useMemo(() => {
+    const handlers = new Map<string, () => void>()
+    data.forEach((card) => {
+      handlers.set(card.id, () => onCardClick?.(card))
+    })
+    return handlers
+  }, [data, onCardClick])
+
+  const cardSelectHandlers = useMemo(() => {
+    const handlers = new Map<string, (selected: boolean) => void>()
+    data.forEach((card) => {
+      handlers.set(card.id, (selected: boolean) => handleCardSelectChange(card.id, selected))
+    })
+    return handlers
+  }, [data, handleCardSelectChange])
+
   if (isLoading) {
     return (
       <div className="flex gap-4 p-2 overflow-x-auto h-full">
@@ -644,9 +661,9 @@ export function KanbanView<TData extends KanbanRow>({
                     resourceType={resourceType}
                     entityDefId={entityDefinitionId}
                     primaryFieldId={primaryFieldId}
-                    onClick={() => onCardClick?.(card)}
+                    onClick={cardClickHandlers.get(card.id)}
                     isSelected={selectedCardIds.has(card.id)}
-                    onSelectChange={(selected) => handleCardSelectChange(card.id, selected)}
+                    onSelectChange={cardSelectHandlers.get(card.id)}
                     isBeingDragged={draggingCardIds.has(card.id)}
                     massSelectMode={massSelectMode}
                   />
@@ -689,9 +706,9 @@ export function KanbanView<TData extends KanbanRow>({
                       resourceType={resourceType}
                       entityDefId={entityDefinitionId}
                       primaryFieldId={primaryFieldId}
-                      onClick={() => onCardClick?.(card)}
+                      onClick={cardClickHandlers.get(card.id)}
                       isSelected={selectedCardIds.has(card.id)}
-                      onSelectChange={(selected) => handleCardSelectChange(card.id, selected)}
+                      onSelectChange={cardSelectHandlers.get(card.id)}
                       isBeingDragged={draggingCardIds.has(card.id)}
                       massSelectMode={massSelectMode}
                     />

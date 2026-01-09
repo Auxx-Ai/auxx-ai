@@ -1,6 +1,7 @@
 // apps/web/src/components/kanban/kanban-card.tsx
 'use client'
 
+import { memo } from 'react'
 import { useDraggable } from '@dnd-kit/core'
 import { cn } from '@auxx/ui/lib/utils'
 import { Button } from '@auxx/ui/components/button'
@@ -44,8 +45,9 @@ interface KanbanCardProps {
  * Kanban card component.
  * Features: drag handle, quick actions on hover, last activity indicator.
  * Fetches title from store directly (self-contained and reactive).
+ * Wrapped in memo() to prevent re-renders when parent re-renders with same props.
  */
-export function KanbanCard({
+export const KanbanCard = memo(function KanbanCard({
   id,
   fields,
   updatedAt,
@@ -63,8 +65,6 @@ export function KanbanCard({
   primaryFieldId,
   editable = true,
 }: KanbanCardProps) {
-  console.log('[KanbanCard] render', id)
-
   // Fetch title directly from store (same pattern as KanbanCardField)
   const primaryValue = useCustomFieldValue(resourceType, id, primaryFieldId ?? '', entityDefId)
 
@@ -229,4 +229,4 @@ export function KanbanCard({
       </div>
     </div>
   )
-}
+})
