@@ -39,13 +39,13 @@ export function ExpandableCell({
         {children}
       </div>
 
-      {/* Expanded view - shows full content when cell is selected */}
+      {/* Expanded view - shows full content when cell is selected but NOT editing */}
       <div
         data-self-overlay
         className={cn(
           'absolute left-0 top-0 z-15 min-h-9',
-          'hidden [.cell-selected_&]:flex',
-          '[.cell-editing_&]:hidden',
+          // Show on selection, hide on editing (both popover and inline)
+          'hidden [.cell-selected:not(.cell-editing)_&]:flex',
           'min-w-full w-max bg-primary-100',
           isHorizontalOnly
             ? // Horizontal only: same height, no wrap, just extends right

@@ -7,6 +7,8 @@ import { cn } from '@auxx/ui/lib/utils'
 import { useCellSelection } from '../context/cell-selection-context'
 import { CellSelectionOverlay } from './cell-selection-overlay'
 import { CellFieldEditor } from './cell-field-editor'
+import { InlineCellEditor } from './inline-cell-editor'
+import { getEditModeForFieldType } from '../utils/edit-mode'
 import { useCallback, useRef } from 'react'
 
 interface SelectableTableCellProps<TData> {
@@ -47,6 +49,12 @@ function SelectableTableCellInner<TData>({
   // System columns (checkbox) don't support selection
   const isSystemColumn = columnId === '_checkbox'
 
+  // Determine edit mode based on field type
+  const field = cellSelectionConfig?.getFieldDefinition?.(columnId)
+  const editMode = getEditModeForFieldType(field?.fieldType)
+  const isInlineEditing = isEditing && editMode === 'inline'
+  const isPopoverEditing = isEditing && editMode === 'popover'
+
   /** Handle single click - select cell */
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -71,6 +79,8 @@ function SelectableTableCellInner<TData>({
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (!isSelected) return
+      // Don't handle Escape when editing - let the editor handle it
+      if (isEditing && e.key === 'Escape') return
 
       switch (e.key) {
         case 'Enter':
@@ -84,7 +94,7 @@ function SelectableTableCellInner<TData>({
         // Arrow key navigation handled at higher level via useCellNavigation
       }
     },
-    [isSelected, rowId, columnId, setEditingCell, setSelectedCell]
+    [isSelected, isEditing, rowId, columnId, setEditingCell, setSelectedCell]
   )
 
   /** Close editor callback */
@@ -111,20 +121,32 @@ function SelectableTableCellInner<TData>({
       data-column-id={columnId}
       data-selected={isSelected}
       data-editing={isEditing}>
-      {/* Selection overlay - hidden when child has data-self-overlay (e.g., ItemsCellView) */}
-      {!isSystemColumn && (
+      {/* Selection overlay - hidden when inline editing or when child has data-self-overlay */}
+      {!isSystemColumn && !isInlineEditing && (
         <CellSelectionOverlay
           isSelected={isSelected}
-          isEditing={isEditing}
+          isEditing={isPopoverEditing}
           className="group-has-[[data-self-overlay]]/cell:hidden"
         />
       )}
 
-      {/* Cell content - rendered by the column's cell function */}
-      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+      {/* Cell content - hidden when inline editing */}
+      <div className={cn('contents', isInlineEditing && 'invisible')}>
+        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+      </div>
 
-      {/* Editor popover - only renders for the ONE cell being edited */}
-      {isEditing && cellSelectionConfig && (
+      {/* Inline editor - renders IN the cell for TEXT, NUMBER, CURRENCY */}
+      {isInlineEditing && cellSelectionConfig && (
+        <InlineCellEditor
+          rowId={rowId}
+          columnId={columnId}
+          cellSelectionConfig={cellSelectionConfig}
+          onClose={handleCloseEditor}
+        />
+      )}
+
+      {/* Popover editor - for complex field types */}
+      {isPopoverEditing && cellSelectionConfig && (
         <CellFieldEditor
           rowId={rowId}
           columnId={columnId}

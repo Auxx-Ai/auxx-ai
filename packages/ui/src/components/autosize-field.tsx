@@ -62,6 +62,29 @@ const HIDDEN_TEXTAREA_STYLE: Record<string, string> = {
   right: '0',
 }
 
+/** Styles for hidden width measurement sizer */
+const WIDTH_SIZER_STYLE: React.CSSProperties = {
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  visibility: 'hidden',
+  height: 0,
+  overflow: 'scroll',
+  whiteSpace: 'pre',
+}
+
+/** Properties to copy from textarea to width sizer for accurate measurement */
+const WIDTH_STYLE_PROPS_TO_COPY = [
+  'fontSize',
+  'fontFamily',
+  'fontWeight',
+  'fontStyle',
+  'letterSpacing',
+  'textTransform',
+  'paddingLeft',
+  'paddingRight',
+] as const
+
 /** Singleton hidden textarea used for height measurements */
 let hiddenTextarea: HTMLTextAreaElement | null = null
 
@@ -284,12 +307,21 @@ export interface AutosizeFieldProps
   cacheMeasurements?: boolean
   /** Callback fired when the height changes */
   onHeightChange?: (height: number, info: { rowHeight: number }) => void
-  /** Additional styles (height will be overridden) */
+  /** Additional styles (height/width may be overridden) */
   style?: React.CSSProperties
+  /** Enable width auto-sizing based on content (default: false) */
+  autoWidth?: boolean
+  /** Minimum width in pixels when autoWidth is enabled */
+  minWidth?: number
+  /** Maximum width in pixels when autoWidth is enabled */
+  maxWidth?: number
+  /** Callback fired when width changes (only when autoWidth is enabled) */
+  onWidthChange?: (width: number) => void
 }
 
 /**
  * An auto-resizing textarea that adjusts its height based on content.
+ * Optionally auto-sizes width when autoWidth prop is enabled.
  * Uses row-based constraints and proper computed style calculations.
  */
 export const AutosizeField = React.forwardRef<HTMLTextAreaElement, AutosizeFieldProps>(
@@ -300,6 +332,10 @@ export const AutosizeField = React.forwardRef<HTMLTextAreaElement, AutosizeField
       cacheMeasurements = false,
       onChange,
       onHeightChange,
+      autoWidth = false,
+      minWidth,
+      maxWidth,
+      onWidthChange,
       value,
       variant,
       className,
@@ -309,12 +345,26 @@ export const AutosizeField = React.forwardRef<HTMLTextAreaElement, AutosizeField
     forwardedRef
   ) {
     const textareaRef = React.useRef<HTMLTextAreaElement>(null)
+    const widthSizerRef = React.useRef<HTMLDivElement>(null)
     const combinedRef = useCombinedRef(textareaRef, forwardedRef)
 
     const heightRef = React.useRef(0)
+    const widthRef = React.useRef(0)
     const cachedSizingInfoRef = React.useRef<SizingInfo | null>(null)
 
     const isControlled = value !== undefined
+
+    /**
+     * Copy styles from textarea to width sizer for accurate measurement
+     */
+    const copyStylesToSizer = React.useCallback(() => {
+      if (!textareaRef.current || !widthSizerRef.current || typeof window === 'undefined') return
+
+      const computedStyles = window.getComputedStyle(textareaRef.current)
+      for (const prop of WIDTH_STYLE_PROPS_TO_COPY) {
+        ;(widthSizerRef.current.style as any)[prop] = computedStyles[prop]
+      }
+    }, [])
 
     /**
      * Recalculates and applies the textarea height.
@@ -347,16 +397,60 @@ export const AutosizeField = React.forwardRef<HTMLTextAreaElement, AutosizeField
       }
     }, [minRows, maxRows, cacheMeasurements, onHeightChange])
 
+    /**
+     * Recalculates and applies the textarea width (when autoWidth is enabled).
+     */
+    const recalculateWidth = React.useCallback(() => {
+      if (!autoWidth) return
+
+      const textarea = textareaRef.current
+      const sizer = widthSizerRef.current
+      if (!textarea || !sizer) return
+
+      // Measure content width using the sizer
+      let newWidth = sizer.scrollWidth + 2 // +2 for cursor space
+
+      // Apply min/max constraints
+      if (minWidth !== undefined && newWidth < minWidth) {
+        newWidth = minWidth
+      }
+      if (maxWidth !== undefined && newWidth > maxWidth) {
+        newWidth = maxWidth
+      }
+
+      // Only update if changed
+      if (widthRef.current !== newWidth) {
+        widthRef.current = newWidth
+        textarea.style.setProperty('width', `${newWidth}px`, 'important')
+        onWidthChange?.(newWidth)
+      }
+    }, [autoWidth, minWidth, maxWidth, onWidthChange])
+
+    /**
+     * Recalculates both height and width
+     */
+    const recalculateSize = React.useCallback(() => {
+      recalculateHeight()
+      recalculateWidth()
+    }, [recalculateHeight, recalculateWidth])
+
+    // Copy styles to sizer on mount
+    React.useLayoutEffect(() => {
+      if (autoWidth) {
+        copyStylesToSizer()
+      }
+    }, [autoWidth, copyStylesToSizer])
+
     // Recalculate on mount and when dependencies change
     React.useLayoutEffect(() => {
-      recalculateHeight()
+      recalculateSize()
     })
 
     // Listen for window resize
-    useWindowResize(recalculateHeight)
+    useWindowResize(recalculateSize)
 
     // Listen for font loading
-    useFontLoading(recalculateHeight)
+    useFontLoading(recalculateSize)
 
     /**
      * Handles textarea input changes.
@@ -364,22 +458,34 @@ export const AutosizeField = React.forwardRef<HTMLTextAreaElement, AutosizeField
     const handleChange = React.useCallback(
       (event: React.ChangeEvent<HTMLTextAreaElement>) => {
         if (!isControlled) {
-          recalculateHeight()
+          recalculateSize()
         }
         onChange?.(event)
       },
-      [isControlled, onChange, recalculateHeight]
+      [isControlled, onChange, recalculateSize]
     )
 
+    // Sizer value for width measurement
+    const sizerValue = (value as string) ?? ''
+
     return (
-      <textarea
-        {...props}
-        ref={combinedRef}
-        value={value}
-        onChange={handleChange}
-        className={cn(autosizeFieldVariants({ variant, className }))}
-        style={style}
-      />
+      <>
+        <textarea
+          {...props}
+          data-slot="autosize"
+          ref={combinedRef}
+          value={value}
+          onChange={handleChange}
+          className={cn(autosizeFieldVariants({ variant, className }))}
+          style={style}
+        />
+        {/* Hidden sizer for width measurement (only rendered when autoWidth is enabled) */}
+        {autoWidth && (
+          <div ref={widthSizerRef} style={WIDTH_SIZER_STYLE} aria-hidden="true">
+            {sizerValue || 'x'}
+          </div>
+        )}
+      </>
     )
   }
 )

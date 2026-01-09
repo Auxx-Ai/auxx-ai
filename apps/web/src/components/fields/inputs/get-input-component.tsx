@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
-import { FieldType } from '@auxx/database/types'
+import type { FieldType } from '@auxx/database/types'
 import { TextInputField } from './text-input-field'
 import { NumberInputField } from './number-input-field'
 import { CurrencyInputField } from './currency-input-field'

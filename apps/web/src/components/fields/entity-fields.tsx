@@ -23,9 +23,8 @@ import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import { useCustomField } from '~/components/custom-fields/hooks/use-custom-field'
 import { useConfirm } from '~/hooks/use-confirm'
 import { EntityFieldsContent } from './entity-fields-content'
-import { useAllResources } from '~/components/resources'
+import { useResource } from '~/components/resources'
 import type { ResourceField } from '@auxx/lib/resources/client'
-import { mapBaseTypeToFieldType } from '@auxx/lib/workflow-engine/client'
 import {
   useCustomFieldValueStore,
   type ResourceType,
@@ -131,31 +130,25 @@ function EntityFields({
     modelType
   )
 
-  // Get fields from ResourceProvider (single source of truth)
-  const { resources } = useAllResources()
+  // Get resource from ResourceProvider (single source of truth)
+  // For custom entities: entityDefinitionId === resource.id
+  // For system resources: modelType === resource.id
+  const resourceId = entityDefinitionId || modelType
+  const { resource } = useResource(resourceId)
+
+  // Filter to only custom fields (those with id set)
   const fields = useMemo(() => {
-    let resource
-    if (isEntityInstance && entityDefinitionId) {
-      // Custom entity: look up by entityDefinitionId
-      resource = resources.find(
-        (r) => r.type === 'custom' && r.entityDefinitionId === entityDefinitionId
-      )
-    } else {
-      // System resource: look up by modelType (contact, ticket, etc.)
-      resource = resources.find((r) => r.id === modelType)
-    }
-
     if (!resource) return null
-
-    // Filter to only custom fields (those with id set) and transform to expected format
+    console.log('Resource fields:', resource.fields)
     return resource.fields
-      .filter((f): f is ResourceField & { id: string } => !!f.id)
-      .map((field) => ({
-        ...field,
-        fieldType: field.fieldType || mapBaseTypeToFieldType(field.type),
-        name: field.name ?? field.label,
-      }))
-  }, [resources, modelType, isEntityInstance, entityDefinitionId, preloadedFields])
+    // return resource.fields
+    //   .filter((f): f is ResourceField & { id: string } => !!f.id)
+    //   .map((field) => ({
+    //     ...field,
+    //     fieldType: field.fieldType,
+    //     name: field.name,
+    //   }))
+  }, [resource])
 
   // Use preloaded values for entity instances
   // const values = preloadedValues

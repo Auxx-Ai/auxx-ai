@@ -1,5 +1,6 @@
 // packages/lib/src/resources/registry/entity-instance-fields.ts
 
+import { FieldType } from '@auxx/database/enums'
 import { BaseType } from '../../workflow-engine/core/types'
 import type { ResourceField } from './field-types'
 
@@ -10,9 +11,12 @@ import type { ResourceField } from './field-types'
  */
 export const ENTITY_INSTANCE_FIELDS: Record<string, ResourceField> = {
   id: {
+    id: 'id',
     key: 'id',
     label: 'Record ID',
+    name: 'Record ID',
     type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
     dbColumn: 'id',
     nullable: false,
     operatorOverrides: ['is', 'is not', 'in', 'not in', 'exists', 'not exists'],
@@ -25,9 +29,12 @@ export const ENTITY_INSTANCE_FIELDS: Record<string, ResourceField> = {
     description: 'Unique record identifier',
   },
   createdAt: {
+    id: 'createdAt',
     key: 'createdAt',
     label: 'Created At',
+    name: 'Created At',
     type: BaseType.DATETIME,
+    fieldType: FieldType.DATETIME,
     dbColumn: 'createdAt',
     nullable: false,
     capabilities: {
@@ -38,9 +45,12 @@ export const ENTITY_INSTANCE_FIELDS: Record<string, ResourceField> = {
     },
   },
   updatedAt: {
+    id: 'updatedAt',
     key: 'updatedAt',
     label: 'Updated At',
+    name: 'Updated At',
     type: BaseType.DATETIME,
+    fieldType: FieldType.DATETIME,
     dbColumn: 'updatedAt',
     nullable: false,
     capabilities: {

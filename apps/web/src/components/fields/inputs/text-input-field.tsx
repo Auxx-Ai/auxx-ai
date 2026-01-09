@@ -2,6 +2,7 @@
 import { usePropertyContext } from '../property-provider'
 import { useRef, useEffect, useState } from 'react'
 import { AutosizeField } from '@auxx/ui/components/autosize-field'
+import { useIsInlineEditor } from '~/components/dynamic-table/components/inline-cell-editor'
 
 /**
  * TextInputField
@@ -19,6 +20,7 @@ export function TextInputField() {
   const { value, trackChange, commitValue, commitValueAndClose, isSaving } = usePropertyContext()
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const [inputValue, setInputValue] = useState(value ?? '')
+  const isInline = useIsInlineEditor()
 
   // Sync local state when value changes externally
   useEffect(() => {
@@ -76,6 +78,8 @@ export function TextInputField() {
       ref={inputRef}
       minRows={1}
       maxRows={10}
+      autoWidth={isInline}
+      maxWidth={isInline ? 280 : undefined}
       className={`w-full rounded px-2 py-1 text-sm outline-none focus:ring-0 focus-visible:ring-0 border-none bg-transparent
                  ${isSaving ? 'opacity-70' : ''}`}
       value={inputValue}

@@ -147,7 +147,7 @@ export interface ResourceField {
    * Used in CRUD operations and SQL queries against CustomFieldValue.fieldId.
    * Only populated for custom entity fields; undefined for system resource fields.
    */
-  id?: string
+  id: string
 
   /** Field identifier for variable paths (e.g., 'title', 'status', 'Colors1') */
   key: string
