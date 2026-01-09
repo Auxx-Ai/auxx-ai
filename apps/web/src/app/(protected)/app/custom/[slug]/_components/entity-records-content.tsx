@@ -483,6 +483,7 @@ export function EntityRecordsContent() {
 
   /**
    * Define bulk actions for DynamicTable
+   * Note: actions receive selected rows from FloatingBulkActionBar (works for both table and kanban)
    */
   const bulkActions = useMemo(
     () => [
@@ -490,13 +491,19 @@ export function EntityRecordsContent() {
         label: 'Run workflow',
         icon: Play,
         variant: 'outline' as const,
-        action: () => setIsWorkflowDialogOpen(true),
+        action: (rows: EntityRow[]) => {
+          setSelectedRowIds(new Set(rows.map((r) => r.id)))
+          setIsWorkflowDialogOpen(true)
+        },
       },
       {
         label: 'Edit',
         icon: SquarePen,
         variant: 'outline' as const,
-        action: () => setIsBulkUpdateDialogOpen(true),
+        action: (rows: EntityRow[]) => {
+          setSelectedRowIds(new Set(rows.map((r) => r.id)))
+          setIsBulkUpdateDialogOpen(true)
+        },
       },
       {
         label: 'Archive',

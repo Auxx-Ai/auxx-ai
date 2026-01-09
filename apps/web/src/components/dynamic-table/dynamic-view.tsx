@@ -46,6 +46,8 @@ function DynamicViewInner<TData extends object>() {
     tableToolbarElement,
     currentView,
     selectFields,
+    selectedKanbanCardIds,
+    onSelectedKanbanCardIdsChange,
   } = useTableContext<TData>()
 
   // View store initialization state
@@ -68,13 +70,6 @@ function DynamicViewInner<TData extends object>() {
     scrollContainerRef,
   })
 
-  const tableState = table.getState()
-  const selectedRows = useMemo(
-    () => table.getFilteredSelectedRowModel().rows,
-    [table, tableState.columnFilters, tableState.globalFilter, tableState.rowSelection]
-  )
-  const showBulkActionsBar = Boolean(enableBulkActions && selectedRows.length > 0)
-
   // Determine view type from current view config
   const viewType: ViewType = (currentView?.config as ViewConfig)?.viewType ?? 'table'
   const kanbanConfig: KanbanViewConfig | undefined = (currentView?.config as ViewConfig)?.kanban
@@ -87,6 +82,37 @@ function DynamicViewInner<TData extends object>() {
 
   // Check if kanban view is valid (has required config)
   const isKanbanView = viewType === 'kanban' && !!groupByField
+
+  // Table-selected rows (for table view and inline bulk action bar)
+  const tableState = table.getState()
+  const tableSelectedRows = useMemo(
+    () => table.getFilteredSelectedRowModel().rows,
+    [table, tableState.columnFilters, tableState.globalFilter, tableState.rowSelection]
+  )
+
+  // Kanban-selected data (for kanban view)
+  const kanbanSelectedData = useMemo(() => {
+    if (!selectedKanbanCardIds || selectedKanbanCardIds.size === 0) return []
+    const allData = table.getRowModel().rows.map((r) => r.original)
+    return allData.filter((item) => selectedKanbanCardIds.has((item as { id: string }).id))
+  }, [selectedKanbanCardIds, table])
+
+  // Unified selected data based on view type (for FloatingBulkActionBar)
+  const selectedData = useMemo(() => {
+    return isKanbanView ? kanbanSelectedData : tableSelectedRows.map((r) => r.original)
+  }, [isKanbanView, kanbanSelectedData, tableSelectedRows])
+
+  // Unified clear selection handler
+  const handleClearSelection = useCallback(() => {
+    if (isKanbanView) {
+      onSelectedKanbanCardIdsChange?.(new Set())
+    } else {
+      table.resetRowSelection()
+    }
+  }, [isKanbanView, onSelectedKanbanCardIdsChange, table])
+
+  // Show inline bulk action bar only for table view (kanban uses FloatingBulkActionBar only)
+  const showBulkActionsBar = Boolean(enableBulkActions && !isKanbanView && tableSelectedRows.length > 0)
 
   // Determine if we have any data
   const rowCount = table.getRowModel().rows.length
@@ -112,21 +138,21 @@ function DynamicViewInner<TData extends object>() {
                       size="sm"
                       onClick={() => table.toggleAllRowsSelected(false)}>
                       <X />
-                      {selectedRows.length} selected
+                      {tableSelectedRows.length} selected
                     </Button>
                   </div>
                   <div className="flex items-center gap-2">
                     {bulkActions.map((action) => {
                       const Icon = action.icon
-                      const isDisabled = action.disabled?.(selectedRows.map((r) => r.original))
-                      const isHidden = action.hidden?.(selectedRows.map((r) => r.original))
+                      const isDisabled = action.disabled?.(tableSelectedRows.map((r) => r.original))
+                      const isHidden = action.hidden?.(tableSelectedRows.map((r) => r.original))
 
                       if (isHidden) return null
 
                       return (
                         <Button
                           key={action.label}
-                          onClick={() => action.action(selectedRows.map((r) => r.original))}
+                          onClick={() => action.action(tableSelectedRows.map((r) => r.original))}
                           disabled={isDisabled}
                           size="sm"
                           variant={action.variant || 'default'}>
@@ -175,12 +201,12 @@ function DynamicViewInner<TData extends object>() {
       {/* Footer - only show when loaded */}
       {!isInitialLoading && !isKanbanView && footerElement}
 
-      {/* Floating Bulk Action Bar - always rendered, visibility controlled by open prop */}
+      {/* Floating Bulk Action Bar - works for both table and kanban views */}
       {bulkActions.length > 0 && !bulkActionBarElement && (
         <FloatingBulkActionBar
-          selectedRows={selectedRows}
+          selectedData={selectedData}
           bulkActions={bulkActions}
-          onClearSelection={() => table.resetRowSelection()}
+          onClearSelection={handleClearSelection}
         />
       )}
     </div>

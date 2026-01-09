@@ -3,15 +3,14 @@
 
 import { useMemo } from 'react'
 import { ActionBar, type ActionBarAction } from '@auxx/ui/components/action-bar'
-import type { Row } from '@tanstack/react-table'
 import type { BulkAction } from '../types'
 
 /**
  * Props for the FloatingBulkActionBar component.
  */
 interface FloatingBulkActionBarProps<TData> {
-  /** Array of selected table rows. */
-  selectedRows: Row<TData>[]
+  /** Selected data items (raw data, works for both table and kanban views). */
+  selectedData: TData[]
   /** Array of bulk action configurations. */
   bulkActions: BulkAction<TData>[]
   /** Callback to clear the current selection. */
@@ -19,38 +18,37 @@ interface FloatingBulkActionBarProps<TData> {
 }
 
 /**
- * Floating action bar that appears when rows are selected.
+ * Floating action bar that appears when items are selected.
  * Renders at bottom-center of viewport via portal.
- * Shown alongside the inline BulkActionBar in the header.
+ * Works with both table rows and kanban cards.
  */
 export function FloatingBulkActionBar<TData>({
-  selectedRows,
+  selectedData,
   bulkActions,
   onClearSelection,
 }: FloatingBulkActionBarProps<TData>) {
-  const isOpen = selectedRows.length > 0
-  const rowData = useMemo(() => selectedRows.map(r => r.original), [selectedRows])
+  const isOpen = selectedData.length > 0
 
   // Convert BulkAction[] to ActionBarAction[]
   const actions: ActionBarAction[] = useMemo(() => {
     return bulkActions
-      .filter(action => !action.hidden?.(rowData))
+      .filter(action => !action.hidden?.(selectedData))
       .map(action => ({
         id: action.id ?? action.label,
         label: action.label,
         icon: action.icon,
-        onClick: () => action.action(rowData),
-        disabled: action.disabled?.(rowData),
+        onClick: () => action.action(selectedData),
+        disabled: action.disabled?.(selectedData),
         variant: action.variant || 'outline',
       }))
-  }, [bulkActions, rowData])
+  }, [bulkActions, selectedData])
 
   return (
     <ActionBar
       open={isOpen}
       onOpenChange={open => { if (!open) onClearSelection() }}
       duration={Infinity}
-      selectedCount={selectedRows.length}
+      selectedCount={selectedData.length}
       selectedLabel="selected"
       actions={actions}
       showClose

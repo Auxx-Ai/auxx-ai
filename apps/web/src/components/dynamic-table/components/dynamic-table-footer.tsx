@@ -25,7 +25,7 @@ export function DynamicTableFooter({ children, className }: DynamicTableFooterPr
   return (
     <div
       className={cn(
-        'sticky z-20 bg-[#2c313a]/80 backdrop-blur bottom-0 inset-x-0 rounded-b-[12px] text-[#6b717d]',
+        'sticky z-20 dark:bg-[#2c313a]/80 backdrop-blur bottom-0 inset-x-0 rounded-b-[12px] text-muted-foreground dark:text-[#6b717d]',
         className
       )}>
       {children}
