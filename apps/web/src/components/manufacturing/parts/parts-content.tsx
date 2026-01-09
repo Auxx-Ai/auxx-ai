@@ -192,7 +192,6 @@ export function PartsContent() {
     [calculateCost]
   )
 
-
   /** Handle row selection change */
   const handleRowSelectionChange = useCallback((selectedRows: Set<string>) => {
     setSelectedRowIds(selectedRows)
@@ -336,7 +335,7 @@ export function PartsContent() {
               onAddNew={() => setIsCreateDialogOpen(true)}
               emptyState={<EmptyStateComponent />}>
               <DynamicTableFooter>
-                <div className="flex items-center justify-between px-4 py-2 text-sm text-muted-foreground">
+                <div className="flex items-center justify-between px-4 py-2 text-sm">
                   <div>
                     {rows.length} {rows.length === 1 ? 'part' : 'parts'}
                   </div>

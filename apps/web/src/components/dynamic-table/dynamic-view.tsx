@@ -166,14 +166,14 @@ function DynamicViewInner<TData extends object>() {
       {!isInitialLoading && isLoading && hasData && (
         <div className="absolute inset-0 bg-background/50 flex items-center justify-center pointer-events-none z-10">
           <div className="flex items-center gap-2 text-sm text-muted-foreground bg-background px-3 py-2 rounded-md shadow-sm">
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <div className="size-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
             <span>Loading...</span>
           </div>
         </div>
       )}
 
       {/* Footer - only show when loaded */}
-      {!isInitialLoading && footerElement}
+      {!isInitialLoading && !isKanbanView && footerElement}
 
       {/* Floating Bulk Action Bar - always rendered, visibility controlled by open prop */}
       {bulkActions.length > 0 && !bulkActionBarElement && (

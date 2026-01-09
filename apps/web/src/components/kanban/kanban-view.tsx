@@ -498,6 +498,7 @@ export function KanbanView<TData extends KanbanRow>({
   /** Handle drag over */
   const handleDragOver = useCallback((event: DragOverEvent) => {
     const { over } = event
+    console.log('[KanbanView] dragOver', over?.id)
     setOverId(over?.id?.toString() ?? null)
   }, [])
 

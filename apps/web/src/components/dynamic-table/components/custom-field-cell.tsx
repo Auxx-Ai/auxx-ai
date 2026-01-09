@@ -2,7 +2,7 @@
 
 'use client'
 
-import { memo } from 'react'
+import { memo, useMemo } from 'react'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { FormattedCell, CellPadding } from './formatted-cell'
 import {
@@ -10,6 +10,7 @@ import {
   useCustomFieldValueLoading,
   type ResourceType,
 } from '~/stores/custom-field-value-store'
+import { useResource } from '~/components/resources'
 
 interface CustomFieldCellProps {
   /** Resource type for store subscription */
@@ -24,14 +25,16 @@ interface CustomFieldCellProps {
   fieldType: string
   /** Column ID for formatting lookup */
   columnId: string
-  /** Field options - select options array or full field.options object */
+  /** @deprecated Field options - now fetched via useResource for reactivity */
   options?: unknown
 }
 
 /**
- * Custom field cell that subscribes directly to the Zustand store.
- * Re-renders automatically when its specific value changes.
- * Bypasses memoization issues in the table row/cell chain.
+ * Custom field cell that subscribes directly to:
+ * 1. Value from Zustand store (for reactive value updates)
+ * 2. Field options from ResourceProvider via useResource (for reactive option updates)
+ *
+ * This bypasses row memoization issues by subscribing directly to data sources.
  */
 export const CustomFieldCell = memo(function CustomFieldCell({
   resourceType,
@@ -40,11 +43,22 @@ export const CustomFieldCell = memo(function CustomFieldCell({
   fieldId,
   fieldType,
   columnId,
-  options,
+  options: propOptions,
 }: CustomFieldCellProps) {
   // Direct store subscription - triggers re-render when value changes
   const value = useCustomFieldValue(resourceType, rowId, fieldId, entityDefId)
   const isLoading = useCustomFieldValueLoading(resourceType, rowId, fieldId, entityDefId)
+
+  // Direct resource subscription - triggers re-render when field options change
+  // Use entityDefId for custom entities, resourceType for system resources
+  const resourceId = entityDefId || resourceType
+  const { resource } = useResource(resourceId)
+
+  // Get field options from resource (reactive) with prop fallback
+  const options = useMemo(() => {
+    const field = resource?.fields.find((f) => f.id === fieldId)
+    return field?.options ?? propOptions
+  }, [resource?.fields, fieldId, propOptions])
 
   if (isLoading && value === undefined) {
     return (

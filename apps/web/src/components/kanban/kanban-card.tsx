@@ -63,6 +63,8 @@ export function KanbanCard({
   primaryFieldId,
   editable = true,
 }: KanbanCardProps) {
+  console.log('[KanbanCard] render', id)
+
   // Fetch title directly from store (same pattern as KanbanCardField)
   const primaryValue = useCustomFieldValue(resourceType, id, primaryFieldId ?? '', entityDefId)
 

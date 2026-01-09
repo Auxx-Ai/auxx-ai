@@ -59,9 +59,24 @@ function buildPageFilters(params: {
 
   if (params.search) {
     const searchConditions: Condition[] = [
-      { id: `${SEARCH_FILTER_ID}-fn`, fieldId: 'firstName', operator: 'contains', value: params.search },
-      { id: `${SEARCH_FILTER_ID}-ln`, fieldId: 'lastName', operator: 'contains', value: params.search },
-      { id: `${SEARCH_FILTER_ID}-em`, fieldId: 'email', operator: 'contains', value: params.search },
+      {
+        id: `${SEARCH_FILTER_ID}-fn`,
+        fieldId: 'firstName',
+        operator: 'contains',
+        value: params.search,
+      },
+      {
+        id: `${SEARCH_FILTER_ID}-ln`,
+        fieldId: 'lastName',
+        operator: 'contains',
+        value: params.search,
+      },
+      {
+        id: `${SEARCH_FILTER_ID}-em`,
+        fieldId: 'email',
+        operator: 'contains',
+        value: params.search,
+      },
     ]
     groups.push({
       id: SEARCH_FILTER_ID,
@@ -442,7 +457,7 @@ export default function CustomerListPage() {
               emptyState={<EmptyStateComponent />}>
               {/* Custom footer to show loading state */}
               <DynamicTableFooter>
-                <div className="flex items-center justify-between px-4 py-2 text-sm text-muted-foreground">
+                <div className="flex items-center justify-between px-4 py-2 text-sm">
                   <div>
                     {items.length} contacts loaded
                     {hasNextPage && <span className="ml-2">(more available)</span>}

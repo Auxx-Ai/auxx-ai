@@ -118,6 +118,8 @@ export function KanbanColumn({
   const colorDot = getColorSwatch(color as SelectOptionColor)
   // Only highlight when cards are dragged over, not when columns are being reordered
   const isActive = (isOver || isDndOver) && !isSourceColumn && !isDraggingColumn
+  console.log('[KanbanColumn] render', id, { isOver, isDndOver, isActive })
+
   // Collapsed state - vertical label
   if (isCollapsed) {
     return (

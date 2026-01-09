@@ -102,10 +102,7 @@ export function TicketManagement({
   const { deleteTicket } = useTicketMutations()
 
   // Ticket drawer state - synced with URL for deep linking (e.g., /app/tickets?t=ticketId)
-  const [selectedTicketId, setSelectedTicketId] = useQueryState(
-    't',
-    parseAsString.withDefault('')
-  )
+  const [selectedTicketId, setSelectedTicketId] = useQueryState('t', parseAsString.withDefault(''))
 
   // Derive drawer open state from whether a ticket is selected
   const detailDrawerOpen = !!selectedTicketId
@@ -339,7 +336,7 @@ export function TicketManagement({
         }>
         {/* Custom footer to show loading state */}
         <DynamicTableFooter>
-          <div className="flex items-center justify-between px-4 py-2 text-sm text-muted-foreground">
+          <div className="flex items-center justify-between px-4 py-2 text-sm">
             <div>
               {tickets.length} tickets loaded
               {hasNextPage && <span className="ml-2">(more available)</span>}

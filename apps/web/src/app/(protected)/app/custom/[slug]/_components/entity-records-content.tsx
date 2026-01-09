@@ -101,7 +101,7 @@ function HeaderActionsDropdown({ onNewField }: HeaderActionsDropdownProps) {
     <div className="flex items-center h-8">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon-sm" className="rounded-sm">
+          <Button variant="ghost" size="icon-xs" className="rounded-sm">
             <Plus />
           </Button>
         </DropdownMenuTrigger>
@@ -683,7 +683,7 @@ export function EntityRecordsContent() {
               selectedKanbanCardIds={selectedKanbanCardIds}
               onSelectedKanbanCardIdsChange={setSelectedKanbanCardIds}>
               <DynamicTableFooter>
-                <div className="flex items-center justify-between px-4 py-2 text-sm text-muted-foreground">
+                <div className="flex items-center justify-between px-4 py-2 text-sm">
                   <div>
                     {items.length}{' '}
                     {items.length === 1

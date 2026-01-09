@@ -3,6 +3,7 @@
 
 import type { ReactNode } from 'react'
 import { useTableContext } from '../context/table-context'
+import { cn } from '@auxx/ui/lib/utils'
 
 interface DynamicTableFooterProps {
   children: ReactNode
@@ -21,7 +22,15 @@ export function DynamicTableFooter({ children, className }: DynamicTableFooterPr
     return null
   }
 
-  return <div className={className}>{children}</div>
+  return (
+    <div
+      className={cn(
+        'sticky z-20 bg-[#2c313a]/80 backdrop-blur bottom-0 inset-x-0 rounded-b-[12px] text-[#6b717d]',
+        className
+      )}>
+      {children}
+    </div>
+  )
 }
 
 // Export a default footer content component for convenience

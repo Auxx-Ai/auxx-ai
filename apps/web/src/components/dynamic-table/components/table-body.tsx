@@ -114,7 +114,7 @@ export function TableBody<TData extends object>({
 
                   {/* Header Actions (e.g., add column button) - positioned sticky to stay visible on scroll */}
                   {headerActions && (
-                    <div className="sticky right-0 h-10 flex items-center bg-gradient-to-r from-transparent via-white to-white dark:via-primary-100 dark:to-primary-100">
+                    <div className="sticky right-0 h-10 flex items-center bg-gradient-to-r from-transparent via-white to-white dark:via-transparent dark:to-transparent">
                       {headerActions}
                     </div>
                   )}
