@@ -31,7 +31,7 @@ import type { ViewConfig } from '../../types'
 import { getColorSwatch } from '@auxx/lib/custom-fields/client'
 import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
 import { cn } from '@auxx/ui/lib/utils'
-import { EntityIcon } from '~/components/pickers/icon-picker'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import { useViewStore } from '../../stores/view-store'
 
 /** Navigation item type for KanbanViewSettings */

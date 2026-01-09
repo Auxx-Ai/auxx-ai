@@ -3,7 +3,7 @@
 'use client'
 
 import { Loader2 } from 'lucide-react'
-import { EntityIcon } from '~/components/pickers/icon-picker'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import type { ExecutionProgress as ExecutionProgressType } from '../types'
 
 interface ExecutionProgressProps {

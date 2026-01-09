@@ -15,7 +15,7 @@ import { SidebarGroupHeader } from '~/components/global/sidebar/sidebar-group-he
 import { useSidebarStateContext } from './sidebar-state-context'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
 import { SidebarItem } from './sidebar-item'
-import { EntityIcon, getIcon } from '~/components/pickers/icon-picker'
+import { EntityIcon, getIcon } from '@auxx/ui/components/icons'
 import { EntityDefinitionDialog } from '~/components/custom-fields/ui/entity-definition-dialog'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useEntityDefinitionMutations } from '~/components/resources/hooks'

@@ -41,7 +41,7 @@ import { AutosizeTextarea } from '@auxx/ui/components/autosize-textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { cn } from '@auxx/ui/lib/utils'
 import { Tooltip } from '~/components/global/tooltip'
-import { EntityIcon } from '~/components/pickers/icon-picker'
+import { EntityIcon } from '@auxx/ui/components/icons'
 
 // Store imports
 import { usePanelStore } from '~/components/workflow/store/panel-store'

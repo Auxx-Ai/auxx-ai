@@ -69,7 +69,7 @@ import { TicketRelationshipsCard } from './ticket-relationships-card'
 import { TicketConversations } from './ticket-conversations'
 import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button'
 import { TimelineTab } from '~/components/timeline'
-import { EntityIcon } from '~/components/pickers/icon-picker'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import TicketFormDialog from './ticket-form-dialog'
 
 interface TicketDetailDrawerProps {

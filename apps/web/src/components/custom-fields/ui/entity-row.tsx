@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { MoreHorizontal, ChevronRight, FilePen, Archive, ArchiveRestore, Plus } from 'lucide-react'
-import { EntityIcon, DEFAULT_COLOR } from '~/components/pickers/icon-picker'
+import { EntityIcon, DEFAULT_COLOR } from '@auxx/ui/components/icons'
 
 /** Props for EntityRow component */
 interface EntityRowProps {

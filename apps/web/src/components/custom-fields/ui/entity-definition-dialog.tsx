@@ -25,12 +25,8 @@ import {
 } from '@auxx/ui/components/input-group'
 import { Input } from '@auxx/ui/components/input'
 import { Button } from '@auxx/ui/components/button'
-import {
-  IconPicker,
-  EntityIcon,
-  DEFAULT_COLOR,
-  type IconPickerValue,
-} from '~/components/pickers/icon-picker'
+import { EntityIcon, DEFAULT_COLOR } from '@auxx/ui/components/icons'
+import { IconPicker, type IconPickerValue } from '@auxx/ui/components/icon-picker'
 import { api } from '~/trpc/react'
 import { toastError } from '@auxx/ui/components/toast'
 import { useEntityDefinitionMutations } from '~/components/resources/hooks'

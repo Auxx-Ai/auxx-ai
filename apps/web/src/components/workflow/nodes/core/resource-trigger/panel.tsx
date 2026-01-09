@@ -13,7 +13,7 @@ import { getResourceTriggerName } from '../../shared/resource-trigger-utils'
 import { getResourceTriggerOutputVariables } from './output-variables'
 import { useWorkflowResources } from '../../../providers'
 import { useResource, useResourceFields } from '~/components/resources'
-import { EntityIcon } from '~/components/pickers/icon-picker'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import Section from '~/components/workflow/ui/section'
 import Field from '~/components/workflow/ui/field'
 import {

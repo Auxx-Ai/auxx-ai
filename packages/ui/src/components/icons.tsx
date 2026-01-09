@@ -1,5 +1,7 @@
-// components/pickers/icon-picker/icon-data.ts
+// packages/ui/src/components/icons.tsx
+'use client'
 
+import React from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
   // General UI
@@ -175,6 +177,8 @@ import {
   ListChecks,
   Link2,
 } from 'lucide-react'
+import { cva, type VariantProps } from 'class-variance-authority'
+import { cn } from '@auxx/ui/lib/utils'
 
 /** Color configuration for icons */
 export interface IconColor {
@@ -492,3 +496,74 @@ export const ICON_DATA: IconItem[] = [
 /** Get icon item by ID */
 export const getIcon = (iconId: string): IconItem | undefined =>
   ICON_DATA.find((item) => item.id === iconId)
+
+/** EntityIcon variants using CVA */
+const entityIconVariants = cva('flex items-center justify-center shrink-0', {
+  variants: {
+    variant: {
+      default: 'rounded-md',
+      full: 'rounded-full border',
+      muted:
+        'rounded-lg border bg-muted group-hover:bg-secondary transition-colors overflow-hidden',
+    },
+    size: {
+      xs: 'size-4 [&_svg]:size-2.5!',
+      sm: 'size-5 [&_svg]:size-3.5!',
+      default: 'size-6 [&_svg]:size-4!',
+      lg: 'size-8 [&_svg]:size-4',
+      xl: 'size-10 [&_svg]:size-5',
+    },
+  },
+  defaultVariants: {
+    variant: 'default',
+    size: 'default',
+  },
+})
+
+/** Props for EntityIcon component */
+export interface EntityIconProps extends VariantProps<typeof entityIconVariants> {
+  /** Icon ID from ICON_DATA (e.g., 'home', 'settings') */
+  iconId: string
+  /** Color ID from ICON_COLORS (e.g., 'blue', 'red') - optional */
+  color?: string
+  /** Use inverse color scheme (solid bg with white icon) */
+  inverse?: boolean
+  /** Optional inline style for dynamic colors (e.g., workflow nodes with hex colors) */
+  style?: React.CSSProperties
+  /** Additional classes for the wrapper div */
+  className?: string
+}
+
+/** Standalone component for rendering an icon with color outside the picker */
+export function EntityIcon({
+  iconId,
+  color,
+  inverse = false,
+  variant = 'default',
+  size = 'default',
+  style,
+  className,
+}: EntityIconProps) {
+  const iconData = getIcon(iconId)
+  const colorData = color ? getIconColor(color) : null
+
+  if (!iconData) return null
+
+  const Icon = iconData.icon
+
+  // When style is provided (e.g., hex colors), skip color classes
+  const useColorClasses = !style && colorData
+
+  return (
+    <div
+      className={cn(
+        entityIconVariants({ variant, size }),
+        useColorClasses && (inverse ? colorData?.inverseColor : colorData?.bgClasses),
+        useColorClasses && !inverse && colorData?.iconColor,
+        className
+      )}
+      style={style}>
+      <Icon />
+    </div>
+  )
+}

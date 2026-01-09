@@ -16,7 +16,7 @@ import {
 import { StatCards, type StatCardData } from '@auxx/ui/components/stat-card'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { CheckCircle, Inbox, TicketIcon, TimerIcon } from 'lucide-react'
-import { EntityIcon } from '~/components/pickers/icon-picker'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import {
   AreaChart,
   Area,

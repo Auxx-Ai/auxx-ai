@@ -5,7 +5,7 @@
 import { useState, useEffect } from 'react'
 import { Play } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
-import { EntityIcon } from '~/components/pickers/icon-picker'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import { api } from '~/trpc/react'
 import { ImportPlanSummary, PlanPreviewTable, usePlanPreviewData } from '../plan-preview'
 import { ImportCompleteCard } from '../plan-preview/import-complete-card'

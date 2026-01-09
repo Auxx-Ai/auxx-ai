@@ -14,7 +14,7 @@ import {
 import { api } from '~/trpc/react'
 import { isSystemResource, isCustomResource } from '@auxx/lib/resources/client'
 import { Label } from '@auxx/ui/components/label'
-import { EntityIcon } from '~/components/pickers/icon-picker'
+import { EntityIcon } from '@auxx/ui/components/icons'
 
 /** Relationship cardinality options */
 const RELATIONSHIP_TYPES = [

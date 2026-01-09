@@ -205,6 +205,8 @@ export function PropertyProvider({
   // ─── Store Integration ───
   const useStore = !!storeConfig
 
+  // console.log('USE STORE:', useStore, storeConfig, field)
+
   // Get value from store if applicable
   const storeKey = useStore
     ? buildValueKey(

@@ -11,7 +11,7 @@ import { SmartBreadcrumb } from '@auxx/ui/components/smart-breadcrumb'
 import { FieldPicker } from './field-picker'
 import { cn } from '@auxx/ui/lib/utils'
 import { useResource } from '~/components/resources'
-import { EntityIcon } from '~/components/pickers/icon-picker'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import type { ColumnMappingUI } from '../types'
 import type { ImportableField } from '@auxx/lib/import'
 

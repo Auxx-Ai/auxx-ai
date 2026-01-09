@@ -4,7 +4,7 @@
 
 import { CheckCircle2, Plus, RefreshCw, Ban } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
-import { EntityIcon } from '~/components/pickers/icon-picker'
+import { EntityIcon } from '@auxx/ui/components/icons'
 
 interface ImportCompleteCardProps {
   targetTable: string

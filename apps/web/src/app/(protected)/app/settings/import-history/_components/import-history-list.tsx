@@ -22,7 +22,7 @@ import {
   EmptyDescription,
 } from '@auxx/ui/components/empty'
 import { MoreVertical, Columns, Rows3, Import } from 'lucide-react'
-import { EntityIcon } from '~/components/pickers/icon-picker'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import { useAllResources } from '~/components/resources'
 import { formatRelativeTime } from '@auxx/utils/date'
 

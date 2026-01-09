@@ -11,7 +11,7 @@ import { useDockStore } from '~/stores/dock-store'
 import { useDockPortal } from '~/components/global/dock-portal-provider'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { useRunStore } from '~/components/workflow/store/run-store'
-import { EntityIcon } from '~/components/pickers/icon-picker'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import { api } from '~/trpc/react'
 
 // Reuse existing tabs (that don't require workflow editor providers)

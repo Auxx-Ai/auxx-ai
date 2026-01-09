@@ -28,7 +28,7 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { formatBytes } from '@auxx/utils/file'
 import { getFileIconId } from './utils/file-icon'
-import { EntityIcon } from '~/components/pickers/icon-picker'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import { getStandardFileType } from './utils/file-type'
 import type { FileItem } from './files-store'
 import { useConfirm } from '~/hooks/use-confirm'

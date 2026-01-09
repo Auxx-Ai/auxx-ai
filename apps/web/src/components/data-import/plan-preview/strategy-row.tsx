@@ -3,7 +3,7 @@
 'use client'
 
 import { Badge, type Variant } from '@auxx/ui/components/badge'
-import { EntityIcon } from '~/components/pickers/icon-picker'
+import { EntityIcon } from '@auxx/ui/components/icons'
 
 type StrategyType = 'create' | 'update' | 'skip'
 

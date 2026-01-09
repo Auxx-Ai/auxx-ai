@@ -33,7 +33,7 @@ import {
 import { VAR_MODE } from '~/components/workflow/types'
 import { useWorkflowResources } from '../../../providers'
 import { useResourceFields, useResource } from '~/components/resources'
-import { EntityIcon } from '~/components/pickers/icon-picker'
+import { EntityIcon } from '@auxx/ui/components/icons'
 
 interface FindPanelProps {
   nodeId: string

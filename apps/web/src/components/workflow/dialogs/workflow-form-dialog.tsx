@@ -18,7 +18,8 @@ import { Label } from '@auxx/ui/components/label'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { api } from '~/trpc/react'
 import { toastError } from '@auxx/ui/components/toast'
-import { IconPicker, EntityIcon, type IconPickerValue } from '~/components/pickers/icon-picker'
+import { EntityIcon } from '@auxx/ui/components/icons'
+import { IconPicker, type IconPickerValue } from '@auxx/ui/components/icon-picker'
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@auxx/ui/components/input-group'
 
 /**

@@ -45,7 +45,7 @@ import type { DocumentEntity as Document } from '@auxx/database/models'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
-import { EntityIcon } from '~/components/pickers/icon-picker'
+import { EntityIcon } from '@auxx/ui/components/icons'
 
 interface DocumentDetailDrawerProps {
   document: Document & {

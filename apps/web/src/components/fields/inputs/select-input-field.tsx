@@ -79,13 +79,7 @@ export function SelectInputField() {
   const [localSelected, setLocalSelected] = useState<string[]>(() => {
     const options = field?.options?.options || []
     const optionValues = new Set(options.map((opt: SelectOption) => opt.value))
-    if (Array.isArray(value)) {
-      return value.filter((v: string) => optionValues.has(v))
-    }
-    if (typeof value === 'string' && value) {
-      return optionValues.has(value) ? [value] : []
-    }
-    return []
+    return (value || []).filter((v: string) => optionValues.has(v))
   })
 
   // Mutation to update field options (only for TAGS)
