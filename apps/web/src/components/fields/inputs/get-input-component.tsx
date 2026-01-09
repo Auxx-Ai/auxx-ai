@@ -1,7 +1,8 @@
 // apps/web/src/components/fields/inputs/get-input-component.tsx
 
 import type { ReactNode } from 'react'
-import { FieldType } from '@auxx/database/enums'
+import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
+import { FieldType } from '@auxx/database/types'
 import { TextInputField } from './text-input-field'
 import { NumberInputField } from './number-input-field'
 import { CurrencyInputField } from './currency-input-field'
@@ -9,14 +10,12 @@ import { DateInputField } from './date-input-field'
 import { EmailInputField } from './email-input-field'
 import { UrlInputField } from './url-input-field'
 import { CheckboxInputField } from './checkbox-input-field'
-import { TagsInputField } from './tags-input-field'
+import { SelectInputField } from './select-input-field'
 import { PhoneInputField } from './phone-input-field'
 import { RichTextInputField } from './rich-text-input-field'
 import { FileInputField } from './file-input-field'
 import { AddressInputField } from './address-input-field'
 import { AddressStructInputField } from './address-struct-input-field'
-import { SingleSelectInputField } from './single-select-input-field'
-import { MultiSelectInputField } from './multi-select-input-field'
 import { NameInputField } from './name-input-field'
 import { RelationshipInputField } from './relationship-input-field'
 
@@ -24,43 +23,41 @@ import { RelationshipInputField } from './relationship-input-field'
  * Returns the appropriate input component for a field type.
  * Used by both FieldInput (drawer) and CellFieldEditor (table).
  */
-export function getInputComponentForFieldType(fieldType: string): ReactNode {
+export function getInputComponentForFieldType(fieldType: FieldType): ReactNode {
   switch (fieldType) {
-    case FieldType.TEXT:
+    case FieldTypeEnum.TEXT:
       return <TextInputField />
-    case FieldType.NUMBER:
+    case FieldTypeEnum.NUMBER:
       return <NumberInputField />
-    case FieldType.CURRENCY:
+    case FieldTypeEnum.CURRENCY:
       return <CurrencyInputField />
-    case FieldType.DATE:
-    case FieldType.DATETIME:
-    case FieldType.TIME:
+    case FieldTypeEnum.DATE:
+    case FieldTypeEnum.DATETIME:
+    case FieldTypeEnum.TIME:
       return <DateInputField />
-    case FieldType.EMAIL:
+    case FieldTypeEnum.EMAIL:
       return <EmailInputField />
-    case FieldType.URL:
+    case FieldTypeEnum.URL:
       return <UrlInputField />
-    case FieldType.CHECKBOX:
+    case FieldTypeEnum.CHECKBOX:
       return <CheckboxInputField />
-    case FieldType.TAGS:
-      return <TagsInputField />
-    case FieldType.PHONE_INTL:
+    case FieldTypeEnum.SINGLE_SELECT:
+    case FieldTypeEnum.MULTI_SELECT:
+    case FieldTypeEnum.TAGS:
+      return <SelectInputField />
+    case FieldTypeEnum.PHONE_INTL:
       return <PhoneInputField />
-    case FieldType.RICH_TEXT:
+    case FieldTypeEnum.RICH_TEXT:
       return <RichTextInputField />
-    case FieldType.FILE:
+    case FieldTypeEnum.FILE:
       return <FileInputField />
-    case FieldType.ADDRESS:
+    case FieldTypeEnum.ADDRESS:
       return <AddressInputField />
-    case FieldType.ADDRESS_STRUCT:
+    case FieldTypeEnum.ADDRESS_STRUCT:
       return <AddressStructInputField />
-    case FieldType.SINGLE_SELECT:
-      return <SingleSelectInputField />
-    case FieldType.MULTI_SELECT:
-      return <MultiSelectInputField />
-    case FieldType.NAME:
+    case FieldTypeEnum.NAME:
       return <NameInputField />
-    case FieldType.RELATIONSHIP:
+    case FieldTypeEnum.RELATIONSHIP:
       return <RelationshipInputField />
     default:
       return <TextInputField />

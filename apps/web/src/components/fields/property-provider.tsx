@@ -19,7 +19,7 @@ import {
 import { useSaveFieldValue } from '~/hooks/use-save-field-value'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
 import type { ModelType } from '@auxx/types/custom-field'
-
+import type { FieldType } from '@auxx/database/types'
 /**
  * property-provider.tsx
  * Context provider for a single contact property row with helper methods
@@ -129,7 +129,7 @@ interface PropertyProviderProps {
  * @param val - The value from store or props (TypedFieldValue or raw)
  * @param fieldType - The field type for proper extraction
  */
-function extractRawValue(val: StoredFieldValue | null | undefined, fieldType: string): unknown {
+function extractRawValue(val: StoredFieldValue | null | undefined, fieldType: FieldType): unknown {
   if (val === null || val === undefined) return null
 
   // Use centralized formatter for extraction
@@ -246,8 +246,8 @@ export function PropertyProvider({
   // For store mode: storeValue is TypedFieldValue - extract raw value for component use
   // For legacy mode: initialValue may be { data: x } wrapper - extract the raw value
   const effectiveInitialValue = useStore
-    ? extractRawValue(storeValue, field.type)
-    : extractRawValue(initialValue, field.type)
+    ? extractRawValue(storeValue, field.fieldType)
+    : extractRawValue(initialValue, field.fieldType)
 
   // ─── State ───
   const [currentValue, setCurrentValue] = useState<any>(effectiveInitialValue)
@@ -267,21 +267,21 @@ export function PropertyProvider({
   useEffect(() => {
     if (useStore && storeValue !== undefined) {
       // Extract raw value from TypedFieldValue for component use
-      const rawValue = extractRawValue(storeValue, field.type)
+      const rawValue = extractRawValue(storeValue, field.fieldType)
       setCurrentValue(rawValue)
       setServerValue(rawValue)
       setIsDirty(false)
     }
-  }, [useStore, storeValue, field.type])
+  }, [useStore, storeValue, field.fieldType])
 
   // Sync local state when initialValue changes (legacy mode - e.g., after a refresh or data refetch)
   useEffect(() => {
     if (useStore) return // Skip for store-integrated mode
-    const extracted = extractRawValue(initialValue, field.type)
+    const extracted = extractRawValue(initialValue, field.fieldType)
     setCurrentValue(extracted)
     setServerValue(extracted)
     setIsDirty(false)
-  }, [initialValue, useStore, field.type])
+  }, [initialValue, useStore, field.fieldType])
 
   // ─── Core Actions ───
 
@@ -309,7 +309,7 @@ export function PropertyProvider({
       // 2. Fire mutation in BACKGROUND (no await, no blocking)
       if (useStore) {
         // Use store-integrated save (optimistic + background mutation)
-        storeSave(field.id, newValue, field.type)
+        storeSave(field.id, newValue, field.fieldType)
         // Store handles the optimistic update, so also update local serverValue
         setServerValue(newValue)
       } else if (mutate) {
@@ -333,7 +333,7 @@ export function PropertyProvider({
           })
       }
     },
-    [effectiveIsSaving, serverValue, useStore, storeSave, field.id, field.type, mutate]
+    [effectiveIsSaving, serverValue, useStore, storeSave, field.id, field.fieldType, mutate]
   )
 
   /**
@@ -383,7 +383,7 @@ export function PropertyProvider({
       // Fire mutation in background
       if (useStore) {
         // Use store-integrated save (optimistic + background mutation)
-        storeSave(field.id, newValue, field.type)
+        storeSave(field.id, newValue, field.fieldType)
         setServerValue(newValue)
       } else if (mutate) {
         // Legacy: direct mutation - pass raw value directly (no { data: x } wrapping)
@@ -403,7 +403,7 @@ export function PropertyProvider({
           })
       }
     },
-    [effectiveIsSaving, serverValue, useStore, storeSave, field.id, field.type, mutate]
+    [effectiveIsSaving, serverValue, useStore, storeSave, field.id, field.fieldType, mutate]
   )
 
   /**
@@ -432,7 +432,7 @@ export function PropertyProvider({
 
       // Use async save path
       if (useStore) {
-        const result = await storeSaveAsync(field.id, newValue, field.type)
+        const result = await storeSaveAsync(field.id, newValue, field.fieldType)
         setServerValue(newValue)
         return result
       } else if (mutate) {
@@ -456,7 +456,7 @@ export function PropertyProvider({
 
       return undefined
     },
-    [effectiveIsSaving, serverValue, useStore, storeSaveAsync, field.id, field.type, mutate]
+    [effectiveIsSaving, serverValue, useStore, storeSaveAsync, field.id, field.fieldType, mutate]
   )
 
   /**

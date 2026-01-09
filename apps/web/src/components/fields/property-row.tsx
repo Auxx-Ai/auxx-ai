@@ -38,7 +38,7 @@ function PropertyRow({
   if (field && field.icon) {
     Icon = field.icon as LucideIcon
   } else {
-    Icon = fieldTypeOptions.find((option) => option.value === field.type)?.icon
+    Icon = fieldTypeOptions.find((option) => option.value === field.fieldType)?.icon
   }
   const handleClick = useCallback(() => {
     if (isLoading) return
@@ -85,9 +85,9 @@ function PropertyRow({
             <LoadingFieldSkeleton />
           ) : !field.readOnly ? (
             <FieldInput>
-              {!isFieldEmpty(field.type, value) ? <DisplayField /> : <EmptyField />}
+              {!isFieldEmpty(field.fieldType, value) ? <DisplayField /> : <EmptyField />}
             </FieldInput>
-          ) : !isFieldEmpty(field.type, value) ? (
+          ) : !isFieldEmpty(field.fieldType, value) ? (
             <DisplayField />
           ) : (
             <EmptyField />

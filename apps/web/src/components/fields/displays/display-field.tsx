@@ -22,7 +22,7 @@ import { FieldType } from '@auxx/database/enums'
  */
 export function DisplayField() {
   const { field } = usePropertyContext()
-  switch (field.type) {
+  switch (field.fieldType) {
     case FieldType.DATE:
     case FieldType.DATETIME:
     case FieldType.TIME:

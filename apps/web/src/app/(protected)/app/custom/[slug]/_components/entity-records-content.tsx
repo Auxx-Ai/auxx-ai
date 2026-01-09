@@ -285,6 +285,7 @@ export function EntityRecordsContent() {
       const field = customFields.find((f) => f.id === fieldId)
       if (!field) return undefined
       return {
+        fieldType: field.fieldType!,
         type: field.fieldType!,
         relationship: field.options?.relationship,
       }

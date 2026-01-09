@@ -152,7 +152,7 @@ function EntityFields({
       .filter((f): f is ResourceField & { id: string } => !!f.id)
       .map((field) => ({
         ...field,
-        type: field.fieldType || mapBaseTypeToFieldType(field.type),
+        fieldType: field.fieldType || mapBaseTypeToFieldType(field.type),
         name: field.name ?? field.label,
       }))
   }, [resources, modelType, isEntityInstance, entityDefinitionId, preloadedFields])
@@ -194,7 +194,7 @@ function EntityFields({
       }
 
       // Convert raw value to TypedFieldValue using centralized formatter
-      const typedValue = formatToTypedInput(rawValue, field.type, {
+      const typedValue = formatToTypedInput(rawValue, field.fieldType, {
         selectOptions: field.options?.options,
       })
       builtInValueMap[field.id] = typedValue as StoredFieldValue
@@ -456,7 +456,7 @@ function EntityFields({
               {
                 id: 'createdAt',
                 name: 'Created',
-                type: FieldTypeEnum.DATE,
+                fieldType: FieldTypeEnum.DATE,
                 icon: Calendar,
                 readOnly: true,
                 value: formatDateValue(createdAt),
@@ -468,7 +468,7 @@ function EntityFields({
               {
                 id: 'updatedAt',
                 name: 'Last updated',
-                type: FieldTypeEnum.DATE,
+                fieldType: FieldTypeEnum.DATE,
                 icon: Calendar,
                 readOnly: true,
                 value: formatDateValue(updatedAt),

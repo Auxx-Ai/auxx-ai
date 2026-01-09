@@ -26,7 +26,7 @@ export function CheckboxHeaderCell<TData>({ header }: CheckboxHeaderCellProps<TD
         maxWidth: header.column.columnDef.maxSize,
         ...(isPinned && { position: 'sticky', left: header.column.getStart('left'), zIndex: 20 }),
       }}
-      className={`relative ${isPinned ? 'z-10 from-white to-white/50 bg-gradient-to-b dark:from-primary-100 dark:to-primary-100/50  backdrop-blur' : ''}`}>
+      className={`relative ${isPinned ? 'z-10 from-white to-white/50 bg-gradient-to-b dark:from-transparent dark:to-transparent  backdrop-blur' : ''}`}>
       <div className="group min-w-min h-full font-inter font-medium">
         <div className=" h-full relative flex">
           <div className="flex items-center justify-end px-2 " style={{ width: 40 }}>

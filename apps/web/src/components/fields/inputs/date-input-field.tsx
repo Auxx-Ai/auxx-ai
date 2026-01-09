@@ -49,7 +49,7 @@ export function DateInputField() {
   }, [nav])
 
   // Determine picker mode from field type
-  const mode: PickerMode = fieldTypeToPickerMode[field.type] || 'date'
+  const mode: PickerMode = fieldTypeToPickerMode[field.fieldType] || 'date'
 
   // Parse the incoming value
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(() => parseDateValue(value))

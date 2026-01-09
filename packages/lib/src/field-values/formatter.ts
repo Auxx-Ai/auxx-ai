@@ -8,12 +8,12 @@ import {
   type ConverterOptions,
   type FieldOptions,
 } from './converters'
-
+import type { FieldType } from '@auxx/database/types'
 /**
  * Get converter for a field type.
  * Throws if field type is unknown.
  */
-function getConverter(fieldType: string): FieldValueConverter {
+function getConverter(fieldType: FieldType): FieldValueConverter {
   const converter = converters[fieldType]
   if (!converter) {
     throw new Error(`Unknown field type: ${fieldType}`)
@@ -43,7 +43,7 @@ function getConverter(fieldType: string): FieldValueConverter {
  */
 export function formatToTypedInput(
   value: unknown,
-  fieldType: string,
+  fieldType: FieldType,
   options?: ConverterOptions
 ): TypedFieldValueInput | TypedFieldValueInput[] | null {
   const converter = getConverter(fieldType)
@@ -81,7 +81,7 @@ export function formatToTypedInput(
  */
 export function formatToRawValue(
   value: TypedFieldValue | TypedFieldValueInput | TypedFieldValue[] | unknown,
-  fieldType: string
+  fieldType: FieldType
 ): unknown {
   const converter = getConverter(fieldType)
 
@@ -129,7 +129,7 @@ export function formatToRawValue(
  */
 export function formatToDisplayValue(
   value: TypedFieldValue | TypedFieldValue[] | null,
-  fieldType: string,
+  fieldType: FieldType,
   options?: FieldOptions
 ): unknown {
   if (value === null || value === undefined) {
@@ -150,7 +150,7 @@ export function formatToDisplayValue(
  * Check if field type stores multiple values.
  * MULTI_SELECT, TAGS, FILE, and RELATIONSHIP can have multiple values.
  */
-export function isMultiValueFieldType(fieldType: string): boolean {
+export function isMultiValueFieldType(fieldType: FieldType): boolean {
   return isMultiValueType(fieldType)
 }
 
@@ -160,7 +160,7 @@ export function isMultiValueFieldType(fieldType: string): boolean {
  */
 export function extractValues(
   values: TypedFieldValue | TypedFieldValue[] | null,
-  fieldType: string
+  fieldType: FieldType
 ): unknown[] {
   if (values === null || values === undefined) {
     return []
@@ -180,7 +180,7 @@ export function extractValues(
  * Check if a value is empty based on field type.
  * Useful for conditional rendering and validation.
  */
-export function isValueEmpty(value: unknown, fieldType: string): boolean {
+export function isValueEmpty(value: unknown, fieldType: FieldType): boolean {
   if (value === null || value === undefined) {
     return true
   }
@@ -224,11 +224,7 @@ export function isValueEmpty(value: unknown, fieldType: string): boolean {
  * Compare two values for equality based on field type.
  * Handles TypedFieldValue, raw values, and arrays.
  */
-export function areValuesEqual(
-  value1: unknown,
-  value2: unknown,
-  fieldType: string
-): boolean {
+export function areValuesEqual(value1: unknown, value2: unknown, fieldType: FieldType): boolean {
   const raw1 = formatToRawValue(value1, fieldType)
   const raw2 = formatToRawValue(value2, fieldType)
 

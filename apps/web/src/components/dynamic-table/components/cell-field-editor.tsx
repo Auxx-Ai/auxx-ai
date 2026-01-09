@@ -93,7 +93,7 @@ function CellFieldEditorInner({
   const { handleOutsideEvent, handleEscapeKey } = useFieldPopoverHandlers({ onClose })
 
   // Get input component from shared function
-  const InputComponent = getInputComponentForFieldType(field.type)
+  const InputComponent = getInputComponentForFieldType(field.fieldType)
   // if (field.type === FieldType.TEXT) {
   //   return (
   //     <div className="absolute inset-0 border border-red-500 z-50 bg-background">
@@ -111,8 +111,11 @@ function CellFieldEditorInner({
         side="bottom"
         className="p-0 border"
         style={{
-          width: Math.max(anchorRef.current?.offsetWidth || 200, getFieldTypeMinWidth(field.type)),
-          maxWidth: getFieldTypeMaxWidth(field.type),
+          width: Math.max(
+            anchorRef.current?.offsetWidth || 200,
+            getFieldTypeMinWidth(field.fieldType)
+          ),
+          maxWidth: getFieldTypeMaxWidth(field.fieldType),
         }}
         sideOffset={4}
         alignOffset={0}

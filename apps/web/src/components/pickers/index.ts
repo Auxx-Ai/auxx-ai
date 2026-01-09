@@ -9,3 +9,6 @@ export type {
   PickerMode,
   RelativeDatePreset,
 } from './date-time-picker'
+
+export { MultiSelectPicker } from './multi-select-picker'
+export type { MultiSelectPickerProps } from './multi-select-picker'

@@ -32,7 +32,7 @@ export function FieldInput({ children }: FieldInputProps) {
   const { handleOutsideEvent: baseHandleOutsideEvent, handleEscapeKey } = useFieldPopoverHandlers()
 
   // Get input component from shared function
-  const InputComponent = getInputComponentForFieldType(field.type)
+  const InputComponent = getInputComponentForFieldType(field.fieldType)
 
   /**
    * Handle clicking outside - extends base handler with deprecated requestClose
@@ -83,8 +83,8 @@ export function FieldInput({ children }: FieldInputProps) {
         className="p-0 duration-0 rounded-lg"
         style={{
           width: 'var(--radix-popover-trigger-width)',
-          minWidth: getFieldTypeMinWidth(field.type),
-          maxWidth: getFieldTypeMaxWidth(field.type),
+          minWidth: getFieldTypeMinWidth(field.fieldType),
+          maxWidth: getFieldTypeMaxWidth(field.fieldType),
         }}
         sideOffset={-28}
         alignOffset={-5}

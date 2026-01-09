@@ -28,7 +28,7 @@ import type { FieldType } from '@auxx/database/types'
 export interface BuiltInFieldDefinition {
   id: string
   name: string
-  type: FieldType
+  fieldType: FieldType
   icon?: LucideIcon
   readOnly?: boolean
   required?: boolean
@@ -66,7 +66,7 @@ export const contactFieldConfig: EntityModelConfig = {
     {
       id: 'createdAt',
       name: 'Created',
-      type: FieldTypeEnum.DATE,
+      fieldType: FieldTypeEnum.DATE,
       icon: Calendar,
       readOnly: true,
       required: false,
@@ -75,7 +75,7 @@ export const contactFieldConfig: EntityModelConfig = {
     {
       id: 'updatedAt',
       name: 'Last updated',
-      type: FieldTypeEnum.DATE,
+      fieldType: FieldTypeEnum.DATE,
       icon: Calendar,
       readOnly: true,
       required: false,
@@ -84,7 +84,7 @@ export const contactFieldConfig: EntityModelConfig = {
     {
       id: 'status',
       name: 'Status',
-      type: FieldTypeEnum.SINGLE_SELECT,
+      fieldType: FieldTypeEnum.SINGLE_SELECT,
       icon: UserCheck,
       readOnly: false,
       required: false,
@@ -99,7 +99,7 @@ export const contactFieldConfig: EntityModelConfig = {
     {
       id: 'email',
       name: 'Email address',
-      type: FieldTypeEnum.EMAIL,
+      fieldType: FieldTypeEnum.EMAIL,
       icon: Mail,
       readOnly: false,
       required: false,
@@ -108,7 +108,7 @@ export const contactFieldConfig: EntityModelConfig = {
     {
       id: 'name',
       name: 'Name',
-      type: FieldTypeEnum.NAME,
+      fieldType: FieldTypeEnum.NAME,
       icon: User,
       readOnly: false,
       required: false,
@@ -117,7 +117,7 @@ export const contactFieldConfig: EntityModelConfig = {
     {
       id: 'phone',
       name: 'Phone number',
-      type: FieldTypeEnum.PHONE_INTL,
+      fieldType: FieldTypeEnum.PHONE_INTL,
       icon: Phone,
       readOnly: false,
       required: false,
@@ -126,7 +126,7 @@ export const contactFieldConfig: EntityModelConfig = {
     {
       id: 'customerGroups',
       name: 'Groups',
-      type: FieldTypeEnum.MULTI_SELECT,
+      fieldType: FieldTypeEnum.MULTI_SELECT,
       icon: Users,
       readOnly: false,
       required: false,
@@ -154,7 +154,7 @@ export const ticketFieldConfig: EntityModelConfig = {
     {
       id: 'number',
       name: 'Ticket #',
-      type: FieldTypeEnum.TEXT,
+      fieldType: FieldTypeEnum.TEXT,
       icon: Hash,
       readOnly: true,
       required: false,
@@ -163,7 +163,7 @@ export const ticketFieldConfig: EntityModelConfig = {
     {
       id: 'title',
       name: 'Title',
-      type: FieldTypeEnum.TEXT,
+      fieldType: FieldTypeEnum.TEXT,
       icon: FileText,
       readOnly: false,
       required: true,
@@ -172,7 +172,7 @@ export const ticketFieldConfig: EntityModelConfig = {
     {
       id: 'description',
       name: 'Description',
-      type: FieldTypeEnum.RICH_TEXT,
+      fieldType: FieldTypeEnum.RICH_TEXT,
       icon: AlignLeft,
       readOnly: false,
       required: false,
@@ -181,7 +181,7 @@ export const ticketFieldConfig: EntityModelConfig = {
     {
       id: 'status',
       name: 'Status',
-      type: FieldTypeEnum.SINGLE_SELECT,
+      fieldType: FieldTypeEnum.SINGLE_SELECT,
       icon: Activity,
       readOnly: false,
       required: false,
@@ -196,7 +196,7 @@ export const ticketFieldConfig: EntityModelConfig = {
     {
       id: 'priority',
       name: 'Priority',
-      type: FieldTypeEnum.SINGLE_SELECT,
+      fieldType: FieldTypeEnum.SINGLE_SELECT,
       icon: AlertCircle,
       readOnly: false,
       required: false,
@@ -211,7 +211,7 @@ export const ticketFieldConfig: EntityModelConfig = {
     {
       id: 'type',
       name: 'Type',
-      type: FieldTypeEnum.SINGLE_SELECT,
+      fieldType: FieldTypeEnum.SINGLE_SELECT,
       icon: Tag,
       readOnly: false,
       required: true,
@@ -226,7 +226,7 @@ export const ticketFieldConfig: EntityModelConfig = {
     {
       id: 'dueDate',
       name: 'Due Date',
-      type: FieldTypeEnum.DATE,
+      fieldType: FieldTypeEnum.DATE,
       icon: Calendar,
       readOnly: false,
       required: false,
@@ -235,7 +235,7 @@ export const ticketFieldConfig: EntityModelConfig = {
     {
       id: 'createdAt',
       name: 'Created',
-      type: FieldTypeEnum.DATE,
+      fieldType: FieldTypeEnum.DATE,
       icon: Calendar,
       readOnly: true,
       required: false,
@@ -244,7 +244,7 @@ export const ticketFieldConfig: EntityModelConfig = {
     {
       id: 'updatedAt',
       name: 'Last Updated',
-      type: FieldTypeEnum.DATE,
+      fieldType: FieldTypeEnum.DATE,
       icon: Calendar,
       readOnly: true,
       required: false,
@@ -267,7 +267,7 @@ export const threadFieldConfig: EntityModelConfig = {
     {
       id: 'subject',
       name: 'Subject',
-      type: FieldTypeEnum.TEXT,
+      fieldType: FieldTypeEnum.TEXT,
       icon: Mail,
       readOnly: false,
       required: true,
@@ -276,7 +276,7 @@ export const threadFieldConfig: EntityModelConfig = {
     {
       id: 'status',
       name: 'Status',
-      type: FieldTypeEnum.SINGLE_SELECT,
+      fieldType: FieldTypeEnum.SINGLE_SELECT,
       icon: Activity,
       readOnly: false,
       required: false,
@@ -291,7 +291,7 @@ export const threadFieldConfig: EntityModelConfig = {
     {
       id: 'type',
       name: 'Type',
-      type: FieldTypeEnum.SINGLE_SELECT,
+      fieldType: FieldTypeEnum.SINGLE_SELECT,
       icon: MessageSquare,
       readOnly: false,
       required: false,
@@ -305,7 +305,7 @@ export const threadFieldConfig: EntityModelConfig = {
     {
       id: 'createdAt',
       name: 'Created',
-      type: FieldTypeEnum.DATE,
+      fieldType: FieldTypeEnum.DATE,
       icon: Calendar,
       readOnly: true,
       required: false,
@@ -314,7 +314,7 @@ export const threadFieldConfig: EntityModelConfig = {
     {
       id: 'lastMessageAt',
       name: 'Last Message',
-      type: FieldTypeEnum.DATE,
+      fieldType: FieldTypeEnum.DATE,
       icon: Clock,
       readOnly: true,
       required: false,
@@ -337,7 +337,7 @@ export const partFieldConfig: EntityModelConfig = {
     {
       id: 'createdAt',
       name: 'Created',
-      type: FieldTypeEnum.DATE,
+      fieldType: FieldTypeEnum.DATE,
       icon: Calendar,
       readOnly: true,
       required: false,
@@ -346,7 +346,7 @@ export const partFieldConfig: EntityModelConfig = {
     {
       id: 'updatedAt',
       name: 'Last updated',
-      type: FieldTypeEnum.DATE,
+      fieldType: FieldTypeEnum.DATE,
       icon: Calendar,
       readOnly: true,
       required: false,
@@ -355,7 +355,7 @@ export const partFieldConfig: EntityModelConfig = {
     {
       id: 'title',
       name: 'Title',
-      type: FieldTypeEnum.TEXT,
+      fieldType: FieldTypeEnum.TEXT,
       icon: Package,
       readOnly: false,
       required: true,
@@ -364,7 +364,7 @@ export const partFieldConfig: EntityModelConfig = {
     {
       id: 'sku',
       name: 'SKU',
-      type: FieldTypeEnum.TEXT,
+      fieldType: FieldTypeEnum.TEXT,
       icon: Hash,
       readOnly: false,
       required: true,
@@ -373,7 +373,7 @@ export const partFieldConfig: EntityModelConfig = {
     {
       id: 'description',
       name: 'Description',
-      type: FieldTypeEnum.TEXT,
+      fieldType: FieldTypeEnum.TEXT,
       icon: FileText,
       readOnly: false,
       required: false,
@@ -382,7 +382,7 @@ export const partFieldConfig: EntityModelConfig = {
     {
       id: 'category',
       name: 'Category',
-      type: FieldTypeEnum.TEXT,
+      fieldType: FieldTypeEnum.TEXT,
       icon: Tag,
       readOnly: false,
       required: false,
@@ -391,7 +391,7 @@ export const partFieldConfig: EntityModelConfig = {
     {
       id: 'hsCode',
       name: 'HS Code',
-      type: FieldTypeEnum.TEXT,
+      fieldType: FieldTypeEnum.TEXT,
       icon: Hash,
       readOnly: false,
       required: false,
@@ -400,7 +400,7 @@ export const partFieldConfig: EntityModelConfig = {
     {
       id: 'cost',
       name: 'Cost',
-      type: FieldTypeEnum.CURRENCY,
+      fieldType: FieldTypeEnum.CURRENCY,
       icon: DollarSign,
       readOnly: true,
       required: false,

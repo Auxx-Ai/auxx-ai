@@ -24,9 +24,9 @@ export function DisplayDate() {
   const displayOpts: DateFieldOptions = {
     ...opts,
     // For TIME fields, use 'time-only' format
-    format: field.type === FieldType.TIME ? 'time-only' : (opts?.format ?? 'medium'),
+    format: field.fieldType === FieldType.TIME ? 'time-only' : (opts?.format ?? 'medium'),
     // For DATETIME fields, always include time
-    includeTime: field.type === FieldType.DATETIME || opts?.includeTime,
+    includeTime: field.fieldType === FieldType.DATETIME || opts?.includeTime,
   }
   // console.log('DisplayDate options:', displayOpts, date.toISOString())
   // Use the converter to format the display value

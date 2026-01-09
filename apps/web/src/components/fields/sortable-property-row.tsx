@@ -113,7 +113,7 @@ export function SortablePropertyRow({
   if (field.icon) {
     OriginalIcon = field.icon as LucideIcon
   } else {
-    OriginalIcon = fieldTypeOptions.find((opt) => opt.value === field.type)?.icon
+    OriginalIcon = fieldTypeOptions.find((opt) => opt.value === field.fieldType)?.icon
   }
 
   // Value should be TypedFieldValue directly (no legacy { data: x } wrapping)
