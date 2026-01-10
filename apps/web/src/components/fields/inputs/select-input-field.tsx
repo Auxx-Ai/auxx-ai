@@ -70,9 +70,11 @@ export function getSelectConfig(fieldType: string): SelectConfig {
  * - SINGLE_SELECT: Radio buttons, no management, closes after selection
  * - MULTI_SELECT: Checkboxes, no management, stays open
  * - TAGS: Checkboxes, full management (create/edit/delete), stays open
+ *
+ * Uses onBeforeClose hook to flush pending debounced saves when popover closes.
  */
 export function SelectInputField() {
-  const { value, field, commitValue, close } = usePropertyContext()
+  const { value, field, commitValue, close, onBeforeClose } = usePropertyContext()
   const nav = useFieldNavigationOptional()
   const utils = api.useUtils()
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -87,6 +89,12 @@ export function SelectInputField() {
     const valueArray = Array.isArray(value) ? value : value ? [value] : []
     return valueArray.filter((v: string) => optionValues.has(v))
   })
+
+  // Ref to track current local value (for onBeforeClose handler)
+  const localSelectedRef = useRef<string[]>(localSelected)
+  useEffect(() => {
+    localSelectedRef.current = localSelected
+  }, [localSelected])
 
   // Mutation to update field options (only for TAGS)
   const updateField = api.customField.update.useMutation({
@@ -112,7 +120,30 @@ export function SelectInputField() {
     [commitValue, config.multi]
   )
 
-  // Cleanup timeout on unmount
+  // Register onBeforeClose handler to flush pending saves when popover closes
+  useEffect(() => {
+    if (!config.multi) return // Only needed for multi-select
+
+    onBeforeClose.current = () => {
+      console.log(
+        'SelectInputField: onBeforeClose - flushing debounced save',
+        saveTimeoutRef.current,
+        localSelectedRef.current
+      )
+      // Flush pending debounced save immediately
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+        saveTimeoutRef.current = null
+        commitValue(localSelectedRef.current)
+      }
+    }
+
+    return () => {
+      onBeforeClose.current = undefined
+    }
+  }, [onBeforeClose, commitValue, config.multi])
+
+  // Cleanup timeout on unmount (onBeforeClose already handled the save if needed)
   useEffect(() => {
     return () => {
       if (saveTimeoutRef.current) {

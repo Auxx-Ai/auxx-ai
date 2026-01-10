@@ -46,6 +46,9 @@ interface CustomFieldValueState {
   /** Pending optimistic updates (key → {newValue, originalValue}) */
   pendingUpdates: Record<ValueKey, PendingUpdate>
 
+  /** Mutation version per key - incremented on each mutation initiation for race condition handling */
+  mutationVersions: Record<ValueKey, number>
+
   // ─────────────────────────────────────────────────────────────────
   // SETTERS
   // ─────────────────────────────────────────────────────────────────
@@ -103,6 +106,16 @@ interface CustomFieldValueState {
 
   /** Check if a value exists in cache */
   hasValue: (key: ValueKey) => boolean
+
+  // ─────────────────────────────────────────────────────────────────
+  // MUTATION VERSION TRACKING (for race condition handling)
+  // ─────────────────────────────────────────────────────────────────
+
+  /** Increment mutation version for a key, returns the new version */
+  incrementMutationVersion: (key: ValueKey) => number
+
+  /** Get current mutation version for a key (returns 0 if not set) */
+  getMutationVersion: (key: ValueKey) => number
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -168,6 +181,7 @@ export const useCustomFieldValueStore = create<CustomFieldValueState>()(
     loadingBatches: {},
     updatedAt: {},
     pendingUpdates: {},
+    mutationVersions: {},
 
     // ─── SETTERS ────────────────────────────────────────────────────
 
@@ -318,7 +332,7 @@ export const useCustomFieldValueStore = create<CustomFieldValueState>()(
     },
 
     clearAll: () => {
-      set({ values: {}, loadingBatches: {}, updatedAt: {}, pendingUpdates: {} })
+      set({ values: {}, loadingBatches: {}, updatedAt: {}, pendingUpdates: {}, mutationVersions: {} })
     },
 
     // ─── GETTERS ────────────────────────────────────────────────────
@@ -333,6 +347,21 @@ export const useCustomFieldValueStore = create<CustomFieldValueState>()(
 
     hasValue: (key) => {
       return key in get().values
+    },
+
+    // ─── MUTATION VERSION TRACKING ──────────────────────────────────
+
+    incrementMutationVersion: (key) => {
+      const current = get().mutationVersions[key] ?? 0
+      const next = current + 1
+      set((state) => ({
+        mutationVersions: { ...state.mutationVersions, [key]: next },
+      }))
+      return next
+    },
+
+    getMutationVersion: (key) => {
+      return get().mutationVersions[key] ?? 0
     },
   }))
 )

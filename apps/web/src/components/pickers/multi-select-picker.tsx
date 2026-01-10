@@ -13,7 +13,6 @@ import {
 } from '@auxx/ui/components/command'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { Button } from '@auxx/ui/components/button'
-import { Circle } from 'lucide-react'
 import { cn } from '@auxx/ui/lib/utils'
 import { getColorSwatch } from '@auxx/lib/custom-fields/client'
 import type { SelectOption } from '@auxx/types/custom-field'
@@ -417,14 +416,11 @@ export function MultiSelectPicker({
                                 className="pointer-events-none"
                               />
                             ) : (
-                              /* Visual-only radio indicator (not a real RadioGroupItem) */
-                              <div
-                                className={cn(
-                                  'size-4 rounded-full border border-foreground flex items-center justify-center',
-                                  localSelected.includes(opt.value) && '[&_svg]:fill-foreground'
-                                )}>
-                                {localSelected.includes(opt.value) && <Circle className="size-2" />}
-                              </div>
+                              localSelected.includes(opt.value) && (
+                                <div className="rounded-full size-4 bg-info flex items-center justify-center border border-blue-800">
+                                  <Check className="size-2.5! text-white" strokeWidth={4} />
+                                </div>
+                              )
                             )}
                           </div>
 

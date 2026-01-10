@@ -48,6 +48,7 @@ export interface FieldTypeOption {
 export const customFieldFormSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   type: z.enum(FieldTypeEnum),
+  fieldType: z.enum(FieldTypeEnum),
   description: z.string().optional(),
   required: z.boolean().default(false),
   isUnique: z.boolean().default(false),

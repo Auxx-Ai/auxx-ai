@@ -559,9 +559,10 @@ export class FieldValueService {
    *                               Example: false for bulk updates
    *
    * @returns SetValueResult object containing:
-   *          - ids: array of FieldValue IDs (empty for built-in fields)
+   *          - state: 'complete' on success, 'failed' on error
+   *          - performedAt: ISO timestamp when the mutation was processed
    *          - values: array of TypedFieldValue objects (empty for built-in fields)
-   *          Example: { ids: ["fv-1"], values: [{ id: "fv-1", type: "text", value: "..." }] }
+   *          Example: { state: 'complete', performedAt: '2024-01-01T00:00:00Z', values: [...] }
    *
    * @throws Error if:
    *         - Field not found
@@ -578,7 +579,7 @@ export class FieldValueService {
    *   modelType: "contact",
    *   publishEvents: true
    * });
-   * // result: { ids: ["fv-123"], values: [{ id: "fv-123", type: "text", value: "john.doe@example.com", ... }] }
+   * // result: { state: 'complete', performedAt: '2024-...', values: [{ id: "fv-123", type: "text", value: "john.doe@example.com", ... }] }
    *
    * @example
    * // Set a built-in field (no custom field lookup needed)
@@ -588,7 +589,7 @@ export class FieldValueService {
    *   value: "John",
    *   modelType: "contact"
    * });
-   * // result: { ids: [], values: [] } (built-in fields don't store in FieldValue table)
+   * // result: { state: 'complete', performedAt: '2024-...', values: [] } (built-in fields return empty values array)
    *
    * @example
    * // Bulk update without event publishing
@@ -613,6 +614,7 @@ export class FieldValueService {
 
       // Create synthetic TypedFieldValue for frontend store
       const builtInFieldType = getBuiltInFieldType(fieldId, modelType)
+      const performedAt = new Date().toISOString()
       if (value !== null && value !== undefined && builtInFieldType) {
         const typedInput = formatToTypedInput(value, builtInFieldType)
         if (typedInput) {
@@ -621,15 +623,15 @@ export class FieldValueService {
             entityId,
             fieldId,
             sortKey: '',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
+            createdAt: performedAt,
+            updatedAt: performedAt,
             ...typedInput,
           } as TypedFieldValue
-          return { ids: [], values: [syntheticValue] }
+          return { state: 'complete', performedAt, values: [syntheticValue] }
         }
       }
 
-      return { ids: [], values: [] }
+      return { state: 'complete', performedAt, values: [] }
     }
 
     // 2. Get field definition (cached)
@@ -642,7 +644,7 @@ export class FieldValueService {
     if (typedValue === null) {
       await this.deleteValue({ entityId, fieldId })
       await this.maybeUpdateDisplayValue(entityId, field, null)
-      return { ids: [], values: [] }
+      return { state: 'complete', performedAt: new Date().toISOString(), values: [] }
     }
 
     // 4. Check uniqueness if applicable (if field has unique constraint)
@@ -692,9 +694,10 @@ export class FieldValueService {
       } as ContactFieldUpdatedEvent)
     }
 
-    // Always return arrays
+    // Always return arrays with state and timestamp
     return {
-      ids: result.map((r) => r.id),
+      state: 'complete',
+      performedAt: new Date().toISOString(),
       values: result,
     }
   }
@@ -737,14 +740,15 @@ export class FieldValueService {
    * @returns Array of SetValuesResult objects, one per input field
    *          Each result contains:
    *          - fieldId: The field that was set
-   *          - ids: Array of FieldValue IDs (empty for built-in fields)
+   *          - state: 'complete' on success, 'failed' on error
+   *          - performedAt: ISO timestamp when the mutation was processed
    *          - values: Array of TypedFieldValue objects (empty for built-in fields)
-   *          If a field fails, returns { fieldId, ids: [], values: [] }
+   *          If a field fails, returns { fieldId, state: 'failed', performedAt: '...', values: [] }
    *          Example:
    *          [
-   *            { fieldId: "field-email", ids: ["fv-1"], values: [...] },
-   *            { fieldId: "field-name", ids: ["fv-2"], values: [...] },
-   *            { fieldId: "firstName", ids: [], values: [] }
+   *            { fieldId: "field-email", state: 'complete', performedAt: '2024-...', values: [...] },
+   *            { fieldId: "field-name", state: 'complete', performedAt: '2024-...', values: [...] },
+   *            { fieldId: "firstName", state: 'complete', performedAt: '2024-...', values: [] }
    *          ]
    *
    * @example
@@ -807,21 +811,22 @@ export class FieldValueService {
       if (v.value !== null && v.value !== undefined && builtInFieldType) {
         const typedInput = formatToTypedInput(v.value, builtInFieldType)
         if (typedInput) {
+          const performedAt = new Date().toISOString()
           const syntheticValue = {
             id: `builtin-${v.fieldId}-${entityId}`,
             entityId,
             fieldId: v.fieldId,
             sortKey: '',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
+            createdAt: performedAt,
+            updatedAt: performedAt,
             ...typedInput,
           } as TypedFieldValue
-          results.push({ fieldId: v.fieldId, ids: [], values: [syntheticValue] })
+          results.push({ fieldId: v.fieldId, state: 'complete', performedAt, values: [syntheticValue] })
           continue
         }
       }
 
-      results.push({ fieldId: v.fieldId, ids: [], values: [] })
+      results.push({ fieldId: v.fieldId, state: 'complete', performedAt: new Date().toISOString(), values: [] })
     }
 
     // Handle custom fields - batch prefetch all field definitions and validate relationships
@@ -854,7 +859,7 @@ export class FieldValueService {
         } catch (error) {
           // Log but continue with other fields
           console.error(`Failed to set field ${v.fieldId}:`, error)
-          results.push({ fieldId: v.fieldId, ids: [], values: [] })
+          results.push({ fieldId: v.fieldId, state: 'failed', performedAt: new Date().toISOString(), values: [] })
         }
       }
     }

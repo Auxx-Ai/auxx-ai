@@ -115,13 +115,13 @@ export function CustomFieldDialog({
   currentResourceId,
 }: CustomFieldDialogProps) {
   const isEditing = !!editingField
-
   // Form setup
   const form = useForm<CustomFieldFormValues>({
     resolver: standardSchemaResolver(customFieldFormSchema),
     defaultValues: {
       name: '',
       type: FieldType.TEXT,
+      fieldType: FieldType.TEXT,
       description: '',
       required: false,
       isUnique: false,
@@ -254,7 +254,7 @@ export function CustomFieldDialog({
         // Edit mode: populate form with existing field data
         form.reset({
           name: editingField.name || '',
-          type: (editingField.type as FieldTypeType) || FieldType.TEXT,
+          type: (editingField.fieldType as FieldTypeType) || editingField.type || FieldType.TEXT,
           description: editingField.description || '',
           required: editingField.required || false,
           isUnique: editingField.isUnique || false,
@@ -689,11 +689,7 @@ export function CustomFieldDialog({
                                   key={type}
                                   onClick={() => form.setValue('type', type)}
                                   className="flex items-start gap-2 ps-1">
-                                  <EntityIcon
-                                    iconId={option.iconId}
-                                    variant="full"
-                                    size="sm"
-                                  />
+                                  <EntityIcon iconId={option.iconId} variant="full" size="sm" />
                                   <span className="font-medium">{option.label}</span>
                                 </DropdownMenuItem>
                               )

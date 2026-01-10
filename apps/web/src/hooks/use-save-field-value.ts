@@ -98,6 +98,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
   /**
    * Save a field value with optimistic update.
    * Returns immediately after updating store - mutation runs in background.
+   * Uses version tracking to handle race conditions with rapid updates.
    * @param resourceId - The resource ID (entity/contact/ticket ID)
    * @param fieldId - The custom field ID
    * @param value - The value to save (raw value or TypedFieldValue)
@@ -111,15 +112,19 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
       fieldType: FieldType
     ): void => {
       const key = buildValueKey(resourceType, resourceId, fieldId, entityDefId)
+      const store = useCustomFieldValueStore.getState()
 
       // Capture old value for relationship sync rollback
-      const oldValue = useCustomFieldValueStore.getState().values[key]
+      const oldValue = store.values[key]
 
-      // 1. Optimistic update to store (convert to TypedFieldValue format)
+      // 1. Increment version BEFORE optimistic update (for race condition handling)
+      const mutationVersion = store.incrementMutationVersion(key)
+
+      // 2. Optimistic update to store (convert to TypedFieldValue format)
       const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
       setValueOptimistic(key, typedValue)
 
-      // 2. Sync inverse relationships for RELATIONSHIP fields
+      // 3. Sync inverse relationships for RELATIONSHIP fields
       let inverseInfo: InverseSyncInfo | null = null
       let oldIds: string[] = []
       let newIds: string[] = []
@@ -128,27 +133,10 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
         const metadata = getFieldMetadata?.(fieldId)
         const rel = metadata?.relationship
 
-        console.log('[RelSync] Checking relationship field', {
-          fieldId,
-          hasMetadata: !!metadata,
-          relationship: rel,
-          hasInverseFieldId: !!rel?.inverseFieldId,
-        })
-
         // Sync if we have inverse field config (works from either side - no isInverse check needed)
         if (rel?.inverseFieldId && rel.relationshipType && rel.relatedEntityDefinitionId) {
           oldIds = extractRelatedIds(oldValue)
           newIds = extractRelatedIds(typedValue)
-
-          console.log('[RelSync] Triggering inverse sync', {
-            resourceId,
-            fieldId,
-            oldIds,
-            newIds,
-            relationshipType: rel.relationshipType,
-            inverseFieldId: rel.inverseFieldId,
-            isInverse: rel.isInverse,
-          })
 
           inverseInfo = {
             inverseFieldId: rel.inverseFieldId,
@@ -164,16 +152,10 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
             newRelatedIds: newIds,
             inverseInfo,
           })
-        } else {
-          console.log('[RelSync] Skipping inverse sync - missing config', {
-            hasInverseFieldId: !!rel?.inverseFieldId,
-            hasRelationshipType: !!rel?.relationshipType,
-            hasRelatedEntityDefId: !!rel?.relatedEntityDefinitionId,
-          })
         }
       }
 
-      // 3. Fire mutation in background with raw value (API handles conversion)
+      // 4. Fire mutation in background with raw value (API handles conversion)
       const rawValue = getRawValue(value, fieldType)
       mutation.mutate(
         {
@@ -184,7 +166,15 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
         },
         {
           onSuccess: (result) => {
-            // Update store with the actual TypedFieldValue from server response
+            // Check if this mutation is still the latest (race condition handling)
+            const currentVersion = useCustomFieldValueStore.getState().getMutationVersion(key)
+            if (mutationVersion < currentVersion) {
+              // A newer mutation was fired - skip this stale response
+              // The optimistic state from the newer mutation is already correct
+              return
+            }
+
+            // This is the latest - apply the server result
             if (result?.values && result.values.length > 0) {
               // Array-return fields (SINGLE_SELECT, MULTI_SELECT, TAGS, RELATIONSHIP, FILE) store as array
               // Other single-value fields store just the first value
@@ -200,21 +190,18 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
             onSuccess?.()
           },
           onError: (error) => {
-            console.log('[RelSync] Mutation error, rolling back', {
-              key,
-              hasInverseInfo: !!inverseInfo,
-            })
+            // Check if this mutation is still the latest
+            const currentVersion = useCustomFieldValueStore.getState().getMutationVersion(key)
+            if (mutationVersion < currentVersion) {
+              // A newer mutation superseded this one - don't rollback
+              return
+            }
 
             // Rollback primary field
             rollbackOptimistic(key)
 
             // Rollback inverse cache (swap old/new to reverse the sync)
             if (inverseInfo) {
-              console.log('[RelSync] Rolling back inverse cache', {
-                resourceId,
-                swappedOldIds: newIds,
-                swappedNewIds: oldIds,
-              })
               syncInverseCache({
                 sourceEntityId: resourceId,
                 oldRelatedIds: newIds,
@@ -266,11 +253,13 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
 
   /**
    * Async version that waits for mutation to complete.
-   * Use when you need to know the result (e.g., getting the valueIds).
+   * Use when you need confirmation of save completion or the value ID (for FILE fields).
+   * Uses version tracking to handle race conditions with rapid updates.
    * @param resourceId - The resource ID (entity/contact/ticket ID)
    * @param fieldId - The custom field ID
    * @param value - The value to save (raw value or TypedFieldValue)
    * @param fieldType - The field type for proper value extraction
+   * @returns Object with success flag and optional id (first value's ID if available)
    */
   const saveValueAsync = useCallback(
     async (
@@ -278,17 +267,21 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
       fieldId: string,
       value: StoredFieldValue | unknown,
       fieldType: FieldType
-    ): Promise<{ ids: string[] } | undefined> => {
+    ): Promise<{ success: boolean; id?: string } | undefined> => {
       const key = buildValueKey(resourceType, resourceId, fieldId, entityDefId)
+      const store = useCustomFieldValueStore.getState()
 
       // Capture old value for relationship sync rollback
-      const oldValue = useCustomFieldValueStore.getState().values[key]
+      const oldValue = store.values[key]
 
-      // Optimistic update with TypedFieldValue format
+      // 1. Increment version BEFORE optimistic update (for race condition handling)
+      const mutationVersion = store.incrementMutationVersion(key)
+
+      // 2. Optimistic update with TypedFieldValue format
       const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
       setValueOptimistic(key, typedValue)
 
-      // Sync inverse relationships for RELATIONSHIP fields
+      // 3. Sync inverse relationships for RELATIONSHIP fields
       let inverseInfo: InverseSyncInfo | null = null
       let oldIds: string[] = []
       let newIds: string[] = []
@@ -297,27 +290,10 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
         const metadata = getFieldMetadata?.(fieldId)
         const rel = metadata?.relationship
 
-        console.log('[RelSync] (async) Checking relationship field', {
-          fieldId,
-          hasMetadata: !!metadata,
-          relationship: rel,
-          hasInverseFieldId: !!rel?.inverseFieldId,
-        })
-
         // Sync if we have inverse field config (works from either side - no isInverse check needed)
         if (rel?.inverseFieldId && rel.relationshipType && rel.relatedEntityDefinitionId) {
           oldIds = extractRelatedIds(oldValue)
           newIds = extractRelatedIds(typedValue)
-
-          console.log('[RelSync] (async) Triggering inverse sync', {
-            resourceId,
-            fieldId,
-            oldIds,
-            newIds,
-            relationshipType: rel.relationshipType,
-            inverseFieldId: rel.inverseFieldId,
-            isInverse: rel.isInverse,
-          })
 
           inverseInfo = {
             inverseFieldId: rel.inverseFieldId,
@@ -333,12 +309,6 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
             newRelatedIds: newIds,
             inverseInfo,
           })
-        } else {
-          console.log('[RelSync] (async) Skipping inverse sync - missing config', {
-            hasInverseFieldId: !!rel?.inverseFieldId,
-            hasRelationshipType: !!rel?.relationshipType,
-            hasRelatedEntityDefId: !!rel?.relatedEntityDefinitionId,
-          })
         }
       }
 
@@ -351,7 +321,17 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
           modelType,
         })
 
-        // Update store with the actual TypedFieldValue from server response
+        // Check if this mutation is still the latest (race condition handling)
+        const currentVersion = useCustomFieldValueStore.getState().getMutationVersion(key)
+        if (mutationVersion < currentVersion) {
+          // A newer mutation was fired - skip applying this stale response
+          // Return success since the optimistic state is already correct
+          return { success: true }
+        }
+
+        // This is the latest - apply the server result
+        // Extract the first value's ID (useful for FILE fields that need to attach files)
+        const firstValueId = result?.values?.[0]?.id
         if (result?.values && result.values.length > 0) {
           // Array-return fields (SINGLE_SELECT, MULTI_SELECT, TAGS, RELATIONSHIP, FILE) store as array
           const returnsArray = fieldType && isArrayReturnFieldType(fieldType)
@@ -364,23 +344,20 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
           confirmOptimistic(key)
         }
         onSuccess?.()
-        return { ids: (result as { ids: string[] })?.ids ?? [] }
+        return { success: true, id: firstValueId }
       } catch (error: unknown) {
-        console.log('[RelSync] (async) Mutation error, rolling back', {
-          key,
-          hasInverseInfo: !!inverseInfo,
-        })
+        // Check if this mutation is still the latest
+        const currentVersion = useCustomFieldValueStore.getState().getMutationVersion(key)
+        if (mutationVersion < currentVersion) {
+          // A newer mutation superseded this one - don't rollback or show error
+          return undefined
+        }
 
         // Rollback primary field
         rollbackOptimistic(key)
 
         // Rollback inverse cache (swap old/new to reverse the sync)
         if (inverseInfo) {
-          console.log('[RelSync] (async) Rolling back inverse cache', {
-            resourceId,
-            swappedOldIds: newIds,
-            swappedNewIds: oldIds,
-          })
           syncInverseCache({
             sourceEntityId: resourceId,
             oldRelatedIds: newIds,
@@ -419,13 +396,14 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
    * @param fieldId - The custom field ID
    * @param value - The value to save (raw value or TypedFieldValue)
    * @param fieldType - The field type for proper value extraction
+   * @returns Object with success flag and optional id (first value's ID if available)
    */
   const saveFieldValueAsync = useCallback(
     async (
       fieldId: string,
       value: StoredFieldValue | unknown,
       fieldType: FieldType
-    ): Promise<{ ids: string[] } | undefined> => {
+    ): Promise<{ success: boolean; id?: string } | undefined> => {
       if (!defaultResourceId) {
         console.error('saveFieldValueAsync called without resourceId - use saveValueAsync instead')
         return undefined
@@ -438,6 +416,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
   /**
    * Save multiple field values to a single resource.
    * Applies optimistic updates to store immediately. Fire-and-forget.
+   * Uses version tracking to handle race conditions with rapid updates.
    * @param resourceId - The resource ID (entity/contact/ticket ID)
    * @param fieldValues - Array of { fieldId, value, fieldType } to save
    */
@@ -446,11 +425,14 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
       resourceId: string,
       fieldValues: Array<{ fieldId: string; value: unknown; fieldType: FieldType }>
     ): void => {
-      // Build keys and apply optimistic updates with TypedFieldValue format
-      const keys: string[] = []
+      const store = useCustomFieldValueStore.getState()
+
+      // Build keys, capture versions, and apply optimistic updates
+      const keyVersions: Array<{ key: string; version: number }> = []
       for (const { fieldId, value, fieldType } of fieldValues) {
         const key = buildValueKey(resourceType, resourceId, fieldId, entityDefId)
-        keys.push(key)
+        const version = store.incrementMutationVersion(key)
+        keyVersions.push({ key, version })
         const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
         setValueOptimistic(key, typedValue)
       }
@@ -470,14 +452,22 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
         },
         {
           onSuccess: () => {
-            for (const key of keys) {
-              confirmOptimistic(key)
+            const currentStore = useCustomFieldValueStore.getState()
+            for (const { key, version } of keyVersions) {
+              // Only confirm if still the latest version
+              if (version >= currentStore.getMutationVersion(key)) {
+                confirmOptimistic(key)
+              }
             }
             onSuccess?.()
           },
           onError: (error) => {
-            for (const key of keys) {
-              rollbackOptimistic(key)
+            const currentStore = useCustomFieldValueStore.getState()
+            for (const { key, version } of keyVersions) {
+              // Only rollback if still the latest version
+              if (version >= currentStore.getMutationVersion(key)) {
+                rollbackOptimistic(key)
+              }
             }
             toastError({
               title: 'Error saving fields',
@@ -502,6 +492,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
   /**
    * Save multiple field values to a single resource (async version).
    * Applies optimistic updates, waits for mutation to complete.
+   * Uses version tracking to handle race conditions with rapid updates.
    * @param resourceId - The resource ID (entity/contact/ticket ID)
    * @param fieldValues - Array of { fieldId, value, fieldType } to save
    */
@@ -510,11 +501,14 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
       resourceId: string,
       fieldValues: Array<{ fieldId: string; value: unknown; fieldType: FieldType }>
     ): Promise<boolean> => {
-      // Build keys and apply optimistic updates with TypedFieldValue format
-      const keys: string[] = []
+      const store = useCustomFieldValueStore.getState()
+
+      // Build keys, capture versions, and apply optimistic updates
+      const keyVersions: Array<{ key: string; version: number }> = []
       for (const { fieldId, value, fieldType } of fieldValues) {
         const key = buildValueKey(resourceType, resourceId, fieldId, entityDefId)
-        keys.push(key)
+        const version = store.incrementMutationVersion(key)
+        keyVersions.push({ key, version })
         const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
         setValueOptimistic(key, typedValue)
       }
@@ -532,14 +526,22 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
           modelType,
         })
 
-        for (const key of keys) {
-          confirmOptimistic(key)
+        const currentStore = useCustomFieldValueStore.getState()
+        for (const { key, version } of keyVersions) {
+          // Only confirm if still the latest version
+          if (version >= currentStore.getMutationVersion(key)) {
+            confirmOptimistic(key)
+          }
         }
         onSuccess?.()
         return true
       } catch (error: unknown) {
-        for (const key of keys) {
-          rollbackOptimistic(key)
+        const currentStore = useCustomFieldValueStore.getState()
+        for (const { key, version } of keyVersions) {
+          // Only rollback if still the latest version
+          if (version >= currentStore.getMutationVersion(key)) {
+            rollbackOptimistic(key)
+          }
         }
         const errorMessage = error instanceof Error ? error.message : 'Could not save field values'
         toastError({
@@ -600,6 +602,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
   /**
    * Save the same field value for multiple resources in a single API call.
    * Applies optimistic updates to all resources, then fires one bulk mutation.
+   * Uses version tracking to handle race conditions with rapid updates.
    * @param resourceIds - Array of resource IDs to update
    * @param fieldId - The field ID to update
    * @param value - The value to set for all resources (raw value or TypedFieldValue)
@@ -612,11 +615,15 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
       value: StoredFieldValue | unknown,
       fieldType: FieldType
     ): void => {
-      const keys = resourceIds.map((id) => buildValueKey(resourceType, id, fieldId, entityDefId))
+      const store = useCustomFieldValueStore.getState()
 
-      // Apply optimistic updates to all with TypedFieldValue format
+      // Build keys, capture versions, and apply optimistic updates
+      const keyVersions: Array<{ key: string; version: number }> = []
       const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
-      for (const key of keys) {
+      for (const id of resourceIds) {
+        const key = buildValueKey(resourceType, id, fieldId, entityDefId)
+        const version = store.incrementMutationVersion(key)
+        keyVersions.push({ key, version })
         setValueOptimistic(key, typedValue)
       }
 
@@ -630,14 +637,22 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
         },
         {
           onSuccess: () => {
-            for (const key of keys) {
-              confirmOptimistic(key)
+            const currentStore = useCustomFieldValueStore.getState()
+            for (const { key, version } of keyVersions) {
+              // Only confirm if still the latest version
+              if (version >= currentStore.getMutationVersion(key)) {
+                confirmOptimistic(key)
+              }
             }
             onSuccess?.()
           },
           onError: (error) => {
-            for (const key of keys) {
-              rollbackOptimistic(key)
+            const currentStore = useCustomFieldValueStore.getState()
+            for (const { key, version } of keyVersions) {
+              // Only rollback if still the latest version
+              if (version >= currentStore.getMutationVersion(key)) {
+                rollbackOptimistic(key)
+              }
             }
             toastError({
               title: 'Error saving fields',
@@ -662,6 +677,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
   /**
    * Save multiple field values to multiple resources in one API call.
    * Applies optimistic updates to store immediately. Fire-and-forget.
+   * Uses version tracking to handle race conditions with rapid updates.
    * @param resourceIds - Array of resource IDs to update
    * @param fieldValues - Array of { fieldId, value, fieldType } to set for all resources
    */
@@ -670,12 +686,15 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
       resourceIds: string[],
       fieldValues: Array<{ fieldId: string; value: unknown; fieldType: FieldType }>
     ): void => {
-      // Build all keys and apply optimistic updates with TypedFieldValue format
-      const keys: string[] = []
+      const store = useCustomFieldValueStore.getState()
+
+      // Build all keys, capture versions, and apply optimistic updates
+      const keyVersions: Array<{ key: string; version: number }> = []
       for (const resourceId of resourceIds) {
         for (const { fieldId, value, fieldType } of fieldValues) {
           const key = buildValueKey(resourceType, resourceId, fieldId, entityDefId)
-          keys.push(key)
+          const version = store.incrementMutationVersion(key)
+          keyVersions.push({ key, version })
           const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
           setValueOptimistic(key, typedValue)
         }
@@ -696,14 +715,22 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
         },
         {
           onSuccess: () => {
-            for (const key of keys) {
-              confirmOptimistic(key)
+            const currentStore = useCustomFieldValueStore.getState()
+            for (const { key, version } of keyVersions) {
+              // Only confirm if still the latest version
+              if (version >= currentStore.getMutationVersion(key)) {
+                confirmOptimistic(key)
+              }
             }
             onSuccess?.()
           },
           onError: (error) => {
-            for (const key of keys) {
-              rollbackOptimistic(key)
+            const currentStore = useCustomFieldValueStore.getState()
+            for (const { key, version } of keyVersions) {
+              // Only rollback if still the latest version
+              if (version >= currentStore.getMutationVersion(key)) {
+                rollbackOptimistic(key)
+              }
             }
             toastError({
               title: 'Error saving fields',

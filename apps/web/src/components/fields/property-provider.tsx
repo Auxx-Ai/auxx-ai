@@ -76,7 +76,7 @@ interface PropertyContextValue {
    * Use ONLY when you need the returned ID (e.g., file fields).
    * For normal saves, use commitValue instead.
    */
-  commitValueAsync: (newValue: any) => Promise<{ id?: string } | undefined>
+  commitValueAsync: (newValue: any) => Promise<{ success: boolean; id?: string } | undefined>
 
   /** Cancel editing and revert to server value */
   cancel: () => void
@@ -268,11 +268,10 @@ export function PropertyProvider({
   /**
    * Commit value to server. FIRE-AND-FORGET by default.
    * Local state updates synchronously, mutation runs in background.
+   * Note: No isSaving guard - version tracking handles race conditions.
    */
   const commitValue = useCallback(
     (newValue: any) => {
-      if (isSaving) return
-
       // Check if value actually changed
       if (!hasValueChanged(newValue, serverValue)) {
         setIsDirty(false)
@@ -288,7 +287,7 @@ export function PropertyProvider({
       // Store handles the optimistic update, so also update local serverValue
       setServerValue(newValue)
     },
-    [isSaving, serverValue, storeSave, field.id, field.fieldType]
+    [serverValue, storeSave, field.id, field.fieldType]
   )
 
   /**
@@ -347,7 +346,7 @@ export function PropertyProvider({
    * Use only when you need the returned ID (e.g., file attachments).
    */
   const commitValueAsync = useCallback(
-    async (newValue: any): Promise<{ id?: string } | undefined> => {
+    async (newValue: any): Promise<{ success: boolean; id?: string } | undefined> => {
       if (isSaving) return undefined
 
       // Check if value actually changed (skip for empty objects used to create initial value)

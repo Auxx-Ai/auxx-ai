@@ -65,10 +65,16 @@ export interface SetBulkValuesInput {
 }
 
 /**
+ * Result state for field value mutations
+ */
+export type SetValueState = 'complete' | 'failed'
+
+/**
  * Result from setValueWithBuiltIn - always returns arrays for consistency
  */
 export interface SetValueResult {
-  ids: string[]
+  state: SetValueState
+  performedAt: string
   values: TypedFieldValue[]
 }
 
@@ -77,7 +83,8 @@ export interface SetValueResult {
  */
 export interface SetValuesResult {
   fieldId: string
-  ids: string[]
+  state: SetValueState
+  performedAt: string
   values: TypedFieldValue[]
 }
 

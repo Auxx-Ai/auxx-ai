@@ -15,7 +15,7 @@ function Checkbox({ className, ...props }: React.ComponentProps<typeof CheckboxP
       )}
       {...props}>
       <CheckboxPrimitive.Indicator className={cn('flex items-center justify-center text-current')}>
-        <Check className="size-4" />
+        <Check className="size-2.5!" strokeWidth={4} />
       </CheckboxPrimitive.Indicator>
     </CheckboxPrimitive.Root>
   )
