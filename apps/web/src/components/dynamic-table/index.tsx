@@ -57,6 +57,7 @@ export { FormattedCell, CellPadding, type CellConfig } from './components/format
 export { CustomFieldCell } from './components/custom-field-cell'
 export { CopyableLinkCell } from './components/copyable-link-cell'
 export { PrimaryCell, type PrimaryCellProps } from './cells/primary-cell'
+export { PrimaryFieldCell } from './cells/primary-field-cell'
 
 // New components from the refactor
 export { TableBody } from './components/table-body'

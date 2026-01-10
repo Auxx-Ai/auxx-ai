@@ -3,11 +3,7 @@
 
 import React, { useRef, useCallback, useEffect } from 'react'
 import { Pencil, X } from 'lucide-react'
-import {
-  DndContext,
-  closestCenter,
-  type DragEndEvent,
-} from '@dnd-kit/core'
+import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core'
 import type { SensorDescriptor, SensorOptions } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
@@ -19,9 +15,10 @@ import { cn } from '@auxx/ui/lib/utils'
 import { useFieldNavigation } from './field-navigation-context'
 import type { StoreConfig } from './property-provider'
 import type { StoredFieldValue } from '~/stores/custom-field-value-store'
+import type { ResourceField } from '@auxx/lib/resources/client'
 
 /**
- * Props for EntityFieldsContent component
+ * Props for EntityFieldsContent component (unified version)
  */
 export interface EntityFieldsContentProps {
   className?: string
@@ -35,32 +32,28 @@ export interface EntityFieldsContentProps {
   currentResourceId: string
   sensors: SensorDescriptor<SensorOptions>[]
   handleDragEnd: (event: DragEndEvent) => Promise<void>
-  sortedCustomFields: any[]
-  isEntityInstance: boolean
-  builtInFieldsWithOptions: any[]
-  builtInValues: Record<string, StoredFieldValue>
-  handleBuiltInFieldMutate: (fieldId: string) => (value: any) => Promise<void>
-  entityLoading: boolean
-  optionsLoading: boolean
+  /** Unified sorted fields (system + custom) */
+  fields: ResourceField[]
+  /** Field values by key */
+  fieldValues: Record<string, { valueId?: string; value: StoredFieldValue }>
+  /** Loading state */
+  isLoading: boolean
+  /** Check if field is sortable */
+  isSortable: (field: ResourceField) => boolean
+  handleDeleteField: (fieldId: string, fieldName: string) => Promise<void>
+  handleEditField: (fieldId: string, field: any) => void
+  handleAddField: () => void
   handleProviderOpenChange: (providerId: string, nextOpen: boolean) => void
   registerProviderClose: (providerId: string, closeFn: () => void) => void
   unregisterProviderClose: (providerId: string) => void
-  fieldValues: Record<string, { valueId?: string; value: StoredFieldValue }>
-  handleFieldMutate: (fieldId: string) => (value: any) => Promise<any>
-  isLoadingValues: boolean
-  isSortable: (field: any, isBuiltIn: boolean) => boolean
-  handleDeleteField: (fieldId: string, fieldName: string) => Promise<void>
-  handleEditField: (fieldId: string, field: any) => void
-  systemFields: any[]
-  handleAddField: () => void
   ConfirmDeleteDialog: React.FC
-  /** Store configuration for bi-directional sync with table */
-  storeConfig?: StoreConfig
+  /** Store configuration for bi-directional sync (required for saving) */
+  storeConfig: StoreConfig
 }
 
 /**
  * Inner component that uses the navigation context
- * Renders the field list with drag-and-drop support
+ * Renders the unified field list with drag-and-drop support
  */
 export function EntityFieldsContent({
   className,
@@ -74,24 +67,16 @@ export function EntityFieldsContent({
   currentResourceId,
   sensors,
   handleDragEnd,
-  sortedCustomFields,
-  isEntityInstance,
-  builtInFieldsWithOptions,
-  builtInValues,
-  handleBuiltInFieldMutate,
-  entityLoading,
-  optionsLoading,
-  handleProviderOpenChange,
-  registerProviderClose,
-  unregisterProviderClose,
+  fields,
   fieldValues,
-  handleFieldMutate,
-  isLoadingValues,
+  isLoading,
   isSortable,
   handleDeleteField,
   handleEditField,
-  systemFields,
   handleAddField,
+  handleProviderOpenChange,
+  registerProviderClose,
+  unregisterProviderClose,
   ConfirmDeleteDialog,
   storeConfig,
 }: EntityFieldsContentProps) {
@@ -126,11 +111,9 @@ export function EntityFieldsContent({
 
   /**
    * Handle keyboard navigation at container level
-   * Arrow keys navigate between rows, Enter opens focused row
    */
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      // If a popover is capturing keys (Tags, Select, Date), let it handle
       if (isPopoverCapturing) return
 
       switch (e.key) {
@@ -152,6 +135,10 @@ export function EntityFieldsContent({
     },
     [isPopoverCapturing, moveFocus, focusedRowId, openFocusedRow]
   )
+
+  // Filter sortable field IDs for DnD context (only custom fields)
+  // Use field.id if available for custom fields, otherwise field.key
+  const sortableIds = fields.filter((f) => !f.isSystem).map((f) => f.id || f.key)
 
   return (
     <>
@@ -203,79 +190,46 @@ export function EntityFieldsContent({
             collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}
             modifiers={[restrictToVerticalAxis]}>
-            <SortableContext
-              items={sortedCustomFields.map((f) => f.id)}
-              strategy={verticalListSortingStrategy}>
-              {/* Render built-in fields first (only for non-entity instances) */}
-              {!isEntityInstance &&
-                builtInFieldsWithOptions.map((field, idx) => (
+            <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
+              {/* Render all fields in unified loop */}
+              {fields.map((field, idx) => {
+                const fieldKey = field.key
+                const isSystemField = field.isSystem === true
+                // Use field.id for custom fields (guaranteed unique DB ID), system-{key} for system fields
+                const uniqueId = isSystemField ? `system-${fieldKey}` : field.id || fieldKey
+                const providerId = uniqueId
+                const fieldEntry = fieldValues[fieldKey]
+                const isReadOnly = field.capabilities.updatable === false
+
+                return (
                   <SortablePropertyRow
-                    key={`builtin-${field.id}`}
-                    id={`builtin-${field.id}`}
-                    providerId={`builtin-${field.id}`}
-                    field={field}
-                    value={builtInValues[field.id]}
-                    mutate={handleBuiltInFieldMutate(field.id)}
-                    loading={
-                      entityLoading ||
-                      optionsLoading ||
-                      !Object.prototype.hasOwnProperty.call(builtInValues, field.id)
-                    }
+                    key={uniqueId}
+                    id={field.id || fieldKey}
+                    providerId={providerId}
+                    field={{
+                      ...field,
+                      // Ensure field has required properties for PropertyRow
+                      id: field.id || fieldKey,
+                      name: field.label,
+                      readOnly: isReadOnly,
+                      valueId: fieldEntry?.valueId,
+                    }}
+                    value={fieldEntry?.value}
+                    loading={isLoading}
                     isEditMode={isEditMode}
-                    isSortable={false}
+                    isSortable={isSortable(field)}
                     index={idx}
+                    onDelete={isSystemField ? undefined : handleDeleteField}
+                    onEdit={isSystemField ? undefined : handleEditField}
                     onOpenChange={handleProviderOpenChange}
                     registerClose={registerProviderClose}
                     unregisterClose={unregisterProviderClose}
                     registerOpen={registerRowOpen}
                     unregisterOpen={unregisterRowOpen}
+                    storeConfig={storeConfig}
                   />
-                ))}
-
-              {/* Then render custom fields (sortable) - with store integration */}
-              {sortedCustomFields.map((field: any, idx: number) => (
-                <SortablePropertyRow
-                  key={field.id}
-                  id={field.id}
-                  providerId={field.id}
-                  field={{ ...field, valueId: fieldValues[field.id]?.valueId }}
-                  value={fieldValues[field.id]?.value}
-                  mutate={handleFieldMutate(field.id)}
-                  loading={isLoadingValues}
-                  isEditMode={isEditMode}
-                  isSortable={isSortable(field, false)}
-                  index={builtInFieldsWithOptions.length + idx}
-                  onDelete={handleDeleteField}
-                  onEdit={handleEditField}
-                  onOpenChange={handleProviderOpenChange}
-                  registerClose={registerProviderClose}
-                  unregisterClose={unregisterProviderClose}
-                  registerOpen={registerRowOpen}
-                  unregisterOpen={unregisterRowOpen}
-                  storeConfig={storeConfig}
-                />
-              ))}
-
-              {/* System timestamp fields for entity instances (read-only, non-sortable) */}
-              {systemFields.map((field, idx) => (
-                <SortablePropertyRow
-                  key={`system-${field.id}`}
-                  id={`system-${field.id}`}
-                  providerId={`system-${field.id}`}
-                  field={field}
-                  value={field.value ? { type: 'date', value: field.value } : null}
-                  mutate={async () => {}}
-                  loading={false}
-                  isEditMode={isEditMode}
-                  isSortable={false}
-                  index={builtInFieldsWithOptions.length + sortedCustomFields.length + idx}
-                  onOpenChange={handleProviderOpenChange}
-                  registerClose={registerProviderClose}
-                  unregisterClose={unregisterProviderClose}
-                  registerOpen={registerRowOpen}
-                  unregisterOpen={unregisterRowOpen}
-                />
-              ))}
+                )
+              })}
             </SortableContext>
           </DndContext>
 

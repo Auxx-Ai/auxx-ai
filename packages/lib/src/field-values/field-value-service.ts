@@ -32,7 +32,7 @@ import {
 } from './relationship-sync'
 import type { RelationshipConfig } from '@auxx/types/custom-field'
 import { FieldValueValidator, fieldValueSchemas } from './field-value-validator'
-import { isBuiltInField, getBuiltInFieldHandler } from '../custom-fields/built-in-fields'
+import { isBuiltInField, getBuiltInFieldHandler, getBuiltInFieldType } from '../custom-fields/built-in-fields'
 import { checkUniqueValueTyped } from '../custom-fields/check-unique-value-typed'
 import { ResourceRegistryService } from '../resources/registry/resource-registry-service'
 import { publisher } from '../events'
@@ -610,7 +610,26 @@ export class FieldValueService {
         throw new Error(`Built-in field ${fieldId} has no handler`)
       }
       await handler(this.db, entityId, value, this.organizationId)
-      return { ids: [], values: [] } // Built-in fields don't return FieldValue
+
+      // Create synthetic TypedFieldValue for frontend store
+      const builtInFieldType = getBuiltInFieldType(fieldId, modelType)
+      if (value !== null && value !== undefined && builtInFieldType) {
+        const typedInput = formatToTypedInput(value, builtInFieldType)
+        if (typedInput) {
+          const syntheticValue = {
+            id: `builtin-${fieldId}-${entityId}`,
+            entityId,
+            fieldId,
+            sortKey: '',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            ...typedInput,
+          } as TypedFieldValue
+          return { ids: [], values: [syntheticValue] }
+        }
+      }
+
+      return { ids: [], values: [] }
     }
 
     // 2. Get field definition (cached)
@@ -782,6 +801,26 @@ export class FieldValueService {
       if (handler) {
         await handler(this.db, entityId, v.value, this.organizationId)
       }
+
+      // Create synthetic TypedFieldValue for frontend store
+      const builtInFieldType = getBuiltInFieldType(v.fieldId, modelType)
+      if (v.value !== null && v.value !== undefined && builtInFieldType) {
+        const typedInput = formatToTypedInput(v.value, builtInFieldType)
+        if (typedInput) {
+          const syntheticValue = {
+            id: `builtin-${v.fieldId}-${entityId}`,
+            entityId,
+            fieldId: v.fieldId,
+            sortKey: '',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            ...typedInput,
+          } as TypedFieldValue
+          results.push({ fieldId: v.fieldId, ids: [], values: [syntheticValue] })
+          continue
+        }
+      }
+
       results.push({ fieldId: v.fieldId, ids: [], values: [] })
     }
 

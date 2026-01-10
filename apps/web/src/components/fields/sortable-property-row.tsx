@@ -4,10 +4,8 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, Pencil, Trash2 } from 'lucide-react'
-import { type LucideIcon } from 'lucide-react'
-import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
 import PropertyRow from './property-row'
-import { PropertyProvider, type StoreConfig } from './property-provider'
+import { PropertyProvider, usePropertyContext, type StoreConfig } from './property-provider'
 import { useFieldNavigationOptional } from './field-navigation-context'
 import { Button } from '@auxx/ui/components/button'
 import { useEffect, useRef, useCallback } from 'react'
@@ -20,8 +18,7 @@ interface SortablePropertyRowProps {
   id: string
   providerId: string
   field: any
-  value: any
-  mutate: (value: any) => Promise<any>
+  value?: any
   loading: boolean
   isEditMode: boolean
   isSortable: boolean
@@ -38,8 +35,8 @@ interface SortablePropertyRowProps {
   registerOpen?: (providerId: string, openFn: () => void) => void
   /** Unregister open function when row unmounts */
   unregisterOpen?: (providerId: string) => void
-  /** Store configuration for bi-directional sync with table */
-  storeConfig?: StoreConfig
+  /** Store configuration for bi-directional sync with table (required for saving) */
+  storeConfig: StoreConfig
 }
 
 /**
@@ -52,7 +49,6 @@ export function SortablePropertyRow({
   providerId,
   field,
   value,
-  mutate,
   loading,
   isEditMode,
   isSortable,
@@ -109,12 +105,12 @@ export function SortablePropertyRow({
   }
 
   // Get the original icon for the field
-  let OriginalIcon: LucideIcon | undefined
-  if (field.icon) {
-    OriginalIcon = field.icon as LucideIcon
-  } else {
-    OriginalIcon = fieldTypeOptions.find((opt) => opt.value === field.fieldType)?.icon
-  }
+  // let OriginalIcon: LucideIcon | undefined
+  // if (field.icon) {
+  //   OriginalIcon = field.icon as LucideIcon
+  // } else {
+  //   OriginalIcon = fieldTypeOptions.find((opt) => opt.value === field.fieldType)?.icon
+  // }
 
   // Value should be TypedFieldValue directly (no legacy { data: x } wrapping)
 
@@ -163,7 +159,7 @@ export function SortablePropertyRow({
   }
 
   // Normal mode: use full PropertyProvider/PropertyRow
-  // When storeConfig is provided, PropertyProvider uses the global store for bi-directional sync
+  // PropertyProvider uses the global store for bi-directional sync
   return (
     <div
       ref={setNodeRef}
@@ -175,9 +171,8 @@ export function SortablePropertyRow({
         onOpenChange={onOpenChange}
         registerClose={registerClose}
         unregisterClose={unregisterClose}
-        field={{ ...field, icon: OriginalIcon }}
-        value={!storeConfig ? value : undefined}
-        mutate={mutate}
+        field={field}
+        value={value}
         loading={loading}
         storeConfig={storeConfig}>
         <PropertyRowWithNavigation
@@ -212,6 +207,3 @@ function PropertyRowWithNavigation({
 
   return <PropertyRow onFocus={onFocus} />
 }
-
-// Import at top level won't work here due to circular dependency, import inline
-import { usePropertyContext } from './property-provider'

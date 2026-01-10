@@ -250,6 +250,48 @@ export interface ResourceField {
 
   /** Whether field is required (convenience for capabilities.required) */
   required?: boolean
+
+  // ─────────────────────────────────────────────────────────────
+  // SYSTEM FIELD PROPERTIES (for unified field handling)
+  // ─────────────────────────────────────────────────────────────
+
+  /**
+   * True for system/built-in fields that exist on the database table.
+   * False or undefined for custom fields defined via CustomField entity.
+   */
+  isSystem?: boolean
+
+  /**
+   * Key for dynamic options loading. Maps to DYNAMIC_OPTIONS_REGISTRY.
+   * Example: 'contactGroups' loads customer groups via tRPC
+   */
+  dynamicOptionsKey?: string
+
+  /**
+   * For computed/display fields: source fields to combine.
+   * Example: name field with sourceFields: ['firstName', 'lastName']
+   * Used for hydration to build composite value object.
+   */
+  sourceFields?: string[]
+
+  /**
+   * For computed fields: target fields to update when saving.
+   * Example: name field with targetFields: ['firstName', 'lastName']
+   * The input component must handle splitting the value.
+   */
+  targetFields?: string[]
+
+  /**
+   * Sort order within system fields (lower = higher priority).
+   * Custom fields use their own sortOrder from CustomField entity.
+   */
+  systemSortOrder?: number
+
+  /**
+   * Whether to show this field in the property panel.
+   * Default: true. Set to false for relationship reverse-fields, internal fields, etc.
+   */
+  showInPanel?: boolean
 }
 
 /**

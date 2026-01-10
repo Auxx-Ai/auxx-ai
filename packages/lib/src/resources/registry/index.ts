@@ -174,6 +174,11 @@ export {
   isValidOperatorForField,
   setResourceVariables,
   setEntityVariables,
+  isFieldReadOnly,
+  isSystemField,
+  isComputedField,
+  sortFieldsForDisplay,
+  getDisplayFields,
 } from './field-utils'
 
 // Re-export display configuration

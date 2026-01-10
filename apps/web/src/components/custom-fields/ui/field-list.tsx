@@ -5,6 +5,8 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { TableCell, TableRow } from '@auxx/ui/components/table'
 import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
+import type { FieldType } from '@auxx/database/types'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import { GripVertical, MoreHorizontal, FilePen, Trash2 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -45,9 +47,9 @@ export function CustomFieldRow({
   }
 
   // Get field type info for display
-  const fieldType = fieldTypeOptions.find((opt) => opt.value === field.type)
-  const fieldTypeLabel = fieldType ? fieldType.label : field.type
-  const Icon = fieldType ? fieldType.icon : null
+  const fieldTypeOption = fieldTypeOptions[field.type as FieldType]
+  const fieldTypeLabel = fieldTypeOption?.label ?? field.type
+  const iconId = fieldTypeOption?.iconId ?? 'circle'
 
   return (
     <TableRow
@@ -71,7 +73,7 @@ export function CustomFieldRow({
       </TableCell>
       <TableCell className="py-1">
         <div className="flex flex-row items-center gap-2 text-sm">
-          {Icon && <Icon className="size-4" />}
+          <EntityIcon iconId={iconId} variant="default" size="default" />
           <div className="text-foreground/50">{fieldTypeLabel}</div>
           {field.isCustom && <div className="text-xs text-muted-foreground">Custom Field</div>}
         </div>

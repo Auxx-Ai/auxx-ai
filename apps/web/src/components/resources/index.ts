@@ -18,6 +18,7 @@ export {
   useIsRecordPending,
   useRecordWithFetch,
   useRecordInvalidation,
+  useRecordHydration,
   // Entity field values
   useEntityValues,
 } from './hooks'

@@ -1,7 +1,6 @@
 // apps/web/src/components/fields/property-row.tsx
 'use client'
 
-import { type LucideIcon } from 'lucide-react'
 import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
 import { DisplayField } from './displays/display-field'
 import { useCallback, useMemo } from 'react'
@@ -10,6 +9,8 @@ import { usePropertyContext } from './property-provider'
 import { isValueEmpty } from '@auxx/lib/field-values/client'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Badge } from '@auxx/ui/components/badge'
+import { EntityIcon } from '@auxx/ui/components/icons'
+import type { FieldType } from '@auxx/database/types'
 
 /**
  * Returns true if the value for a given field is considered empty.
@@ -34,12 +35,10 @@ function PropertyRow({
   onFocus?: () => void
 }) {
   const { field, value, isOpen, open, isOutsideClick, isLoading } = usePropertyContext()
-  let Icon
-  if (field && field.icon) {
-    Icon = field.icon as LucideIcon
-  } else {
-    Icon = fieldTypeOptions.find((option) => option.value === field.fieldType)?.icon
-  }
+
+  // Get iconId from field or fall back to field type's default icon
+  const iconId =
+    field.iconId ?? fieldTypeOptions[field.fieldType as FieldType]?.iconId ?? 'circle'
   const handleClick = useCallback(() => {
     if (isLoading) return
     if (field.readOnly) return
@@ -67,9 +66,12 @@ function PropertyRow({
       onPointerDown={handlePointerDown}
       style={{ cursor: !field.readOnly && !isLoading ? 'pointer' : undefined }}>
       <div className="items-center self-start flex gap-[4px] h-[24px] shrink-0">
-        {Icon && (
-          <Icon className="h-4 w-4 text-neutral-400 group-data-[active]/row-wrapper:text-foreground shrink-0" />
-        )}
+        <EntityIcon
+          iconId={iconId}
+          variant="default"
+          size="default"
+          className="text-neutral-400 group-data-[active]/row-wrapper:text-foreground"
+        />
         <div className="w-[120px] flex items-center text-sm text-neutral-400 group-data-[active]/row-wrapper:text-foreground shrink-0">
           <div className="truncate me-1">{field.name}</div>
           {field.isUnique && (

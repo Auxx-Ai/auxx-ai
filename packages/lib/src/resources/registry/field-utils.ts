@@ -154,3 +154,62 @@ export function setEntityVariables(
     })
   }
 }
+
+// ─────────────────────────────────────────────────────────────
+// SYSTEM FIELD HELPERS
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Determines if a field is read-only.
+ * A field is read-only if capabilities.updatable is false.
+ */
+export function isFieldReadOnly(field: ResourceField): boolean {
+  return field.capabilities.updatable === false
+}
+
+/**
+ * Determines if a field is a system field (built-in to the table)
+ */
+export function isSystemField(field: ResourceField): boolean {
+  return field.isSystem === true
+}
+
+/**
+ * Determines if a field is computed from other fields
+ */
+export function isComputedField(field: ResourceField): boolean {
+  return Array.isArray(field.sourceFields) && field.sourceFields.length > 0
+}
+
+/**
+ * Sort fields: system fields first (by systemSortOrder), then custom fields by sortOrder.
+ * Excludes 'id' field and inactive custom fields.
+ * Deduplicates by key to prevent React key conflicts.
+ */
+export function sortFieldsForDisplay(fields: ResourceField[]): ResourceField[] {
+  // Deduplicate by key - prefer system fields over custom fields with same key
+  const seenKeys = new Set<string>()
+  const deduped = fields.filter((f) => {
+    if (seenKeys.has(f.key)) return false
+    seenKeys.add(f.key)
+    return true
+  })
+
+  const systemFields = deduped
+    .filter((f) => f.isSystem && f.key !== 'id' && f.showInPanel !== false)
+    .sort((a, b) => (a.systemSortOrder ?? 999) - (b.systemSortOrder ?? 999))
+
+  const customFields = deduped
+    .filter((f) => !f.isSystem && f.active !== false && f.showInPanel !== false)
+    .sort((a, b) => (a.sortOrder ?? '').localeCompare(b.sortOrder ?? ''))
+
+  return [...systemFields, ...customFields]
+}
+
+/**
+ * Get fields that should be displayed in the property panel.
+ * Filters out hidden fields and sorts appropriately.
+ */
+export function getDisplayFields(fields: ResourceField[]): ResourceField[] {
+  return sortFieldsForDisplay(fields.filter((f) => f.showInPanel !== false))
+}

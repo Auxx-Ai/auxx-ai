@@ -1,5 +1,6 @@
 // packages/lib/src/workflow-engine/resources/registry/resources/contact-fields.ts
 
+import { FieldType } from '@auxx/database/enums'
 import { BaseType } from '../../types'
 
 import type { ResourceField } from '../field-types'
@@ -11,12 +12,17 @@ import { ContactStatus } from '../enum-values'
  */
 export const CONTACT_FIELDS: Record<string, ResourceField> = {
   id: {
+    id: 'id',
     key: 'id',
     label: 'ID',
     type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemSortOrder: -1,
+    showInPanel: false, // Never shown in property panel
     dbColumn: 'id',
     nullable: false,
-    isIdentifier: true, // Can match existing contacts by ID
+    isIdentifier: true,
     operatorOverrides: ['is', 'is not', 'in', 'not in', 'exists', 'not exists'],
     capabilities: {
       filterable: true,
@@ -28,9 +34,13 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
   },
 
   firstName: {
+    id: 'firstName',
     key: 'firstName',
     label: 'First Name',
     type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    showInPanel: false, // Hidden - use 'name' computed field instead
     dbColumn: 'firstName',
     nullable: true,
     capabilities: {
@@ -43,9 +53,13 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
   },
 
   lastName: {
+    id: 'lastName',
     key: 'lastName',
     label: 'Last Name',
     type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    showInPanel: false, // Hidden - use 'name' computed field instead
     dbColumn: 'lastName',
     nullable: true,
     capabilities: {
@@ -58,16 +72,22 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
   },
 
   name: {
+    id: 'name',
     key: 'name',
     label: 'Name',
     type: BaseType.STRING,
-    dbColumn: undefined,
+    fieldType: FieldType.NAME,
+    isSystem: true,
+    systemSortOrder: 10,
+    dbColumn: undefined, // Not a real column
+    sourceFields: ['firstName', 'lastName'], // Read from these fields
+    targetFields: ['firstName', 'lastName'], // Write to these fields
     nullable: true,
     capabilities: {
       filterable: false,
       sortable: false,
-      creatable: false,
-      updatable: false,
+      creatable: true,
+      updatable: true,
     },
     placeholder: 'Enter full name',
     description:
@@ -75,12 +95,16 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
   },
 
   email: {
+    id: 'email',
     key: 'email',
     label: 'Email',
     type: BaseType.EMAIL,
+    fieldType: FieldType.EMAIL,
+    isSystem: true,
+    systemSortOrder: 20,
     dbColumn: 'email',
     nullable: false,
-    isIdentifier: true, // Can match existing contacts by email
+    isIdentifier: true,
     capabilities: {
       filterable: true,
       sortable: true,
@@ -95,9 +119,13 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
   },
 
   phone: {
+    id: 'phone',
     key: 'phone',
     label: 'Phone',
     type: BaseType.PHONE,
+    fieldType: FieldType.PHONE_INTL,
+    isSystem: true,
+    systemSortOrder: 30,
     dbColumn: 'phone',
     nullable: true,
     capabilities: {
@@ -110,9 +138,13 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
   },
 
   status: {
+    id: 'status',
     key: 'status',
     label: 'Status',
     type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    isSystem: true,
+    systemSortOrder: 40,
     dbColumn: 'status',
     nullable: false,
     enumValues: ContactStatus.values,
@@ -126,10 +158,36 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     defaultValue: 'ACTIVE',
   },
 
+  customerGroups: {
+    id: 'customerGroups',
+    key: 'customerGroups',
+    label: 'Groups',
+    type: BaseType.ARRAY,
+    fieldType: FieldType.MULTI_SELECT,
+    isSystem: true,
+    systemSortOrder: 50,
+    dynamicOptionsKey: 'contactGroups', // Maps to DYNAMIC_OPTIONS_REGISTRY
+    dbColumn: 'customerGroups',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+    },
+    placeholder: 'Select groups',
+    description: 'Customer groups for organizing contacts',
+  },
+
   tags: {
+    id: 'tags',
     key: 'tags',
     label: 'Tags',
     type: BaseType.ARRAY,
+    fieldType: FieldType.TAGS,
+    isSystem: true,
+    systemSortOrder: 60,
+    dynamicOptionsKey: 'tags',
     dbColumn: 'tags',
     nullable: true,
     capabilities: {
@@ -143,9 +201,13 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
   },
 
   notes: {
+    id: 'notes',
     key: 'notes',
     label: 'Notes',
     type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemSortOrder: 70,
     dbColumn: 'notes',
     nullable: true,
     capabilities: {
@@ -158,9 +220,13 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
   },
 
   createdAt: {
+    id: 'createdAt',
     key: 'createdAt',
-    label: 'Created At',
+    label: 'Created',
     type: BaseType.DATETIME,
+    fieldType: FieldType.DATETIME,
+    isSystem: true,
+    systemSortOrder: 100, // System timestamps at bottom of system fields
     dbColumn: 'createdAt',
     nullable: false,
     capabilities: {
@@ -173,9 +239,13 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
   },
 
   updatedAt: {
+    id: 'updatedAt',
     key: 'updatedAt',
-    label: 'Updated At',
+    label: 'Updated',
     type: BaseType.DATETIME,
+    fieldType: FieldType.DATETIME,
+    isSystem: true,
+    systemSortOrder: 101,
     dbColumn: 'updatedAt',
     nullable: false,
     capabilities: {
@@ -189,9 +259,13 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
 
   // Reverse relationship: tickets (one-to-many)
   tickets: {
+    id: 'tickets',
     key: 'tickets',
     label: 'Tickets',
     type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    showInPanel: false, // Relationship reverse-field, not editable
     // NO dbColumn - computed from ticket.contactId
     capabilities: {
       filterable: false,

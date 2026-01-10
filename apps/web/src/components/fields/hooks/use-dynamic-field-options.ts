@@ -1,153 +1,141 @@
 // apps/web/src/components/fields/hooks/use-dynamic-field-options.ts
+
 import { useMemo } from 'react'
-import { api } from '~/trpc/react'
-import { ModelTypes, type ModelType } from '@auxx/types/custom-field'
-import type { BuiltInFieldDefinition } from '../configs/model-field-configs'
+import type { ResourceField } from '@auxx/lib/resources/client'
+import {
+  getDynamicOptionsEntry,
+  type DynamicOption,
+  DYNAMIC_OPTIONS_REGISTRY,
+} from '../registries/dynamic-options-registry'
 
 /**
- * Query registry entry
+ * Hook to fetch dynamic options for a single field.
+ * Returns options array if field has dynamicOptionsKey, otherwise undefined.
  */
-interface QueryRegistryEntry {
-  key: string
-  hook: (enabled: boolean) => {
-    data: any
-    isLoading: boolean
-    error: any
+export function useFieldDynamicOptions(
+  field: ResourceField | undefined
+): { options: DynamicOption[] | undefined; isLoading: boolean } {
+  const key = field?.dynamicOptionsKey
+
+  // Get registry entry (stable reference)
+  const entry = useMemo(() => (key ? getDynamicOptionsEntry(key) : undefined), [key])
+
+  // Call the hook (must be called unconditionally)
+  const result = entry?.useOptions(true) ?? { data: undefined, isLoading: false }
+
+  return {
+    options: result.data,
+    isLoading: result.isLoading,
   }
-  models: ModelType[]
 }
 
 /**
- * Registry of all possible dynamic option queries
- * Maps query keys to their hook calls and applicable models
+ * Hook to enrich fields with dynamic options.
+ * Replaces the old useDynamicFieldOptions hook.
  *
- * To add a new query:
- * 1. Add entry to this registry
- * 2. Define the query in field config's dynamicOptions
- */
-const QUERY_REGISTRY: QueryRegistryEntry[] = [
-  {
-    key: 'contact.getGroups',
-    hook: (enabled: boolean) => api.contact.getGroups.useQuery({}, { enabled }),
-    models: [ModelTypes.CONTACT],
-  },
-  {
-    key: 'user.teamMembers',
-    hook: (enabled: boolean) => api.user.teamMembers.useQuery(undefined, { enabled }),
-    models: [ModelTypes.TICKET, ModelTypes.THREAD],
-  },
-  {
-    key: 'contact.getAll',
-    hook: (enabled: boolean) =>
-      api.contact.getAll.useQuery({ limit: 100, page: 1 }, { enabled }),
-    models: [ModelTypes.TICKET],
-  },
-  {
-    key: 'integration.getIntegrations',
-    hook: (enabled: boolean) => api.integration.getIntegrations.useQuery(undefined, { enabled }),
-    models: [ModelTypes.THREAD],
-  },
-  {
-    key: 'tag.getAll',
-    hook: (enabled: boolean) => api.tag.getAll.useQuery({}, { enabled }),
-    models: [ModelTypes.CONTACT, ModelTypes.TICKET, ModelTypes.THREAD],
-  },
-]
-
-/**
- * Hook to load dynamic options for fields based on configuration
- *
- * This hook:
- * 1. Examines field configs to determine which queries are needed
- * 2. Calls ALL registered queries (following React Rules of Hooks)
- * 3. Only enables queries that are both needed and valid for the model type
- * 4. Maps query results back to fields using the configured mapFn
- * 5. Returns fields enriched with properly structured options
- *
- * @param fields - Array of built-in field definitions
- * @param modelType - The entity model type (CONTACT, TICKET, etc.)
- * @returns Object with enriched fields, loading state, and error state
+ * NOTE: This is a compatibility layer. In the new architecture,
+ * options are loaded per-field in PropertyRow via useFieldDynamicOptions.
  */
 export function useDynamicFieldOptions(
-  fields: BuiltInFieldDefinition[],
-  modelType: ModelType
-) {
-  // Extract required query keys from field configs
-  const requiredQueries = useMemo(() => {
-    return new Set(fields.filter((f) => f.dynamicOptions).map((f) => f.dynamicOptions!.queryKey))
+  fields: ResourceField[],
+  _modelType: string // Ignored - options determined by dynamicOptionsKey
+): { fields: ResourceField[]; isLoading: boolean; error: any } {
+  // Extract unique dynamicOptionsKeys
+  const keys = useMemo(() => {
+    const keySet = new Set<string>()
+    for (const field of fields) {
+      if (field.dynamicOptionsKey) {
+        keySet.add(field.dynamicOptionsKey)
+      }
+    }
+    return Array.from(keySet)
   }, [fields])
 
-  // Call ALL queries from registry (required by Rules of Hooks)
-  // Only enable queries that are both needed AND valid for this model type
-  const queryResults = QUERY_REGISTRY.map(({ key, hook, models }) => {
-    const shouldEnable = models.includes(modelType) && requiredQueries.has(key)
-    const result = hook(shouldEnable)
-
-    return {
-      key,
-      data: result.data,
-      isLoading: result.isLoading,
-      error: result.error,
+  // Call hooks for each key (must be unconditional)
+  // This is a workaround - proper implementation loads per-field
+  const contactGroups =
+    DYNAMIC_OPTIONS_REGISTRY.contactGroups?.useOptions(keys.includes('contactGroups')) ?? {
+      data: undefined,
+      isLoading: false,
     }
-  })
+  const teamMembers =
+    DYNAMIC_OPTIONS_REGISTRY.teamMembers?.useOptions(keys.includes('teamMembers')) ?? {
+      data: undefined,
+      isLoading: false,
+    }
+  const contacts =
+    DYNAMIC_OPTIONS_REGISTRY.contacts?.useOptions(keys.includes('contacts')) ?? {
+      data: undefined,
+      isLoading: false,
+    }
+  const integrations =
+    DYNAMIC_OPTIONS_REGISTRY.integrations?.useOptions(keys.includes('integrations')) ?? {
+      data: undefined,
+      isLoading: false,
+    }
+  const inboxes =
+    DYNAMIC_OPTIONS_REGISTRY.inboxes?.useOptions(keys.includes('inboxes')) ?? {
+      data: undefined,
+      isLoading: false,
+    }
+  const tags =
+    DYNAMIC_OPTIONS_REGISTRY.tags?.useOptions(keys.includes('tags')) ?? {
+      data: undefined,
+      isLoading: false,
+    }
 
-  // Build data map from query results
-  const dataMap = useMemo(() => {
-    const map = new Map<string, any>()
-    queryResults.forEach(({ key, data }) => {
-      if (data) {
-        map.set(key, data)
-      }
-    })
+  // Build options map
+  const optionsMap = useMemo(() => {
+    const map: Record<string, DynamicOption[] | undefined> = {
+      contactGroups: contactGroups?.data,
+      teamMembers: teamMembers?.data,
+      contacts: contacts?.data,
+      integrations: integrations?.data,
+      inboxes: inboxes?.data,
+      tags: tags?.data,
+    }
     return map
-  }, [queryResults])
+  }, [
+    contactGroups?.data,
+    teamMembers?.data,
+    contacts?.data,
+    integrations?.data,
+    inboxes?.data,
+    tags?.data,
+  ])
 
-  // Enrich fields with loaded options
+  // Enrich fields with options
   const enrichedFields = useMemo(() => {
     return fields.map((field) => {
-      // Handle fields with dynamic options
-      if (field.dynamicOptions) {
-        // Get query data for this field
-        const queryData = dataMap.get(field.dynamicOptions.queryKey)
-        if (!queryData) {
-          return field
+      if (field.dynamicOptionsKey) {
+        const options = optionsMap[field.dynamicOptionsKey]
+        if (options) {
+          return {
+            ...field,
+            options: {
+              ...field.options,
+              options: options.map((o) => ({ value: o.value, label: o.label, color: o.color })),
+            },
+          }
         }
-
-        // Apply the field's mapFn to transform query data to options
-        const optionsList = field.dynamicOptions.mapFn(queryData)
-
-        // Return field with properly nested options structure
-        // Components expect: field.options.options
+      }
+      // Wrap static options in nested structure for compatibility
+      if (field.enumValues && !field.options?.options) {
         return {
           ...field,
           options: {
-            options: optionsList,
+            ...field.options,
+            options: field.enumValues.map((e) => ({ value: e.dbValue, label: e.label, color: e.color })),
           },
         }
       }
-
-      // Handle fields with static options - wrap them in the same nested structure
-      if (field.options && Array.isArray(field.options)) {
-        return {
-          ...field,
-          options: {
-            options: field.options,
-          },
-        }
-      }
-
-      // Return field unchanged if no options
       return field
     })
-  }, [fields, dataMap])
+  }, [fields, optionsMap])
 
-  // Aggregate loading and error states
-  const isLoading = queryResults.some((r) => r.isLoading)
-  const error = queryResults.find((r) => r.error)?.error
+  const isLoading = [contactGroups, teamMembers, contacts, integrations, inboxes, tags].some(
+    (r) => r?.isLoading
+  )
 
-  return {
-    fields: enrichedFields,
-    isLoading,
-    error,
-  }
+  return { fields: enrichedFields, isLoading, error: null }
 }

@@ -1,7 +1,7 @@
 // apps/web/src/components/dynamic-table/components/inline-cell-editor.tsx
 'use client'
 
-import { useCallback, useMemo, useRef, useEffect, createContext, useContext } from 'react'
+import { useMemo, useRef, useEffect, createContext, useContext } from 'react'
 import type { CellSelectionConfig } from '../types'
 import {
   PropertyProvider,
@@ -47,25 +47,16 @@ export function InlineCellEditor({
   cellSelectionConfig,
   onClose,
 }: InlineCellEditorProps) {
-  // Get field definition and initial value from config
+  // Get field definition from config
   const field = cellSelectionConfig.getFieldDefinition?.(columnId)
-  const initialValue = cellSelectionConfig.getCellValue?.(rowId, columnId)
 
-  // Get store config for optimistic updates (if available)
+  // Get store config for optimistic updates (required)
   const storeConfig = useMemo<StoreConfig | undefined>(() => {
     return cellSelectionConfig.getStoreConfig?.(rowId)
   }, [cellSelectionConfig, rowId])
 
-  // Create mutation function that PropertyProvider expects (legacy path when no storeConfig)
-  const handleMutate = useCallback(
-    async (rawValue: any) => {
-      await cellSelectionConfig.onCellValueChange?.(rowId, columnId, rawValue)
-    },
-    [rowId, columnId, cellSelectionConfig]
-  )
-
-  if (!field) {
-    // No field definition - can't edit
+  if (!field || !storeConfig) {
+    // No field definition or store config - can't edit
     onClose()
     return null
   }
@@ -74,8 +65,6 @@ export function InlineCellEditor({
     <PropertyProvider
       providerId={`inline-${rowId}-${columnId}`}
       field={field}
-      value={!storeConfig ? initialValue : undefined}
-      mutate={!storeConfig ? handleMutate : undefined}
       loading={false}
       storeConfig={storeConfig}>
       <InlineCellEditorInner onClose={onClose} />

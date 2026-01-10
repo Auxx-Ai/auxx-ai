@@ -7,6 +7,7 @@ export { checkUniqueValueTyped, type CheckUniqueValueTypedInput } from './check-
 export {
   ModelTypes,
   type ModelType,
+  type FieldTypeOption,
   getFieldTypeMinWidth,
   getFieldTypeMaxWidth,
   fieldTypeOptions,

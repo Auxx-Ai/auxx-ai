@@ -1,5 +1,6 @@
 // packages/lib/src/workflow-engine/resources/registry/resources/thread-fields.ts
 
+import { FieldType } from '@auxx/database/enums'
 import { BaseType } from '../../types'
 import type { ResourceField } from '../field-types'
 import { ThreadStatus, ReadStatus, TagOperation } from '../enum-values'
@@ -15,9 +16,14 @@ import { ThreadStatus, ReadStatus, TagOperation } from '../enum-values'
  */
 export const THREAD_FIELDS: Record<string, ResourceField> = {
   id: {
+    id: 'id',
     key: 'id',
     label: 'ID',
     type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemSortOrder: -1,
+    showInPanel: false,
     dbColumn: 'id',
     nullable: false,
     operatorOverrides: ['is', 'is not', 'in', 'not in', 'exists', 'not exists'],
@@ -31,9 +37,13 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
   },
 
   externalId: {
+    id: 'externalId',
     key: 'externalId',
     label: 'External ID',
     type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    showInPanel: false, // Internal field
     dbColumn: 'externalId',
     nullable: true,
     capabilities: {
@@ -50,16 +60,20 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
   // ============================================================================
 
   subject: {
+    id: 'subject',
     key: 'subject',
     label: 'Subject',
     type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemSortOrder: 10,
     dbColumn: 'subject',
     nullable: false,
     capabilities: {
       filterable: true,
       sortable: true,
       creatable: false,
-      updatable: true, // Enable for update - maps to ThreadMutationService.updateThreadSubject
+      updatable: true,
     },
     description: 'Rename the thread subject',
     placeholder: 'Enter new subject',
@@ -69,9 +83,13 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
   // Thread type is now derived from Integration.provider
 
   status: {
+    id: 'status',
     key: 'status',
     label: 'Status',
     type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    isSystem: true,
+    systemSortOrder: 20,
     dbColumn: 'status',
     nullable: false,
     enumValues: ThreadStatus.values,
@@ -79,7 +97,7 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
       filterable: true,
       sortable: true,
       creatable: false,
-      updatable: true, // Enable for update - maps to ThreadMutationService.updateThreadStatus
+      updatable: true,
     },
     defaultValue: 'OPEN',
     description: 'Change thread status (Open, Archive, Spam, Trash)',
@@ -89,9 +107,13 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
   // Use helper function getMessageTypeFromProvider() to get message type
 
   messageCount: {
+    id: 'messageCount',
     key: 'messageCount',
     label: 'Message Count',
     type: BaseType.NUMBER,
+    fieldType: FieldType.NUMBER,
+    isSystem: true,
+    showInPanel: false, // Internal metric
     dbColumn: 'messageCount',
     nullable: true,
     capabilities: {
@@ -104,9 +126,13 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
   },
 
   firstMessageAt: {
+    id: 'firstMessageAt',
     key: 'firstMessageAt',
     label: 'First Message At',
     type: BaseType.DATETIME,
+    fieldType: FieldType.DATETIME,
+    isSystem: true,
+    showInPanel: false, // Internal metric
     dbColumn: 'firstMessageAt',
     nullable: true,
     capabilities: {
@@ -119,9 +145,13 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
   },
 
   lastMessageAt: {
+    id: 'lastMessageAt',
     key: 'lastMessageAt',
-    label: 'Last Message At',
+    label: 'Last Message',
     type: BaseType.DATETIME,
+    fieldType: FieldType.DATETIME,
+    isSystem: true,
+    systemSortOrder: 101,
     dbColumn: 'lastMessageAt',
     nullable: true,
     capabilities: {
@@ -134,9 +164,13 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
   },
 
   closedAt: {
+    id: 'closedAt',
     key: 'closedAt',
     label: 'Closed At',
     type: BaseType.DATETIME,
+    fieldType: FieldType.DATETIME,
+    isSystem: true,
+    showInPanel: false, // Internal timestamp
     dbColumn: 'closedAt',
     nullable: true,
     capabilities: {
@@ -149,9 +183,13 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
   },
 
   createdAt: {
+    id: 'createdAt',
     key: 'createdAt',
-    label: 'Created At',
+    label: 'Created',
     type: BaseType.DATETIME,
+    fieldType: FieldType.DATETIME,
+    isSystem: true,
+    systemSortOrder: 100,
     dbColumn: 'createdAt',
     nullable: false,
     capabilities: {
@@ -164,16 +202,21 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
   },
 
   assignee: {
+    id: 'assignee',
     key: 'assignee',
     label: 'Assignee',
     type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemSortOrder: 40,
+    dynamicOptionsKey: 'teamMembers',
     dbColumn: 'assigneeId',
     nullable: true,
     capabilities: {
       filterable: true,
       sortable: false,
       creatable: false,
-      updatable: true, // Enable for update - maps to ThreadMutationService.assignThread
+      updatable: true,
     },
     relationship: {
       targetTable: 'user',
@@ -186,16 +229,21 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
   },
 
   inbox: {
+    id: 'inbox',
     key: 'inbox',
-    label: 'Move to Inbox',
+    label: 'Inbox',
     type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemSortOrder: 45,
+    dynamicOptionsKey: 'inboxes',
     dbColumn: 'inboxId',
     nullable: true,
     capabilities: {
       filterable: true,
       sortable: false,
       creatable: false,
-      updatable: true, // Enable for update - maps to ThreadMutationService.moveThreadsToInbox
+      updatable: true,
     },
     relationship: {
       targetTable: 'inbox',
@@ -208,9 +256,13 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
   },
 
   messages: {
+    id: 'messages',
     key: 'messages',
     label: 'Messages',
     type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    showInPanel: false, // Relationship reverse-field
     capabilities: {
       filterable: false,
       sortable: false,
@@ -230,49 +282,62 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
   // ============================================================================
 
   readStatus: {
+    id: 'readStatus',
     key: 'readStatus',
     label: 'Read Status',
     type: BaseType.ENUM,
-    dbColumn: undefined, // Virtual - no direct DB column, handled by ThreadReadStatus table
+    fieldType: FieldType.SINGLE_SELECT,
+    isSystem: true,
+    showInPanel: false, // Virtual action field
+    dbColumn: undefined,
     nullable: true,
     enumValues: ReadStatus.values,
     capabilities: {
       filterable: false,
       sortable: false,
       creatable: false,
-      updatable: true, // Virtual but updatable - maps to UnreadService methods
+      updatable: true,
     },
     description: 'Mark thread as read or unread for the current user',
   },
 
   tags: {
+    id: 'tags',
     key: 'tags',
     label: 'Tags',
     type: BaseType.TAGS,
-    dbColumn: undefined, // Junction table - not a direct column
+    fieldType: FieldType.TAGS,
+    isSystem: true,
+    systemSortOrder: 50,
+    dynamicOptionsKey: 'tags',
+    dbColumn: undefined,
     nullable: true,
     capabilities: {
       filterable: false,
       sortable: false,
       creatable: false,
-      updatable: true, // Virtual but updatable - maps to ThreadMutationService.tagThreadsBulk
+      updatable: true,
     },
     description: 'Add, remove, or set tags on thread',
     placeholder: 'Select tags',
   },
 
   tagOperation: {
+    id: 'tagOperation',
     key: 'tagOperation',
     label: 'Tag Operation',
     type: BaseType.ENUM,
-    dbColumn: undefined, // Virtual - used to specify how to apply tags
+    fieldType: FieldType.SINGLE_SELECT,
+    isSystem: true,
+    showInPanel: false, // Internal operation field
+    dbColumn: undefined,
     nullable: true,
     enumValues: TagOperation.values,
     capabilities: {
       filterable: false,
       sortable: false,
       creatable: false,
-      updatable: true, // Virtual - used in conjunction with tags field
+      updatable: true,
     },
     defaultValue: 'add',
     description: 'How to apply tags: add, remove, or replace all',

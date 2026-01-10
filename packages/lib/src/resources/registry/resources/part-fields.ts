@@ -1,5 +1,6 @@
 // packages/lib/src/resources/registry/resources/part-fields.ts
 
+import { FieldType } from '@auxx/database/enums'
 import { BaseType } from '../../types'
 import type { ResourceField } from '../field-types'
 
@@ -8,9 +9,14 @@ import type { ResourceField } from '../field-types'
  */
 export const PART_FIELDS: Record<string, ResourceField> = {
   id: {
+    id: 'id',
     key: 'id',
     label: 'ID',
     type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemSortOrder: -1,
+    showInPanel: false,
     dbColumn: 'id',
     nullable: false,
     isIdentifier: true,
@@ -25,9 +31,13 @@ export const PART_FIELDS: Record<string, ResourceField> = {
   },
 
   title: {
+    id: 'title',
     key: 'title',
     label: 'Title',
     type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemSortOrder: 10,
     dbColumn: 'title',
     nullable: false,
     capabilities: {
@@ -41,9 +51,13 @@ export const PART_FIELDS: Record<string, ResourceField> = {
   },
 
   sku: {
+    id: 'sku',
     key: 'sku',
     label: 'SKU',
     type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemSortOrder: 15,
     dbColumn: 'sku',
     nullable: false,
     isIdentifier: true,
@@ -59,9 +73,13 @@ export const PART_FIELDS: Record<string, ResourceField> = {
   },
 
   description: {
+    id: 'description',
     key: 'description',
     label: 'Description',
     type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemSortOrder: 20,
     dbColumn: 'description',
     nullable: true,
     capabilities: {
@@ -74,9 +92,13 @@ export const PART_FIELDS: Record<string, ResourceField> = {
   },
 
   category: {
+    id: 'category',
     key: 'category',
     label: 'Category',
     type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemSortOrder: 25,
     dbColumn: 'category',
     nullable: true,
     capabilities: {
@@ -89,9 +111,13 @@ export const PART_FIELDS: Record<string, ResourceField> = {
   },
 
   cost: {
+    id: 'cost',
     key: 'cost',
     label: 'Cost',
     type: BaseType.CURRENCY,
+    fieldType: FieldType.CURRENCY,
+    isSystem: true,
+    systemSortOrder: 35,
     dbColumn: 'cost',
     nullable: true,
     capabilities: {
@@ -104,9 +130,13 @@ export const PART_FIELDS: Record<string, ResourceField> = {
   },
 
   hsCode: {
+    id: 'hsCode',
     key: 'hsCode',
     label: 'HS Code',
     type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemSortOrder: 30,
     dbColumn: 'hsCode',
     nullable: true,
     capabilities: {
@@ -120,9 +150,13 @@ export const PART_FIELDS: Record<string, ResourceField> = {
   },
 
   shopifyProductLinkId: {
+    id: 'shopifyProductLinkId',
     key: 'shopifyProductLinkId',
     label: 'Shopify Product',
     type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    showInPanel: false, // Internal linking field
     dbColumn: 'shopifyProductLinkId',
     nullable: true,
     capabilities: {
@@ -135,9 +169,13 @@ export const PART_FIELDS: Record<string, ResourceField> = {
   },
 
   createdAt: {
+    id: 'createdAt',
     key: 'createdAt',
-    label: 'Created At',
+    label: 'Created',
     type: BaseType.DATETIME,
+    fieldType: FieldType.DATETIME,
+    isSystem: true,
+    systemSortOrder: 100,
     dbColumn: 'createdAt',
     nullable: false,
     capabilities: {
@@ -150,9 +188,13 @@ export const PART_FIELDS: Record<string, ResourceField> = {
   },
 
   updatedAt: {
+    id: 'updatedAt',
     key: 'updatedAt',
-    label: 'Updated At',
+    label: 'Updated',
     type: BaseType.DATETIME,
+    fieldType: FieldType.DATETIME,
+    isSystem: true,
+    systemSortOrder: 101,
     dbColumn: 'updatedAt',
     nullable: false,
     capabilities: {
@@ -165,9 +207,13 @@ export const PART_FIELDS: Record<string, ResourceField> = {
   },
 
   createdBy: {
+    id: 'createdBy',
     key: 'createdBy',
     label: 'Created By',
     type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    showInPanel: false, // Internal tracking field
     dbColumn: 'createdById',
     nullable: false,
     capabilities: {

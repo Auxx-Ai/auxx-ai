@@ -52,7 +52,6 @@ export function CustomFieldsList({
 
   // Confirm dialog for delete
   const [confirmDelete, ConfirmDeleteDialog] = useConfirm()
-
   // Use sortedFields for local drag order, fallback to API fields
   const { create, update, fields, isLoading, isPending, destroy } = useCustomField({
     modelType,

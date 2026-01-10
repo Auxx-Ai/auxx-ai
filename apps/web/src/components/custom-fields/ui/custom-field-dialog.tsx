@@ -54,6 +54,7 @@ import {
   FIELD_TYPE_GROUPS,
 } from '@auxx/lib/custom-fields/types'
 import { canFieldBeUnique, type SelectOptionColor } from '@auxx/types/custom-field'
+import { EntityIcon } from '@auxx/ui/components/icons'
 
 import { OptionsEditor } from './options-editor'
 import { AddressComponentsEditor } from './address-component-editor'
@@ -382,7 +383,7 @@ export function CustomFieldDialog({
   const selectedType = form.watch('type')
 
   // Get selected field type option for display
-  const selectedTypeOption = fieldTypeOptions.find((opt) => opt.value === selectedType)
+  const selectedTypeOption = fieldTypeOptions[selectedType]
 
   // Clear default value, reset isUnique, and reset displayOptions when type changes (in create mode only)
   useEffect(() => {
@@ -662,7 +663,13 @@ export function CustomFieldDialog({
                       <DropdownMenuTrigger asChild>
                         <Button variant="outline" className="w-full justify-between">
                           <span className="flex items-center gap-2">
-                            {selectedTypeOption && <selectedTypeOption.icon className="size-4" />}
+                            {selectedTypeOption && (
+                              <EntityIcon
+                                iconId={selectedTypeOption.iconId}
+                                variant="default"
+                                size="default"
+                              />
+                            )}
                             {selectedTypeOption?.label || 'Select type'}
                           </span>
                           <ChevronDown className="size-4 opacity-50" />
@@ -675,16 +682,18 @@ export function CustomFieldDialog({
                               {groupName}
                             </DropdownMenuLabel>
                             {types.map((type) => {
-                              const option = fieldTypeOptions.find((opt) => opt.value === type)
+                              const option = fieldTypeOptions[type]
                               if (!option) return null
                               return (
                                 <DropdownMenuItem
-                                  key={option.value}
-                                  onClick={() => form.setValue('type', option.value)}
+                                  key={type}
+                                  onClick={() => form.setValue('type', type)}
                                   className="flex items-start gap-2 ps-1">
-                                  <div className="rounded-full ring-1 ring-ring bg-secondary flex items-center justify-center size-5">
-                                    <option.icon className="size-3 shrink-0" />
-                                  </div>
+                                  <EntityIcon
+                                    iconId={option.iconId}
+                                    variant="full"
+                                    size="sm"
+                                  />
                                   <span className="font-medium">{option.label}</span>
                                 </DropdownMenuItem>
                               )

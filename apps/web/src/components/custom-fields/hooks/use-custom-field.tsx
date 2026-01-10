@@ -8,10 +8,12 @@ import { api } from '~/trpc/react'
 interface UseCustomFieldProps {
   modelType: ModelType
   entityDefinitionId?: string
+  /** Skip fetching fields (useful when only mutations are needed) */
+  skipFetch?: boolean
 }
 
 /** Hook for managing custom fields */
-export function useCustomField({ modelType, entityDefinitionId }: UseCustomFieldProps) {
+export function useCustomField({ modelType, entityDefinitionId, skipFetch }: UseCustomFieldProps) {
   const utils = api.useUtils()
 
   // API hooks - include entityDefinitionId for custom entities
@@ -19,10 +21,7 @@ export function useCustomField({ modelType, entityDefinitionId }: UseCustomField
     data: fields,
     refetch,
     isLoading,
-  } = api.customField.getAll.useQuery({
-    modelType,
-    entityDefinitionId,
-  })
+  } = api.customField.getAll.useQuery({ modelType, entityDefinitionId }, { enabled: !skipFetch })
 
   /** Invalidate resource definitions cache so workflow nodes get updated fields */
   const invalidateResourceDefinitions = () => {

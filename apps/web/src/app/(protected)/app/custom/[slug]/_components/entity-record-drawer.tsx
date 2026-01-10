@@ -228,8 +228,6 @@ export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
                           entityId={entityInstanceId}
                           entityDefinitionId={entityDefinitionId}
                           preloadedFields={customFields}
-                          createdAt={cachedRecord?.createdAt as string}
-                          updatedAt={cachedRecord?.updatedAt as string}
                           onMutationSuccess={onMutationSuccess}
                           className=""
                         />

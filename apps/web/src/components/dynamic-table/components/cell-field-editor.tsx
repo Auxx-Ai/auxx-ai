@@ -1,7 +1,7 @@
 // apps/web/src/components/dynamic-table/components/cell-field-editor.tsx
 'use client'
 
-import { useCallback, useMemo } from 'react'
+import { useMemo } from 'react'
 import { Popover, PopoverContent } from '@auxx/ui/components/popover'
 import { Popover as PopoverPrimitive } from 'radix-ui'
 import type { CellSelectionConfig } from '../types'
@@ -13,7 +13,7 @@ import {
 import { useFieldPopoverHandlers } from '~/components/fields/use-field-popover-handlers'
 import { getInputComponentForFieldType } from '~/components/fields/inputs/get-input-component'
 import { getFieldTypeMinWidth, getFieldTypeMaxWidth } from '@auxx/lib/custom-fields/types'
-import { FieldType } from '@auxx/database/enums'
+
 interface CellFieldEditorProps {
   rowId: string
   columnId: string
@@ -40,26 +40,16 @@ export function CellFieldEditor({
   onClose,
   anchorRef,
 }: CellFieldEditorProps) {
-  // Get field definition and initial value from config
+  // Get field definition from config
   const field = cellSelectionConfig.getFieldDefinition?.(columnId)
-  const initialValue = cellSelectionConfig.getCellValue?.(rowId, columnId)
 
-  // Get store config for optimistic updates (if available)
+  // Get store config for optimistic updates (required)
   const storeConfig = useMemo<StoreConfig | undefined>(() => {
     return cellSelectionConfig.getStoreConfig?.(rowId)
   }, [cellSelectionConfig, rowId])
 
-  // Create mutation function that PropertyProvider expects (legacy path when no storeConfig)
-  // PropertyProvider now passes raw values directly (no { data: x } wrapping)
-  const handleMutate = useCallback(
-    async (rawValue: any) => {
-      await cellSelectionConfig.onCellValueChange?.(rowId, columnId, rawValue)
-    },
-    [rowId, columnId, cellSelectionConfig]
-  )
-
-  if (!field) {
-    // No field definition - can't edit
+  if (!field || !storeConfig) {
+    // No field definition or store config - can't edit
     onClose()
     return null
   }
@@ -68,8 +58,6 @@ export function CellFieldEditor({
     <PropertyProvider
       providerId={`cell-${rowId}-${columnId}`}
       field={field}
-      value={!storeConfig ? initialValue : undefined}
-      mutate={!storeConfig ? handleMutate : undefined}
       loading={false}
       storeConfig={storeConfig}>
       <CellFieldEditorInner onClose={onClose} anchorRef={anchorRef} />

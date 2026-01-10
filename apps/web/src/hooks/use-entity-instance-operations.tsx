@@ -50,6 +50,7 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
   const { create: createField } = useCustomField({
     modelType: 'entity',
     entityDefinitionId,
+    skipFetch: true,
   })
 
   // ============================================================

@@ -13,6 +13,8 @@ import { useCellSelectionOptional } from '~/components/dynamic-table/context/cel
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
+import type { FieldType } from '@auxx/database/types'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import type { CustomField } from '~/components/dynamic-table/types'
 
 /**
@@ -64,8 +66,8 @@ export const KanbanCardField = memo(function KanbanCardField({
   // Column ID format matches table convention: field_${fieldId}
   const columnId = `field_${field.id}`
 
-  // Get icon for field type
-  const Icon = fieldTypeOptions.find((option) => option.value === field.fieldType)?.icon
+  // Get iconId for field type
+  const iconId = fieldTypeOptions[field.fieldType as FieldType]?.iconId ?? 'circle'
 
   // Handle click to start editing
   const handleClick = useCallback(
@@ -102,7 +104,12 @@ export const KanbanCardField = memo(function KanbanCardField({
       )}
       onClick={handleClick}>
       {/* Field type icon */}
-      {Icon && <Icon className="size-3 text-muted-foreground shrink-0" />}
+      <EntityIcon
+        iconId={iconId}
+        variant="default"
+        size="xs"
+        className="text-muted-foreground"
+      />
 
       {/* Value display or empty placeholder */}
       <div className="truncate flex-1 [&_[data-slot=expandable-cell]]:min-h-6.5 [&_[data-slot=expandable-cell-inner]]:min-h-6.5">

@@ -45,3 +45,12 @@ export type {
   ResourceId,
   CustomResourceId,
 } from './registry'
+
+// Field utility functions (client-safe)
+export {
+  isFieldReadOnly,
+  isSystemField,
+  isComputedField,
+  sortFieldsForDisplay,
+  getDisplayFields,
+} from './registry'

@@ -17,6 +17,9 @@ export const ENTITY_INSTANCE_FIELDS: Record<string, ResourceField> = {
     name: 'Record ID',
     type: BaseType.STRING,
     fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemSortOrder: -1,
+    showInPanel: false, // Never show ID in property panel
     dbColumn: 'id',
     nullable: false,
     operatorOverrides: ['is', 'is not', 'in', 'not in', 'exists', 'not exists'],
@@ -31,10 +34,12 @@ export const ENTITY_INSTANCE_FIELDS: Record<string, ResourceField> = {
   createdAt: {
     id: 'createdAt',
     key: 'createdAt',
-    label: 'Created At',
-    name: 'Created At',
+    label: 'Created',
+    name: 'Created',
     type: BaseType.DATETIME,
     fieldType: FieldType.DATETIME,
+    isSystem: true,
+    systemSortOrder: 100,
     dbColumn: 'createdAt',
     nullable: false,
     capabilities: {
@@ -47,10 +52,12 @@ export const ENTITY_INSTANCE_FIELDS: Record<string, ResourceField> = {
   updatedAt: {
     id: 'updatedAt',
     key: 'updatedAt',
-    label: 'Updated At',
-    name: 'Updated At',
+    label: 'Updated',
+    name: 'Updated',
     type: BaseType.DATETIME,
     fieldType: FieldType.DATETIME,
+    isSystem: true,
+    systemSortOrder: 101,
     dbColumn: 'updatedAt',
     nullable: false,
     capabilities: {

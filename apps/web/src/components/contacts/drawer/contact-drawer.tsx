@@ -92,23 +92,22 @@ export function ContactDrawer({
   }, [activeTab, setActiveTab])
 
   // Try record cache first (populated by batch fetcher when list loads)
-  const { record: cachedContact, isLoading: isCacheLoading } = useRecordWithFetch({
+  const { record: contact, isLoading: isCacheLoading } = useRecordWithFetch({
     resourceType: 'contact',
     id: contactId,
     enabled: !!open && !!contactId,
   })
-  console.log('Cached contact:', cachedContact, 'Loading:', isCacheLoading)
   // Fall back to API if not in cache (for fields not included in batch fetch)
-  const { data: apiContact } = api.contact.getById.useQuery(
-    { id: contactId! },
-    {
-      enabled: !!open && !!contactId && !cachedContact,
-      staleTime: 30_000,
-    }
-  )
+  // const { data: apiContact } = api.contact.getById.useQuery(
+  //   { id: contactId! },
+  //   {
+  //     enabled: !!open && !!contactId && !cachedContact,
+  //     staleTime: 30_000,
+  //   }
+  // )
 
   // Use cached contact if available, otherwise fall back to API response
-  const contact = cachedContact ?? apiContact
+  // const contact = cachedContact
 
   // Memoize the createdAt text to avoid recalculating on every render
   const createdAtText = React.useMemo(

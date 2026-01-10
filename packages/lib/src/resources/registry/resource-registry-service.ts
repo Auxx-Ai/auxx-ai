@@ -624,6 +624,10 @@ export class ResourceRegistryService {
         fieldType: field.type,
         description: field.description ?? undefined,
 
+        // System field properties - custom fields are NOT system fields
+        isSystem: false,
+        showInPanel: true, // Custom fields always shown
+
         // Convenience properties (avoid needing transforms)
         name: field.name,
         sortOrder: field.sortOrder ?? undefined,

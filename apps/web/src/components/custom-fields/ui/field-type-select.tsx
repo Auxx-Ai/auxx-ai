@@ -1,4 +1,4 @@
-// ~/components/contacts/fields/FieldTypeSelect.tsx
+// apps/web/src/components/custom-fields/ui/field-type-select.tsx
 import {
   FormControl,
   FormDescription,
@@ -14,15 +14,17 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
+import type { FieldType } from '@auxx/database/types'
+import { EntityIcon } from '@auxx/ui/components/icons'
 
+/** Props for FieldTypeSelect component */
 interface FieldTypeSelectProps {
   field: any
   disabled?: boolean
 }
+
 /**
- * FieldTypeSelect component  used inside FieldForm component (inside app/settings)
- * @param param0 - Props for the FieldTypeSelect component.
- * @returns
+ * FieldTypeSelect component used inside FieldForm component (inside app/settings)
  */
 export function FieldTypeSelect({ field, disabled = false }: FieldTypeSelectProps) {
   return (
@@ -39,11 +41,16 @@ export function FieldTypeSelect({ field, disabled = false }: FieldTypeSelectProp
           </SelectTrigger>
         </FormControl>
         <SelectContent>
-          {fieldTypeOptions.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
+          {(Object.entries(fieldTypeOptions) as [FieldType, (typeof fieldTypeOptions)[FieldType]][]).map(
+            ([type, option]) => (
+              <SelectItem key={type} value={type}>
+                <span className="flex items-center gap-2">
+                  <EntityIcon iconId={option.iconId} variant="default" size="sm" />
+                  {option.label}
+                </span>
+              </SelectItem>
+            )
+          )}
         </SelectContent>
       </Select>
       <FormDescription>

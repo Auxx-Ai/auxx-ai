@@ -30,6 +30,7 @@ import { Tooltip } from '~/components/global/tooltip'
 import type { ViewConfig } from '../../types'
 import { getColorSwatch } from '@auxx/lib/custom-fields/client'
 import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
+import type { FieldType } from '@auxx/database/types'
 import { cn } from '@auxx/ui/lib/utils'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { useViewStore } from '../../stores/view-store'
@@ -326,9 +327,9 @@ function AddCardFieldStack() {
                 onSelect={() => handleAddField(field.id)}
                 className="ps-0.5 py-0">
                 <EntityIcon
-                  iconId={fieldTypeOptions.find((f) => f.value === field.type)?.iconId ?? 'circle'}
-                  color="purple"
-                  variant="full"
+                  iconId={fieldTypeOptions[field.type as FieldType]?.iconId ?? 'circle'}
+                  variant="default"
+                  size="default"
                 />
                 {field.name}
               </CommandItem>

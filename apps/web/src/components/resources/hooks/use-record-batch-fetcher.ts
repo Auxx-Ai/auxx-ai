@@ -3,18 +3,25 @@
 import { useEffect, useState, useRef, useMemo } from 'react'
 import { api } from '~/trpc/react'
 import { useRecordStore, getRecordStoreState } from '../store/record-store'
+import { hydrateMultipleRecords } from '~/stores/hydrate-field-values'
+import type { Resource } from '@auxx/lib/resources/client'
 
 const BATCH_DELAY = 50
 const EMPTY_ITEMS: Array<{ resourceId: string; id: string }> = []
 
+interface UseRecordBatchFetcherOptions {
+  /** Function to get Resource by ID (from ResourceProvider context) */
+  getResourceById: (id: string) => Resource | undefined
+}
+
 /**
  * Hook that subscribes to record store pending fetches and executes them.
  * Uses existing resource.getByIds endpoint.
- * Should be rendered once in ResourceProvider.
+ * Should be rendered once in ResourceProvider via RecordBatchFetcher component.
  *
- * Pattern: subscribe to pendingFetchIds size → schedule batch → fetch → sync to store
+ * Pattern: subscribe to pendingFetchIds size → schedule batch → fetch → sync to store → hydrate to field value store
  */
-export function useRecordBatchFetcher() {
+export function useRecordBatchFetcher({ getResourceById }: UseRecordBatchFetcherOptions) {
   // Track current batch being fetched: { resourceType, ids }
   const [currentBatch, setCurrentBatch] = useState<{
     resourceType: string
@@ -91,14 +98,24 @@ export function useRecordBatchFetcher() {
       ...item.data,
     }))
 
-    // Sync to store
+    // Sync to record store
     const store = getRecordStoreState()
     store.setRecords(resourceType, records)
     store.completeBatch(resourceType, ids)
 
+    // Hydrate field values into customFieldValueStore
+    // This enables CustomFieldCell to access all field values (system + custom)
+    const resource = getResourceById(resourceType)
+    if (resource) {
+      hydrateMultipleRecords(
+        resource,
+        records.map((r) => ({ id: r.id, data: r as Record<string, unknown> }))
+      )
+    }
+
     // Clear batch to allow next fetch
     setCurrentBatch(null)
-  }, [data, currentBatch])
+  }, [data, currentBatch, getResourceById])
 
   // Handle error
   useEffect(() => {

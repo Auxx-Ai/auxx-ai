@@ -9,10 +9,20 @@ import {
   type StoredFieldValue,
 } from '~/stores/custom-field-value-store'
 import { toastError } from '@auxx/ui/components/toast'
-import { formatToTypedInput, formatToRawValue, isArrayReturnFieldType } from '@auxx/lib/field-values/client'
+import {
+  formatToTypedInput,
+  formatToRawValue,
+  isArrayReturnFieldType,
+} from '@auxx/lib/field-values/client'
 import type { ModelType } from '@auxx/types/custom-field'
-import { useRelationshipSync, extractRelatedIds, type InverseSyncInfo } from './use-relationship-sync'
+import {
+  useRelationshipSync,
+  extractRelatedIds,
+  type InverseSyncInfo,
+} from './use-relationship-sync'
 import { getInverseCardinality, type RelationshipType } from '@auxx/utils'
+
+import { type FieldType } from '@auxx/database/types'
 
 /** Field metadata for relationship sync */
 interface FieldMetadata {
@@ -44,7 +54,14 @@ interface UseSaveFieldValueOptions {
  * Automatically rolls back on error.
  */
 export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
-  const { resourceType, resourceId: defaultResourceId, entityDefId, modelType, onSuccess, getFieldMetadata } = options
+  const {
+    resourceType,
+    resourceId: defaultResourceId,
+    entityDefId,
+    modelType,
+    onSuccess,
+    getFieldMetadata,
+  } = options
 
   // Get store actions
   const setValue = useCustomFieldValueStore((s) => s.setValue)
@@ -65,7 +82,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
    * @param value - The value (TypedFieldValue or raw)
    * @param fieldType - The field type for proper extraction
    */
-  const getRawValue = (value: StoredFieldValue | unknown, fieldType?: string): unknown => {
+  const getRawValue = (value: StoredFieldValue | unknown, fieldType: FieldType): unknown => {
     if (value === null || value === undefined) return null
 
     // If we have fieldType, use the centralized formatter
@@ -87,7 +104,12 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
    * @param fieldType - The field type for proper value extraction
    */
   const saveValue = useCallback(
-    (resourceId: string, fieldId: string, value: StoredFieldValue | unknown, fieldType?: string): void => {
+    (
+      resourceId: string,
+      fieldId: string,
+      value: StoredFieldValue | unknown,
+      fieldType: FieldType
+    ): void => {
       const key = buildValueKey(resourceType, resourceId, fieldId, entityDefId)
 
       // Capture old value for relationship sync rollback
@@ -178,7 +200,10 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
             onSuccess?.()
           },
           onError: (error) => {
-            console.log('[RelSync] Mutation error, rolling back', { key, hasInverseInfo: !!inverseInfo })
+            console.log('[RelSync] Mutation error, rolling back', {
+              key,
+              hasInverseInfo: !!inverseInfo,
+            })
 
             // Rollback primary field
             rollbackOptimistic(key)
@@ -229,7 +254,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
    * @param fieldType - The field type for proper value extraction
    */
   const saveFieldValue = useCallback(
-    (fieldId: string, value: StoredFieldValue | unknown, fieldType?: string): void => {
+    (fieldId: string, value: StoredFieldValue | unknown, fieldType: FieldType): void => {
       if (!defaultResourceId) {
         console.error('saveFieldValue called without resourceId - use saveValue instead')
         return
@@ -248,7 +273,12 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
    * @param fieldType - The field type for proper value extraction
    */
   const saveValueAsync = useCallback(
-    async (resourceId: string, fieldId: string, value: StoredFieldValue | unknown, fieldType?: string): Promise<{ ids: string[] } | undefined> => {
+    async (
+      resourceId: string,
+      fieldId: string,
+      value: StoredFieldValue | unknown,
+      fieldType: FieldType
+    ): Promise<{ ids: string[] } | undefined> => {
       const key = buildValueKey(resourceType, resourceId, fieldId, entityDefId)
 
       // Capture old value for relationship sync rollback
@@ -336,7 +366,10 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
         onSuccess?.()
         return { ids: (result as { ids: string[] })?.ids ?? [] }
       } catch (error: unknown) {
-        console.log('[RelSync] (async) Mutation error, rolling back', { key, hasInverseInfo: !!inverseInfo })
+        console.log('[RelSync] (async) Mutation error, rolling back', {
+          key,
+          hasInverseInfo: !!inverseInfo,
+        })
 
         // Rollback primary field
         rollbackOptimistic(key)
@@ -356,7 +389,8 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
           })
         }
 
-        const errorMessage = error instanceof Error ? error.message : 'Could not save this field value'
+        const errorMessage =
+          error instanceof Error ? error.message : 'Could not save this field value'
         toastError({
           title: 'Error saving field',
           description: errorMessage,
@@ -387,7 +421,11 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
    * @param fieldType - The field type for proper value extraction
    */
   const saveFieldValueAsync = useCallback(
-    async (fieldId: string, value: StoredFieldValue | unknown, fieldType?: string): Promise<{ ids: string[] } | undefined> => {
+    async (
+      fieldId: string,
+      value: StoredFieldValue | unknown,
+      fieldType: FieldType
+    ): Promise<{ ids: string[] } | undefined> => {
       if (!defaultResourceId) {
         console.error('saveFieldValueAsync called without resourceId - use saveValueAsync instead')
         return undefined
@@ -404,7 +442,10 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
    * @param fieldValues - Array of { fieldId, value, fieldType } to save
    */
   const saveMultiple = useCallback(
-    (resourceId: string, fieldValues: Array<{ fieldId: string; value: unknown; fieldType?: string }>): void => {
+    (
+      resourceId: string,
+      fieldValues: Array<{ fieldId: string; value: unknown; fieldType: FieldType }>
+    ): void => {
       // Build keys and apply optimistic updates with TypedFieldValue format
       const keys: string[] = []
       for (const { fieldId, value, fieldType } of fieldValues) {
@@ -465,7 +506,10 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
    * @param fieldValues - Array of { fieldId, value, fieldType } to save
    */
   const saveMultipleAsync = useCallback(
-    async (resourceId: string, fieldValues: Array<{ fieldId: string; value: unknown; fieldType?: string }>): Promise<boolean> => {
+    async (
+      resourceId: string,
+      fieldValues: Array<{ fieldId: string; value: unknown; fieldType: FieldType }>
+    ): Promise<boolean> => {
       // Build keys and apply optimistic updates with TypedFieldValue format
       const keys: string[] = []
       for (const { fieldId, value, fieldType } of fieldValues) {
@@ -523,7 +567,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
    * @param fieldValues - Array of { fieldId, value, fieldType } to save
    */
   const saveMultipleFields = useCallback(
-    (fieldValues: Array<{ fieldId: string; value: unknown; fieldType?: string }>): void => {
+    (fieldValues: Array<{ fieldId: string; value: unknown; fieldType: FieldType }>): void => {
       if (!defaultResourceId) {
         console.error('saveMultipleFields called without resourceId - use saveMultiple instead')
         return
@@ -539,9 +583,13 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
    * @param fieldValues - Array of { fieldId, value, fieldType } to save
    */
   const saveMultipleFieldsAsync = useCallback(
-    async (fieldValues: Array<{ fieldId: string; value: unknown; fieldType?: string }>): Promise<boolean> => {
+    async (
+      fieldValues: Array<{ fieldId: string; value: unknown; fieldType: FieldType }>
+    ): Promise<boolean> => {
       if (!defaultResourceId) {
-        console.error('saveMultipleFieldsAsync called without resourceId - use saveMultipleAsync instead')
+        console.error(
+          'saveMultipleFieldsAsync called without resourceId - use saveMultipleAsync instead'
+        )
         return false
       }
       return saveMultipleAsync(defaultResourceId, fieldValues)
@@ -558,7 +606,12 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
    * @param fieldType - The field type for proper value extraction
    */
   const saveBulkValues = useCallback(
-    (resourceIds: string[], fieldId: string, value: StoredFieldValue | unknown, fieldType?: string): void => {
+    (
+      resourceIds: string[],
+      fieldId: string,
+      value: StoredFieldValue | unknown,
+      fieldType: FieldType
+    ): void => {
       const keys = resourceIds.map((id) => buildValueKey(resourceType, id, fieldId, entityDefId))
 
       // Apply optimistic updates to all with TypedFieldValue format
@@ -613,7 +666,10 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
    * @param fieldValues - Array of { fieldId, value, fieldType } to set for all resources
    */
   const saveBulkMultipleFields = useCallback(
-    (resourceIds: string[], fieldValues: Array<{ fieldId: string; value: unknown; fieldType?: string }>): void => {
+    (
+      resourceIds: string[],
+      fieldValues: Array<{ fieldId: string; value: unknown; fieldType: FieldType }>
+    ): void => {
       // Build all keys and apply optimistic updates with TypedFieldValue format
       const keys: string[] = []
       for (const resourceId of resourceIds) {

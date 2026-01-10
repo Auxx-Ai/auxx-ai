@@ -11,7 +11,7 @@ import {
   DynamicView,
   DynamicTableFooter,
   CustomFieldCell,
-  PrimaryCell,
+  PrimaryFieldCell,
 } from '~/components/dynamic-table'
 import type { ExtendedColumnDef, CellSelectionConfig } from '~/components/dynamic-table'
 import type { StoreConfig } from '~/components/fields/property-provider'
@@ -41,9 +41,6 @@ import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
 import { useCustomFieldValueSyncer } from '~/hooks/use-custom-field-value-syncer'
-import { useSaveFieldValue } from '~/hooks/use-save-field-value'
-import { formatToDisplayValue } from '@auxx/lib/field-values/client'
-import type { TypedFieldValue } from '@auxx/types/field-value'
 import { useCombinedFilters } from '~/components/dynamic-table/hooks/use-combined-filters'
 import { useActiveViewConfig } from '~/components/dynamic-table/stores/view-store'
 import { useRecordList, useResource, type RecordMeta } from '~/components/resources'
@@ -278,28 +275,7 @@ export function EntityRecordsContent() {
   // Note: Store hydration is handled by useCustomFieldValueSyncer
   // which calls batchGetValues and returns properly formatted TypedFieldValue.
   // This eliminates the need for manual row-to-TypedFieldValue conversion here.
-
-  // Field metadata provider for relationship sync
-  const getFieldMetadata = useCallback(
-    (fieldId: string) => {
-      const field = customFields.find((f) => f.id === fieldId)
-      if (!field) return undefined
-      return {
-        fieldType: field.fieldType!,
-        type: field.fieldType!,
-        relationship: field.options?.relationship,
-      }
-    },
-    [customFields]
-  )
-
-  // Cell value saving with optimistic updates
-  const { saveValue } = useSaveFieldValue({
-    resourceType: 'entity',
-    entityDefId: entityDefinitionId!,
-    modelType: 'entity',
-    getFieldMetadata,
-  })
+  // Cell value saving is handled internally by PropertyProvider via storeConfig.
 
   /**
    * Handle opening drawer from primary display cell
@@ -412,11 +388,11 @@ export function EntityRecordsContent() {
       : sortedFields[0] // Fallback to first field
 
     // Create primary display column with integrated actions
-    // Uses getValue from syncer for reactive updates
+    // Uses PrimaryFieldCell for reactive store subscription
     const primaryColumn: ExtendedColumnDef<EntityRow> | null = primaryField
       ? {
           id: `field_${primaryField.id}`,
-          accessorFn: (row) => getValue(row.id, primaryField.id),
+          accessorFn: () => undefined, // Not used - PrimaryFieldCell reads from store
           header: primaryField.name ?? primaryField.label,
           primaryCell: true,
           fieldType: primaryField.fieldType,
@@ -426,41 +402,31 @@ export function EntityRecordsContent() {
           enableHiding: false, // Primary column cannot be hidden
           minSize: 200,
           size: 300,
-          cell: ({ row }) => {
-            const value = getValue(row.original.id, primaryField.id)
-            const displayValue: string | null = (() => {
-              if (value == null) return null
-              // Handle TypedFieldValue from store using centralized formatter
-              if (typeof value === 'object' && 'type' in value) {
-                const formatted = formatToDisplayValue(
-                  value as TypedFieldValue,
-                  primaryField.fieldType!
-                )
-                return typeof formatted === 'string' ? formatted : null
-              }
-              // Handle raw value (fallback)
-              return String(value)
-            })()
-            return (
-              <PrimaryCell value={displayValue} onTitleClick={() => handleOpenDrawer(row.original)}>
-                <DropdownMenuItem onClick={() => handleOpenEditDialog(row.original)}>
-                  <SquarePen />
-                  Edit
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleArchive(row.original.id)}>
-                  <Archive />
-                  Archive
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  variant="destructive"
-                  onClick={() => handleDelete(row.original.id)}>
-                  <Trash2 />
-                  Delete
-                </DropdownMenuItem>
-              </PrimaryCell>
-            )
-          },
+          cell: ({ row }) => (
+            <PrimaryFieldCell
+              resourceType="entity"
+              entityDefId={entityDefinitionId!}
+              rowId={row.original.id}
+              fieldId={primaryField.id}
+              fieldType={primaryField.fieldType!}
+              onTitleClick={() => handleOpenDrawer(row.original)}>
+              <DropdownMenuItem onClick={() => handleOpenEditDialog(row.original)}>
+                <SquarePen />
+                Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleArchive(row.original.id)}>
+                <Archive />
+                Archive
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                variant="destructive"
+                onClick={() => handleDelete(row.original.id)}>
+                <Trash2 />
+                Delete
+              </DropdownMenuItem>
+            </PrimaryFieldCell>
+          ),
         }
       : null
 
@@ -478,7 +444,7 @@ export function EntityRecordsContent() {
     handleOpenEditDialog,
     handleArchive,
     handleDelete,
-    getValue,
+    entityDefinitionId,
   ])
 
   /**
@@ -545,14 +511,8 @@ export function EntityRecordsContent() {
         entityDefId: entityDefinitionId,
         modelType: ModelTypes.ENTITY,
       }),
-      // Legacy path as fallback (can be removed after validation)
-      onCellValueChange: async (rowId: string, columnId: string, value: unknown) => {
-        const fieldId = columnId.replace('field_', '')
-        // saveValue handles optimistic update + background mutation + rollback on error
-        saveValue(rowId, fieldId, value)
-      },
     }),
-    [customFields, getValue, saveValue, entityDefinitionId]
+    [customFields, getValue, entityDefinitionId]
   )
 
   /**
@@ -657,6 +617,7 @@ export function EntityRecordsContent() {
             <DynamicView
               data={items}
               className="h-full flex-1"
+              resourceType={entityDefinitionId}
               tableId={`entity-${entityDefinitionId}`}
               bulkActions={bulkActions}
               enableSearch

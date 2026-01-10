@@ -9,7 +9,6 @@ import {
   useEffect,
   useRef,
 } from 'react'
-import { toastError } from '@auxx/ui/components/toast'
 import {
   useCustomFieldValueStore,
   buildValueKey,
@@ -112,14 +111,13 @@ export interface StoreConfig {
 interface PropertyProviderProps {
   field: any
   value?: any
-  mutate?: (newValue: any) => Promise<any>
   providerId: string
   loading?: boolean
   onOpenChange?: (providerId: string, isOpen: boolean) => void
   registerClose?: (providerId: string, closeFn: () => void) => void
   unregisterClose?: (providerId: string) => void
-  /** Enable store integration for bi-directional sync with table */
-  storeConfig?: StoreConfig
+  /** Store configuration for bi-directional sync with table (required for saving) */
+  storeConfig: StoreConfig
   children: ReactNode
 }
 
@@ -193,7 +191,6 @@ function hasValueChanged(newValue: any, originalVal: any): boolean {
 export function PropertyProvider({
   field,
   value: initialValue,
-  mutate,
   providerId,
   loading = false,
   onOpenChange,
@@ -203,20 +200,14 @@ export function PropertyProvider({
   children,
 }: PropertyProviderProps) {
   // ─── Store Integration ───
-  const useStore = !!storeConfig
-
-  // console.log('USE STORE:', useStore, storeConfig, field)
-
-  // Get value from store if applicable
-  const storeKey = useStore
-    ? buildValueKey(
-        storeConfig!.resourceType,
-        storeConfig!.resourceId,
-        field.id,
-        storeConfig!.entityDefId
-      )
-    : null
-  const storeValue = useCustomFieldValueStore((s) => (storeKey ? s.values[storeKey] : undefined))
+  // Get value from store
+  const storeKey = buildValueKey(
+    storeConfig.resourceType,
+    storeConfig.resourceId,
+    field.id,
+    storeConfig.entityDefId
+  )
+  const storeValue = useCustomFieldValueStore((s) => s.values[storeKey])
 
   // Field metadata provider for relationship sync
   // The field object already contains options.relationship from the registry
@@ -231,23 +222,22 @@ export function PropertyProvider({
     [field]
   )
 
-  // Use store save hook if applicable
+  // Use store save hook
   const {
     saveFieldValue: storeSave,
     saveFieldValueAsync: storeSaveAsync,
-    isPending: storeSaving,
+    isPending: isSaving,
   } = useSaveFieldValue({
-    resourceType: storeConfig?.resourceType ?? 'contact',
-    resourceId: storeConfig?.resourceId,
-    entityDefId: storeConfig?.entityDefId,
-    modelType: storeConfig?.modelType ?? ('contact' as ModelType),
+    resourceType: storeConfig.resourceType,
+    resourceId: storeConfig.resourceId,
+    entityDefId: storeConfig.entityDefId,
+    modelType: storeConfig.modelType,
     getFieldMetadata,
   })
 
-  // Determine the actual initial value: store value takes precedence if using store
-  // For store mode: storeValue is TypedFieldValue - extract raw value for component use
-  // For legacy mode: initialValue may be { data: x } wrapper - extract the raw value
-  const effectiveInitialValue = useStore
+  // Determine the actual initial value: store value takes precedence
+  // storeValue is TypedFieldValue - extract raw value for component use
+  const effectiveInitialValue = storeValue !== undefined
     ? extractRawValue(storeValue, field.fieldType)
     : extractRawValue(initialValue, field.fieldType)
 
@@ -256,39 +246,24 @@ export function PropertyProvider({
   const [serverValue, setServerValue] = useState<any>(effectiveInitialValue)
   const [isOpen, setIsOpen] = useState(false)
   const [isDirty, setIsDirty] = useState(false)
-  const [isSaving, setIsSaving] = useState(false)
   const previousIsOpenRef = useRef(isOpen)
   const isOutsideClick = useRef(false)
 
   // ─── Lifecycle Hooks ───
   const onBeforeClose = useRef<(() => void) | undefined>(undefined)
-  // Deprecated alias
-  // const requestClose = useRef<((e: any) => void) | undefined>(undefined)
 
-  // Sync local state when store value changes (for store-integrated mode)
+  // Sync local state when store value changes
   useEffect(() => {
-    if (useStore && storeValue !== undefined) {
+    if (storeValue !== undefined) {
       // Extract raw value from TypedFieldValue for component use
       const rawValue = extractRawValue(storeValue, field.fieldType)
       setCurrentValue(rawValue)
       setServerValue(rawValue)
       setIsDirty(false)
     }
-  }, [useStore, storeValue, field.fieldType])
-
-  // Sync local state when initialValue changes (legacy mode - e.g., after a refresh or data refetch)
-  useEffect(() => {
-    if (useStore) return // Skip for store-integrated mode
-    const extracted = extractRawValue(initialValue, field.fieldType)
-    setCurrentValue(extracted)
-    setServerValue(extracted)
-    setIsDirty(false)
-  }, [initialValue, useStore, field.fieldType])
+  }, [storeValue, field.fieldType])
 
   // ─── Core Actions ───
-
-  // Effective saving state (combines local and store saving states)
-  const effectiveIsSaving = isSaving || storeSaving
 
   /**
    * Commit value to server. FIRE-AND-FORGET by default.
@@ -296,7 +271,7 @@ export function PropertyProvider({
    */
   const commitValue = useCallback(
     (newValue: any) => {
-      if (effectiveIsSaving) return
+      if (isSaving) return
 
       // Check if value actually changed
       if (!hasValueChanged(newValue, serverValue)) {
@@ -308,34 +283,12 @@ export function PropertyProvider({
       setCurrentValue(newValue)
       setIsDirty(false)
 
-      // 2. Fire mutation in BACKGROUND (no await, no blocking)
-      if (useStore) {
-        // Use store-integrated save (optimistic + background mutation)
-        storeSave(field.id, newValue, field.fieldType)
-        // Store handles the optimistic update, so also update local serverValue
-        setServerValue(newValue)
-      } else if (mutate) {
-        console.warn('LEGACY SAVING')
-        // Legacy: direct mutation - pass raw value directly (no { data: x } wrapping)
-        setIsSaving(true)
-        mutate(newValue)
-          .then(() => {
-            // On success, update server value
-            setServerValue(newValue)
-            setIsSaving(false)
-          })
-          .catch((error: any) => {
-            // On error, roll back to server value
-            setCurrentValue(serverValue)
-            setIsSaving(false)
-            toastError({
-              title: 'Error saving field',
-              description: error.message || 'Could not save this field value',
-            })
-          })
-      }
+      // 2. Fire mutation in BACKGROUND (optimistic + background mutation)
+      storeSave(field.id, newValue, field.fieldType)
+      // Store handles the optimistic update, so also update local serverValue
+      setServerValue(newValue)
     },
-    [effectiveIsSaving, serverValue, useStore, storeSave, field.id, field.fieldType, mutate]
+    [isSaving, serverValue, storeSave, field.id, field.fieldType]
   )
 
   /**
@@ -363,7 +316,7 @@ export function PropertyProvider({
    */
   const commitValueAndClose = useCallback(
     (newValue: any) => {
-      if (effectiveIsSaving) {
+      if (isSaving) {
         setIsOpen(false)
         isOutsideClick.current = false
         return
@@ -382,30 +335,11 @@ export function PropertyProvider({
       setIsOpen(false)
       isOutsideClick.current = false
 
-      // Fire mutation in background
-      if (useStore) {
-        // Use store-integrated save (optimistic + background mutation)
-        storeSave(field.id, newValue, field.fieldType)
-        setServerValue(newValue)
-      } else if (mutate) {
-        // Legacy: direct mutation - pass raw value directly (no { data: x } wrapping)
-        setIsSaving(true)
-        mutate(newValue)
-          .then(() => {
-            setServerValue(newValue)
-            setIsSaving(false)
-          })
-          .catch((error: any) => {
-            setCurrentValue(serverValue)
-            setIsSaving(false)
-            toastError({
-              title: 'Error saving field',
-              description: error.message || 'Could not save this field value',
-            })
-          })
-      }
+      // Fire mutation in background (optimistic + background mutation)
+      storeSave(field.id, newValue, field.fieldType)
+      setServerValue(newValue)
     },
-    [effectiveIsSaving, serverValue, useStore, storeSave, field.id, field.fieldType, mutate]
+    [isSaving, serverValue, storeSave, field.id, field.fieldType]
   )
 
   /**
@@ -414,7 +348,7 @@ export function PropertyProvider({
    */
   const commitValueAsync = useCallback(
     async (newValue: any): Promise<{ id?: string } | undefined> => {
-      if (effectiveIsSaving) return undefined
+      if (isSaving) return undefined
 
       // Check if value actually changed (skip for empty objects used to create initial value)
       const isEmptyObject =
@@ -433,32 +367,11 @@ export function PropertyProvider({
       setIsDirty(false)
 
       // Use async save path
-      if (useStore) {
-        const result = await storeSaveAsync(field.id, newValue, field.fieldType)
-        setServerValue(newValue)
-        return result
-      } else if (mutate) {
-        // Legacy: direct mutation - pass raw value directly (no { data: x } wrapping)
-        setIsSaving(true)
-        try {
-          const result = await mutate(newValue)
-          setServerValue(newValue)
-          setIsSaving(false)
-          return { id: (result as { id?: string })?.id }
-        } catch (error: any) {
-          setCurrentValue(serverValue)
-          setIsSaving(false)
-          toastError({
-            title: 'Error saving field',
-            description: error.message || 'Could not save this field value',
-          })
-          return undefined
-        }
-      }
-
-      return undefined
+      const result = await storeSaveAsync(field.id, newValue, field.fieldType)
+      setServerValue(newValue)
+      return result
     },
-    [effectiveIsSaving, serverValue, useStore, storeSaveAsync, field.id, field.fieldType, mutate]
+    [isSaving, serverValue, storeSaveAsync, field.id, field.fieldType]
   )
 
   /**
@@ -524,7 +437,7 @@ export function PropertyProvider({
     isLoading: loading,
     isDirty,
     isOpen,
-    isSaving: effectiveIsSaving,
+    isSaving,
     isOutsideClick,
     providerId,
     // New methods

@@ -218,9 +218,7 @@ export class ContactService {
 
     const customFieldsResult = await contactDb.getCustomFieldsForContacts(this.organizationId)
     if (customFieldsResult.isErr()) {
-      throw new Error(
-        `Database error fetching custom fields: ${customFieldsResult.error.message}`
-      )
+      throw new Error(`Database error fetching custom fields: ${customFieldsResult.error.message}`)
     }
 
     const customFields = customFieldsResult.value
@@ -237,9 +235,7 @@ export class ContactService {
 
     const valuesResult = await contactDb.getCustomFieldValuesForContacts(contactIds, fieldIds)
     if (valuesResult.isErr()) {
-      throw new Error(
-        `Database error fetching custom field values: ${valuesResult.error.message}`
-      )
+      throw new Error(`Database error fetching custom field values: ${valuesResult.error.message}`)
     }
 
     const valuesByContactId = valuesResult.value.reduce(
@@ -342,9 +338,7 @@ export class ContactService {
   async createContact(input: CreateContactInput): Promise<ContactListItem> {
     const { name, firstName, lastName, email, phone, notes, tags, sourceType, sourceData } = input
     const sourceId =
-      sourceType === 'MANUAL'
-        ? `manual-${uuidv4()}`
-        : input.sourceId || `unknown-${uuidv4()}`
+      sourceType === 'MANUAL' ? `manual-${uuidv4()}` : input.sourceId || `unknown-${uuidv4()}`
 
     const existingResult = await contactDb.findContactByEmail({
       email,
@@ -660,7 +654,7 @@ export class ContactService {
   /**
    * Get all customer groups with optional search filter.
    */
-  async getCustomerGroups(search?: string): Promise<any[]> {
+  async getCustomerGroups(search?: string) {
     const result = await contactDb.getCustomerGroups({
       organizationId: this.organizationId,
       search,
@@ -675,7 +669,7 @@ export class ContactService {
       throw new Error(`Database error fetching customer groups: ${result.error.message}`)
     }
 
-    return result.value
+    return result.unwrapOr([])
   }
 
   /**

@@ -6,6 +6,7 @@ import { ticketBuiltInFields } from './ticket'
 import { conversationBuiltInFields } from './conversation'
 import { partBuiltInFields } from './part'
 import type { BuiltInFieldHandler, BuiltInFieldRegistry } from './types'
+import type { FieldType } from '@auxx/database/types'
 
 /**
  * Master registry of all built-in fields across all models
@@ -42,6 +43,20 @@ export function getBuiltInFieldHandler(
   modelType: ModelType
 ): BuiltInFieldHandler | null {
   return BUILT_IN_FIELDS[modelType]?.[fieldId]?.handler || null
+}
+
+/**
+ * Get the FieldType for a built-in field
+ *
+ * @param fieldId - The field ID
+ * @param modelType - The model type
+ * @returns The field type, or null if not found
+ */
+export function getBuiltInFieldType(
+  fieldId: string,
+  modelType: ModelType
+): FieldType | null {
+  return BUILT_IN_FIELDS[modelType]?.[fieldId]?.type ?? null
 }
 
 // Re-export types

@@ -76,7 +76,6 @@ export function SelectInputField() {
   const nav = useFieldNavigationOptional()
   const utils = api.useUtils()
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  console.log('Render SelectInputField', value)
   // Get configuration based on field type
   const config = getSelectConfig(field?.fieldType || field?.type)
 
@@ -84,7 +83,9 @@ export function SelectInputField() {
   const [localSelected, setLocalSelected] = useState<string[]>(() => {
     const options = field?.options?.options || []
     const optionValues = new Set(options.map((opt: SelectOption) => opt.value))
-    return (value || []).filter((v: string) => optionValues.has(v))
+    // Normalize value to array (SINGLE_SELECT stores string, MULTI_SELECT/TAGS store string[])
+    const valueArray = Array.isArray(value) ? value : value ? [value] : []
+    return valueArray.filter((v: string) => optionValues.has(v))
   })
 
   // Mutation to update field options (only for TAGS)

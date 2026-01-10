@@ -48,14 +48,12 @@ export interface CellSelectionState {
 export interface CellSelectionConfig {
   /** Enable cell selection mode */
   enabled: boolean
-  /** Callback when cell value changes (legacy path) */
-  onCellValueChange?: (rowId: string, columnId: string, value: unknown) => Promise<void>
   /** Get field definition for a column (for FieldInput) */
   getFieldDefinition?: (columnId: string) => any
   /** Get cell value for editing */
   getCellValue?: (rowId: string, columnId: string) => any
-  /** Get store configuration for a row (enables optimistic updates) */
-  getStoreConfig?: (rowId: string) => StoreConfig | undefined
+  /** Get store configuration for a row (required for optimistic updates) */
+  getStoreConfig: (rowId: string) => StoreConfig
 }
 
 /**

@@ -5,9 +5,19 @@
 import { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react'
 import { api } from '~/trpc/react'
 import { getRelationshipStoreState, useRelationshipStore, getRecordStoreState } from '../store'
-import { useRecordBatchFetcher } from '../hooks/use-record-batch-fetcher'
 import type { Resource, CustomResource } from '@auxx/lib/resources/client'
 import { isCustomResource } from '@auxx/lib/resources/client'
+import { useRecordBatchFetcher } from '../hooks/use-record-batch-fetcher'
+
+/**
+ * Component that handles batch fetching of records.
+ * Must be rendered inside ResourceContext to access getResourceById for hydration.
+ */
+function RecordBatchFetcher() {
+  const { getResourceById } = useResourceProvider()
+  useRecordBatchFetcher({ getResourceById })
+  return null
+}
 
 interface ResourceContextValue {
   /** Resources (preloaded, includes embedded entity definitions and fields) */
@@ -41,9 +51,6 @@ const MAX_RELATIONSHIP_BATCH = 100
  * 2. Relationship Items - ResourcePickerItem objects (batch fetched on demand)
  */
 export function ResourceProvider({ children }: { children: React.ReactNode }) {
-  // === RECORD BATCH FETCHING ===
-  // Subscribes to record store and fetches batched records on demand
-  useRecordBatchFetcher()
 
   // === PRELOADED: RESOURCES (with fields embedded) ===
   const resourcesQuery = api.resource.getAllResourceTypes.useQuery(undefined, {
@@ -148,7 +155,12 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
     ]
   )
 
-  return <ResourceContext.Provider value={value}>{children}</ResourceContext.Provider>
+  return (
+    <ResourceContext.Provider value={value}>
+      <RecordBatchFetcher />
+      {children}
+    </ResourceContext.Provider>
+  )
 }
 
 /**

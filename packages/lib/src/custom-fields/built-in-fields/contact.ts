@@ -13,17 +13,17 @@ export const contactBuiltInFields: BuiltInFieldRegistry = {
     type: FieldType.EMAIL,
     handler: async (db, entityId, value, organizationId) => {
       const { ContactService } = await import('../../contacts/contact-service')
-      const service = new ContactService(organizationId, undefined, db)
+      const service = new ContactService(organizationId, undefined)
       await service.updateContact({ id: entityId, email: value })
     },
   },
 
   phone: {
     id: 'phone',
-    type: FieldType.PHONE,
+    type: FieldType.PHONE_INTL,
     handler: async (db, entityId, value, organizationId) => {
       const { ContactService } = await import('../../contacts/contact-service')
-      const service = new ContactService(organizationId, undefined, db)
+      const service = new ContactService(organizationId, undefined)
       await service.updateContact({ id: entityId, phone: value })
     },
   },
@@ -33,7 +33,7 @@ export const contactBuiltInFields: BuiltInFieldRegistry = {
     type: FieldType.SINGLE_SELECT,
     handler: async (db, entityId, value, organizationId) => {
       const { ContactService } = await import('../../contacts/contact-service')
-      const service = new ContactService(organizationId, undefined, db)
+      const service = new ContactService(organizationId, undefined)
       await service.updateContact({ id: entityId, status: value })
     },
   },
@@ -44,7 +44,7 @@ export const contactBuiltInFields: BuiltInFieldRegistry = {
     type: FieldType.NAME,
     handler: async (db, entityId, value, organizationId) => {
       const { ContactService } = await import('../../contacts/contact-service')
-      const service = new ContactService(organizationId, undefined, db)
+      const service = new ContactService(organizationId, undefined)
       await service.updateContact({
         id: entityId,
         firstName: value.firstName,
@@ -61,7 +61,7 @@ export const contactBuiltInFields: BuiltInFieldRegistry = {
       console.log('[customerGroups handler] Called with:', { entityId, value, organizationId })
 
       const { ContactService } = await import('../../contacts/contact-service')
-      const service = new ContactService(organizationId, undefined, db)
+      const service = new ContactService(organizationId, undefined)
 
       // 1. Get current groups
       const contact = await db.query.Contact.findFirst({
@@ -78,15 +78,9 @@ export const contactBuiltInFields: BuiltInFieldRegistry = {
 
       const newGroupIds = Array.isArray(value) ? value : []
 
-      console.log('[customerGroups handler] Current groups:', currentGroupIds)
-      console.log('[customerGroups handler] New groups:', newGroupIds)
-
       // 2. Compute diff
       const toAdd = newGroupIds.filter((id) => !currentGroupIds.includes(id))
       const toRemove = currentGroupIds.filter((id) => !newGroupIds.includes(id))
-
-      console.log('[customerGroups handler] To add:', toAdd)
-      console.log('[customerGroups handler] To remove:', toRemove)
 
       // 3. Apply changes
       for (const groupId of toAdd) {

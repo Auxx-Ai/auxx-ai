@@ -1,23 +1,3 @@
-import {
-  type LucideIcon,
-  Text,
-  Hash,
-  Phone,
-  Mail,
-  Link,
-  Link2,
-  Calendar,
-  CalendarClock,
-  Clock,
-  Check,
-  Tags,
-  MapPin,
-  List,
-  ListChecks,
-  FileText,
-  Upload,
-  DollarSign,
-} from 'lucide-react'
 import { z } from 'zod'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { FieldType } from '@auxx/database/types'
@@ -57,11 +37,9 @@ export const FIELD_TYPE_GROUPS: Record<string, FieldType[]> = {
  * FieldTypeOption interface
  * Describes the metadata associated with each custom field type option
  */
-interface FieldTypeOption {
-  value: FieldType
+export interface FieldTypeOption {
   label: string
-  icon: LucideIcon
-  /** Icon ID for EntityIcon component (from icon-picker/icon-data.ts) */
+  /** Icon ID for EntityIcon component (from ICON_DATA in icons.tsx) */
   iconId: string
   description: string
   minWidth?: number // Optional minimum width for input popover (in pixels)
@@ -126,143 +104,119 @@ export const DataModelOptions: Record<ModelType, DataModelOption> = Object.fromE
 ) as Record<ModelType, DataModelOption>
 /**
  * fieldTypeOptions constant
- * Lists each available custom field type with its iconography and description
+ * Record of available custom field types with their iconography and description
  */
-export const fieldTypeOptions: FieldTypeOption[] = [
-  {
-    value: FieldTypeEnum.TEXT,
+export const fieldTypeOptions: Record<FieldType, FieldTypeOption> = {
+  [FieldTypeEnum.TEXT]: {
     label: 'Text',
-    icon: Text,
     iconId: 'text',
     description: 'Simple text input for short text entries',
   },
-  {
-    value: FieldTypeEnum.NUMBER,
+  [FieldTypeEnum.NAME]: {
+    label: 'Name',
+    iconId: 'user',
+    description: 'First and last name fields',
+  },
+  [FieldTypeEnum.NUMBER]: {
     label: 'Number',
-    icon: Hash,
     iconId: 'hash',
     description: 'Numeric values only',
     minWidth: 120,
     maxWidth: 120,
   },
-  {
-    value: FieldTypeEnum.CURRENCY,
+  [FieldTypeEnum.CURRENCY]: {
     label: 'Currency',
-    icon: DollarSign,
     iconId: 'dollar-sign',
     description: 'Monetary values with currency formatting',
     minWidth: 180,
   },
-  {
-    value: FieldTypeEnum.PHONE_INTL,
+  [FieldTypeEnum.PHONE_INTL]: {
     label: 'Phone Number',
-    icon: Phone,
     iconId: 'phone',
     description: 'Phone number format with country code',
   },
-  {
-    value: FieldTypeEnum.EMAIL,
+  [FieldTypeEnum.EMAIL]: {
     label: 'Email',
-    icon: Mail,
     iconId: 'mail',
     description: 'Email address with validation',
   },
-  {
-    value: FieldTypeEnum.URL,
+  [FieldTypeEnum.URL]: {
     label: 'URL',
-    icon: Link,
     iconId: 'link',
     description: 'Web address with validation',
   },
-  {
-    value: FieldTypeEnum.DATE,
+  [FieldTypeEnum.DATE]: {
     label: 'Date',
-    icon: Calendar,
     iconId: 'calendar',
     description: 'Date picker for selecting dates',
     minWidth: 240,
     maxWidth: 240,
   },
-  {
-    value: FieldTypeEnum.DATETIME,
+  [FieldTypeEnum.DATETIME]: {
     label: 'Date & Time',
-    icon: CalendarClock,
     iconId: 'calendar-clock',
     description: 'Date and time picker',
     minWidth: 240,
     maxWidth: 240,
   },
-  {
-    value: FieldTypeEnum.TIME,
+  [FieldTypeEnum.TIME]: {
     label: 'Time',
-    icon: Clock,
     iconId: 'clock',
     description: 'Time picker for selecting times',
     minWidth: 240,
     maxWidth: 240,
   },
-  {
-    value: FieldTypeEnum.CHECKBOX,
+  [FieldTypeEnum.CHECKBOX]: {
     label: 'Checkbox',
-    icon: Check,
     iconId: 'toggle-left',
     description: 'Simple yes/no or true/false option',
     minWidth: 70,
     maxWidth: 70,
   },
-  {
-    value: FieldTypeEnum.TAGS,
+  [FieldTypeEnum.TAGS]: {
     label: 'Tags',
-    icon: Tags,
     iconId: 'tags',
     description: 'Multiple keyword tags for categorization',
   },
-  {
-    value: FieldTypeEnum.ADDRESS_STRUCT,
+  [FieldTypeEnum.ADDRESS]: {
+    label: 'Address (Simple)',
+    iconId: 'map-pin',
+    description: 'Simple text address field',
+  },
+  [FieldTypeEnum.ADDRESS_STRUCT]: {
     label: 'Address',
-    icon: MapPin,
     iconId: 'map-pin',
     description: 'Separate fields for address components',
     minWidth: 350,
     maxWidth: 350,
   },
-  {
-    value: FieldTypeEnum.SINGLE_SELECT,
+  [FieldTypeEnum.SINGLE_SELECT]: {
     label: 'Select',
-    icon: List,
     iconId: 'list',
     description: 'Choose one option from a list',
   },
-  {
-    value: FieldTypeEnum.MULTI_SELECT,
+  [FieldTypeEnum.MULTI_SELECT]: {
     label: 'Multi-Select',
-    icon: ListChecks,
     iconId: 'list-checks',
     description: 'Choose multiple options from a list',
   },
-  {
-    value: FieldTypeEnum.RICH_TEXT,
+  [FieldTypeEnum.RICH_TEXT]: {
     label: 'Rich Text Editor',
-    icon: FileText,
     iconId: 'file-text',
     description: 'Formatted text with styling options',
   },
-  {
-    value: FieldTypeEnum.FILE,
+  [FieldTypeEnum.FILE]: {
     label: 'File Upload',
-    icon: Upload,
     iconId: 'upload',
     description: 'Attach files or documents',
   },
-  {
-    value: FieldTypeEnum.RELATIONSHIP,
+  [FieldTypeEnum.RELATIONSHIP]: {
     label: 'Relationship',
-    icon: Link2,
     iconId: 'link-2',
     description: 'Link to another entity (contact, company, or custom entity)',
     minWidth: 320,
   },
-]
+}
 /**
  * Record of default empty values for each FieldType
  */
@@ -400,8 +354,7 @@ const DEFAULT_FIELD_MIN_WIDTH = 200
  * Get the minimum width for a field type's input popover
  */
 export function getFieldTypeMinWidth(fieldType: FieldType): number {
-  const option = fieldTypeOptions.find((opt) => opt.value === fieldType)
-  return option?.minWidth ?? DEFAULT_FIELD_MIN_WIDTH
+  return fieldTypeOptions[fieldType]?.minWidth ?? DEFAULT_FIELD_MIN_WIDTH
 }
 
 /**
@@ -409,6 +362,5 @@ export function getFieldTypeMinWidth(fieldType: FieldType): number {
  * Returns undefined if no max width is set (allows popover to grow)
  */
 export function getFieldTypeMaxWidth(fieldType: FieldType): number | undefined {
-  const option = fieldTypeOptions.find((opt) => opt.value === fieldType)
-  return option?.maxWidth
+  return fieldTypeOptions[fieldType]?.maxWidth
 }
