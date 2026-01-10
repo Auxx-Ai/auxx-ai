@@ -17,9 +17,17 @@ import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { getFieldOperators, BaseType } from '@auxx/lib/workflow-engine/client'
 import type { ResourceField } from '@auxx/lib/resources/client'
 import { Tooltip } from '~/components/global/tooltip'
+import { generateId } from '@auxx/utils/generateId'
 
 /** Stable empty array to avoid re-renders */
 const EMPTY_CONDITIONS: Condition[] = []
+
+/** Creates an empty filter group for initial state */
+const createEmptyGroup = (): ConditionGroup => ({
+  id: generateId(),
+  conditions: [],
+  logicalOperator: 'OR',
+})
 
 interface TableFilterBuilderProps {
   /** Current filter groups */
@@ -32,8 +40,6 @@ interface TableFilterBuilderProps {
   resourceType: string
   /** Disabled state */
   disabled?: boolean
-  /** Whether a view is currently selected (filters require a view to persist) */
-  hasActiveView?: boolean
 }
 
 /**
@@ -48,10 +54,8 @@ export function TableFilterBuilder({
   filterableFields,
   resourceType,
   disabled = false,
-  hasActiveView = true,
 }: TableFilterBuilderProps) {
   const [isOpen, setIsOpen] = useState(false)
-  const isDisabled = disabled || !hasActiveView
 
   // ═══════════════════════════════════════════════════════════════════════════
   // BUFFERED STATE PATTERN
@@ -64,12 +68,14 @@ export function TableFilterBuilder({
   const handleOpenChange = useCallback(
     (open: boolean) => {
       if (open) {
-        // Opening: copy current filters to draft
-        setDraftFilters(filters)
+        // Opening: copy current filters to draft, ensuring at least one group
+        const initialFilters = filters.length > 0 ? filters : [createEmptyGroup()]
+        setDraftFilters(initialFilters)
         isDraftInitialized.current = true
       } else if (isDraftInitialized.current) {
-        // Closing: commit draft to parent (triggers save)
-        onFiltersChange(draftFilters)
+        // Closing: commit draft to parent, filtering out empty groups
+        const nonEmptyGroups = draftFilters.filter((g) => g.conditions.length > 0)
+        onFiltersChange(nonEmptyGroups)
         isDraftInitialized.current = false
       }
       setIsOpen(open)
@@ -134,26 +140,12 @@ export function TableFilterBuilder({
     setIsOpen(false)
   }, [onFiltersChange])
 
-  // When no view is selected, show disabled button with tooltip
-  if (!hasActiveView) {
-    return (
-      <Tooltip content="Select or create a view to use filters">
-        <div>
-          <Button variant="ghost" size="sm" disabled>
-            <Filter />
-            <span className="hidden @lg/controls:block">Filter</span>
-          </Button>
-        </div>
-      </Tooltip>
-    )
-  }
-
   return (
     <Popover open={isOpen} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <div>
           <Tooltip content="Filter rows">
-            <Button variant="ghost" size="sm" disabled={isDisabled}>
+            <Button variant="ghost" size="sm" disabled={disabled}>
               <Filter />
               <span className="hidden @lg/controls:block">Filter</span>
               {hasFilters && (
@@ -174,7 +166,7 @@ export function TableFilterBuilder({
             conditions={EMPTY_CONDITIONS}
             groups={draftFilters}
             config={config}
-            readOnly={isDisabled}
+            readOnly={disabled}
             onConditionsChange={() => {}}
             onGroupsChange={handleDraftChange}
             getAvailableFields={() => fieldDefinitions}

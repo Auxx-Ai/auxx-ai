@@ -3,9 +3,9 @@
 'use client'
 
 import Link from 'next/link'
-import { Upload, RefreshCw } from 'lucide-react'
+import { Upload, RefreshCw, Save } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { ViewSelector } from './view-selector'
 import { TableFilterBuilder } from './table-filter-builder'
 import { ColumnManager } from './column-manager'
@@ -60,6 +60,16 @@ export function TableToolbar<TData = any>({ children, className }: TableToolbarP
   // Determine view type
   const viewType: ViewType = (currentView?.config as ViewConfig)?.viewType ?? 'table'
   const isKanbanView = viewType === 'kanban'
+
+  // Check if current filters differ from the active view's saved filters
+  const hasUnsavedFilters = useMemo(() => {
+    const viewFilters = (currentView?.config as ViewConfig)?.filters ?? []
+    return JSON.stringify(filters) !== JSON.stringify(viewFilters)
+  }, [filters, currentView?.config])
+
+  // State for controlling create view dialog from "Save as new view" button
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+
   // Local search state for immediate UI feedback
   const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery)
   const debouncedSearchQuery = useDebounce(localSearchQuery, 300)
@@ -93,6 +103,9 @@ export function TableToolbar<TData = any>({ children, className }: TableToolbarP
         selectFields={selectFields}
         modelType={modelType}
         entityDefinitionId={entityDefinitionId}
+        currentFilters={filters}
+        openCreateDialog={isCreateDialogOpen}
+        onCreateDialogChange={setIsCreateDialogOpen}
       />
 
       {/* Filter Button - only shown when resourceType is available */}
@@ -102,8 +115,15 @@ export function TableToolbar<TData = any>({ children, className }: TableToolbarP
           onFiltersChange={setFilters}
           filterableFields={filterableFields}
           resourceType={resourceType}
-          hasActiveView={!!currentView}
         />
+      )}
+
+      {/* Save as new view button - shown when filters differ from active view */}
+      {hasUnsavedFilters && filters.length > 0 && (
+        <Button variant="outline" size="sm" onClick={() => setIsCreateDialogOpen(true)}>
+          <Save className="size-3" />
+          <span className="hidden @lg/controls:block">Save as new view</span>
+        </Button>
       )}
 
       {/* Columns/Settings Button - different component for kanban vs table */}

@@ -40,8 +40,16 @@ export function useViewStorePersistence(viewId: string | null, tableId: string) 
     const mergedConfig = getMergedConfig(viewId)
     if (!mergedConfig) return
 
+    // Get the original saved filters to preserve them (don't overwrite with session filters)
+    // Session filters live in pending config but should NOT be persisted to DB
+    const savedFilters = useViewStore.getState().savedConfigs[viewId]?.filters ?? []
+
+    // Build config to save: use merged config but preserve original saved filters
+    const { filters: _sessionFilters, ...restConfig } = mergedConfig
+    const configToSave = { ...restConfig, filters: savedFilters }
+
     // Serialize to check if actually changed
-    const serialized = JSON.stringify(mergedConfig)
+    const serialized = JSON.stringify(configToSave)
     if (serialized === lastSavedRef.current) return
 
     startSaving(viewId)
@@ -49,7 +57,7 @@ export function useViewStorePersistence(viewId: string | null, tableId: string) 
     try {
       const result = await updateMutation.mutateAsync({
         id: viewId,
-        config: mergedConfig,
+        config: configToSave,
       })
 
       confirmSave(viewId, result.config)

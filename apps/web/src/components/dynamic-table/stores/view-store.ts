@@ -6,6 +6,7 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { deepMerge } from '@auxx/utils'
 import type { TableView, ViewConfig, KanbanViewConfig } from '../types'
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
 
 interface ViewStoreState {
   // ═══════════════════════════════════════════════════════════════════════════
@@ -36,6 +37,9 @@ interface ViewStoreState {
   /** Last error */
   error: Error | null
 
+  /** Session filters per tableId (for filtering without a view) */
+  sessionFilters: Record<string, ConditionGroup[]>
+
   // ═══════════════════════════════════════════════════════════════════════════
   // INITIALIZATION
   // ═══════════════════════════════════════════════════════════════════════════
@@ -61,6 +65,12 @@ interface ViewStoreState {
 
   /** Get active view ID for a table */
   getActiveViewId: (tableId: string) => string | null
+
+  /** Set session filters for a table (used when no view is selected) */
+  setSessionFilters: (tableId: string, filters: ConditionGroup[]) => void
+
+  /** Get session filters for a table */
+  getSessionFilters: (tableId: string) => ConditionGroup[]
 
   // ═══════════════════════════════════════════════════════════════════════════
   // CONFIG UPDATES (OPTIMISTIC)
@@ -142,6 +152,7 @@ export const useViewStore = create<ViewStoreState>()(
     savingViewIds: new Set(),
     initialized: false,
     error: null,
+    sessionFilters: {},
 
     // ─── INITIALIZATION ────────────────────────────────────────────────────────
     setAllViews: (views) => {
@@ -184,6 +195,14 @@ export const useViewStore = create<ViewStoreState>()(
     },
 
     getActiveViewId: (tableId) => get().activeViewIds[tableId] ?? null,
+
+    setSessionFilters: (tableId, filters) => {
+      set((state) => ({
+        sessionFilters: { ...state.sessionFilters, [tableId]: filters },
+      }))
+    },
+
+    getSessionFilters: (tableId) => get().sessionFilters[tableId] ?? [],
 
     // ─── CONFIG UPDATES ────────────────────────────────────────────────────────
     updateViewConfig: (viewId, changes) => {
@@ -370,6 +389,7 @@ export const useViewStore = create<ViewStoreState>()(
         savingViewIds: new Set(),
         initialized: false,
         error: null,
+        sessionFilters: {},
       })
     },
   }))
@@ -403,17 +423,31 @@ export function useActiveViewConfig(tableId: string): ViewConfig | null {
   const viewId = useViewStore((state) => state.activeViewIds[tableId] ?? null)
   const savedConfig = useViewStore((state) => (viewId ? state.savedConfigs[viewId] : null))
   const pendingConfig = useViewStore((state) => (viewId ? state.pendingConfigs[viewId] : null))
+  const sessionFilters = useViewStore((state) => state.sessionFilters[tableId] ?? null)
 
   // Memoize the merged result - only recompute when saved/pending actually changes
   return useMemo(() => {
-    if (!viewId || !savedConfig) return null
+    // If no view is selected, return a minimal config with just session filters
+    if (!viewId) {
+      if (!sessionFilters || sessionFilters.length === 0) return null
+      return {
+        filters: sessionFilters,
+        sorting: [],
+        columnVisibility: {},
+        columnOrder: [],
+        columnSizing: {},
+        viewType: 'table' as const,
+      }
+    }
+
+    if (!savedConfig) return null
     if (!pendingConfig) return savedConfig
 
     return deepMerge(
       savedConfig as Record<string, unknown>,
       pendingConfig as Record<string, unknown>
     ) as ViewConfig
-  }, [viewId, savedConfig, pendingConfig])
+  }, [viewId, savedConfig, pendingConfig, sessionFilters])
 }
 
 /** Get kanban config for active view */

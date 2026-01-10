@@ -58,8 +58,8 @@ function SelectScrollUpButton({
   return (
     <SelectPrimitive.ScrollUpButton
       className={cn(
-        'flex cursor-default items-center justify-center py-1 absolute top-0 w-full bg-background/20 z-10',
-        'mask-b-from-50% bg-white',
+        'flex cursor-default items-center justify-center py-1 absolute top-0 w-full  z-10',
+        'mask-b-from-50% bg-background',
         'animate-in fade-in duration-300',
         className
       )}
@@ -78,7 +78,7 @@ function SelectScrollDownButton({
     <SelectPrimitive.ScrollDownButton
       className={cn(
         'flex cursor-default items-center justify-center py-1 absolute bottom-0 w-full z-10',
-        'mask-t-from-50% bg-white',
+        'mask-t-from-50% bg-background',
         'animate-in fade-in duration-300',
         className
       )}

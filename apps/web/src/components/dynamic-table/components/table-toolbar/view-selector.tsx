@@ -62,6 +62,7 @@ import { incrementTitle } from '@auxx/utils'
 import { Tooltip } from '~/components/global/tooltip'
 import type { ModelType } from '@auxx/types/custom-field'
 import { useViewStore } from '../../stores/view-store'
+import { useConfirm } from '~/hooks/use-confirm'
 
 /** Select field for kanban grouping */
 interface SelectField {
@@ -85,6 +86,12 @@ interface ViewSelectorProps {
   modelType?: ModelType
   /** Entity definition ID - required only when modelType is 'entity' */
   entityDefinitionId?: string
+  /** Current filters to pre-populate when creating a new view */
+  currentFilters?: ViewConfig['filters']
+  /** External control to open the create dialog */
+  openCreateDialog?: boolean
+  /** Callback when create dialog open state changes */
+  onCreateDialogChange?: (open: boolean) => void
 }
 
 /**
@@ -102,9 +109,20 @@ export function ViewSelector({
   selectFields,
   modelType,
   entityDefinitionId,
+  currentFilters,
+  openCreateDialog,
+  onCreateDialogChange,
 }: ViewSelectorProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [confirmDelete, ConfirmDeleteDialog] = useConfirm()
+
+  // Sync external control with internal state
+  const isCreateDialogOpen = openCreateDialog ?? showCreateDialog
+  const handleCreateDialogChange = (open: boolean) => {
+    setShowCreateDialog(open)
+    onCreateDialogChange?.(open)
+  }
   const [showRenameDialog, setShowRenameDialog] = useState(false)
   const [newViewName, setNewViewName] = useState('')
   const [open, setOpen] = useState(false)
@@ -126,7 +144,7 @@ export function ViewSelector({
   const createView = api.tableView.create.useMutation({
     onSuccess: (newView) => {
       toastSuccess({ title: 'View created successfully' })
-      setShowCreateDialog(false)
+      handleCreateDialogChange(false)
       setNewViewName('')
       // Add to store immediately
       addViewToStore(newView as TableView)
@@ -214,7 +232,14 @@ export function ViewSelector({
         break
 
       case 'delete':
-        if (confirm(`Are you sure you want to delete "${view.name}"?`)) {
+        const confirmed = await confirmDelete({
+          title: 'Delete View',
+          description: `Are you sure you want to delete "${view.name}"? This action cannot be undone.`,
+          confirmText: 'Delete',
+          cancelText: 'Cancel',
+          destructive: true,
+        })
+        if (confirmed) {
           await deleteView.mutateAsync({ id: viewId })
         }
         break
@@ -235,7 +260,7 @@ export function ViewSelector({
     const viewName = newViewName.trim() || incrementTitle(baseTitle, existingNames)
 
     const config: ViewConfig = {
-      filters: [],
+      filters: currentFilters ?? [],
       sorting: [],
       columnVisibility: {},
       columnOrder: [],
@@ -387,7 +412,7 @@ export function ViewSelector({
                 <CommandGroup>
                   <CommandItem
                     onSelect={() => {
-                      setShowCreateDialog(true)
+                      handleCreateDialogChange(true)
                       setOpen(false)
                     }}>
                     <Plus />
@@ -461,7 +486,7 @@ export function ViewSelector({
       </div>
 
       {/* Create view dialog */}
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+      <Dialog open={isCreateDialogOpen} onOpenChange={handleCreateDialogChange}>
         <DialogContent size="sm" position="tc">
           <DialogHeader>
             <DialogTitle>Create New View</DialogTitle>
@@ -578,7 +603,7 @@ export function ViewSelector({
           </div>
 
           <DialogFooter>
-            <Button size="sm" variant="ghost" onClick={() => setShowCreateDialog(false)}>
+            <Button size="sm" variant="ghost" onClick={() => handleCreateDialogChange(false)}>
               Cancel
             </Button>
             <Button
@@ -634,6 +659,8 @@ export function ViewSelector({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDeleteDialog />
     </>
   )
 }

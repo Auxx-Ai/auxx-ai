@@ -255,7 +255,7 @@ export const resourceRouter = createTRPCRouter({
       const snapshotId = input.cursor?.snapshotId
       const offset = input.cursor?.offset ?? 0
 
-      // If snapshotId provided via cursor, fetch chunk from cache
+      // If snapshotId provided via cursor, try to fetch chunk from cache
       if (snapshotId) {
         const chunk = await getSnapshotChunk({
           snapshotId,
@@ -263,19 +263,16 @@ export const resourceRouter = createTRPCRouter({
           limit: input.limit,
         })
 
-        if (!chunk) {
-          throw new TRPCError({
-            code: 'NOT_FOUND',
-            message: 'Filter snapshot expired, please refresh',
-          })
+        if (chunk) {
+          return {
+            snapshotId,
+            ids: chunk.ids,
+            total: chunk.total,
+            hasMore: offset + chunk.ids.length < chunk.total,
+          }
         }
-
-        return {
-          snapshotId,
-          ids: chunk.ids,
-          total: chunk.total,
-          hasMore: offset + chunk.ids.length < chunk.total,
-        }
+        // Snapshot expired - fall through to create a new one
+        // Note: We'll start from offset 0 since this is a fresh snapshot
       }
 
       // No snapshotId - create new snapshot

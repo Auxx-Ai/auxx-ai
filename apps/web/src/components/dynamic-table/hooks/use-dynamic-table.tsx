@@ -65,6 +65,7 @@ export function useDynamicTable<TData extends Record<string, any>>({
   const isSaving = useViewStore((state) => state.isSaving)
   const resetToSaved = useViewStore((state) => state.resetToSaved)
   const setActiveViewInStore = useViewStore((state) => state.setActiveView)
+  const setSessionFilters = useViewStore((state) => state.setSessionFilters)
 
   const currentView = useMemo(() => {
     if (!urlState.v) {
@@ -212,19 +213,26 @@ export function useDynamicTable<TData extends Record<string, any>>({
 
   useEffect(() => {
     const viewId = currentView?.id ?? null
-    if (!viewId) {
-      lastAppliedViewIdRef.current = null
-      return
-    }
 
+    // Skip if same view (no change)
     if (lastAppliedViewIdRef.current === viewId) {
       return
     }
 
+    // Switching to "All rows" (no view) - reset filters to empty
+    if (!viewId) {
+      lastAppliedViewIdRef.current = null
+      setLocalFilters([])
+      return
+    }
+
+    // Switching to a view - apply its config including filters
+    // Also clear session filters since we're now using view filters
     const nextConfig = normalizeViewConfig(currentView.config)
     applyViewConfig(nextConfig)
+    setSessionFilters(tableId, [])
     lastAppliedViewIdRef.current = viewId
-  }, [applyViewConfig, currentView])
+  }, [applyViewConfig, currentView, tableId, setSessionFilters])
 
   const checkboxColumn: ColumnDef<TData> = useMemo(
     () => ({
@@ -356,6 +364,8 @@ export function useDynamicTable<TData extends Record<string, any>>({
 
   // Sync table config changes to store (for table-level config, not kanban)
   // Skip initial mount to avoid triggering save on page load
+  // Note: Filters are synced to pending config for useActiveViewConfig,
+  // but excluded from DB save by the persistence hook
   useEffect(() => {
     if (!currentView?.id) {
       hasMountedRef.current = false
@@ -375,6 +385,8 @@ export function useDynamicTable<TData extends Record<string, any>>({
     if (serialized === lastSyncedConfigRef.current) return
 
     // Update store with table config changes (preserves kanban config via deepMerge)
+    // Filters are included here for useActiveViewConfig to work,
+    // but the persistence hook will exclude them from DB save
     updateViewConfig(currentView.id, {
       sorting: currentTableConfig.sorting,
       columnVisibility: currentTableConfig.columnVisibility,
@@ -388,6 +400,16 @@ export function useDynamicTable<TData extends Record<string, any>>({
 
     lastSyncedConfigRef.current = serialized
   }, [currentView?.id, currentTableConfig, updateViewConfig])
+
+  // Sync session filters to store when no view is selected
+  // This enables filtering without a view
+  useEffect(() => {
+    // Only sync when NO view is selected
+    if (currentView?.id) return
+
+    // Sync filters to sessionFilters store
+    setSessionFilters(tableId, localFilters)
+  }, [currentView?.id, tableId, localFilters, setSessionFilters])
 
   // Compute dirty/saving state from store
   const hasUnsavedViewChanges = currentView?.id ? hasUnsavedChanges(currentView.id) : false
