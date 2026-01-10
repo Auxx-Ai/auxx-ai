@@ -6,13 +6,18 @@ import { usePropertyContext } from '../property-provider'
 import { useFieldNavigationOptional } from '../field-navigation-context'
 import { api } from '~/trpc/react'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { Button } from '@auxx/ui/components/button'
+import { ChevronDown, X } from 'lucide-react'
+import { cn } from '@auxx/ui/lib/utils'
+import { TagsView } from '~/components/ui/tags-view'
 import { FieldType } from '@auxx/database/enums'
 import type { SelectOption } from '@auxx/types/custom-field'
 
 /**
  * Configuration for select-type fields based on field type
  */
-interface SelectConfig {
+export interface SelectConfig {
   multi: boolean
   canManage: boolean
   canAdd: boolean
@@ -24,7 +29,7 @@ interface SelectConfig {
 /**
  * Get configuration for select-type fields based on field type
  */
-function getSelectConfig(fieldType: string): SelectConfig {
+export function getSelectConfig(fieldType: string): SelectConfig {
   switch (fieldType) {
     case FieldType.SINGLE_SELECT:
       return {
@@ -71,7 +76,7 @@ export function SelectInputField() {
   const nav = useFieldNavigationOptional()
   const utils = api.useUtils()
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-
+  console.log('Render SelectInputField', value)
   // Get configuration based on field type
   const config = getSelectConfig(field?.fieldType || field?.type)
 
@@ -189,3 +194,132 @@ export function SelectInputField() {
 
 /** @deprecated Use SelectInputField instead */
 export { SelectInputField as TagsInputField }
+
+// ─────────────────────────────────────────────────────────────────
+// SelectFieldInput - Standalone input (used by FieldInputAdapter)
+// ─────────────────────────────────────────────────────────────────
+
+/**
+ * Props for SelectFieldInput (standalone usage)
+ */
+export interface SelectFieldInputProps {
+  /** Available options */
+  options: SelectOption[]
+  /** Current value - always string[] */
+  value: string[]
+  /** Change handler */
+  onChange: (selected: unknown) => void
+  /** Configuration from getSelectConfig() */
+  config: SelectConfig
+  /** Callback when options change (for TAGS management) */
+  onOptionsChange?: (options: SelectOption[]) => void
+  /** Placeholder text */
+  placeholder?: string
+  /** Disabled state */
+  disabled?: boolean
+  /** Additional className */
+  className?: string
+}
+
+/**
+ * SelectFieldInput
+ * Standalone input for SINGLE_SELECT, MULTI_SELECT, and TAGS.
+ * Uses TagsView for display, MultiSelectPicker for selection.
+ */
+export function SelectFieldInput({
+  options = [],
+  value,
+  onChange,
+  config,
+  onOptionsChange,
+  placeholder,
+  disabled = false,
+  className,
+}: SelectFieldInputProps) {
+  const [open, setOpen] = useState(false)
+
+  /**
+   * Handle selection changes from picker
+   */
+  const handleChange = useCallback(
+    (selected: string[]) => {
+      onChange(selected)
+    },
+    [onChange]
+  )
+
+  /**
+   * Handle single-select completion (close popover)
+   */
+  const handleSelectSingle = useCallback(
+    (_value: string) => {
+      if (config.closeOnSelect) {
+        setOpen(false)
+      }
+    },
+    [config.closeOnSelect]
+  )
+
+  /**
+   * Clear all selections
+   */
+  const handleClearAll = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation()
+      onChange([])
+    },
+    [onChange]
+  )
+
+  const hasValue = value.length > 0
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="transparent"
+          role="combobox"
+          aria-expanded={open}
+          disabled={disabled}
+          className={cn(
+            'w-full justify-between font-normal min-h-9 ps-0 pe-1',
+            // !hasValue && 'text-muted-foreground',
+            className
+          )}>
+          {hasValue ? (
+            <TagsView value={value} options={options} className="flex-1" />
+          ) : (
+            <span className="text-primary-400 text-sm font-normal pointer-events-none">
+              {placeholder ?? config.placeholder}
+            </span>
+          )}
+          <div className="flex items-center gap-1 ml-2 shrink-0">
+            {hasValue && config.multi && (
+              <div
+                className="size-4 flex items-center justify-center rounded-full bg-primary-500/30 text-primary-100 transition-colors hover:bg-bad-100 hover:text-bad-500"
+                onClick={handleClearAll}>
+                <X className="size-3!" />
+              </div>
+            )}
+            <ChevronDown className="size-4 opacity-50" />
+          </div>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="min-w-[var(--radix-popover-trigger-width)] p-0" align="start">
+        <MultiSelectPicker
+          options={options}
+          value={value}
+          onChange={handleChange}
+          onSelectSingle={config.closeOnSelect ? handleSelectSingle : undefined}
+          onOptionsChange={config.canManage ? onOptionsChange : undefined}
+          multi={config.multi}
+          canAdd={config.canAdd}
+          canManage={config.canManage}
+          placeholder={config.placeholder}
+          manageLabel={config.manageLabel}
+          disabled={disabled}
+        />
+      </PopoverContent>
+    </Popover>
+  )
+}

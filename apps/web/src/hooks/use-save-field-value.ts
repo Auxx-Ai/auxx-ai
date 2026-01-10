@@ -9,7 +9,7 @@ import {
   type StoredFieldValue,
 } from '~/stores/custom-field-value-store'
 import { toastError } from '@auxx/ui/components/toast'
-import { formatToTypedInput, formatToRawValue, isMultiValueFieldType } from '@auxx/lib/field-values/client'
+import { formatToTypedInput, formatToRawValue, isArrayReturnFieldType } from '@auxx/lib/field-values/client'
 import type { ModelType } from '@auxx/types/custom-field'
 import { useRelationshipSync, extractRelatedIds, type InverseSyncInfo } from './use-relationship-sync'
 import { getInverseCardinality, type RelationshipType } from '@auxx/utils'
@@ -164,13 +164,13 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
           onSuccess: (result) => {
             // Update store with the actual TypedFieldValue from server response
             if (result?.values && result.values.length > 0) {
-              // Multi-value fields (TAGS, MULTI_SELECT, RELATIONSHIP) must always store as array
-              // Single-value fields store just the first value
-              const isMultiValue = fieldType && isMultiValueFieldType(fieldType)
-              const valueToStore = isMultiValue ? result.values : result.values[0]
+              // Array-return fields (SINGLE_SELECT, MULTI_SELECT, TAGS, RELATIONSHIP, FILE) store as array
+              // Other single-value fields store just the first value
+              const returnsArray = fieldType && isArrayReturnFieldType(fieldType)
+              const valueToStore = returnsArray ? result.values : result.values[0]
               setValue(key, valueToStore)
-            } else if (fieldType && isMultiValueFieldType(fieldType)) {
-              // Multi-value field with no values should store empty array
+            } else if (fieldType && isArrayReturnFieldType(fieldType)) {
+              // Array-return field with no values should store empty array
               setValue(key, [])
             } else {
               confirmOptimistic(key)
@@ -323,12 +323,12 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
 
         // Update store with the actual TypedFieldValue from server response
         if (result?.values && result.values.length > 0) {
-          // Multi-value fields must always store as array
-          const isMultiValue = fieldType && isMultiValueFieldType(fieldType)
-          const valueToStore = isMultiValue ? result.values : result.values[0]
+          // Array-return fields (SINGLE_SELECT, MULTI_SELECT, TAGS, RELATIONSHIP, FILE) store as array
+          const returnsArray = fieldType && isArrayReturnFieldType(fieldType)
+          const valueToStore = returnsArray ? result.values : result.values[0]
           setValue(key, valueToStore)
-        } else if (fieldType && isMultiValueFieldType(fieldType)) {
-          // Multi-value field with no values should store empty array
+        } else if (fieldType && isArrayReturnFieldType(fieldType)) {
+          // Array-return field with no values should store empty array
           setValue(key, [])
         } else {
           confirmOptimistic(key)

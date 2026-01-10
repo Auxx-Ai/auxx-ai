@@ -1,0 +1,242 @@
+// apps/web/src/components/fields/inputs/field-input-adapter.tsx
+'use client'
+
+import { useState, useCallback, useMemo } from 'react'
+import { FieldType } from '@auxx/database/enums'
+import type { FieldOptions } from '@auxx/lib/field-values/client'
+import type { SelectOption } from '@auxx/types/custom-field'
+import { MultiRelationInput } from '~/components/shared/multi-relation-input'
+import { SelectFieldInput, getSelectConfig } from './select-input-field'
+import {
+  StringInput,
+  NumberInput,
+  BooleanInput,
+  DateTimeInput,
+  FileInput,
+  CurrencyInput,
+  AddressInput,
+  PhoneInput,
+} from '~/components/workflow/nodes/shared/node-inputs'
+
+/**
+ * Props for FieldInputAdapter
+ */
+export interface FieldInputAdapterProps {
+  /** The FieldType of this field */
+  fieldType: string
+  /** Field-specific options - uses existing FieldOptions from converters */
+  fieldOptions?: FieldOptions
+  /** Current value - already normalized by caller */
+  value: unknown
+  /** Change handler - receives the new value directly */
+  onChange: (value: unknown) => void
+  /** Placeholder text */
+  placeholder?: string
+  /** Disabled state */
+  disabled?: boolean
+  /** Additional className */
+  className?: string
+  /** Callback when options change (for TAGS management) */
+  onOptionsChange?: (options: SelectOption[]) => void
+}
+
+/**
+ * FieldInputAdapter
+ * Renders the appropriate input component for a given FieldType.
+ * Expects values to already be in correct format - does NOT normalize.
+ */
+export function FieldInputAdapter({
+  fieldType,
+  fieldOptions,
+  value,
+  onChange,
+  placeholder = 'Enter value...',
+  disabled = false,
+  className,
+  onOptionsChange,
+}: FieldInputAdapterProps) {
+  // For NodeInputProps-compatible components
+  const [errors, setErrors] = useState<Record<string, string>>({})
+
+  /**
+   * Adapter for NodeInputProps onChange
+   */
+  const handleNodeInputChange = useCallback(
+    (_name: string, val: unknown) => {
+      onChange(val)
+    },
+    [onChange]
+  )
+
+  /**
+   * Adapter for NodeInputProps onError
+   */
+  const handleError = useCallback((name: string, error: string | null) => {
+    setErrors((prev) => {
+      if (error === null) {
+        const next = { ...prev }
+        delete next[name]
+        return next
+      }
+      return { ...prev, [name]: error }
+    })
+  }, [])
+
+  /**
+   * Common props for NodeInputProps-compatible components
+   */
+  const nodeInputProps = useMemo(
+    () => ({
+      inputs: { _value: value },
+      errors,
+      onChange: handleNodeInputChange,
+      onError: handleError,
+      isLoading: disabled,
+      name: '_value',
+      placeholder,
+    }),
+    [value, errors, handleNodeInputChange, handleError, disabled, placeholder]
+  )
+
+  // Route to appropriate component based on fieldType
+  switch (fieldType) {
+    // ─────────────────────────────────────────────────────────────────
+    // RELATIONSHIP - uses MultiRelationInput directly
+    // Value: string[] (array of entity IDs)
+    // ─────────────────────────────────────────────────────────────────
+    case FieldType.RELATIONSHIP: {
+      const relationship = fieldOptions?.relationship
+      if (!relationship) {
+        return <div className="text-muted-foreground text-sm">Missing relationship config</div>
+      }
+
+      // Value should already be string[] - caller is responsible for conversion
+      const ids = (value as string[]) || []
+
+      return (
+        <MultiRelationInput
+          relationship={relationship}
+          value={ids}
+          onChange={onChange}
+          placeholder={placeholder}
+          disabled={disabled}
+          className={className}
+        />
+      )
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // SELECT TYPES - unified case using getSelectConfig()
+    // Value: string[] (array of option values)
+    // ─────────────────────────────────────────────────────────────────
+    case FieldType.SINGLE_SELECT:
+    case FieldType.MULTI_SELECT:
+    case FieldType.TAGS: {
+      const options = fieldOptions?.options ?? []
+      const config = getSelectConfig(fieldType)
+
+      // Value should already be string[] - caller normalizes
+      const selectedValues = (value as string[]) || []
+
+      return (
+        <SelectFieldInput
+          options={options}
+          value={selectedValues}
+          onChange={onChange}
+          onOptionsChange={onOptionsChange}
+          config={config}
+          placeholder={placeholder}
+          disabled={disabled}
+          className={className}
+        />
+      )
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // TEXT TYPES - uses StringInput
+    // ─────────────────────────────────────────────────────────────────
+    case FieldType.TEXT:
+    case FieldType.NAME:
+      return <StringInput {...nodeInputProps} />
+
+    case FieldType.EMAIL:
+      return <StringInput {...nodeInputProps} validationType="email" />
+
+    case FieldType.URL:
+      return <StringInput {...nodeInputProps} validationType="url" />
+
+    case FieldType.RICH_TEXT:
+      return <StringInput {...nodeInputProps} multiline={true} />
+
+    // ─────────────────────────────────────────────────────────────────
+    // PHONE - uses PhoneInput
+    // ─────────────────────────────────────────────────────────────────
+    case FieldType.PHONE_INTL:
+      return <PhoneInput {...nodeInputProps} />
+
+    // ─────────────────────────────────────────────────────────────────
+    // NUMBER - uses NumberInput
+    // ─────────────────────────────────────────────────────────────────
+    case FieldType.NUMBER:
+      return <NumberInput {...nodeInputProps} />
+
+    // ─────────────────────────────────────────────────────────────────
+    // CURRENCY - uses CurrencyInput
+    // ─────────────────────────────────────────────────────────────────
+    case FieldType.CURRENCY: {
+      const currency = fieldOptions?.currency
+      return (
+        <CurrencyInput
+          {...nodeInputProps}
+          currencyCode={currency?.currencyCode ?? 'USD'}
+          decimalPlaces={currency?.decimalPlaces === 'no-decimal' ? 0 : 2}
+          displayType={currency?.displayType ?? 'symbol'}
+          useGrouping={currency?.groups !== 'no-groups'}
+        />
+      )
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // BOOLEAN - uses BooleanInput
+    // ─────────────────────────────────────────────────────────────────
+    case FieldType.CHECKBOX:
+      return <BooleanInput {...nodeInputProps} />
+
+    // ─────────────────────────────────────────────────────────────────
+    // DATE/TIME - uses DateTimeInput
+    // ─────────────────────────────────────────────────────────────────
+    case FieldType.DATE:
+      return <DateTimeInput {...nodeInputProps} type="date" />
+
+    case FieldType.DATETIME:
+      return <DateTimeInput {...nodeInputProps} type="datetime" />
+
+    case FieldType.TIME:
+      return <DateTimeInput {...nodeInputProps} type="time" />
+
+    // ─────────────────────────────────────────────────────────────────
+    // FILE - uses FileInput
+    // ─────────────────────────────────────────────────────────────────
+    case FieldType.FILE:
+      return (
+        <FileInput
+          {...nodeInputProps}
+          placeholder={placeholder}
+          allowMultiple={fieldOptions?.file?.allowMultiple ?? false}
+        />
+      )
+
+    // ─────────────────────────────────────────────────────────────────
+    // ADDRESS - uses AddressInput
+    // ─────────────────────────────────────────────────────────────────
+    case FieldType.ADDRESS:
+    case FieldType.ADDRESS_STRUCT:
+      return <AddressInput {...nodeInputProps} />
+
+    // ─────────────────────────────────────────────────────────────────
+    // FALLBACK
+    // ─────────────────────────────────────────────────────────────────
+    default:
+      return <StringInput {...nodeInputProps} />
+  }
+}

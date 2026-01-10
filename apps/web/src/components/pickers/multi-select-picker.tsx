@@ -2,7 +2,7 @@
 'use client'
 
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
-import { Plus, Tags, Trash2, Check, X, TextCursorInput, Pencil } from 'lucide-react'
+import { Plus, Tags, Trash2, Check, X, TextCursorInput, Pencil, Loader2 } from 'lucide-react'
 import {
   Command,
   CommandInput,
@@ -60,6 +60,18 @@ export interface MultiSelectPickerProps {
 
   /** Additional className for Command wrapper */
   className?: string
+
+  /** Loading state - shows spinner instead of options list */
+  isLoading?: boolean
+
+  /** Callback when search input changes (for external search handling) */
+  onSearchChange?: (value: string) => void
+
+  /** Callback when "Create new" is clicked (for complex creation flows via dialog) */
+  onCreate?: () => void
+
+  /** Label for create button (default: "Create new") */
+  createLabel?: string
 }
 
 /**
@@ -81,6 +93,10 @@ export function MultiSelectPicker({
   onCaptureChange,
   disabled = false,
   className,
+  isLoading = false,
+  onSearchChange,
+  onCreate,
+  createLabel = 'Create new',
 }: MultiSelectPickerProps) {
   const editInputRef = useRef<HTMLInputElement>(null)
 
@@ -331,132 +347,158 @@ export function MultiSelectPicker({
         <CommandInput
           placeholder={placeholder}
           value={searchValue}
-          onValueChange={setSearchValue}
+          onValueChange={(val) => {
+            setSearchValue(val)
+            onSearchChange?.(val)
+          }}
           disabled={disabled}
         />
       )}
 
       <CommandList>
-        {/* Create option */}
-        {canAdd && searchValue.trim() && !searchMatchesExisting && (
+        {/* Loading state */}
+        {isLoading ? (
+          <div className="flex items-center justify-center py-6">
+            <Loader2 className="size-4 animate-spin" />
+          </div>
+        ) : (
           <>
-            <CommandGroup>
-              <CommandItem onSelect={createOption} className="cursor-pointer h-7" disabled={disabled}>
-                <Plus className="text-muted-foreground" />
-                <span>
-                  Create "<span className="font-medium">{searchValue.trim()}</span>"
-                </span>
-              </CommandItem>
-            </CommandGroup>
-            <div className="-mx-1 h-px bg-border/50" />
-          </>
-        )}
+            {/* Create option */}
+            {canAdd && searchValue.trim() && !searchMatchesExisting && (
+              <>
+                <CommandGroup>
+                  <CommandItem
+                    onSelect={createOption}
+                    className="cursor-pointer h-7"
+                    disabled={disabled}>
+                    <Plus className="text-muted-foreground" />
+                    <span>
+                      Create "<span className="font-medium">{searchValue.trim()}</span>"
+                    </span>
+                  </CommandItem>
+                </CommandGroup>
+                <div className="-mx-1 h-px bg-border/50" />
+              </>
+            )}
 
-        {/* Options List */}
-        {filteredOptions.length === 0 && !searchValue.trim() && (
-          <CommandEmpty>No options yet. Type to create one.</CommandEmpty>
-        )}
-        {filteredOptions.length > 0 && (
-          <>
-            <CommandGroup>
-              {filteredOptions.map((opt) => (
-                <CommandItem
-                  key={opt.value}
-                  value={opt.label}
-                  onSelect={() => {
-                    if (isManageMode) {
-                      startEdit(opt.value)
-                    } else {
-                      handleSelect(opt.value)
-                    }
-                  }}
-                  disabled={disabled}
-                  className={cn(
-                    'cursor-pointer h-7',
-                    isManageMode && 'py-0 pe-1',
-                    editingOptionId === opt.value && 'bg-primary-200'
-                  )}>
-                  <div className="flex items-center justify-between w-full">
-                    <div className="flex items-center gap-2">
-                      {/* Selection indicator (checkbox/radio) or manage icon */}
-                      <div className="w-5 flex items-center justify-center">
-                        {isManageMode ? (
-                          <Pencil className="size-4 text-muted-foreground" />
-                        ) : multi ? (
-                          <Checkbox
-                            checked={localSelected.includes(opt.value)}
-                            className="pointer-events-none"
-                          />
-                        ) : (
-                          /* Visual-only radio indicator (not a real RadioGroupItem) */
-                          <div
-                            className={cn(
-                              'size-4 rounded-full border border-foreground flex items-center justify-center',
-                              localSelected.includes(opt.value) && '[&_svg]:fill-foreground'
-                            )}>
-                            {localSelected.includes(opt.value) && (
-                              <Circle className="size-2" />
+            {/* Options List */}
+            {filteredOptions.length === 0 && !searchValue.trim() && (
+              <CommandEmpty>No options yet. Type to create one.</CommandEmpty>
+            )}
+            {filteredOptions.length > 0 && (
+              <>
+                <CommandGroup>
+                  {filteredOptions.map((opt) => (
+                    <CommandItem
+                      key={opt.value}
+                      value={opt.label}
+                      onSelect={() => {
+                        if (isManageMode) {
+                          startEdit(opt.value)
+                        } else {
+                          handleSelect(opt.value)
+                        }
+                      }}
+                      disabled={disabled}
+                      className={cn(
+                        'cursor-pointer h-7',
+                        isManageMode && 'py-0 pe-1',
+                        editingOptionId === opt.value && 'bg-primary-200'
+                      )}>
+                      <div className="flex items-center justify-between w-full">
+                        <div className="flex items-center gap-2">
+                          {/* Selection indicator (checkbox/radio) or manage icon */}
+                          <div className="w-5 flex items-center justify-center">
+                            {isManageMode ? (
+                              <Pencil className="size-4 text-muted-foreground" />
+                            ) : multi ? (
+                              <Checkbox
+                                checked={localSelected.includes(opt.value)}
+                                className="pointer-events-none"
+                              />
+                            ) : (
+                              /* Visual-only radio indicator (not a real RadioGroupItem) */
+                              <div
+                                className={cn(
+                                  'size-4 rounded-full border border-foreground flex items-center justify-center',
+                                  localSelected.includes(opt.value) && '[&_svg]:fill-foreground'
+                                )}>
+                                {localSelected.includes(opt.value) && <Circle className="size-2" />}
+                              </div>
                             )}
                           </div>
+
+                          {/* Color dot (if option has color) */}
+                          {opt.color && (
+                            <div
+                              className={cn(
+                                'size-3 rounded-full ring-1 ring-inset ring-black/10 dark:ring-white/10',
+                                getColorSwatch(opt.color)
+                              )}
+                            />
+                          )}
+
+                          {/* Option label */}
+                          <span>{opt.label}</span>
+                        </div>
+
+                        {/* Delete button in manage mode */}
+                        {isManageMode && (
+                          <Button
+                            variant="destructive-hover"
+                            type="button"
+                            size="icon-xs"
+                            disabled={disabled}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              deleteOption(opt.value)
+                            }}>
+                            <Trash2 />
+                          </Button>
                         )}
                       </div>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+                <div className="-mx-1 h-px bg-border/50" />
+              </>
+            )}
 
-                      {/* Color dot (if option has color) */}
-                      {opt.color && (
-                        <div
-                          className={cn(
-                            'size-3 rounded-full ring-1 ring-inset ring-black/10 dark:ring-white/10',
-                            getColorSwatch(opt.color)
-                          )}
-                        />
-                      )}
-
-                      {/* Option label */}
-                      <span>{opt.label}</span>
-                    </div>
-
-                    {/* Delete button in manage mode */}
-                    {isManageMode && (
-                      <Button
-                        variant="destructive-hover"
-                        type="button"
-                        size="icon-xs"
-                        disabled={disabled}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          deleteOption(opt.value)
-                        }}>
-                        <Trash2 />
-                      </Button>
-                    )}
-                  </div>
+            {/* Manage button */}
+            {canManage && (
+              <CommandGroup>
+                <CommandItem
+                  onSelect={toggleManageMode}
+                  disabled={disabled}
+                  className="cursor-pointer h-7.5">
+                  {isManageMode ? (
+                    <>
+                      <Check className="text-good-500" />
+                      <span>Done</span>
+                    </>
+                  ) : (
+                    <>
+                      <Tags className="text-muted-foreground" />
+                      <span>{manageLabel}</span>
+                    </>
+                  )}
                 </CommandItem>
-              ))}
-            </CommandGroup>
-            <div className="-mx-1 h-px bg-border/50" />
-          </>
-        )}
+              </CommandGroup>
+            )}
 
-        {/* Manage button */}
-        {canManage && (
-          <CommandGroup>
-            <CommandItem
-              onSelect={toggleManageMode}
-              disabled={disabled}
-              className="cursor-pointer h-7.5">
-              {isManageMode ? (
-                <>
-                  <Check className="text-good-500" />
-                  <span>Done</span>
-                </>
-              ) : (
-                <>
-                  <Tags className="text-muted-foreground" />
-                  <span>{manageLabel}</span>
-                </>
-              )}
-            </CommandItem>
-          </CommandGroup>
+            {/* Create button for complex items */}
+            {onCreate && (
+              <CommandGroup>
+                <CommandItem
+                  onSelect={onCreate}
+                  disabled={disabled}
+                  className="cursor-pointer h-7.5">
+                  <Plus className="text-muted-foreground" />
+                  <span>{createLabel}</span>
+                </CommandItem>
+              </CommandGroup>
+            )}
+          </>
         )}
       </CommandList>
     </Command>

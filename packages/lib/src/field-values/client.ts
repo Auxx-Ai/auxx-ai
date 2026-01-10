@@ -20,6 +20,7 @@ export {
   formatToRawValue,
   formatToDisplayValue,
   isMultiValueFieldType,
+  isArrayReturnFieldType,
   extractValues,
   isValueEmpty,
   areValuesEqual,

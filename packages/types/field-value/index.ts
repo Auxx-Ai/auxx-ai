@@ -67,8 +67,22 @@ export type ValueColumn = (typeof FIELD_TYPE_TO_COLUMN)[keyof typeof FIELD_TYPE_
 /**
  * Field types that support multiple values (stored as multiple FieldValue rows).
  * RELATIONSHIP is included because it supports many-to-many cardinality.
+ * Used for WRITE operations to determine DELETE+INSERT vs UPSERT strategy.
  */
 export const MULTI_VALUE_FIELD_TYPES = new Set<string>([
+  FieldType.MULTI_SELECT,
+  FieldType.TAGS,
+  FieldType.FILE,
+  FieldType.RELATIONSHIP,
+])
+
+/**
+ * Field types that return values as arrays from READ operations.
+ * Includes SINGLE_SELECT for uniform handling with MULTI_SELECT in UI.
+ * Note: This does NOT affect write strategy - use MULTI_VALUE_FIELD_TYPES for that.
+ */
+export const ARRAY_RETURN_FIELD_TYPES = new Set<string>([
+  FieldType.SINGLE_SELECT,
   FieldType.MULTI_SELECT,
   FieldType.TAGS,
   FieldType.FILE,
@@ -271,11 +285,22 @@ export const typedFieldValueInputSchema = z.discriminatedUnion('type', [
 
 /**
  * Check if a field type supports multiple values.
+ * Used for WRITE operations to determine DELETE+INSERT vs UPSERT strategy.
  * @param fieldType - The database field type
  * @returns True if field can have multiple values
  */
 export function isMultiValueFieldType(fieldType: string): boolean {
   return MULTI_VALUE_FIELD_TYPES.has(fieldType)
+}
+
+/**
+ * Check if a field type should return values as an array.
+ * Used for READ operations (getValue, batchGetValues, etc).
+ * @param fieldType - The database field type
+ * @returns True if getValue/batchGetValues should return array
+ */
+export function isArrayReturnFieldType(fieldType: string): boolean {
+  return ARRAY_RETURN_FIELD_TYPES.has(fieldType)
 }
 
 /**

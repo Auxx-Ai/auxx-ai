@@ -1,7 +1,10 @@
 // packages/lib/src/field-values/formatter.ts
 
 import type { TypedFieldValue, TypedFieldValueInput } from '@auxx/types/field-value'
-import { isMultiValueFieldType as isMultiValueType } from '@auxx/types/field-value'
+import {
+  isMultiValueFieldType as isMultiValueType,
+  isArrayReturnFieldType as isArrayReturnType,
+} from '@auxx/types/field-value'
 import {
   converters,
   type FieldValueConverter,
@@ -149,9 +152,19 @@ export function formatToDisplayValue(
 /**
  * Check if field type stores multiple values.
  * MULTI_SELECT, TAGS, FILE, and RELATIONSHIP can have multiple values.
+ * Used for WRITE operations to determine DELETE+INSERT vs UPSERT strategy.
  */
 export function isMultiValueFieldType(fieldType: FieldType): boolean {
   return isMultiValueType(fieldType)
+}
+
+/**
+ * Check if field type should return values as an array.
+ * Includes SINGLE_SELECT for uniform handling with MULTI_SELECT in UI.
+ * Used for READ operations (getValue, batchGetValues, etc).
+ */
+export function isArrayReturnFieldType(fieldType: FieldType): boolean {
+  return isArrayReturnType(fieldType)
 }
 
 /**

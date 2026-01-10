@@ -4,21 +4,14 @@
 
 import { useState, useMemo, useCallback } from 'react'
 import { api } from '~/trpc/react'
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@auxx/ui/components/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { Button } from '@auxx/ui/components/button'
-import { ChevronDown, Loader2, Check } from 'lucide-react'
+import { ChevronDown, X } from 'lucide-react'
 import { cn } from '@auxx/ui/lib/utils'
 import { Badge } from '@auxx/ui/components/badge'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { useRelationship } from '~/components/resources'
+import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
 
 /**
  * Relationship config shape from field.options?.relationship
@@ -109,11 +102,8 @@ export function MultiRelationInput({
     return true // default to multi
   }, [multiProp, relationship?.relationshipType])
 
-  // Get hydrated items for selected IDs from the store (tableId is system ID or UUID, no prefix needed)
-  const { items: selectedItems, isLoading: isLoadingSelected } = useRelationship(
-    tableId,
-    value
-  )
+  // Get hydrated items for selected IDs from the store
+  const { items: selectedItems, isLoading: isLoadingSelected } = useRelationship(tableId, value)
 
   // Search for items when popover is open
   const { data: searchResults, isLoading: isSearching } = api.resource.search.useQuery(
@@ -127,41 +117,37 @@ export function MultiRelationInput({
     }
   )
 
-  // Filter out excluded IDs from search results
-  const filteredItems = useMemo(
-    () => (searchResults?.items || []).filter((item) => !excludeIds.includes(item.id)),
-    [searchResults, excludeIds]
-  )
+  // Filter out excluded IDs and convert to SelectOption format
+  const selectOptions = useMemo(() => {
+    const items = searchResults?.items || []
+    return items
+      .filter((item) => !excludeIds.includes(item.id))
+      .map((item) => ({
+        label: item.displayName,
+        value: item.id,
+      }))
+  }, [searchResults, excludeIds])
 
   /**
-   * Handle item selection
-   * Multi mode: toggle selection
-   * Single mode: select and close
+   * Handle single-select: close popover after selection
    */
-  const handleSelect = useCallback(
-    (id: string) => {
-      if (multi) {
-        // Multi mode: toggle
-        const isCurrentlySelected = value.includes(id)
-        if (isCurrentlySelected) {
-          onChange(value.filter((v) => v !== id))
-        } else {
-          onChange([...value, id])
-        }
-      } else {
-        // Single mode: select and close
-        onChange([id])
-        setOpen(false)
-        setSearchQuery('')
-      }
+  const handleSelectSingle = useCallback(() => {
+    setOpen(false)
+    setSearchQuery('')
+  }, [])
+
+  /**
+   * Clear all selections
+   */
+  const handleClearAll = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation()
+      onChange([])
     },
-    [multi, value, onChange]
+    [onChange]
   )
 
-  /**
-   * Check if an item is selected
-   */
-  const isSelected = useCallback((id: string) => value.includes(id), [value])
+  const hasValue = value.length > 0
 
   /**
    * Render the trigger content showing selected items
@@ -215,69 +201,34 @@ export function MultiRelationInput({
           disabled={disabled}
           className={cn('w-full ps-0 pe-1 h-auto min-h-8 justify-between flex-1', className)}>
           <div className="flex items-center gap-2 flex-1 min-w-0">{renderTriggerContent()}</div>
-          <ChevronDown className="opacity-50 shrink-0" />
+          <div className="flex items-center gap-1 shrink-0">
+            {hasValue && multi && (
+              <div
+                className="size-4 flex items-center justify-center rounded-full bg-primary-500/30 text-primary-100 transition-colors hover:bg-bad-100 hover:text-bad-500"
+                onClick={handleClearAll}>
+                <X className="size-3!" />
+              </div>
+            )}
+            <ChevronDown className="opacity-50" />
+          </div>
         </Button>
       </PopoverTrigger>
       <PopoverContent
         className="p-0 min-w-[max(var(--radix-popover-trigger-width),18rem)]"
         align="start">
-        <Command shouldFilter={false}>
-          <CommandInput
-            placeholder="Search..."
-            value={searchQuery}
-            onValueChange={setSearchQuery}
-          />
-          <CommandList>
-            {isSearching ? (
-              <div className="flex items-center justify-center py-6">
-                <Loader2 className="size-4 animate-spin" />
-              </div>
-            ) : (
-              <>
-                <CommandEmpty>No results found.</CommandEmpty>
-                <CommandGroup>
-                  {filteredItems.map((item) => (
-                    <CommandItem
-                      key={item.id}
-                      value={item.id}
-                      onSelect={() => handleSelect(item.id)}
-                      className="flex items-center gap-2 cursor-pointer">
-                      {/* Single mode: show check icon on left when selected */}
-                      {!multi && (
-                        <Check
-                          className={cn(
-                            'h-4 w-4 shrink-0',
-                            isSelected(item.id) ? 'opacity-100' : 'opacity-0'
-                          )}
-                        />
-                      )}
-                      <div className="flex flex-col flex-1 min-w-0">
-                        <div className="font-medium text-sm truncate">{item.displayName}</div>
-                        {item.secondaryInfo && (
-                          <div className="text-xs text-muted-foreground truncate">
-                            {item.secondaryInfo}
-                          </div>
-                        )}
-                      </div>
-                      {/* Multi mode: show checkbox on right */}
-                      {multi && (
-                        <div
-                          className={cn(
-                            'flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border',
-                            isSelected(item.id)
-                              ? 'bg-primary-400 border-primary-400 text-primary-foreground'
-                              : 'border-muted-foreground/30'
-                          )}>
-                          {isSelected(item.id) && <Check className="h-3 w-3" />}
-                        </div>
-                      )}
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              </>
-            )}
-          </CommandList>
-        </Command>
+        <MultiSelectPicker
+          options={selectOptions}
+          value={value}
+          onChange={onChange}
+          isLoading={isSearching}
+          onSearchChange={setSearchQuery}
+          canManage={false}
+          canAdd={false}
+          multi={multi}
+          placeholder="Search..."
+          onSelectSingle={handleSelectSingle}
+          disabled={disabled}
+        />
       </PopoverContent>
     </Popover>
   )

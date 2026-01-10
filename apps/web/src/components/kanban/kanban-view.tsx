@@ -50,11 +50,14 @@ import { FieldType } from '@auxx/database/enums'
 /**
  * Extract raw value from TypedFieldValue using centralized formatter.
  * Used for column grouping and drag operations.
+ * Since SINGLE_SELECT now returns arrays, extract the first value for grouping.
  */
 function extractRawValue(value: unknown): unknown {
   if (value == null) return null
   // Use SINGLE_SELECT since kanban groups by select fields
-  return formatToRawValue(value, FieldType.SINGLE_SELECT)
+  const raw = formatToRawValue(value, FieldType.SINGLE_SELECT)
+  // SINGLE_SELECT now returns array - extract first value for kanban grouping
+  return Array.isArray(raw) ? raw[0] ?? null : raw
 }
 
 

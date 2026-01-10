@@ -10,6 +10,7 @@ import {
   type SelectOption,
   getValueType,
   isMultiValueFieldType,
+  isArrayReturnFieldType,
 } from '@auxx/types'
 import {
   getFieldWithDefinition,
@@ -1091,7 +1092,7 @@ export class FieldValueService {
       return null
     }
 
-    return this.rowsToTypedValues(rows, field.type, isMultiValueFieldType(field.type))
+    return this.rowsToTypedValues(rows, field.type, isArrayReturnFieldType(field.type))
   }
 
   /**
@@ -1174,7 +1175,7 @@ export class FieldValueService {
       const typedValues = this.rowsToTypedValues(
         fieldValueRows,
         fieldType,
-        isMultiValueFieldType(fieldType)
+        isArrayReturnFieldType(fieldType)
       )
       result.set(fieldId, typedValues)
     }
@@ -1331,7 +1332,7 @@ export class FieldValueService {
             fieldId,
           }
 
-          if (isMultiValueFieldType(fieldType)) {
+          if (isArrayReturnFieldType(fieldType)) {
             result.value = typedValues
           } else {
             result.value = typedValues[0]!
