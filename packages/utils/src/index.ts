@@ -1,5 +1,8 @@
 // packages/utils/src/index.ts
 
+// Browser utilities
+export { isMac, IS_MAC_SCRIPT } from './browser'
+
 // Array utilities
 export { uniqueBy } from './arrays'
 

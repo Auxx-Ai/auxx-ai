@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import '@auxx/ui/global.css'
+import { IS_MAC_SCRIPT } from '@auxx/utils'
 
 import { ClientProviders } from './client-providers'
 
@@ -74,6 +75,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: IS_MAC_SCRIPT }} />
+      </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased overflow-hidden`}>
         <ClientProviders>{children}</ClientProviders>
       </body>

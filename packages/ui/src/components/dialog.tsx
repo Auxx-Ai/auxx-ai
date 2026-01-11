@@ -19,15 +19,31 @@ const Dialog: typeof DialogPrimitive.Root = (props) => (
 type DialogContextValue = {
   isInsideDialog: boolean
   portalContainerRef: React.RefObject<HTMLDivElement | null> | null
+  /** Ref to the submit handler registered by useDialogSubmit */
+  submitHandlerRef: React.MutableRefObject<(() => void) | null>
+  /** Ref to track if submit is disabled */
+  disabledRef: React.MutableRefObject<boolean>
 }
+
+/** Default refs for context (used outside of dialog) */
+const defaultSubmitHandlerRef = { current: null }
+const defaultDisabledRef = { current: false }
 
 export const DialogContext = React.createContext<DialogContextValue>({
   isInsideDialog: false,
   portalContainerRef: null,
+  submitHandlerRef: defaultSubmitHandlerRef,
+  disabledRef: defaultDisabledRef,
 })
 
 const DialogProvider = ({ children }: React.PropsWithChildren<DialogContextValue>) => (
-  <DialogContext.Provider value={{ isInsideDialog: true, portalContainerRef: null }}>
+  <DialogContext.Provider
+    value={{
+      isInsideDialog: true,
+      portalContainerRef: null,
+      submitHandlerRef: defaultSubmitHandlerRef,
+      disabledRef: defaultDisabledRef,
+    }}>
     {children}
   </DialogContext.Provider>
 )
@@ -105,6 +121,27 @@ function DialogContent({
   ...props
 }: DialogContentProps) {
   const portalContainerRef = React.useRef<HTMLDivElement>(null)
+  const submitHandlerRef = React.useRef<(() => void) | null>(null)
+  const disabledRef = React.useRef<boolean>(false)
+
+  // Handle Meta+Enter keyboard shortcut
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check for Cmd+Enter (Mac) or Ctrl+Enter (Windows/Linux)
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        // Don't trigger if disabled or no handler registered
+        if (disabledRef.current || !submitHandlerRef.current) return
+
+        e.preventDefault()
+        e.stopPropagation()
+        submitHandlerRef.current()
+      }
+    }
+
+    // Use capture phase so it works even when focused in inputs
+    document.addEventListener('keydown', handleKeyDown, true)
+    return () => document.removeEventListener('keydown', handleKeyDown, true)
+  }, [])
 
   return (
     <DialogPortal>
@@ -115,7 +152,8 @@ function DialogContent({
         <DialogPrimitive.Content
           className={cn(dialogVariants({ variant, size, position, className }))}
           {...props}>
-          <DialogContext.Provider value={{ isInsideDialog: true, portalContainerRef }}>
+          <DialogContext.Provider
+            value={{ isInsideDialog: true, portalContainerRef, submitHandlerRef, disabledRef }}>
             <div
               className={cn(
                 'bg-background ring-1 ring-ring/20 dark:bg-primary-100/80 p-4 relative rounded-[16px] flex flex-col min-h-0',

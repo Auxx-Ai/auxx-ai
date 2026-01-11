@@ -13,6 +13,8 @@ import {
   DialogFooter,
   DialogDescription,
 } from '@auxx/ui/components/dialog'
+import { useDialogSubmit } from '@auxx/ui/hooks'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Form,
   FormField,
@@ -71,6 +73,25 @@ export function TagFormDialog({
   editingTag = null,
   onSuccess,
 }: TagFormDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent size="sm" position="tc">
+        <TagFormDialogContent
+          editingTag={editingTag}
+          onOpenChange={onOpenChange}
+          onSuccess={onSuccess}
+        />
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** Inner content component - must be inside DialogContent for useDialogSubmit to work */
+function TagFormDialogContent({
+  editingTag,
+  onOpenChange,
+  onSuccess,
+}: Omit<TagFormDialogProps, 'open'>) {
   const isEditing = !!editingTag
 
   // Fetch tags for parent selection dropdown
@@ -142,6 +163,12 @@ export function TagFormDialog({
   // Loading state
   const isSubmitting = createTag.isPending || updateTag.isPending
 
+  // Register Meta+Enter submit handler
+  const { formProps } = useDialogSubmit({
+    onSubmit: form.handleSubmit(onSubmit),
+    disabled: isSubmitting,
+  })
+
   // Recursive function to render tag options with proper indentation
   const renderTagOptions = (tags: any[], depth = 0, path: string[] = [], excludeId?: string) => {
     if (!tags) return null
@@ -153,7 +180,6 @@ export function TagFormDialog({
       const fullPath = [...path, tag.title]
       const indentation = '—'.repeat(depth)
       const prefix = depth > 0 ? `${indentation} ` : ''
-      // console.log(tag, tag.id)
       return (
         <React.Fragment key={tag.id}>
           <SelectItem value={tag.id}>
@@ -169,154 +195,152 @@ export function TagFormDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="sm" position="tc">
-        <DialogHeader>
-          <DialogTitle>{isEditing ? 'Edit Tag' : 'Create New Tag'}</DialogTitle>
-          <DialogDescription>
-            {isEditing
-              ? "Update this tag's details below."
-              : 'Fill out the form below to create a new tag.'}
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <DialogHeader>
+        <DialogTitle>{isEditing ? 'Edit Tag' : 'Create New Tag'}</DialogTitle>
+        <DialogDescription>
+          {isEditing
+            ? "Update this tag's details below."
+            : 'Fill out the form below to create a new tag.'}
+        </DialogDescription>
+      </DialogHeader>
 
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)}>
-            <div className="space-y-4">
-              {/* Title field */}
-              <div className="grid w-full grid-cols-[38px_auto] items-center justify-items-start gap-x-0">
-                <div className="">
-                  <FormField
-                    control={form.control}
-                    name="emoji"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormControl>
-                          <FormEmojiPicker value={field.value || ''} onChange={field.onChange} modal={false}>
-                            <Button variant="outline" size="icon" className="mt-px rounded-full">
-                              {field.value || <Tag />}
-                            </Button>
-                          </FormEmojiPicker>
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <div className="w-full">
-                  <FormField
-                    control={form.control}
-                    name="title"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormControl>
-                          <Input placeholder="Tag name" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </div>
-
-              {/* Description field */}
-              <FormField
-                control={form.control}
-                name="description"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormControl>
-                      <Textarea
-                        placeholder="Optional description"
-                        className="h-20 resize-none"
-                        {...field}
-                        value={field.value || ''}
-                      />
-                    </FormControl>
-                    <FormDescription>Brief description of this tag's purpose</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {/* Color field */}
-              <FormField
-                control={form.control}
-                name="color"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Color</FormLabel>
-                    <FormControl>
-                      <FormColorTagPicker
-                        value={field.value || '#94a3b8'}
-                        onChange={field.onChange}
-                      />
-                    </FormControl>
-                    <FormDescription>Choose a color for this tag</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {/* Parent tag field */}
-              <FormField
-                control={form.control}
-                name="parentId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Parent Tag</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value || ''}>
+      <Form {...form}>
+        <form {...formProps}>
+          <div className="space-y-4">
+            {/* Title field */}
+            <div className="grid w-full grid-cols-[38px_auto] items-center justify-items-start gap-x-0">
+              <div className="">
+                <FormField
+                  control={form.control}
+                  name="emoji"
+                  render={({ field }) => (
+                    <FormItem>
                       <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="No parent (root level)" />
-                        </SelectTrigger>
+                        <FormEmojiPicker value={field.value || ''} onChange={field.onChange} modal={false}>
+                          <Button variant="outline" size="icon" className="mt-px rounded-full">
+                            {field.value || <Tag />}
+                          </Button>
+                        </FormEmojiPicker>
                       </FormControl>
-                      <SelectContent>
-                        <SelectItem value="root">No parent (root level)</SelectItem>
-                        {isLoadingTags ? (
-                          <div className="flex items-center justify-center p-2">
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Loading tags...
-                          </div>
-                        ) : (
-                          renderTagOptions(
-                            tags || [],
-                            0,
-                            [],
-                            isEditing ? editingTag?.id : undefined
-                          )
-                        )}
-                      </SelectContent>
-                    </Select>
-                    <FormDescription>
-                      Optional parent tag for hierarchical organization
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <div className="w-full">
+                <FormField
+                  control={form.control}
+                  name="title"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <Input placeholder="Tag name" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
             </div>
-            {/* Dialog footer with submit/cancel buttons */}
-            <DialogFooter>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => onOpenChange(false)}
-                disabled={isSubmitting}>
-                Cancel
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                type="submit"
-                loading={isSubmitting}
-                loadingText="Saving...">
-                {isEditing ? 'Update Tag' : 'Create Tag'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
+
+            {/* Description field */}
+            <FormField
+              control={form.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem>
+                  <FormControl>
+                    <Textarea
+                      placeholder="Optional description"
+                      className="h-20 resize-none"
+                      {...field}
+                      value={field.value || ''}
+                    />
+                  </FormControl>
+                  <FormDescription>Brief description of this tag's purpose</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Color field */}
+            <FormField
+              control={form.control}
+              name="color"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Color</FormLabel>
+                  <FormControl>
+                    <FormColorTagPicker
+                      value={field.value || '#94a3b8'}
+                      onChange={field.onChange}
+                    />
+                  </FormControl>
+                  <FormDescription>Choose a color for this tag</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Parent tag field */}
+            <FormField
+              control={form.control}
+              name="parentId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Parent Tag</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value || ''}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="No parent (root level)" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="root">No parent (root level)</SelectItem>
+                      {isLoadingTags ? (
+                        <div className="flex items-center justify-center p-2">
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Loading tags...
+                        </div>
+                      ) : (
+                        renderTagOptions(
+                          tags || [],
+                          0,
+                          [],
+                          isEditing ? editingTag?.id : undefined
+                        )
+                      )}
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>
+                    Optional parent tag for hierarchical organization
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+          {/* Dialog footer with submit/cancel buttons */}
+          <DialogFooter>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => onOpenChange(false)}
+              disabled={isSubmitting}>
+              Cancel <Kbd shortcut="esc" variant="outline" size="sm" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              type="submit"
+              loading={isSubmitting}
+              loadingText="Saving...">
+              {isEditing ? 'Update Tag' : 'Create Tag'} <KbdSubmit variant="outline" size="sm" />
+            </Button>
+          </DialogFooter>
+        </form>
+      </Form>
+    </>
   )
 }

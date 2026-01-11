@@ -12,6 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@auxx/ui/components/dialog'
+import { KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import { CheckCircle2, Circle } from 'lucide-react'
 import { api, RouterOutputs } from '~/trpc/react'

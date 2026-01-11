@@ -337,4 +337,5 @@ export { measureTextWidth, measureTextWidths, truncateText } from './lib/measure
 // Re-export hooks
 export { useContainerWidth } from './hooks/use-container-width'
 export { useCopy } from './hooks/use-copy'
+export { useDialogSubmit } from './hooks/use-dialog-submit'
 export { useIsMobile } from './hooks/use-mobile'

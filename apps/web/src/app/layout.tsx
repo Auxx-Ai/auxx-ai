@@ -8,6 +8,7 @@ import '~/lib/immer-config' // Enable Immer MapSet plugin
 
 import { type Metadata } from 'next'
 import { Inter } from 'next/font/google'
+import { IS_MAC_SCRIPT } from '@auxx/utils'
 
 const inter = Inter({ subsets: ['latin'], weight: ['400', '500', '700'] })
 
@@ -69,6 +70,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${inter.className}`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: IS_MAC_SCRIPT }} />
+      </head>
       <body className="bg-primary-100">
         <ClientProviders>{children}</ClientProviders>
       </body>

@@ -15,6 +15,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@auxx/ui/components/dialog'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
 import { client } from '~/auth/auth-client'
@@ -157,12 +158,17 @@ export function ChangePassword() {
           )}
         </div>
         <DialogFooter>
+          <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
+            Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+          </Button>
           <Button
             variant="outline"
+            size="sm"
             loading={loading}
             loadingText="Saving..."
             onClick={handlePasswordSubmit}>
             {hasPassword ? 'Change Password' : 'Add Password'}
+            <KbdSubmit variant="outline" size="sm" />
           </Button>
         </DialogFooter>
       </DialogContent>

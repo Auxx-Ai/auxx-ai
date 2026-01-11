@@ -2,6 +2,7 @@
 import * as React from 'react'
 import { Command, ChevronUp, CornerDownLeft, Option } from 'lucide-react'
 import { cva, type VariantProps } from 'class-variance-authority'
+import { isMac } from '@auxx/utils'
 
 import { cn } from '@auxx/ui/lib/utils'
 
@@ -26,7 +27,7 @@ const kbdGroupVariants = cva(
       variant: {
         default: 'bg-background/5 ring-background/40  text-white rounded-sm',
         outline: ' ring-ring/50 text-muted-foreground/80 rounded-sm',
-        ghost: 'text-muted-foreground',
+        ghost: 'ring-ring/50 text-muted-foreground/80 rounded-sm',
       },
       size: {
         default: 'h-5 min-w-5 px-1',
@@ -105,4 +106,22 @@ function Kbd({ className, shortcut, children, variant, size, ...props }: KbdProp
   return kbdElement
 }
 
-export { Kbd, KbdGroup, kbdGroupVariants, type ShortcutKey, type KbdGroupVariantProps }
+interface KbdSubmitProps extends KbdGroupVariantProps {
+  className?: string
+}
+
+/**
+ * Keyboard shortcut hint for dialog submit action.
+ * Shows Cmd+Enter on Mac, Ctrl+Enter on Windows/Linux.
+ * Requires the IS_MAC_SCRIPT in <head> for SSR compatibility.
+ */
+function KbdSubmit({ variant, size, className }: KbdSubmitProps) {
+  return (
+    <KbdGroup variant={variant} size={size} className={className}>
+      <Kbd shortcut={isMac() ? 'cmd' : 'ctrl'} />
+      <Kbd shortcut="enter" />
+    </KbdGroup>
+  )
+}
+
+export { Kbd, KbdGroup, KbdSubmit, kbdGroupVariants, type ShortcutKey, type KbdGroupVariantProps }

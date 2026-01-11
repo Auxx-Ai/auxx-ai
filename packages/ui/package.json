@@ -3,12 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "dependencies": {
+    "@auxx/utils": "workspace:*"
+  },
   "exports": {
     "./global.css": "./src/styles/global.css",
     "./postcss.config": "./postcss.config.mjs",
     "./lib/*": "./src/lib/*.ts",
     "./components/*": "./src/components/*.tsx",
     "./hooks/*": "./src/hooks/*.ts",
+    "./hooks": "./src/hooks/index.ts",
     "./tailwind-config": "./tailwind.config.ts"
   },
   "scripts": {

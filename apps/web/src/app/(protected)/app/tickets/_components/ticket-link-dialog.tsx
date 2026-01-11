@@ -11,6 +11,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@auxx/ui/components/dialog'
+import { useDialogSubmit } from '@auxx/ui/hooks'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import {
   Select,
@@ -59,12 +61,43 @@ export function TicketLinkDialog({
   trigger,
 }: TicketLinkDialogProps) {
   const [isOpen, setIsOpen] = useState(false)
-  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null)
-  const [relationType, setRelationType] = useState<string>('RELATED')
 
   // Use controlled or uncontrolled open state
   const dialogOpen = open ?? isOpen
   const setDialogOpen = onOpenChange ?? setIsOpen
+
+  return (
+    <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
+      <DialogContent size="sm">
+        <TicketLinkDialogContent
+          ticketId={ticketId}
+          relatedTicketIds={relatedTicketIds}
+          onClose={() => setDialogOpen(false)}
+          onSuccess={onSuccess}
+        />
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** Inner content props */
+interface TicketLinkDialogContentProps {
+  ticketId: string
+  relatedTicketIds: string[]
+  onClose: () => void
+  onSuccess?: () => void
+}
+
+/** Inner content component - must be inside DialogContent for useDialogSubmit to work */
+function TicketLinkDialogContent({
+  ticketId,
+  relatedTicketIds,
+  onClose,
+  onSuccess,
+}: TicketLinkDialogContentProps) {
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null)
+  const [relationType, setRelationType] = useState<string>('RELATED')
 
   // Combine current ticket + already related into excludeIds
   const excludeIds = useMemo(
@@ -75,16 +108,14 @@ export function TicketLinkDialog({
   // Mutation to add a relation
   const addRelationMutation = api.ticket.addRelation.useMutation({
     onSuccess: () => {
-      setDialogOpen(false)
+      onClose()
       setSelectedTicketId(null)
       setRelationType('RELATED')
       onSuccess?.()
     },
   })
 
-  /**
-   * Handle adding a relation
-   */
+  /** Handle adding a relation */
   const handleAddRelation = async () => {
     if (!selectedTicketId) return
 
@@ -95,60 +126,63 @@ export function TicketLinkDialog({
     })
   }
 
+  // Register Meta+Enter submit handler (onClick pattern - no form)
+  useDialogSubmit({
+    onSubmit: handleAddRelation,
+    disabled: !selectedTicketId || addRelationMutation.isPending,
+  })
+
   return (
-    <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-      {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
-      <DialogContent size="sm">
-        <DialogHeader className="mb-4">
-          <DialogTitle>Link a related ticket</DialogTitle>
-          <DialogDescription>Connect this ticket to another existing ticket.</DialogDescription>
-        </DialogHeader>
+    <>
+      <DialogHeader className="mb-4">
+        <DialogTitle>Link a related ticket</DialogTitle>
+        <DialogDescription>Connect this ticket to another existing ticket.</DialogDescription>
+      </DialogHeader>
 
-        <div className="grid gap-4">
-          <div className="space-y-1 flex flex-col">
-            <label className="text-sm font-medium">Relation type</label>
-            <Select value={relationType} onValueChange={setRelationType}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select relation type" />
-              </SelectTrigger>
-              <SelectContent>
-                {RELATION_TYPES.map((type) => (
-                  <SelectItem key={type.value} value={type.value}>
-                    {type.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1 flex flex-col">
-            <label className="text-sm font-medium">Select ticket</label>
-            <MultiRelationInput
-              resourceId="ticket"
-              value={selectedTicketId ? [selectedTicketId] : []}
-              onChange={(ids) => setSelectedTicketId(ids[0] || null)}
-              excludeIds={excludeIds}
-              placeholder="Search tickets..."
-              multi={false}
-            />
-          </div>
+      <div className="grid gap-4">
+        <div className="space-y-1 flex flex-col">
+          <label className="text-sm font-medium">Relation type</label>
+          <Select value={relationType} onValueChange={setRelationType}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select relation type" />
+            </SelectTrigger>
+            <SelectContent>
+              {RELATION_TYPES.map((type) => (
+                <SelectItem key={type.value} value={type.value}>
+                  {type.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
-        <DialogFooter>
-          <Button variant="ghost" size="sm" onClick={() => setDialogOpen(false)}>
-            Cancel
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleAddRelation}
-            disabled={!selectedTicketId || addRelationMutation.isPending}
-            loading={addRelationMutation.isPending}
-            loadingText="Adding...">
-            Add Link
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <div className="space-y-1 flex flex-col">
+          <label className="text-sm font-medium">Select ticket</label>
+          <MultiRelationInput
+            resourceId="ticket"
+            value={selectedTicketId ? [selectedTicketId] : []}
+            onChange={(ids) => setSelectedTicketId(ids[0] || null)}
+            excludeIds={excludeIds}
+            placeholder="Search tickets..."
+            multi={false}
+          />
+        </div>
+      </div>
+
+      <DialogFooter>
+        <Button variant="ghost" size="sm" onClick={onClose}>
+          Cancel <Kbd shortcut="esc" variant="outline" size="sm" />
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleAddRelation}
+          disabled={!selectedTicketId || addRelationMutation.isPending}
+          loading={addRelationMutation.isPending}
+          loadingText="Adding...">
+          Add Link <KbdSubmit variant="outline" size="sm" />
+        </Button>
+      </DialogFooter>
+    </>
   )
 }
