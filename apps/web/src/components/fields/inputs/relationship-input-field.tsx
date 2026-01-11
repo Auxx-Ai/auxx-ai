@@ -3,109 +3,27 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { usePropertyContext } from '../property-provider'
 import { useFieldNavigationOptional } from '../field-navigation-context'
-import {
-  useRelationship,
-  useResourceProvider,
-  useResource,
-  buildRelationshipKey,
-  getRelationshipStoreState,
-} from '~/components/resources'
+import { useResourceProvider, buildRelationshipKey, getRelationshipStoreState } from '~/components/resources'
 import { useResourceIdFromField } from '../hooks/use-resource-id-from-field'
 import { extractRelationshipData } from '@auxx/lib/field-values/client'
+import type { ResourceRef } from '@auxx/types/resource'
 import { api } from '~/trpc/react'
-import { Check, Plus } from 'lucide-react'
-import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
-import {
-  Command,
-  CommandEmpty,
-  CommandInput,
-  CommandItem,
-  CommandList,
-  CommandSeparator,
-  CommandGroup,
-} from '@auxx/ui/components/command'
-import { cn } from '@auxx/ui/lib/utils'
-import { EntityIcon } from '@auxx/ui/components/icons'
-import { isCustomResource, type ResourcePickerItem } from '@auxx/lib/resources/client'
+import { isCustomResource } from '@auxx/lib/resources/client'
 import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
-
-/** Props for RelationshipItem */
-interface RelationshipItemProps {
-  item: ResourcePickerItem
-  isSelected: boolean
-  onToggle: (id: string) => void
-}
+import { ResourcePicker } from '~/components/pickers/resource-picker'
 
 /**
- * Single item in the relationship picker list
- * Handles icon resolution per-item based on entity type
- */
-function RelationshipItem({ item, isSelected, onToggle }: RelationshipItemProps) {
-  const { resource } = useResource(item.entityDefinitionId)
-  const iconColor = resource && isCustomResource(resource) ? resource.color : undefined
-
-  return (
-    <CommandItem
-      key={item.id}
-      value={item.id}
-      onSelect={() => onToggle(item.id)}
-      className="flex items-center gap-2">
-      {item.avatarUrl ? (
-        <Avatar className="size-5">
-          <AvatarImage src={item.avatarUrl} />
-          <AvatarFallback>{item.displayName?.[0]}</AvatarFallback>
-        </Avatar>
-      ) : (
-        <EntityIcon
-          iconId={resource?.icon ?? 'circle'}
-          color={iconColor ?? 'gray'}
-          size="sm"
-          inverse
-          className="-ms-0.5 inset-shadow-xs inset-shadow-black/20"
-        />
-      )}
-      <div className="flex flex-1 items-center gap-1 flex-row">
-        <span className="truncate">{item.displayName}</span>
-        {item.secondaryInfo && (
-          <span className="text-xs text-muted-foreground">{item.secondaryInfo}</span>
-        )}
-      </div>
-      <Check className={cn('size-4', isSelected ? 'opacity-100' : 'opacity-0')} />
-    </CommandItem>
-  )
-}
-
-/**
- * Input component for RELATIONSHIP field type
- * Displays an inline searchable list with selected items at top.
+ * Input component for RELATIONSHIP field type.
+ * Uses ResourcePicker for the UI and manages save-on-close pattern.
  *
  * Pattern E: Save-on-close
  * - Local state for selection tracking
  * - Uses onBeforeClose hook for fire-and-forget save
- * - CAPTURES arrow keys for list navigation
+ * - Delegates UI to ResourcePicker component
  */
 export function RelationshipInputField() {
   const { value, field, commitValue, onBeforeClose } = usePropertyContext()
   const nav = useFieldNavigationOptional()
-  const [search, setSearch] = useState('')
-  // Capture keys while open (list uses arrows)
-  useEffect(() => {
-    nav?.setPopoverCapturing(true)
-    return () => nav?.setPopoverCapturing(false)
-  }, [nav])
-
-  // Track initial selected IDs (snapshot at mount) - prevents layout shifts
-  const [initialSelectedIds, setInitialSelectedIds] = useState<Set<string>>(
-    () => new Set(extractRelationshipData(value).ids)
-  )
-
-  // Track current selection (what will be saved)
-  const [currentSelectedIds, setCurrentSelectedIds] = useState<Set<string>>(
-    () => new Set(extractRelationshipData(value).ids)
-  )
-
-  // Ref to track current selection for save-on-close
-  const currentSelectedRef = useRef<Set<string>>(currentSelectedIds)
 
   const relationship = field.options?.relationship
   const isSingleSelect =
@@ -114,11 +32,11 @@ export function RelationshipInputField() {
   // Get relatedEntityDefinitionId for storing with values
   const relatedEntityDefinitionId = useMemo(() => {
     // For custom entities, use the stored relatedEntityDefinitionId
-    if (relationship.relatedEntityDefinitionId) {
+    if (relationship?.relatedEntityDefinitionId) {
       return relationship.relatedEntityDefinitionId
     }
     // For system resources, use the relatedModelType (e.g., "contact", "ticket")
-    if (relationship.relatedModelType) {
+    if (relationship?.relatedModelType) {
       return relationship.relatedModelType
     }
     console.warn(
@@ -145,60 +63,44 @@ export function RelationshipInputField() {
   // Only custom resources support inline create (system resources have dedicated flows)
   const canInlineCreate = relatedResource && isCustomResource(relatedResource)
 
-  // For useRelationship, use entityDefinitionId directly (either system resource or UUID, no prefix needed)
-  const resourceIdForHydration = useMemo(() => {
-    if (!resourceRef) return null
-    return resourceRef.entityDefinitionId
-  }, [resourceRef])
+  // Convert field value to ResourceRef[] for ResourcePicker
+  const currentRefs = useMemo<ResourceRef[]>(() => {
+    if (!resourceRef) return []
+    const { ids } = extractRelationshipData(value)
+    return ids.map((id) => ({
+      entityDefinitionId: resourceRef.entityDefinitionId,
+      entityInstanceId: id,
+    }))
+  }, [value, resourceRef])
 
-  // Hydrate selected items via global store (always available even if not in search)
-  const selectedIdsArray = useMemo(() => Array.from(initialSelectedIds), [initialSelectedIds])
-  const { items: hydratedSelectedItems } = useRelationship(resourceIdForHydration, selectedIdsArray)
+  // Track current selection in local state for save-on-close pattern
+  const [localRefs, setLocalRefs] = useState<ResourceRef[]>(currentRefs)
 
-  // Build map of hydrated selected items
-  const hydratedSelectedMap = useMemo(() => {
-    const map: Record<string, ResourcePickerItem> = {}
-    selectedIdsArray.forEach((id, idx) => {
-      const item = hydratedSelectedItems[idx]
-      if (item) {
-        map[id] = item
-      }
-    })
-    return map
-  }, [selectedIdsArray, hydratedSelectedItems])
-
-  // Always fetch search results
-  const { data: searchResults, isLoading } = api.resource.search.useQuery(
-    {
-      entityDefinitionId: resourceRef?.entityDefinitionId ?? '',
-      search,
-      limit: 20,
-    },
-    { enabled: !!resourceRef }
-  )
+  // Ref to track current selection for save-on-close
+  const localRefsRef = useRef<ResourceRef[]>(localRefs)
 
   // Keep ref in sync with state
   useEffect(() => {
-    currentSelectedRef.current = currentSelectedIds
-  }, [currentSelectedIds])
+    localRefsRef.current = localRefs
+  }, [localRefs])
 
   // Reset selection state when value prop changes from parent
   useEffect(() => {
-    const newIds = new Set(extractRelationshipData(value).ids)
-    setInitialSelectedIds(newIds)
-    setCurrentSelectedIds(newIds)
-    currentSelectedRef.current = newIds
-  }, [value])
+    setLocalRefs(currentRefs)
+    localRefsRef.current = currentRefs
+  }, [currentRefs])
 
   // Register save handler for popover close - fire-and-forget
   useEffect(() => {
     onBeforeClose.current = () => {
-      const currentIds = Array.from(currentSelectedRef.current)
+      const currentIds = localRefsRef.current.map((ref) => ref.entityInstanceId)
       const originalIds = extractRelationshipData(value).ids
+
       // Only save if selection changed
       const hasChanged =
         currentIds.length !== originalIds.length ||
         currentIds.some((id) => !originalIds.includes(id))
+
       if (hasChanged) {
         // Wrap IDs with relatedEntityDefinitionId for proper storage
         const values = currentIds.map((id) => ({
@@ -213,70 +115,29 @@ export function RelationshipInputField() {
     }
   }, [onBeforeClose, value, commitValue, relatedEntityDefinitionId])
 
-  // Build selected items - prefer hydrated from store, fall back to search results
-  const initiallySelectedItems = useMemo(() => {
-    const searchLower = search.toLowerCase()
-    const items: ResourcePickerItem[] = []
-
-    for (const id of initialSelectedIds) {
-      // Try hydrated from global store first
-      const fromStore = hydratedSelectedMap[id]
-      if (fromStore) {
-        // Apply search filter
-        if (fromStore.displayName?.toLowerCase().includes(searchLower) ?? true) {
-          items.push(fromStore)
-        }
-        continue
-      }
-
-      // Fall back to search results
-      const fromSearch = searchResults?.items?.find((item) => item.id === id)
-      if (fromSearch) {
-        if (fromSearch.displayName?.toLowerCase().includes(searchLower) ?? true) {
-          items.push(fromSearch)
-        }
-      }
-    }
-
-    return items
-  }, [initialSelectedIds, hydratedSelectedMap, searchResults, search])
-
-  // Items that were NOT initially selected (show in bottom section)
-  const availableItems = useMemo(() => {
-    if (!searchResults?.items) return []
-    return searchResults.items.filter((item) => !initialSelectedIds.has(item.id))
-  }, [searchResults, initialSelectedIds])
+  /**
+   * Handle selection change from ResourcePicker
+   */
+  const handleChange = useCallback((selected: ResourceRef[]) => {
+    setLocalRefs(selected)
+  }, [])
 
   /**
-   * Toggle selection of an item (local state only, saves on close)
+   * Handle arrow key capture state changes
    */
-  const handleToggle = (id: string) => {
-    const newSelected = new Set(currentSelectedIds)
-
-    if (isSingleSelect) {
-      // For single select, clear and set new (or deselect if same)
-      newSelected.clear()
-      if (!currentSelectedIds.has(id)) {
-        newSelected.add(id)
-      }
-    } else {
-      // For multi select, toggle
-      if (newSelected.has(id)) {
-        newSelected.delete(id)
-      } else {
-        newSelected.add(id)
-      }
-    }
-
-    setCurrentSelectedIds(newSelected)
-  }
+  const handleCaptureChange = useCallback(
+    (capturing: boolean) => {
+      nav?.setPopoverCapturing(capturing)
+    },
+    [nav]
+  )
 
   /**
    * Open the create dialog for inline entity creation
    */
-  const handleOpenCreateDialog = () => {
+  const handleOpenCreateDialog = useCallback(() => {
     setIsCreateDialogOpen(true)
-  }
+  }, [])
 
   // Get tRPC utils for fetching
   const utils = api.useUtils()
@@ -309,15 +170,18 @@ export function RelationshipInputField() {
         console.warn('Failed to fetch newly created item:', error)
       }
 
-      // Select the new item
-      if (isSingleSelect) {
-        setCurrentSelectedIds(new Set([instanceId]))
-      } else {
-        setCurrentSelectedIds((prev) => new Set([...prev, instanceId]))
+      // Create the new ref
+      const newRef: ResourceRef = {
+        entityDefinitionId: resourceRef.entityDefinitionId,
+        entityInstanceId: instanceId,
       }
 
-      // Update initial selected IDs to keep item in "Selected Items" section
-      setInitialSelectedIds((prev) => new Set([...prev, instanceId]))
+      // Select the new item
+      if (isSingleSelect) {
+        setLocalRefs([newRef])
+      } else {
+        setLocalRefs((prev) => [...prev, newRef])
+      }
 
       // Close dialog
       setIsCreateDialogOpen(false)
@@ -329,60 +193,19 @@ export function RelationshipInputField() {
     return <span className="text-muted-foreground p-2">Invalid relationship config</span>
   }
 
-  const hasSelectedSection = initiallySelectedItems.length > 0
-  const hasResultsSection = availableItems.length > 0
-
   return (
     <div className="">
-      <Command shouldFilter={false}>
-        <CommandInput placeholder="Search..." value={search} onValueChange={setSearch} />
-        <CommandList>
-          <CommandEmpty>{isLoading ? 'Searching...' : 'No results found'}</CommandEmpty>
-
-          {/* Selected Items Section */}
-          {hasSelectedSection && (
-            <CommandGroup aria-label="Selected Items">
-              {initiallySelectedItems.map((item) => (
-                <RelationshipItem
-                  key={item.id}
-                  item={item}
-                  isSelected={currentSelectedIds.has(item.id)}
-                  onToggle={handleToggle}
-                />
-              ))}
-            </CommandGroup>
-          )}
-
-          {/* Separator between sections */}
-          {hasSelectedSection && hasResultsSection && <CommandSeparator />}
-
-          {/* Available Items Section */}
-          {hasResultsSection && (
-            <CommandGroup aria-label="Available Items">
-              {availableItems.map((item) => (
-                <RelationshipItem
-                  key={item.id}
-                  item={item}
-                  isSelected={currentSelectedIds.has(item.id)}
-                  onToggle={handleToggle}
-                />
-              ))}
-            </CommandGroup>
-          )}
-          {/* Create Option (only for custom resources) */}
-          {canInlineCreate && (
-            <>
-              {(hasSelectedSection || hasResultsSection) && <CommandSeparator />}
-              <CommandGroup aria-label="Create">
-                <CommandItem onSelect={handleOpenCreateDialog}>
-                  <Plus />
-                  Create {relatedResource?.label ?? 'Item'}
-                </CommandItem>
-              </CommandGroup>
-            </>
-          )}
-        </CommandList>
-      </Command>
+      <ResourcePicker
+        value={localRefs}
+        onChange={handleChange}
+        entityDefinitionId={resourceRef.entityDefinitionId}
+        multi={!isSingleSelect}
+        onCaptureChange={handleCaptureChange}
+        canCreate={canInlineCreate}
+        onCreate={handleOpenCreateDialog}
+        createLabel={`Create ${relatedResource?.label ?? 'Item'}`}
+        placeholder="Search..."
+      />
 
       {/* Inline Create Dialog */}
       {canInlineCreate && relatedResource && (

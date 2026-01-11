@@ -4,10 +4,16 @@
 
 import { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react'
 import { api } from '~/trpc/react'
-import { getRelationshipStoreState, useRelationshipStore, getRecordStoreState } from '../store'
+import {
+  getRelationshipStoreState,
+  useRelationshipStore,
+  getRecordStoreState,
+  buildRelationshipKey,
+} from '../store'
 import type { Resource, CustomResource } from '@auxx/lib/resources/client'
 import { isCustomResource } from '@auxx/lib/resources/client'
 import { useRecordBatchFetcher } from '../hooks/use-record-batch-fetcher'
+import type { ResourceRef } from '@auxx/types/resource'
 
 /**
  * Component that handles batch fetching of records.
@@ -30,7 +36,7 @@ interface ResourceContextValue {
   getResourceById: (id: string) => Resource | undefined
 
   /** Request hydration for relationship items (batch fetched on demand) */
-  requestRelationshipHydration: (items: Array<{ resourceId: string; id: string }>) => void
+  requestRelationshipHydration: (refs: ResourceRef[]) => void
   /** Invalidate specific relationship keys */
   invalidateRelationship: (keys: string[]) => void
 
@@ -79,20 +85,18 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
   const getResourceById = useCallback((id: string) => resourceMap.get(id), [resourceMap])
 
   // === RELATIONSHIP ITEMS BATCHING ===
-  const [relationshipBatch, setRelationshipBatch] = useState<
-    Array<{ resourceId: string; id: string }>
-  >([])
+  const [relationshipBatch, setRelationshipBatch] = useState<ResourceRef[]>([])
   const relationshipPendingSize = useRelationshipStore((s) => s.pendingIds.size)
 
   useEffect(() => {
     if (relationshipPendingSize === 0 || relationshipBatch.length > 0) return
     const timeout = setTimeout(() => {
       const state = getRelationshipStoreState()
-      const items = state.getItemsToFetch().slice(0, MAX_RELATIONSHIP_BATCH)
-      if (items.length === 0) return
-      const keys = items.map(({ resourceId, id }) => `${resourceId}:${id}`)
+      const refs = state.getItemsToFetch().slice(0, MAX_RELATIONSHIP_BATCH)
+      if (refs.length === 0) return
+      const keys = refs.map(buildRelationshipKey)
       state.markLoading(keys)
-      setRelationshipBatch(items)
+      setRelationshipBatch(refs)
     }, BATCH_DELAY)
     return () => clearTimeout(timeout)
   }, [relationshipPendingSize, relationshipBatch.length])
@@ -105,7 +109,7 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!relationshipData || relationshipBatch.length === 0) return
     // Pass requested keys so missing items (deleted entities) get marked as not found
-    const requestedKeys = relationshipBatch.map(({ resourceId, id }) => `${resourceId}:${id}`)
+    const requestedKeys = relationshipBatch.map(buildRelationshipKey)
     getRelationshipStoreState().addHydratedItems(relationshipData, requestedKeys)
     setRelationshipBatch([])
   }, [relationshipData, relationshipBatch.length])
@@ -113,18 +117,15 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!relationshipError || relationshipBatch.length === 0) return
     console.error('Failed to fetch relationships:', relationshipError)
-    const keys = relationshipBatch.map(({ resourceId, id }) => `${resourceId}:${id}`)
+    const keys = relationshipBatch.map(buildRelationshipKey)
     getRelationshipStoreState().markError(keys)
     setRelationshipBatch([])
   }, [relationshipError, relationshipBatch])
 
   // === METHODS ===
-  const requestRelationshipHydration = useCallback(
-    (items: Array<{ resourceId: string; id: string }>) => {
-      getRelationshipStoreState().requestHydration(items)
-    },
-    []
-  )
+  const requestRelationshipHydration = useCallback((refs: ResourceRef[]) => {
+    getRelationshipStoreState().requestHydration(refs)
+  }, [])
 
   const invalidateRelationship = useCallback((keys: string[]) => {
     getRelationshipStoreState().invalidate(keys)

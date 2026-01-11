@@ -3,27 +3,37 @@
 import { useMemo } from 'react'
 import { createHydrationStore, type HydrationStore } from '~/stores'
 import type { ResourcePickerItem } from '@auxx/lib/resources/client'
+import type { ResourceRef } from '@auxx/types/resource'
 
 /**
- * Build a relationship cache key from resourceId and id
+ * Build a relationship cache key from ResourceRef
  */
-export function buildRelationshipKey(resourceId: string, id: string): string {
-  return `${resourceId}:${id}`
+export function buildRelationshipKey(ref: ResourceRef): string
+export function buildRelationshipKey(entityDefinitionId: string, entityInstanceId: string): string
+export function buildRelationshipKey(
+  refOrEntityDefinitionId: ResourceRef | string,
+  entityInstanceId?: string
+): string {
+  if (typeof refOrEntityDefinitionId === 'object') {
+    return `${refOrEntityDefinitionId.entityDefinitionId}:${refOrEntityDefinitionId.entityInstanceId}`
+  }
+  return `${refOrEntityDefinitionId}:${entityInstanceId}`
 }
 
 /**
- * Parse a relationship cache key into resourceId and id
- * Expected format: "resourceId:id"
+ * Parse a relationship cache key into ResourceRef
+ * Expected format: "entityDefinitionId:entityInstanceId"
  */
-export function parseRelationshipKey(key: string): { resourceId: string; id: string } {
+export function parseRelationshipKey(key: string): ResourceRef {
   const colonIndex = key.indexOf(':')
   if (colonIndex === -1) {
     console.error('[RelationshipStore] Malformed key (missing colon):', key)
-    return { resourceId: key, id: '' }
+    return { entityDefinitionId: key, entityInstanceId: '' }
   }
-  const resourceId = key.slice(0, colonIndex)
-  const id = key.slice(colonIndex + 1)
-  return { resourceId, id }
+  return {
+    entityDefinitionId: key.slice(0, colonIndex),
+    entityInstanceId: key.slice(colonIndex + 1),
+  }
 }
 
 /**
@@ -38,8 +48,10 @@ export const useRelationshipStore = createHydrationStore<ResourcePickerItem>({
  * Extended state type with convenience methods
  */
 export interface RelationshipStoreState extends HydrationStore<ResourcePickerItem> {
-  requestHydration: (items: Array<{ resourceId: string; id: string }>) => void
-  getItemsToFetch: () => Array<{ resourceId: string; id: string }>
+  /** Request hydration for ResourceRef[] */
+  requestHydration: (refs: ResourceRef[]) => void
+  /** Get items pending fetch as ResourceRef[] */
+  getItemsToFetch: () => ResourceRef[]
   /** Add hydrated items. Pass requestedKeys to mark missing items as not found. */
   addHydratedItems: (items: Record<string, ResourcePickerItem>, requestedKeys?: string[]) => void
 }
@@ -52,8 +64,8 @@ export function getRelationshipStoreState(): RelationshipStoreState {
 
   return {
     ...state,
-    requestHydration: (items) => {
-      const keys = items.map(({ resourceId, id }) => buildRelationshipKey(resourceId, id))
+    requestHydration: (refs: ResourceRef[]) => {
+      const keys = refs.map(buildRelationshipKey)
       state.request(keys)
     },
     getItemsToFetch: () => {

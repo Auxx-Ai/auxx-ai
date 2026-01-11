@@ -13,8 +13,8 @@ import type {
   GroupedTasksResponse,
 } from './types'
 import { pickDefined, hasDefinedProps } from '../utils/pick-defined'
-
 import type { Deadline, RelativeDate } from '@auxx/types/task'
+import type { ResourceRef } from '@auxx/types/resource'
 
 /**
  * Convert a relative or absolute deadline to a concrete Date
@@ -346,7 +346,7 @@ export class TaskService {
     taskId: string,
     organizationId: string,
     userId: string,
-    referencedEntities: { entityInstanceId: string; entityDefinitionId: string }[]
+    referencedEntities: ResourceRef[]
   ): Promise<void> {
     const currentRefs = await tx.query.TaskReference.findMany({
       where: (r, { eq, and, isNull }) => and(eq(r.taskId, taskId), isNull(r.deletedAt)),

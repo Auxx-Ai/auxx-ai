@@ -1,6 +1,7 @@
 // packages/lib/src/field-values/relationship-field.ts
 
 import type { RelationshipFieldValue, RelationshipFieldValueInput, TypedFieldValue } from '@auxx/types/field-value'
+import type { ResourceRef } from '@auxx/types/resource'
 
 /** Extracted relationship data - always normalized to arrays */
 export interface RelationshipData {
@@ -238,4 +239,28 @@ export function validateRelationshipValue(value: unknown): boolean {
  */
 export function validateEntityDefinitionId(entityDefinitionId: string | null): boolean {
   return typeof entityDefinitionId === 'string' && entityDefinitionId.trim().length > 0
+}
+
+// ============================================================================
+// RESOURCE REF EXTRACTORS - For useRelationship hook
+// ============================================================================
+
+/**
+ * Extract ResourceRef[] from ANY relationship value format.
+ * Returns empty array if entityDefinitionId cannot be determined.
+ *
+ * Use this for the new useRelationship(refs) API.
+ */
+export function extractRelationshipRefs(value: unknown): ResourceRef[] {
+  const { ids, entityDefinitionId } = extractRelationshipData(value)
+
+  // Cannot create refs without entityDefinitionId
+  if (!entityDefinitionId || ids.length === 0) {
+    return []
+  }
+
+  return ids.map((id) => ({
+    entityDefinitionId,
+    entityInstanceId: id,
+  }))
 }

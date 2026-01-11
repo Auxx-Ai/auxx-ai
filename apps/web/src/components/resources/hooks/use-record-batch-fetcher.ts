@@ -5,9 +5,10 @@ import { api } from '~/trpc/react'
 import { useRecordStore, getRecordStoreState } from '../store/record-store'
 import { hydrateMultipleRecords } from '~/stores/hydrate-field-values'
 import type { Resource } from '@auxx/lib/resources/client'
+import type { ResourceRef } from '@auxx/types/resource'
 
 const BATCH_DELAY = 50
-const EMPTY_ITEMS: Array<{ resourceId: string; id: string }> = []
+const EMPTY_ITEMS: ResourceRef[] = []
 
 interface UseRecordBatchFetcherOptions {
   /** Function to get Resource by ID (from ResourceProvider context) */
@@ -66,11 +67,11 @@ export function useRecordBatchFetcher({ getResourceById }: UseRecordBatchFetcher
   }, [pendingFetchIds, currentBatch])
 
   // Stable query input - memoize to prevent creating new arrays
-  const queryItems = useMemo(() => {
+  const queryItems = useMemo<ResourceRef[]>(() => {
     if (!currentBatch || currentBatch.ids.length === 0) return EMPTY_ITEMS
     return currentBatch.ids.map((id) => ({
-      resourceId: currentBatch.resourceType,
-      id,
+      entityDefinitionId: currentBatch.resourceType,
+      entityInstanceId: id,
     }))
   }, [currentBatch])
 

@@ -12,3 +12,9 @@ export type {
 
 export { MultiSelectPicker } from './multi-select-picker'
 export type { MultiSelectPickerProps } from './multi-select-picker'
+
+export { ResourcePicker } from './resource-picker'
+export type { ResourcePickerProps } from './resource-picker'
+
+export { ResourcePickerPopover } from './resource-picker-popover'
+export type { ResourcePickerPopoverProps } from './resource-picker-popover'

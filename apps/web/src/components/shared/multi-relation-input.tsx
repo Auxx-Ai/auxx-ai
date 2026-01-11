@@ -12,6 +12,7 @@ import { Badge } from '@auxx/ui/components/badge'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { useRelationship } from '~/components/resources'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
+import type { ResourceRef } from '@auxx/types/resource'
 
 /**
  * Relationship config shape from field.options?.relationship
@@ -102,8 +103,17 @@ export function MultiRelationInput({
     return true // default to multi
   }, [multiProp, relationship?.relationshipType])
 
+  // Build ResourceRefs for hydration
+  const selectedRefs = useMemo<ResourceRef[]>(() => {
+    if (!tableId) return []
+    return value.map((id) => ({
+      entityDefinitionId: tableId,
+      entityInstanceId: id,
+    }))
+  }, [tableId, value])
+
   // Get hydrated items for selected IDs from the store
-  const { items: selectedItems, isLoading: isLoadingSelected } = useRelationship(tableId, value)
+  const { items: selectedItems, isLoading: isLoadingSelected } = useRelationship(selectedRefs)
 
   // Search for items when popover is open
   const { data: searchResults, isLoading: isSearching } = api.resource.search.useQuery(

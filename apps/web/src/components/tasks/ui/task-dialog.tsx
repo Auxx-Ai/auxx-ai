@@ -24,6 +24,7 @@ import { createMentionExtension } from '~/components/editor/extensions/mention-e
 import { type MentionItem } from '~/components/editor/mention-popover'
 import { DateTimePicker } from '~/components/pickers/date-time-picker'
 import { AssigneePicker, type TeamMember } from '~/components/pickers/assignee-picker'
+import { ResourcePickerPopover } from '~/components/pickers/resource-picker-popover'
 import { formatTaskDeadlineDisplay } from '../utils/group-tasks-by-period'
 import { useTaskMutations } from '../hooks/use-task-mutations'
 import { api } from '~/trpc/react'
@@ -31,6 +32,7 @@ import { TextDateParser, DateLanguageModule } from '@auxx/lib/tasks/client'
 import type { TaskWithRelations, CreateTaskInput, UpdateTaskInput } from '@auxx/lib/tasks'
 import { SubmitOnEnter } from '~/components/global/comments/comment-composer'
 import { toastSuccess } from '@auxx/ui/components/toast'
+import type { ResourceRef } from '@auxx/types/resource'
 
 /**
  * Props for TaskDialog component
@@ -45,10 +47,7 @@ interface TaskDialogProps {
   /** Task to edit (required for edit mode) */
   task?: TaskWithRelations
   /** Default entity reference when creating from entity drawer */
-  defaultReferencedEntity?: {
-    entityInstanceId: string
-    entityDefinitionId: string
-  }
+  defaultReferencedEntity?: ResourceRef
 }
 
 /**
@@ -79,6 +78,7 @@ export function TaskDialog({
   const [deadline, setDeadline] = useState<Date | undefined>(undefined)
   const [deadlineManuallySet, setDeadlineManuallySet] = useState(false)
   const [assignedUserIds, setAssignedUserIds] = useState<string[]>([])
+  const [linkedRecords, setLinkedRecords] = useState<ResourceRef[]>([])
   const [createMore, setCreateMore] = useState(false)
 
   // Mutations
@@ -196,6 +196,7 @@ export function TaskDialog({
   useEffect(() => {
     if (open) {
       if (task) {
+        // Edit mode: populate from existing task
         const content = `<p>${task.title}</p>`
         editor?.commands.setContent(content)
         setDeadline(task.deadline ? new Date(task.deadline) : undefined)
@@ -203,15 +204,25 @@ export function TaskDialog({
         setAssignedUserIds(
           (task.assignments?.map((a) => a.assignedTo?.id).filter(Boolean) as string[]) ?? []
         )
+        // Load existing linked records from task references
+        setLinkedRecords(
+          task.references?.map((ref) => ({
+            entityDefinitionId: ref.entityDefinitionId,
+            entityInstanceId: ref.entityInstanceId,
+          })) ?? []
+        )
       } else {
+        // Create mode: start fresh or with default entity reference
         editor?.commands.clearContent()
         setDeadline(undefined)
         setDeadlineManuallySet(false)
         setAssignedUserIds([])
+        // Initialize with default referenced entity if provided
+        setLinkedRecords(defaultReferencedEntity ? [defaultReferencedEntity] : [])
       }
       setTimeout(() => editor?.commands.focus(), 100)
     }
-  }, [task, open, editor])
+  }, [task, open, editor, defaultReferencedEntity])
 
   /**
    * Handle manual deadline change from date picker
@@ -240,8 +251,9 @@ export function TaskDialog({
     setDeadline(undefined)
     setDeadlineManuallySet(false)
     setAssignedUserIds([])
+    setLinkedRecords(defaultReferencedEntity ? [defaultReferencedEntity] : [])
     setTimeout(() => editor?.commands.focus(), 100)
-  }, [editor])
+  }, [editor, defaultReferencedEntity])
 
   /**
    * Handle save button click
@@ -265,7 +277,7 @@ export function TaskDialog({
         description,
         deadline: deadline ? { type: 'static', value: deadline.toISOString() } : undefined,
         assignedUserIds,
-        referencedEntities: defaultReferencedEntity ? [defaultReferencedEntity] : undefined,
+        referencedEntities: linkedRecords.length > 0 ? linkedRecords : undefined,
       }
       createTask.mutate(input)
       toastSuccess({ title: 'Task created' })
@@ -276,6 +288,7 @@ export function TaskDialog({
         description,
         deadline: deadline ? { type: 'static', value: deadline.toISOString() } : null,
         assignedUserIds,
+        referencedEntities: linkedRecords,
       }
       updateTask.mutate(input)
     }
@@ -292,7 +305,7 @@ export function TaskDialog({
     task,
     deadline,
     assignedUserIds,
-    defaultReferencedEntity,
+    linkedRecords,
     createTask,
     updateTask,
     onOpenChange,
@@ -375,11 +388,19 @@ export function TaskDialog({
                 </Button>
               </AssigneePicker>
 
-              {/* Record Linking (placeholder) */}
-              <Button variant="ghost" size="sm" disabled>
-                <Link2 />
-                Link record
-              </Button>
+              {/* Record Linking */}
+              <ResourcePickerPopover
+                value={linkedRecords}
+                onChange={setLinkedRecords}
+                multi
+                emptyLabel="Link record">
+                <Button variant="ghost" size="sm">
+                  <Link2 />
+                  {linkedRecords.length > 0
+                    ? `${linkedRecords.length} linked record${linkedRecords.length > 1 ? 's' : ''}`
+                    : 'Link record'}
+                </Button>
+              </ResourcePickerPopover>
             </div>
 
             {/* Right side: Actions */}

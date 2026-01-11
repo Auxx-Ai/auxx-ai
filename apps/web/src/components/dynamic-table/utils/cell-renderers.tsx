@@ -6,7 +6,6 @@ import { formatCurrency, formatBytes, type CurrencyDisplayOptions } from '@auxx/
 import { CheckSquare, Paperclip } from 'lucide-react'
 import { Badge } from '@auxx/ui/components/badge'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { isSystemResourceId } from '@auxx/lib/resources/client'
 import { CopyableLinkCell } from '../components/copyable-link-cell'
 import { CellPadding, type CellConfig } from '../components/formatted-cell'
 import { TagsCellView } from '~/components/ui/tags-view'
@@ -15,7 +14,7 @@ import { useRelationship } from '~/components/resources'
 import {
   formatToRawValue,
   formatToDisplayValue,
-  extractRelationshipData,
+  extractRelationshipRefs,
   type NumberFieldOptions,
   type DateFieldOptions,
   type BooleanFieldOptions,
@@ -40,31 +39,18 @@ type SelectOption = { label: string; value: string }
  * - Custom entities: store UUID of EntityDefinition
  */
 function RelationshipCellContent({ value }: { value: unknown }) {
-  // Extract IDs and entityDefinitionId from value using centralized utility
-  const { ids, entityDefinitionId } = useMemo(() => extractRelationshipData(value), [value])
+  // Extract ResourceRefs from value using centralized utility
+  const refs = useMemo(() => extractRelationshipRefs(value), [value])
 
-  // Convert entityDefinitionId to resourceId for useRelationship
-  const resourceId = useMemo(() => {
-    if (!entityDefinitionId) return null
-
-    // System resources: normalize plural to singular (e.g., "contacts" -> "contact")
-    if (isSystemResourceId(entityDefinitionId)) {
-      return entityDefinitionId.replace(/s$/, '')
-    }
-
-    // Custom resources: use UUID directly
-    return entityDefinitionId
-  }, [entityDefinitionId])
-
-  const { items: hydratedItems, isLoading } = useRelationship(resourceId, ids)
+  const { items: hydratedItems, isLoading } = useRelationship(refs)
 
   // Map items with per-item loading state
   // hydratedItems[i] can be: ResourcePickerItem (found), null (not found), undefined (loading)
-  const items = ids.map((id, i) => {
+  const items = refs.map((ref, i) => {
     const hydrated = hydratedItems[i]
     return {
-      id,
-      displayName: hydrated?.displayName ?? id.slice(-6),
+      id: ref.entityInstanceId,
+      displayName: hydrated?.displayName ?? ref.entityInstanceId.slice(-6),
       isLoading: hydrated === undefined, // undefined = still loading
       isNotFound: hydrated === null, // null = not found
     }

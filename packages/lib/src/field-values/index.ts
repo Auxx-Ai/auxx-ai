@@ -41,6 +41,7 @@ export {
 // Row types (exported from types.ts, not value-converter.ts)
 export {
   extractRelationshipData,
+  extractRelationshipRefs,
   normalizeRelationshipValue,
   validateRelationshipValue,
   validateEntityDefinitionId,

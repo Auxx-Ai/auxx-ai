@@ -21,6 +21,7 @@ import type {
   GlobalSearchParams,
   GlobalSearchResult,
 } from './types'
+import type { ResourceRef } from '@auxx/types/resource'
 
 const logger = createScopedLogger('resource-picker-service')
 
@@ -585,33 +586,34 @@ export class ResourcePickerService {
   /**
    * Get multiple resources by IDs (batch)
    * Works with both system resources (TableId) and custom entities (entity_slug)
+   *
+   * @param refs - Array of ResourceRef to fetch
+   * @returns Record keyed by entityInstanceId
    */
-  async getResourcesByIds(
-    items: Array<{ resourceId: string; id: string }>
-  ): Promise<Record<string, ResourcePickerItem>> {
+  async getResourcesByIds(refs: ResourceRef[]): Promise<Record<string, ResourcePickerItem>> {
     const result: Record<string, ResourcePickerItem> = {}
 
-    // Group by resourceId for efficient batching
+    // Group by entityDefinitionId for efficient batching
     const grouped = new Map<string, string[]>()
-    for (const { resourceId, id } of items) {
-      if (!grouped.has(resourceId)) grouped.set(resourceId, [])
-      grouped.get(resourceId)!.push(id)
+    for (const { entityDefinitionId, entityInstanceId } of refs) {
+      if (!grouped.has(entityDefinitionId)) grouped.set(entityDefinitionId, [])
+      grouped.get(entityDefinitionId)!.push(entityInstanceId)
     }
 
     // Fetch each group in parallel
     await Promise.all(
-      Array.from(grouped.entries()).map(async ([resourceId, ids]) => {
-        if (this.registryService.isCustomResource(resourceId)) {
+      Array.from(grouped.entries()).map(async ([entityDefinitionId, ids]) => {
+        if (this.registryService.isCustomResource(entityDefinitionId)) {
           // Custom entity - fetch EntityInstances by IDs
-          const resource = await this.registryService.getById(resourceId)
+          const resource = await this.registryService.getById(entityDefinitionId)
           if (resource && isCustomResource(resource)) {
             const fetched = await this.fetchEntityInstancesByIds(resource, ids)
             for (const item of fetched) result[item.id] = item
           }
-        } else if (RESOURCE_TABLE_MAP[resourceId as TableId]) {
+        } else if (RESOURCE_TABLE_MAP[entityDefinitionId as TableId]) {
           // System resource - use existing fetchResourcesFromDb with ID filter
           const { items: fetched } = await this.fetchResourcesFromDb(
-            resourceId as TableId,
+            entityDefinitionId as TableId,
             ids.length,
             null,
             undefined,

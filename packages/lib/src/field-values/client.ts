@@ -51,6 +51,7 @@ export type { FieldValueRow } from './types'
 // Legacy relationship field utilities
 export {
   extractRelationshipData,
+  extractRelationshipRefs,
   normalizeRelationshipValue,
   validateRelationshipValue,
   validateEntityDefinitionId,

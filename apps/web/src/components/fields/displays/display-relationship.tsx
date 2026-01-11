@@ -3,14 +3,12 @@
 import { useMemo } from 'react'
 import { usePropertyContext } from '../property-provider'
 import { useRelationship } from '~/components/resources'
-import { RESOURCE_TABLE_REGISTRY } from '@auxx/lib/resources/client'
-import { extractRelationshipData } from '@auxx/lib/field-values/client'
+import { extractRelationshipRefs } from '@auxx/lib/field-values/client'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import DisplayWrapper from './display-wrapper'
 import { ItemsListView, type ItemsListItem } from '~/components/ui/items-list-view'
-import type { RelationshipFieldValue } from '@auxx/types/field-value'
 
 /** Relationship item for ItemsListView */
 interface RelationshipItem extends ItemsListItem {
@@ -27,39 +25,24 @@ interface RelationshipItem extends ItemsListItem {
 export function DisplayRelationship() {
   const { value } = usePropertyContext()
 
-  // Extract IDs and entityDefinitionId using centralized utility
-  const { ids, resourceId } = useMemo(() => {
-    const { ids: extractedIds, entityDefinitionId } = extractRelationshipData(value)
-
-    let resolvedResourceId: string | null = null
-    if (entityDefinitionId) {
-      // Check if it's a system resource first
-      if (RESOURCE_TABLE_REGISTRY.some((r) => r.id === entityDefinitionId)) {
-        resolvedResourceId = entityDefinitionId
-      } else {
-        // Otherwise it's a UUID (no entity_ prefix needed)
-        resolvedResourceId = entityDefinitionId
-      }
-    }
-
-    return { ids: extractedIds, resourceId: resolvedResourceId }
-  }, [value])
+  // Extract ResourceRefs using centralized utility
+  const refs = useMemo(() => extractRelationshipRefs(value), [value])
 
   // Hydrate items via global store
-  const { items, isLoading } = useRelationship(resourceId, ids)
+  const { items, isLoading } = useRelationship(refs)
 
   // Build relationship items for ItemsListView
   const relationshipItems = useMemo<RelationshipItem[]>(() => {
-    return ids.map((id, idx) => {
+    return refs.map((ref, idx) => {
       const entity = items[idx]
       return {
-        id,
-        displayName: entity?.displayName ?? `${id.slice(0, 8)}...`,
+        id: ref.entityInstanceId,
+        displayName: entity?.displayName ?? `${ref.entityInstanceId.slice(0, 8)}...`,
         avatarUrl: entity?.avatarUrl,
         isLoaded: !!entity,
       }
     })
-  }, [ids, items])
+  }, [refs, items])
 
   // Build display names for copy value
   const copyText = relationshipItems.map((item) => item.displayName).join(', ')
@@ -68,8 +51,8 @@ export function DisplayRelationship() {
   if (isLoading && items.every((i) => i === undefined)) {
     return (
       <DisplayWrapper copyValue={null}>
-        {ids.map((id) => (
-          <Skeleton key={id} className="h-5 w-20 rounded-full" />
+        {refs.map((ref) => (
+          <Skeleton key={ref.entityInstanceId} className="h-5 w-20 rounded-full" />
         ))}
       </DisplayWrapper>
     )
@@ -84,7 +67,7 @@ export function DisplayRelationship() {
           item.isLoaded ? (
             <Badge variant="pill" shape="tag" className="flex items-center gap-1.5">
               {item.avatarUrl && (
-                <Avatar className="h-4 w-4">
+                <Avatar className="size-4">
                   <AvatarImage src={item.avatarUrl} />
                   <AvatarFallback className="text-[10px]">{item.displayName?.[0]}</AvatarFallback>
                 </Avatar>

@@ -4,10 +4,13 @@ import { useEffect, useMemo } from 'react'
 import { useResourceProvider } from '../providers/resource-provider'
 import { useHydratedItems, useIsLoadingRelationships, buildRelationshipKey } from '../store'
 import type { ResourcePickerItem } from '@auxx/lib/resources/client'
+import type { ResourceRef } from '@auxx/types/resource'
 
 interface UseRelationshipResult {
-  /** Hydrated items: ResourcePickerItem (found), null (deleted/not found), undefined (loading) */
+  /** Hydrated items indexed by position (matches input refs order) */
   items: (ResourcePickerItem | null | undefined)[]
+  /** Map of entityInstanceId -> ResourcePickerItem for random access */
+  itemsMap: Map<string, ResourcePickerItem | null | undefined>
   /** Whether any items are still loading */
   isLoading: boolean
   /** Whether all items are resolved (found or not found) */
@@ -16,30 +19,47 @@ interface UseRelationshipResult {
 
 /**
  * Hook for requesting and subscribing to relationship items
- * Uses selector-based subscriptions to only re-render when specific data changes
  *
- * @param resourceId - The resource type (e.g., 'contact', 'entity_vendors')
- * @param ids - Array of IDs to hydrate
+ * @param refs - Array of ResourceRef to hydrate (supports mixed entity types)
  * @returns Hydrated items and loading state
+ *
+ * @example
+ * const refs = extractRelationshipRefs(fieldValue)
+ * const { items, isLoading } = useRelationship(refs)
  */
-export function useRelationship(resourceId: string | null, ids: string[]): UseRelationshipResult {
+export function useRelationship(refs: ResourceRef[]): UseRelationshipResult {
   const { requestRelationshipHydration } = useResourceProvider()
 
+  // Build cache keys
   const keys = useMemo(() => {
-    if (!resourceId || ids.length === 0) return []
-    return ids.map((id) => buildRelationshipKey(resourceId, id))
-  }, [resourceId, ids])
+    if (refs.length === 0) return []
+    return refs.map(buildRelationshipKey)
+  }, [refs])
 
-  const idsKey = ids.join(',')
+  // Create stable reference key for effect dependency
+  const refsKey = useMemo(() => {
+    return refs.map((r) => `${r.entityDefinitionId}:${r.entityInstanceId}`).join('|')
+  }, [refs])
 
+  // Request hydration on mount/change
   useEffect(() => {
-    if (!resourceId || ids.length === 0) return
-    requestRelationshipHydration(ids.map((id) => ({ resourceId, id })))
-  }, [resourceId, idsKey, requestRelationshipHydration])
+    if (refs.length === 0) return
+    requestRelationshipHydration(refs)
+  }, [refsKey, requestRelationshipHydration])
 
+  // Subscribe to hydrated items
   const items = useHydratedItems(keys)
   const isLoading = useIsLoadingRelationships(keys)
   const isComplete = keys.length > 0 && items.every((item) => item !== undefined)
 
-  return { items, isLoading, isComplete }
+  // Build itemsMap for random access
+  const itemsMap = useMemo(() => {
+    const map = new Map<string, ResourcePickerItem | null | undefined>()
+    refs.forEach((ref, idx) => {
+      map.set(ref.entityInstanceId, items[idx])
+    })
+    return map
+  }, [refs, items])
+
+  return { items, itemsMap, isLoading, isComplete }
 }

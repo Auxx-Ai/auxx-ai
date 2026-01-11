@@ -19,6 +19,7 @@ import {
 } from '@auxx/lib/workflow-engine'
 import { type Database, schema } from '@auxx/database'
 import { eq, and } from 'drizzle-orm'
+import { resourceRefSchema } from '@auxx/types/resource'
 
 /**
  * Validate resource ID - accepts system TableId or custom entity UUID
@@ -123,14 +124,7 @@ export const resourceRouter = createTRPCRouter({
   getByIds: protectedProcedure
     .input(
       z.object({
-        items: z
-          .array(
-            z.object({
-              resourceId: z.string(), // TableId or entity_<slug>
-              id: z.string(),
-            })
-          )
-          .max(100),
+        items: z.array(resourceRefSchema).max(100),
       })
     )
     .query(async ({ ctx, input }) => {
