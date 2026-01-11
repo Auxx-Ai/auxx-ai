@@ -5,6 +5,7 @@
 import { useMemo, useCallback, useState, useRef } from 'react'
 import { Filter, X } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
+import { Switch } from '@auxx/ui/components/switch'
 import { Badge } from '@auxx/ui/components/badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import {
@@ -29,6 +30,10 @@ interface TaskFilterBarProps {
   sort: TaskSortConfig
   /** Callback when sort changes */
   onSortChange: (sort: TaskSortConfig) => void
+  /** Whether to include completed tasks */
+  includeCompleted: boolean
+  /** Callback when includeCompleted changes */
+  onIncludeCompletedChange: (value: boolean) => void
   /** Whether the filter bar is disabled */
   disabled?: boolean
 }
@@ -42,6 +47,8 @@ export function TaskFilterBar({
   onFiltersChange,
   sort,
   onSortChange,
+  includeCompleted,
+  onIncludeCompletedChange,
   disabled = false,
 }: TaskFilterBarProps) {
   const [isFilterOpen, setIsFilterOpen] = useState(false)
@@ -180,6 +187,26 @@ export function TaskFilterBar({
 
       {/* Sort Select */}
       <TaskSortSelect value={sort} onChange={onSortChange} disabled={disabled} />
+
+      {/* Spacer */}
+      <div className="flex-1" />
+
+      {/* Show Completed Toggle */}
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={disabled}
+        onClick={() => onIncludeCompletedChange(!includeCompleted)}
+        className="gap-2"
+      >
+        <span className="text-muted-foreground text-xs">Show completed</span>
+        <Switch
+          size="sm"
+          checked={includeCompleted}
+          onCheckedChange={onIncludeCompletedChange}
+          disabled={disabled}
+        />
+      </Button>
     </div>
   )
 }

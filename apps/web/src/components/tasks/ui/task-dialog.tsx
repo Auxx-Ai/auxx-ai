@@ -182,7 +182,7 @@ export function TaskDialog({
       const input: CreateTaskInput = {
         title,
         description,
-        deadline: deadline ? { type: 'static', value: deadline } : undefined,
+        deadline: deadline ? { type: 'static', value: deadline.toISOString() } : undefined,
         assignedUserIds,
         referencedEntities: defaultReferencedEntity ? [defaultReferencedEntity] : undefined,
       }
@@ -192,7 +192,7 @@ export function TaskDialog({
         id: task.id,
         title,
         description,
-        deadline: deadline ? { type: 'static', value: deadline } : null,
+        deadline: deadline ? { type: 'static', value: deadline.toISOString() } : null,
         assignedUserIds,
       }
       await updateTask.mutateAsync(input)

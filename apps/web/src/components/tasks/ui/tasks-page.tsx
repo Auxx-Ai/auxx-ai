@@ -27,6 +27,7 @@ export function TasksPage() {
     field: 'deadline',
     direction: 'asc',
   })
+  const [includeCompleted, setIncludeCompleted] = useState(true)
 
   // TODO: Fetch stats from API (deferred)
   const stats = null
@@ -50,6 +51,8 @@ export function TasksPage() {
           onFiltersChange={setFilters}
           sort={sort}
           onSortChange={setSort}
+          includeCompleted={includeCompleted}
+          onIncludeCompletedChange={setIncludeCompleted}
         />
 
         {/* Task List */}
@@ -58,6 +61,7 @@ export function TasksPage() {
             viewMode="global"
             filters={filters}
             sort={sort}
+            includeCompleted={includeCompleted}
             showEntityReferences
             className="p-3"
           />

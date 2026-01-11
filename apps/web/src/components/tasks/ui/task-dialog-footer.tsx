@@ -50,6 +50,7 @@ export function TaskDialogFooter({
           value={deadline}
           onChange={onDeadlineChange}
           mode="date"
+          noConfirm
           placeholder="Due date">
           <Button variant="ghost" size="sm">
             <Calendar />

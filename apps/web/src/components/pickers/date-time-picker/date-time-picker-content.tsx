@@ -130,7 +130,7 @@ export function DateTimePickerContent({
       setCurrentMonth(date)
 
       // Auto-confirm if noConfirm is true and mode is date
-      if (noConfirm && mode === 'date') {
+      if (noConfirm) {
         onChange(newDate)
       }
     },

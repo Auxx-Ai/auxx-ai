@@ -12,17 +12,17 @@ import type {
   TaskWithRelations,
   TaskListResponse,
   GroupedTasksResponse,
-  Deadline,
-  RelativeDate,
-  AbsoluteDate,
 } from './types'
+
+import type { Deadline, RelativeDate, AbsoluteDate } from '@auxx/types/task'
 
 /**
  * Convert a relative or absolute deadline to a concrete Date
  */
 function resolveDeadline(deadline: Deadline): Date {
   if ('type' in deadline && deadline.type === 'static') {
-    return deadline.value
+    // Ensure we return a Date object, not a string
+    return deadline.value instanceof Date ? deadline.value : new Date(deadline.value)
   }
 
   // Relative date
@@ -159,13 +159,9 @@ export class TaskService {
   /**
    * Get a task by ID with relations
    */
-  async getTaskById(
-    taskId: string,
-    organizationId: string
-  ): Promise<TaskWithRelations | null> {
+  async getTaskById(taskId: string, organizationId: string): Promise<TaskWithRelations | null> {
     const task = await this.db.query.Task.findFirst({
-      where: (t, { eq, and }) =>
-        and(eq(t.id, taskId), eq(t.organizationId, organizationId)),
+      where: (t, { eq, and }) => and(eq(t.id, taskId), eq(t.organizationId, organizationId)),
     })
 
     if (!task) {
@@ -174,8 +170,7 @@ export class TaskService {
 
     // Get assignments
     const assignments = await this.db.query.TaskAssignment.findMany({
-      where: (a, { eq, and, isNull }) =>
-        and(eq(a.taskId, taskId), isNull(a.unassignedAt)),
+      where: (a, { eq, and, isNull }) => and(eq(a.taskId, taskId), isNull(a.unassignedAt)),
       with: {
         assignedTo: {
           columns: { id: true, name: true, email: true, image: true },
@@ -185,8 +180,7 @@ export class TaskService {
 
     // Get references
     const references = await this.db.query.TaskReference.findMany({
-      where: (r, { eq, and, isNull }) =>
-        and(eq(r.taskId, taskId), isNull(r.deletedAt)),
+      where: (r, { eq, and, isNull }) => and(eq(r.taskId, taskId), isNull(r.deletedAt)),
       with: {
         entityInstance: {
           columns: { id: true, displayName: true, entityDefinitionId: true },
@@ -212,20 +206,12 @@ export class TaskService {
     organizationId: string,
     userId: string
   ): Promise<TaskEntity> {
-    const {
-      id,
-      title,
-      description,
-      deadline,
-      priority,
-      assignedUserIds,
-      referencedEntities,
-    } = input
+    const { id, title, description, deadline, priority, assignedUserIds, referencedEntities } =
+      input
 
     // Check if task exists
     const existingTask = await this.db.query.Task.findFirst({
-      where: (t, { eq, and }) =>
-        and(eq(t.id, id), eq(t.organizationId, organizationId)),
+      where: (t, { eq, and }) => and(eq(t.id, id), eq(t.organizationId, organizationId)),
     })
 
     if (!existingTask) {
@@ -234,7 +220,7 @@ export class TaskService {
 
     // Build update object
     const updateData: Partial<typeof schema.Task.$inferInsert> = {
-      updatedAt: new Date(),
+      // updatedAt: new Date(),
     }
 
     if (title !== undefined) {
@@ -265,9 +251,7 @@ export class TaskService {
       const [updatedTask] = await tx
         .update(schema.Task)
         .set(updateData)
-        .where(
-          and(eq(schema.Task.id, id), eq(schema.Task.organizationId, organizationId))
-        )
+        .where(and(eq(schema.Task.id, id), eq(schema.Task.organizationId, organizationId)))
         .returning()
 
       if (!updatedTask) {
@@ -278,8 +262,7 @@ export class TaskService {
       if (assignedUserIds !== undefined) {
         // Get current assignments
         const currentAssignments = await tx.query.TaskAssignment.findMany({
-          where: (a, { eq, and, isNull }) =>
-            and(eq(a.taskId, id), isNull(a.unassignedAt)),
+          where: (a, { eq, and, isNull }) => and(eq(a.taskId, id), isNull(a.unassignedAt)),
         })
         const currentUserIds = new Set(currentAssignments.map((a) => a.assignedToUserId))
         const newUserIds = new Set(assignedUserIds)
@@ -322,8 +305,7 @@ export class TaskService {
       if (referencedEntities !== undefined) {
         // Get current references
         const currentRefs = await tx.query.TaskReference.findMany({
-          where: (r, { eq, and, isNull }) =>
-            and(eq(r.taskId, id), isNull(r.deletedAt)),
+          where: (r, { eq, and, isNull }) => and(eq(r.taskId, id), isNull(r.deletedAt)),
         })
         const currentRefIds = new Set(currentRefs.map((r) => r.referencedEntityInstanceId))
         const newRefIds = new Set(referencedEntities.map((e) => e.entityInstanceId))
@@ -485,9 +467,7 @@ export class TaskService {
   async deleteTask(taskId: string, organizationId: string): Promise<void> {
     const result = await this.db
       .delete(schema.Task)
-      .where(
-        and(eq(schema.Task.id, taskId), eq(schema.Task.organizationId, organizationId))
-      )
+      .where(and(eq(schema.Task.id, taskId), eq(schema.Task.organizationId, organizationId)))
 
     if (result.rowCount === 0) {
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Task not found' })
@@ -593,8 +573,7 @@ export class TaskService {
     const tasksWithRelations: TaskWithRelations[] = await Promise.all(
       filteredTasks.map(async (task) => {
         const assignments = await this.db.query.TaskAssignment.findMany({
-          where: (a, { eq, and, isNull }) =>
-            and(eq(a.taskId, task.id), isNull(a.unassignedAt)),
+          where: (a, { eq, and, isNull }) => and(eq(a.taskId, task.id), isNull(a.unassignedAt)),
           with: {
             assignedTo: {
               columns: { id: true, name: true, email: true, image: true },
@@ -603,8 +582,7 @@ export class TaskService {
         })
 
         const references = await this.db.query.TaskReference.findMany({
-          where: (r, { eq, and, isNull }) =>
-            and(eq(r.taskId, task.id), isNull(r.deletedAt)),
+          where: (r, { eq, and, isNull }) => and(eq(r.taskId, task.id), isNull(r.deletedAt)),
           with: {
             entityInstance: {
               columns: { id: true, displayName: true, entityDefinitionId: true },
@@ -705,8 +683,7 @@ export class TaskService {
       return Promise.all(
         tasks.map(async (task) => {
           const assignments = await this.db.query.TaskAssignment.findMany({
-            where: (a, { eq, and, isNull }) =>
-              and(eq(a.taskId, task.id), isNull(a.unassignedAt)),
+            where: (a, { eq, and, isNull }) => and(eq(a.taskId, task.id), isNull(a.unassignedAt)),
             with: {
               assignedTo: {
                 columns: { id: true, name: true, email: true, image: true },
@@ -715,8 +692,7 @@ export class TaskService {
           })
 
           const references = await this.db.query.TaskReference.findMany({
-            where: (r, { eq, and, isNull }) =>
-              and(eq(r.taskId, task.id), isNull(r.deletedAt)),
+            where: (r, { eq, and, isNull }) => and(eq(r.taskId, task.id), isNull(r.deletedAt)),
             with: {
               entityInstance: {
                 columns: { id: true, displayName: true, entityDefinitionId: true },

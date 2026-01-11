@@ -34,7 +34,10 @@ export class DateLanguageModule {
    * @param baseDate Reference date (default: now)
    * @returns Target absolute date (UTC, for database storage)
    */
-  calculateTargetDate(duration: RelativeDate | 'eom' | 'next-quarter', baseDate = new Date()): Date {
+  calculateTargetDate(
+    duration: RelativeDate | 'eom' | 'next-quarter',
+    baseDate = new Date()
+  ): Date {
     if (duration === 'eom') {
       return calculateEndOfMonth(this.timezone, baseDate)
     }
@@ -74,7 +77,10 @@ export class DateLanguageModule {
    * @param baseDate Base date for calculation
    * @returns ISO string for storage in database
    */
-  convertToAbsoluteDate(duration: RelativeDate | 'eom' | 'next-quarter', baseDate = new Date()): string {
+  convertToAbsoluteDate(
+    duration: RelativeDate | 'eom' | 'next-quarter',
+    baseDate = new Date()
+  ): string {
     const targetDate = this.calculateTargetDate(duration, baseDate)
     return targetDate.toISOString()
   }
@@ -129,11 +135,4 @@ export class DateLanguageModule {
   getTimezone(): string {
     return this.timezone
   }
-}
-
-/**
- * Create a DateLanguageModule with the given timezone
- */
-export function createDateLanguageModule(timezone: string = 'UTC'): DateLanguageModule {
-  return new DateLanguageModule(timezone)
 }

@@ -1,7 +1,7 @@
 // packages/lib/src/tasks/index.ts
 
 export { TaskService, createTaskService } from './task-service'
-export { DateLanguageModule, createDateLanguageModule } from './date-language-module'
+export { DateLanguageModule } from './date-language-module'
 export type {
   TaskPriority,
   EntityReference,

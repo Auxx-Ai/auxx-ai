@@ -19,13 +19,13 @@ const relativeDateSchema = z.object({
  */
 const absoluteDateSchema = z.object({
   type: z.literal('static'),
-  value: z.date(),
+  value: z.iso.datetime(),
 })
 
 /**
  * Schema for deadline (relative or absolute)
  */
-const deadlineSchema = z.union([relativeDateSchema, absoluteDateSchema])
+// const deadlineSchema = z.union(relativeDateSchema, absoluteDateSchema)
 
 /**
  * Schema for entity reference
@@ -52,7 +52,7 @@ export const taskRouter = createTRPCRouter({
       z.object({
         title: z.string().min(1).max(500),
         description: z.string().optional(),
-        deadline: deadlineSchema.optional(),
+        deadline: absoluteDateSchema.optional(),
         priority: prioritySchema.optional(),
         assignedUserIds: z.array(z.string()).optional(),
         referencedEntities: z.array(entityReferenceSchema).optional(),
@@ -62,36 +62,23 @@ export const taskRouter = createTRPCRouter({
       const { organizationId, userId } = ctx.session
       const taskService = createTaskService(ctx.db)
 
-      return await taskService.createTask(
-        {
-          title: input.title,
-          description: input.description,
-          deadline: input.deadline,
-          priority: input.priority as TaskPriority | undefined,
-          assignedUserIds: input.assignedUserIds,
-          referencedEntities: input.referencedEntities,
-        },
-        organizationId,
-        userId
-      )
+      return await taskService.createTask(input, organizationId, userId)
     }),
 
   /**
    * Get a task by ID
    */
-  byId: protectedProcedure
-    .input(z.object({ id: z.string() }))
-    .query(async ({ ctx, input }) => {
-      const { organizationId } = ctx.session
-      const taskService = createTaskService(ctx.db)
+  byId: protectedProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
+    const { organizationId } = ctx.session
+    const taskService = createTaskService(ctx.db)
 
-      const task = await taskService.getTaskById(input.id, organizationId)
-      if (!task) {
-        throw new Error('Task not found')
-      }
+    const task = await taskService.getTaskById(input.id, organizationId)
+    if (!task) {
+      throw new Error('Task not found')
+    }
 
-      return task
-    }),
+    return task
+  }),
 
   /**
    * Update a task
@@ -102,7 +89,7 @@ export const taskRouter = createTRPCRouter({
         id: z.string(),
         title: z.string().min(1).max(500).optional(),
         description: z.string().optional().nullable(),
-        deadline: deadlineSchema.optional().nullable(),
+        deadline: absoluteDateSchema.optional().nullable(),
         priority: prioritySchema.optional().nullable(),
         assignedUserIds: z.array(z.string()).optional(),
         referencedEntities: z.array(entityReferenceSchema).optional(),
@@ -111,13 +98,12 @@ export const taskRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       const taskService = createTaskService(ctx.db)
-
       return await taskService.updateTask(
         {
           id: input.id,
           title: input.title,
           description: input.description ?? undefined,
-          deadline: input.deadline ?? undefined,
+          deadline: input.deadline,
           priority: (input.priority as TaskPriority | null) ?? undefined,
           assignedUserIds: input.assignedUserIds,
           referencedEntities: input.referencedEntities,

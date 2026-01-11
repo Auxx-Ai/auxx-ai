@@ -4,7 +4,7 @@
  * Client-side exports for task functionality
  *
  * Usage:
- * import { DateLanguageModule, createDateLanguageModule } from '@auxx/lib/tasks/client'
+ * import { DateLanguageModule } from '@auxx/lib/tasks/client'
  * import { TASK_FILTER_FIELDS, TASK_SORT_OPTIONS } from '@auxx/lib/tasks/client'
  *
  * For types, import directly from @auxx/types/task:
@@ -15,7 +15,7 @@
  * import { formatRelativeDate, formatTimeRemaining } from '@auxx/utils'
  */
 
-export { DateLanguageModule, createDateLanguageModule } from './date-language-module'
+export { DateLanguageModule } from './date-language-module'
 
 // Task filter and sort config
 export {
