@@ -3,6 +3,7 @@ import {
   BookOpen,
   Bot,
   Building2,
+  CheckSquare,
   CircleAlert,
   ComponentIcon,
   Contact2,
@@ -77,6 +78,7 @@ export const MAIL_MENU: SidebarProps[] = [
 
 export const SIDEBAR_MENU: SidebarProps[] = [
   { id: 'workflows', label: 'Workflows', slug: 'workflows', icon: <Zap /> },
+  { id: 'tasks', label: 'Tasks', slug: 'tasks', icon: <CheckSquare /> },
   {
     id: 'shopify',
     label: 'Shopify',

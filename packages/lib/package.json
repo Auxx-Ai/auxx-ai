@@ -91,6 +91,8 @@
     "./settings": "./src/settings/index.ts",
     "./settings/types": "./src/settings/types.ts",
     "./tags": "./src/tags/index.ts",
+    "./tasks": "./src/tasks/index.ts",
+    "./tasks/client": "./src/tasks/client.ts",
     "./testing/*": "./src/testing/*",
     "./threads": "./src/threads/index.ts",
     "./tickets": "./src/tickets/index.ts",

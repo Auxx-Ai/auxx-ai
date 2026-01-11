@@ -67,6 +67,7 @@ import { entityDefinitionRouter } from './routers/entityDefinition'
 import { entityInstanceRouter } from './routers/entityInstance'
 import { dataImportRouter } from './routers/data-import'
 import { fieldValueRouter } from './routers/fieldValue'
+import { taskRouter } from './routers/task'
 
 /**
  * This is the primary router for your server.
@@ -129,6 +130,7 @@ export const appRouter = createTRPCRouter({
   syncHistory: syncHistoryRouter,
   tableView: tableViewRouter,
   tag: tagRouter,
+  task: taskRouter,
   thread: threadRouter,
   ticket: ticketRouter,
   ticketAgent: ticketAgentRouter,

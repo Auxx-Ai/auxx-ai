@@ -22,6 +22,7 @@ export interface SectionProps {
   icon?: React.ReactNode
   title: string
   titleClassName?: string
+  /** Custom className for the CollapsibleContent wrapper */
   description?: string
   isRequired?: boolean
   children: React.ReactNode
@@ -96,16 +97,19 @@ export function Section({
 
   return (
     <Collapsible
+      data-slot="section-wrapper"
       open={!collapsible || (currentOpen && (typeof enabled === 'boolean' ? enabled : true))}
       onOpenChange={handleOpenChange}
-      className="group">
-      <div className={cn('p-3 pb-4 group-data-[state=closed]:pb-0 border-b flex flex-col', className)}>
-        <CollapsibleTrigger
-          asChild
-          disabled={!showCollapseTrigger}>
+      className={cn('group', className)}>
+      <div
+        data-slot="section"
+        className={cn('p-3 pb-4 group-data-[state=closed]:pb-0 border-b flex flex-col min-h-0')}>
+        <CollapsibleTrigger asChild disabled={!showCollapseTrigger}>
           <div className={cn('flex items-center justify-between pb-2 cursor-default')}>
             <div className="flex items-center gap-1">
-              <div className={cn(titleClassName, 'flex items-center text-xs font-medium uppercase')}>
+              <div
+                data-slot="section-title"
+                className={cn(titleClassName, 'flex items-center text-xs font-medium uppercase')}>
                 {icon && <span className="mr-1">{icon}</span>}
                 <span className="mr-1">{title}</span>
                 {isRequired && <span className="mr-1 text-xs font-semibold text-[#D92D20]">*</span>}
@@ -120,8 +124,14 @@ export function Section({
                   'p-1 rounded hover:bg-muted transition-colors flex items-center',
                   !showCollapseTrigger && 'invisible'
                 )}>
-                <ChevronDown className="size-4 group-data-[state=closed]:hidden" data-state="open" />
-                <ChevronRight className="size-4 group-data-[state=open]:hidden" data-state="closed" />
+                <ChevronDown
+                  className="size-4 group-data-[state=closed]:hidden"
+                  data-state="open"
+                />
+                <ChevronRight
+                  className="size-4 group-data-[state=open]:hidden"
+                  data-state="closed"
+                />
               </div>
             </div>
             {/* Stop propagation to prevent collapse toggle when clicking actions or switch */}
@@ -138,7 +148,9 @@ export function Section({
             </div>
           </div>
         </CollapsibleTrigger>
-        <CollapsibleContent>{children}</CollapsibleContent>
+        <CollapsibleContent data-slot="section-content" className="flex flex-col">
+          {children}
+        </CollapsibleContent>
       </div>
     </Collapsible>
   )

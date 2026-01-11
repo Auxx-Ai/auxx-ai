@@ -7,7 +7,8 @@
     ".": "./index.ts",
     "./custom-field": "./custom-field/index.ts",
     "./field-value": "./field-value/index.ts",
-    "./pagination": "./pagination/index.ts"
+    "./pagination": "./pagination/index.ts",
+    "./task": "./task/index.ts"
   },
   "dependencies": {
     "@auxx/database": "workspace:*",

@@ -114,7 +114,7 @@ export function DateTimePicker({
         {children || defaultTrigger}
       </PopoverTrigger>
       <PopoverContent
-        className={cn('p-0 bg-background/50 backdrop-blur-sm!', className)}
+        className={cn('p-0 w-[240px] bg-background/50 backdrop-blur-sm!', className)}
         align={align}
         side={side}>
         <DateTimePickerContent

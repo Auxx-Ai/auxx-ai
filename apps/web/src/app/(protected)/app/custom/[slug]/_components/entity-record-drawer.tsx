@@ -2,7 +2,7 @@
 'use client'
 
 import * as React from 'react'
-import { Clock, Gauge, HouseIcon, MessagesSquare, Trash } from 'lucide-react'
+import { Clock, Gauge, HouseIcon, ListTodo, MessagesSquare, Trash } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 
 import { Button } from '@auxx/ui/components/button'
@@ -28,10 +28,12 @@ import { useDockStore } from '~/stores/dock-store'
 import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
+import { TasksSection } from '~/components/tasks'
 
 // Memoized components for performance
 const MemoDrawerComments = React.memo(DrawerComments)
 const MemoTimelineTab = React.memo(TimelineTab)
+const MemoTasksSection = React.memo(TasksSection)
 
 /** Props for EntityRecordDrawer */
 interface EntityRecordDrawerProps {
@@ -182,6 +184,7 @@ export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
               <OverflowTabsList
                 tabs={[
                   { value: 'overview', label: 'Overview', icon: HouseIcon },
+                  { value: 'tasks', label: 'Tasks', icon: ListTodo },
                   { value: 'timeline', label: 'Timeline', icon: Clock },
                   { value: 'comments', label: 'Comments', icon: MessagesSquare },
                 ]}
@@ -234,6 +237,15 @@ export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
                       )}
                     </Section>
                   </ScrollArea>
+                </TabsContent>
+
+                <TabsContent value="tasks" className="w-full">
+                  {entityInstanceId && entityDefinitionId && (
+                    <MemoTasksSection
+                      entityInstanceId={entityInstanceId}
+                      entityDefinitionId={entityDefinitionId}
+                    />
+                  )}
                 </TabsContent>
 
                 <TabsContent value="timeline" className="w-full">

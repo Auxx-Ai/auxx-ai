@@ -137,3 +137,18 @@ export {
   interpretEscapeSequences,
   incrementTitle,
 } from './strings'
+
+// Task date utilities
+export {
+  addDays,
+  addMonths,
+  addYears,
+  calculateTargetDate,
+  calculateTargetDateInTimezone,
+  calculateEndOfMonth,
+  calculateNextQuarter,
+  calculateDuration,
+  formatRelativeDate,
+  formatTimeRemaining,
+  formatAbsoluteDate,
+} from './task-date'

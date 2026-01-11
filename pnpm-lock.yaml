@@ -2207,6 +2207,9 @@ importers:
       '@auxx/types':
         specifier: workspace:*
         version: link:../types
+      date-fns:
+        specifier: 'catalog:'
+        version: 4.1.0
       date-fns-tz:
         specifier: ^3.2.0
         version: 3.2.0(date-fns@4.1.0)

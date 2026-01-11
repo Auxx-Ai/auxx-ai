@@ -171,3 +171,8 @@ export * from './import-value-resolution'
 export * from './import-plan'
 export * from './import-plan-strategy'
 export * from './import-plan-row'
+
+// Task tables
+export * from './task'
+export * from './task-assignment'
+export * from './task-reference'

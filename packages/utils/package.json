@@ -21,7 +21,8 @@
     "./parse": "./src/parse.ts",
     "./retry": "./src/retry.ts",
     "./strings": "./src/strings.ts",
-    "./timezone": "./src/timezone.ts"
+    "./timezone": "./src/timezone.ts",
+    "./task-date": "./src/task-date.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -29,6 +30,7 @@
   },
   "dependencies": {
     "@auxx/types": "workspace:*",
+    "date-fns": "catalog:",
     "date-fns-tz": "^3.2.0",
     "nanoid": "^5.1.5"
   },
