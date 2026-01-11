@@ -1,7 +1,7 @@
 // packages/database/src/db/schema/entity-instance.ts
 // Drizzle table for EntityInstance
 
-import { pgTable, index, text, timestamp, jsonb, type AnyPgColumn, sql } from './_shared'
+import { pgTable, index, text, timestamp, jsonb, type AnyPgColumn } from './_shared'
 import { createId } from '@paralleldrive/cuid2'
 import { Organization } from './organization'
 import { EntityDefinition } from './entity-definition'
@@ -21,13 +21,12 @@ export const EntityInstance = pgTable(
       .primaryKey()
       .notNull()
       .$defaultFn(() => createId()),
-    createdAt: timestamp({ precision: 3, mode: 'string' })
-      .default(sql`CURRENT_TIMESTAMP`)
-      .notNull(),
-    updatedAt: timestamp({ precision: 3, mode: 'string' })
+    createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp({ precision: 3 })
+      .defaultNow()
       .notNull()
-      .$onUpdate(() => new Date().toISOString()),
-    archivedAt: timestamp({ precision: 3, mode: 'string' }),
+      .$onUpdate(() => new Date()),
+    archivedAt: timestamp({ precision: 3, withTimezone: true }),
 
     /** Reference to the entity definition this is an instance of */
     entityDefinitionId: text()

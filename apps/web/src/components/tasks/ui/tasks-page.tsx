@@ -56,7 +56,7 @@ export function TasksPage() {
         />
 
         {/* Task List */}
-        <div className="flex-1 flex flex-col h-full overflow-y-auto bg-muted @container">
+        <div className="flex-1 flex flex-col h-full overflow-y-auto bg-muted dark:bg-[#1e2227] @container">
           <TasksList
             viewMode="global"
             filters={filters}

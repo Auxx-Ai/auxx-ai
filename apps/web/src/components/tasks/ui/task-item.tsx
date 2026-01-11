@@ -51,11 +51,10 @@ export function TaskItem({ task, onClick, showEntityReferences = false }: TaskIt
         'relative flex gap-2 ps-1 pe-2 py-1.5',
         'bg-illustration ring-border-illustration rounded-xl border border-transparent',
         'shadow shadow-black/10 ring-1 transition-all duration-200',
-        'hover:bg-accent/50 cursor-pointer',
+        'hover:bg-illustration/50 cursor-pointer',
         isCompleted && 'opacity-60',
         hasPending && 'ring-primary/30' // Subtle visual hint for pending state
-      )}
-    >
+      )}>
       {/* Checkbox (stops propagation) */}
       <div onClick={(e) => e.stopPropagation()}>
         <TaskCheckbox
@@ -74,8 +73,7 @@ export function TaskItem({ task, onClick, showEntityReferences = false }: TaskIt
               className={cn(
                 'text-sm text-primary-600 dark:text-primary-400',
                 isCompleted && 'line-through'
-              )}
-            >
+              )}>
               {task.title}
             </div>
 
@@ -91,8 +89,7 @@ export function TaskItem({ task, onClick, showEntityReferences = false }: TaskIt
                     style={{
                       borderColor: ref.entityDefinition?.color ?? undefined,
                       color: ref.entityDefinition?.color ?? undefined,
-                    }}
-                  >
+                    }}>
                     {ref.entityDefinition?.name}: {ref.entityInstance?.displayName || 'Unnamed'}
                   </Badge>
                 ))}

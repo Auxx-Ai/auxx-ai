@@ -352,7 +352,7 @@
   --card-foreground: 250 250 250;
   --popover: 19 19 22;
   --popover-foreground: 250 250 250;*/
-  --illustration: var(--color-zinc-800);
+  --illustration: #2c313a;
 
   --primary: var(--zinc-950);
   --primary-foreground: 23 23 23;

@@ -181,11 +181,6 @@ export class TaskService {
     // Get references
     const references = await this.db.query.TaskReference.findMany({
       where: (r, { eq, and, isNull }) => and(eq(r.taskId, taskId), isNull(r.deletedAt)),
-      with: {
-        entityInstance: {
-          columns: { id: true, displayName: true, entityDefinitionId: true },
-        },
-      },
     })
 
     return {
@@ -516,14 +511,6 @@ export class TaskService {
 
         const references = await this.db.query.TaskReference.findMany({
           where: (r, { eq, and, isNull }) => and(eq(r.taskId, task.id), isNull(r.deletedAt)),
-          with: {
-            entityInstance: {
-              columns: { id: true, displayName: true, entityDefinitionId: true },
-            },
-            entityDefinition: {
-              columns: { id: true, name: true, slug: true },
-            },
-          },
         })
 
         return {
@@ -626,14 +613,6 @@ export class TaskService {
 
           const references = await this.db.query.TaskReference.findMany({
             where: (r, { eq, and, isNull }) => and(eq(r.taskId, task.id), isNull(r.deletedAt)),
-            with: {
-              entityInstance: {
-                columns: { id: true, displayName: true, entityDefinitionId: true },
-              },
-              entityDefinition: {
-                columns: { id: true, name: true, slug: true },
-              },
-            },
           })
 
           return {

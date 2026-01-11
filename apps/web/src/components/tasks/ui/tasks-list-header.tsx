@@ -74,7 +74,7 @@ export function TasksListHeader({
       </span>
 
       {/* Divider Line */}
-      <span className="h-px flex-1 bg-primary-100" role="none" />
+      <span className="h-px flex-1 bg-primary-100 dark:bg-[#ffffff1d]" role="none" />
 
       {/* Collapse Toggle */}
       <Button
@@ -82,8 +82,7 @@ export function TasksListHeader({
         size="icon-xs"
         variant="ghost"
         onClick={onToggle}
-        aria-label={isCollapsed ? 'Expand group' : 'Collapse group'}
-      >
+        aria-label={isCollapsed ? 'Expand group' : 'Collapse group'}>
         {isCollapsed ? <ChevronRight /> : <ChevronDown />}
       </Button>
     </div>

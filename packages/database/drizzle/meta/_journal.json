@@ -407,6 +407,13 @@
       "when": 1768073057048,
       "tag": "0057_add_tasks",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1768116333553,
+      "tag": "0058_add_index_entity_instance",
+      "breakpoints": true
     }
   ]
 }
