@@ -3,13 +3,17 @@
 import { api } from '~/trpc/react'
 import { toastError } from '@auxx/ui/components/toast'
 import { useTaskStore } from '../stores/task-store'
+import { useSession } from '~/auth/auth-client'
 
 /**
  * Hook providing mutation functions for task operations.
- * Includes optimistic updates and cache invalidation.
+ * Uses a single `update` mutation for all field changes.
  */
 export function useTaskMutations() {
   const utils = api.useUtils()
+  const { data: session } = useSession()
+  const userId = session?.user?.id
+
   const updateTaskInStore = useTaskStore((s) => s.updateTask)
   const removeTaskFromStore = useTaskStore((s) => s.removeTask)
 
@@ -23,7 +27,7 @@ export function useTaskMutations() {
     },
   })
 
-  // Update task
+  // Update task (handles ALL updates: fields, completion, archiving)
   const updateTask = api.task.update.useMutation({
     onSuccess: (task) => {
       updateTaskInStore(task)
@@ -31,52 +35,6 @@ export function useTaskMutations() {
     },
     onError: (error) => {
       toastError({ title: 'Failed to update task', description: error.message })
-    },
-  })
-
-  // Complete task
-  const completeTask = api.task.complete.useMutation({
-    onMutate: async ({ taskId }) => {
-      // Optimistic update
-      updateTaskInStore({
-        id: taskId,
-        completedAt: new Date().toISOString(),
-      } as any)
-    },
-    onSuccess: (task) => {
-      updateTaskInStore(task)
-      utils.task.list.invalidate()
-    },
-    onError: (error, { taskId }) => {
-      // Rollback optimistic update
-      updateTaskInStore({ id: taskId, completedAt: null } as any)
-      toastError({ title: 'Failed to complete task', description: error.message })
-    },
-  })
-
-  // Reopen task (uncomplete)
-  const reopenTask = api.task.reopen.useMutation({
-    onMutate: async ({ taskId }) => {
-      // Optimistic update
-      updateTaskInStore({ id: taskId, completedAt: null } as any)
-    },
-    onSuccess: (task) => {
-      updateTaskInStore(task)
-      utils.task.list.invalidate()
-    },
-    onError: (error) => {
-      toastError({ title: 'Failed to reopen task', description: error.message })
-    },
-  })
-
-  // Archive task
-  const archiveTask = api.task.archive.useMutation({
-    onSuccess: (task) => {
-      updateTaskInStore(task)
-      utils.task.list.invalidate()
-    },
-    onError: (error) => {
-      toastError({ title: 'Failed to archive task', description: error.message })
     },
   })
 
@@ -91,17 +49,67 @@ export function useTaskMutations() {
     },
   })
 
+  // ─────────────────────────────────────────────────────────────────
+  // CONVENIENCE WRAPPERS (use the unified update mutation)
+  // ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Mark a task as complete
+   */
+  const completeTask = (taskId: string) => {
+    return updateTask.mutateAsync({
+      id: taskId,
+      completedAt: new Date().toISOString(),
+      completedById: userId,
+    })
+  }
+
+  /**
+   * Reopen a completed task
+   */
+  const reopenTask = (taskId: string) => {
+    return updateTask.mutateAsync({
+      id: taskId,
+      completedAt: null,
+      completedById: null,
+    })
+  }
+
+  /**
+   * Archive a task
+   */
+  const archiveTask = (taskId: string) => {
+    return updateTask.mutateAsync({
+      id: taskId,
+      archivedAt: new Date().toISOString(),
+    })
+  }
+
+  /**
+   * Unarchive a task
+   */
+  const unarchiveTask = (taskId: string) => {
+    return updateTask.mutateAsync({
+      id: taskId,
+      archivedAt: null,
+    })
+  }
+
   return {
+    // Core mutations
     createTask,
     updateTask,
+    deleteTask,
+
+    // Convenience wrappers
     completeTask,
     reopenTask,
     archiveTask,
-    deleteTask,
+    unarchiveTask,
+
+    // Loading states
     isCreating: createTask.isPending,
     isUpdating: updateTask.isPending,
-    isCompleting: completeTask.isPending || reopenTask.isPending,
-    isArchiving: archiveTask.isPending,
     isDeleting: deleteTask.isPending,
   }
 }

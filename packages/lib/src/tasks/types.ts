@@ -32,25 +32,45 @@ export interface CreateTaskInput {
 }
 
 /**
- * Input for updating an existing task
+ * Input for updating an existing task.
+ *
+ * Supports partial updates - only defined fields are updated.
+ * Use `null` to explicitly clear a field.
+ *
+ * @example Complete a task:
+ * { id: 'task-1', completedAt: new Date(), completedById: 'user-1' }
+ *
+ * @example Reopen a task:
+ * { id: 'task-1', completedAt: null, completedById: null }
+ *
+ * @example Archive a task:
+ * { id: 'task-1', archivedAt: new Date() }
+ *
+ * @example Update multiple fields:
+ * { id: 'task-1', title: 'New title', priority: 'high' }
  */
 export interface UpdateTaskInput {
+  /** Task ID (required) */
   id: string
+
+  // Core fields
   title?: string
-  description?: string
+  description?: string | null
   deadline?: Deadline | null
   priority?: TaskPriority | null
+
+  // Completion fields
+  completedAt?: Date | string | null
+  completedById?: string | null
+
+  // Archive field
+  archivedAt?: Date | string | null
+
+  // Relation fields (full replacement)
   assignedUserIds?: string[]
   referencedEntities?: EntityReference[]
 }
 
-/**
- * Input for completing a task
- */
-export interface CompleteTaskInput {
-  taskId: string
-  completionNotes?: string
-}
 
 /**
  * Filter options for listing tasks

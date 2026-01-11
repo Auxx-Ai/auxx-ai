@@ -112,11 +112,9 @@ export function useTasks({
     }
   }, [data, setTasks])
 
-  // Get tasks from data
-  const tasks = useMemo(() => {
-    if (!data?.tasks) return []
-    return data.tasks
-  }, [data])
+  // Return query data directly - pending state is only for checkbox visual feedback
+  // Grouping uses original data; after delay, query cache is updated to move task
+  const tasks = data?.tasks ?? []
 
   // Fetch next page handler (placeholder for infinite query)
   const fetchNextPage = useCallback(() => {

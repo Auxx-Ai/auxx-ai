@@ -9,7 +9,6 @@ export {
   TaskItem,
   TaskCheckbox,
   TaskDialog,
-  TaskDialogFooter,
   TaskFilterBar,
   TaskSortSelect,
   TasksStatsCards,

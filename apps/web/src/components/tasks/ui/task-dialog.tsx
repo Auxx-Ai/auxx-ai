@@ -6,6 +6,7 @@ import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
+import { Calendar, Link2, User, X } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -14,15 +15,18 @@ import {
   DialogFooter,
   DialogDescription,
 } from '@auxx/ui/components/dialog'
+import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
 import { MentionNode } from '~/components/editor/extensions/mention-node'
 import { createMentionExtension } from '~/components/editor/extensions/mention-extension'
 import { type MentionItem } from '~/components/editor/mention-popover'
-import { TaskDialogFooter } from './task-dialog-footer'
+import { DateTimePicker } from '~/components/pickers/date-time-picker'
+import { AssigneePicker, type TeamMember } from '~/components/pickers/assignee-picker'
+import { formatTaskDeadlineDisplay } from '../utils/group-tasks-by-period'
 import { useTaskMutations } from '../hooks/use-task-mutations'
 import { api } from '~/trpc/react'
+import { TextDateParser, DateLanguageModule } from '@auxx/lib/tasks/client'
 import type { TaskWithRelations, CreateTaskInput, UpdateTaskInput } from '@auxx/lib/tasks'
-import type { TeamMember } from '~/components/pickers/assignee-picker'
 
 /**
  * Props for TaskDialog component
@@ -58,6 +62,7 @@ function isEmptyContent(html: string): boolean {
 /**
  * TaskDialog renders a dialog for creating or editing tasks.
  * Uses tiptap editor for rich text input with @mentions.
+ * Auto-parses date expressions from text and sets deadline automatically.
  */
 export function TaskDialog({
   open,
@@ -67,16 +72,20 @@ export function TaskDialog({
   defaultReferencedEntity,
 }: TaskDialogProps) {
   // Form state
-  const [deadline, setDeadline] = useState<Date | undefined>(
-    task?.deadline ? new Date(task.deadline) : undefined
-  )
-  const [assignedUserIds, setAssignedUserIds] = useState<string[]>(
-    (task?.assignments?.map((a) => a.assignedTo?.id).filter(Boolean) as string[]) ?? []
-  )
+  const [deadline, setDeadline] = useState<Date | undefined>(undefined)
+  const [deadlineManuallySet, setDeadlineManuallySet] = useState(false)
+  const [assignedUserIds, setAssignedUserIds] = useState<string[]>([])
 
   // Mutations
   const { createTask, updateTask, isCreating, isUpdating } = useTaskMutations()
   const isSaving = isCreating || isUpdating
+
+  // Create parser and date module (memoized)
+  const textDateParser = useMemo(() => new TextDateParser(), [])
+  const dateModule = useMemo(() => {
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+    return new DateLanguageModule(timezone)
+  }, [])
 
   // Fetch team members for mentions
   const { data: teamMembers } = api.user.teamMembers.useQuery(undefined, {
@@ -113,7 +122,6 @@ export function TaskDialog({
   // Build initial content from task
   const initialContent = useMemo(() => {
     if (!task) return ''
-    // Combine title and description for editing
     return `<p>${task.title}</p>`
   }, [task])
 
@@ -141,6 +149,35 @@ export function TaskDialog({
     [teamMembers, fetchMentionItems]
   )
 
+  /**
+   * Handle editor text change - auto-set deadline if not manually set
+   */
+  const handleEditorUpdate = useCallback(() => {
+    if (!editor || deadlineManuallySet) {
+      return
+    }
+
+    const text = editor.getText().trim()
+    const result = textDateParser.parse(text)
+
+    if (result.found && result.duration && result.confidence >= 0.7) {
+      const calculatedDate = dateModule.calculateTargetDate(result.duration)
+      setDeadline(calculatedDate)
+    } else {
+      setDeadline(undefined)
+    }
+  }, [editor, textDateParser, dateModule, deadlineManuallySet])
+
+  // Add editor update listener
+  useEffect(() => {
+    if (!editor) return
+
+    editor.on('update', handleEditorUpdate)
+    return () => {
+      editor.off('update', handleEditorUpdate)
+    }
+  }, [editor, handleEditorUpdate])
+
   // Reset form when task changes or dialog opens
   useEffect(() => {
     if (open) {
@@ -148,18 +185,49 @@ export function TaskDialog({
         const content = `<p>${task.title}</p>`
         editor?.commands.setContent(content)
         setDeadline(task.deadline ? new Date(task.deadline) : undefined)
+        setDeadlineManuallySet(!!task.deadline)
         setAssignedUserIds(
           (task.assignments?.map((a) => a.assignedTo?.id).filter(Boolean) as string[]) ?? []
         )
       } else {
         editor?.commands.clearContent()
         setDeadline(undefined)
+        setDeadlineManuallySet(false)
         setAssignedUserIds([])
       }
-      // Focus editor when dialog opens
       setTimeout(() => editor?.commands.focus(), 100)
     }
   }, [task, open, editor])
+
+  /**
+   * Handle manual deadline change from date picker
+   * This marks the deadline as "manually set" and stops auto-parsing
+   */
+  const handleDeadlineChange = useCallback((date: Date | undefined) => {
+    setDeadline(date)
+    if (date !== undefined) {
+      setDeadlineManuallySet(true)
+    }
+  }, [])
+
+  /**
+   * Handle clearing the deadline - re-enables auto-parsing
+   */
+  const handleDeadlineClear = useCallback(() => {
+    setDeadline(undefined)
+    setDeadlineManuallySet(false)
+    // Trigger re-parse after state update
+    setTimeout(() => {
+      if (editor) {
+        const text = editor.getText().trim()
+        const result = textDateParser.parse(text)
+        if (result.found && result.duration && result.confidence >= 0.7) {
+          const calculatedDate = dateModule.calculateTargetDate(result.duration)
+          setDeadline(calculatedDate)
+        }
+      }
+    }, 0)
+  }, [editor, textDateParser, dateModule])
 
   /**
    * Handle save button click
@@ -170,11 +238,10 @@ export function TaskDialog({
     const html = editor.getHTML()
     if (isEmptyContent(html)) return
 
-    // Extract title from first line and description from rest
     const text = editor.getText().trim()
     const lines = text.split('\n')
     const title = lines[0]?.trim() || ''
-    const description = html // Store full HTML as description
+    const description = html
 
     if (!title) return
 
@@ -243,17 +310,66 @@ export function TaskDialog({
           />
         </div>
 
-        {/* Footer with pickers and actions */}
+        {/* Footer with pickers and actions (merged inline) */}
         <DialogFooter className="border-t py-1 px-4">
-          <TaskDialogFooter
-            deadline={deadline}
-            onDeadlineChange={setDeadline}
-            assignedUserIds={assignedUserIds}
-            onAssigneeChange={handleAssigneeChange}
-            onCancel={handleCancel}
-            onSave={handleSave}
-            isSaving={isSaving}
-          />
+          <div className="flex items-center justify-between w-full">
+            {/* Left side: Pickers */}
+            <div className="flex items-center gap-1">
+              {/* Date Picker with clear button */}
+              <DateTimePicker
+                value={deadline}
+                onChange={handleDeadlineChange}
+                mode="date"
+                noConfirm
+                placeholder="Due date">
+                <Button variant="ghost" size="sm">
+                  <Calendar />
+                  {deadline ? formatTaskDeadlineDisplay(deadline) : 'Due date'}
+                </Button>
+              </DateTimePicker>
+
+              {/* Clear deadline button (shown when deadline is set) */}
+              {deadline && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={handleDeadlineClear}
+                  title="Clear deadline">
+                  <X className="h-3 w-3" />
+                </Button>
+              )}
+
+              {/* Assignee Picker */}
+              <AssigneePicker
+                selected={assignedUserIds}
+                onChange={handleAssigneeChange}
+                allowMultiple
+                placeholder="Assignee"
+                size="sm">
+                <Button variant="ghost" size="sm">
+                  <User />
+                  {assignedUserIds.length > 0 ? `${assignedUserIds.length} assigned` : 'Assignee'}
+                </Button>
+              </AssigneePicker>
+
+              {/* Record Linking (placeholder) */}
+              <Button variant="ghost" size="sm" disabled>
+                <Link2 />
+                Link record
+              </Button>
+            </div>
+
+            {/* Right side: Actions */}
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={handleCancel} disabled={isSaving}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handleSave} loading={isSaving} loadingText="Saving...">
+                Save
+              </Button>
+            </div>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

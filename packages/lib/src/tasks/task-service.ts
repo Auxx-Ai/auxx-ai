@@ -2,19 +2,19 @@
 
 import { schema, type Database, type Transaction } from '@auxx/database'
 import type { TaskEntity } from '@auxx/database'
-import { eq, and, isNull, isNotNull, lte, gte, lt, ilike, or, inArray, sql } from 'drizzle-orm'
+import { eq, and, isNull, isNotNull, lte, gte, lt, ilike, inArray } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import type {
   CreateTaskInput,
   UpdateTaskInput,
-  CompleteTaskInput,
   TaskFilterOptions,
   TaskWithRelations,
   TaskListResponse,
   GroupedTasksResponse,
 } from './types'
+import { pickDefined, hasDefinedProps } from '../utils/pick-defined'
 
-import type { Deadline, RelativeDate, AbsoluteDate } from '@auxx/types/task'
+import type { Deadline, RelativeDate } from '@auxx/types/task'
 
 /**
  * Convert a relative or absolute deadline to a concrete Date
@@ -185,9 +185,6 @@ export class TaskService {
         entityInstance: {
           columns: { id: true, displayName: true, entityDefinitionId: true },
         },
-        entityDefinition: {
-          columns: { id: true, name: true, slug: true },
-        },
       },
     })
 
@@ -199,15 +196,33 @@ export class TaskService {
   }
 
   /**
-   * Update an existing task
+   * Update an existing task with partial data.
+   * Only fields that are defined (not undefined) will be updated.
+   * Pass null to explicitly clear a field.
+   *
+   * Handles all field updates including completion and archiving:
+   * - Complete: { completedAt: new Date(), completedById: userId }
+   * - Reopen: { completedAt: null, completedById: null }
+   * - Archive: { archivedAt: new Date() }
+   * - Unarchive: { archivedAt: null }
    */
   async updateTask(
     input: UpdateTaskInput,
     organizationId: string,
     userId: string
   ): Promise<TaskEntity> {
-    const { id, title, description, deadline, priority, assignedUserIds, referencedEntities } =
-      input
+    const {
+      id,
+      title,
+      description,
+      deadline,
+      priority,
+      completedAt,
+      completedById,
+      archivedAt,
+      assignedUserIds,
+      referencedEntities,
+    } = input
 
     // Check if task exists
     const existingTask = await this.db.query.Task.findFirst({
@@ -218,131 +233,60 @@ export class TaskService {
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Task not found' })
     }
 
-    // Build update object
-    const updateData: Partial<typeof schema.Task.$inferInsert> = {
-      // updatedAt: new Date(),
+    // Build update object - only include defined fields
+    const coreUpdates = pickDefined({
+      title,
+      description,
+      priority,
+      completedAt:
+        completedAt !== undefined
+          ? completedAt === null
+            ? null
+            : new Date(completedAt)
+          : undefined,
+      completedById,
+      archivedAt:
+        archivedAt !== undefined ? (archivedAt === null ? null : new Date(archivedAt)) : undefined,
+      updatedAt: new Date(),
+    })
+
+    // Handle deadline separately (needs resolution)
+    if (deadline !== undefined) {
+      ;(coreUpdates as any).deadline = deadline === null ? null : resolveDeadline(deadline)
     }
 
-    if (title !== undefined) {
-      updateData.title = title
-      updateData.searchText = generateSearchText(
-        title,
+    // Update searchText if title or description changed
+    if (title !== undefined || description !== undefined) {
+      ;(coreUpdates as any).searchText = generateSearchText(
+        title ?? existingTask.title,
         description !== undefined ? description : existingTask.description
       )
     }
 
-    if (description !== undefined) {
-      updateData.description = description
-      if (!title) {
-        updateData.searchText = generateSearchText(existingTask.title, description)
-      }
-    }
-
-    if (deadline !== undefined) {
-      updateData.deadline = deadline === null ? null : resolveDeadline(deadline)
-    }
-
-    if (priority !== undefined) {
-      updateData.priority = priority
-    }
-
     return await this.db.transaction(async (tx: Transaction) => {
-      // Update the task
-      const [updatedTask] = await tx
-        .update(schema.Task)
-        .set(updateData)
-        .where(and(eq(schema.Task.id, id), eq(schema.Task.organizationId, organizationId)))
-        .returning()
+      // Update the task (only if there are core updates)
+      let updatedTask = existingTask
+      if (hasDefinedProps(coreUpdates)) {
+        const [result] = await tx
+          .update(schema.Task)
+          .set(coreUpdates)
+          .where(and(eq(schema.Task.id, id), eq(schema.Task.organizationId, organizationId)))
+          .returning()
 
-      if (!updatedTask) {
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update task' })
+        if (!result) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update task' })
+        }
+        updatedTask = result
       }
 
       // Sync assignments if provided
       if (assignedUserIds !== undefined) {
-        // Get current assignments
-        const currentAssignments = await tx.query.TaskAssignment.findMany({
-          where: (a, { eq, and, isNull }) => and(eq(a.taskId, id), isNull(a.unassignedAt)),
-        })
-        const currentUserIds = new Set(currentAssignments.map((a) => a.assignedToUserId))
-        const newUserIds = new Set(assignedUserIds)
-
-        // Unassign removed users
-        const toUnassign = currentAssignments.filter((a) => !newUserIds.has(a.assignedToUserId))
-        if (toUnassign.length > 0) {
-          await tx
-            .update(schema.TaskAssignment)
-            .set({ unassignedAt: new Date() })
-            .where(
-              inArray(
-                schema.TaskAssignment.id,
-                toUnassign.map((a) => a.id)
-              )
-            )
-        }
-
-        // Assign new users
-        const toAssign = assignedUserIds.filter((uid) => !currentUserIds.has(uid))
-        if (toAssign.length > 0) {
-          await tx.insert(schema.TaskAssignment).values(
-            toAssign.map((assignedToUserId) => ({
-              organizationId,
-              taskId: id,
-              assignedToUserId,
-              assignedById: userId,
-            }))
-          )
-        }
-
-        // Update denormalized count
-        await tx
-          .update(schema.Task)
-          .set({ assignedUserCount: assignedUserIds.length })
-          .where(eq(schema.Task.id, id))
+        await this.syncAssignments(tx, id, organizationId, userId, assignedUserIds)
       }
 
       // Sync references if provided
       if (referencedEntities !== undefined) {
-        // Get current references
-        const currentRefs = await tx.query.TaskReference.findMany({
-          where: (r, { eq, and, isNull }) => and(eq(r.taskId, id), isNull(r.deletedAt)),
-        })
-        const currentRefIds = new Set(currentRefs.map((r) => r.referencedEntityInstanceId))
-        const newRefIds = new Set(referencedEntities.map((e) => e.entityInstanceId))
-
-        // Soft-delete removed references
-        const toRemove = currentRefs.filter((r) => !newRefIds.has(r.referencedEntityInstanceId))
-        if (toRemove.length > 0) {
-          await tx
-            .update(schema.TaskReference)
-            .set({ deletedAt: new Date() })
-            .where(
-              inArray(
-                schema.TaskReference.id,
-                toRemove.map((r) => r.id)
-              )
-            )
-        }
-
-        // Add new references
-        const toAdd = referencedEntities.filter((e) => !currentRefIds.has(e.entityInstanceId))
-        if (toAdd.length > 0) {
-          await tx.insert(schema.TaskReference).values(
-            toAdd.map((ref) => ({
-              organizationId,
-              taskId: id,
-              referencedEntityInstanceId: ref.entityInstanceId,
-              referencedEntityDefinitionId: ref.entityDefinitionId,
-              createdById: userId,
-            }))
-          )
-        }
-
-        // Update denormalized count
-        await tx
-          .update(schema.Task)
-          .set({ referenceCount: referencedEntities.length })
-          .where(eq(schema.Task.id, id))
+        await this.syncReferences(tx, id, organizationId, userId, referencedEntities)
       }
 
       return updatedTask
@@ -350,115 +294,104 @@ export class TaskService {
   }
 
   /**
-   * Mark a task as complete
+   * Sync task assignments - add new, remove old
    */
-  async completeTask(
-    input: CompleteTaskInput,
+  private async syncAssignments(
+    tx: Transaction,
+    taskId: string,
     organizationId: string,
-    userId: string
-  ): Promise<TaskEntity> {
-    const { taskId } = input
+    userId: string,
+    assignedUserIds: string[]
+  ): Promise<void> {
+    const currentAssignments = await tx.query.TaskAssignment.findMany({
+      where: (a, { eq, and, isNull }) => and(eq(a.taskId, taskId), isNull(a.unassignedAt)),
+    })
+    const currentUserIds = new Set(currentAssignments.map((a) => a.assignedToUserId))
+    const newUserIds = new Set(assignedUserIds)
 
-    const [task] = await this.db
-      .update(schema.Task)
-      .set({
-        completedAt: new Date(),
-        completedById: userId,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(schema.Task.id, taskId),
-          eq(schema.Task.organizationId, organizationId),
-          isNull(schema.Task.completedAt)
+    // Unassign removed users
+    const toUnassign = currentAssignments.filter((a) => !newUserIds.has(a.assignedToUserId))
+    if (toUnassign.length > 0) {
+      await tx
+        .update(schema.TaskAssignment)
+        .set({ unassignedAt: new Date() })
+        .where(
+          inArray(
+            schema.TaskAssignment.id,
+            toUnassign.map((a) => a.id)
+          )
         )
-      )
-      .returning()
-
-    if (!task) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'Task not found or already completed' })
     }
 
-    return task
+    // Assign new users
+    const toAssign = assignedUserIds.filter((uid) => !currentUserIds.has(uid))
+    if (toAssign.length > 0) {
+      await tx.insert(schema.TaskAssignment).values(
+        toAssign.map((assignedToUserId) => ({
+          organizationId,
+          taskId,
+          assignedToUserId,
+          assignedById: userId,
+        }))
+      )
+    }
+
+    // Update denormalized count
+    await tx
+      .update(schema.Task)
+      .set({ assignedUserCount: assignedUserIds.length })
+      .where(eq(schema.Task.id, taskId))
   }
 
   /**
-   * Reopen a completed task
+   * Sync task references - add new, remove old
    */
-  async reopenTask(taskId: string, organizationId: string): Promise<TaskEntity> {
-    const [task] = await this.db
-      .update(schema.Task)
-      .set({
-        completedAt: null,
-        completedById: null,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(schema.Task.id, taskId),
-          eq(schema.Task.organizationId, organizationId),
-          isNotNull(schema.Task.completedAt)
-        )
-      )
-      .returning()
+  private async syncReferences(
+    tx: Transaction,
+    taskId: string,
+    organizationId: string,
+    userId: string,
+    referencedEntities: { entityInstanceId: string; entityDefinitionId: string }[]
+  ): Promise<void> {
+    const currentRefs = await tx.query.TaskReference.findMany({
+      where: (r, { eq, and, isNull }) => and(eq(r.taskId, taskId), isNull(r.deletedAt)),
+    })
+    const currentRefIds = new Set(currentRefs.map((r) => r.referencedEntityInstanceId))
+    const newRefIds = new Set(referencedEntities.map((e) => e.entityInstanceId))
 
-    if (!task) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'Task not found or not completed' })
+    // Soft-delete removed references
+    const toRemove = currentRefs.filter((r) => !newRefIds.has(r.referencedEntityInstanceId))
+    if (toRemove.length > 0) {
+      await tx
+        .update(schema.TaskReference)
+        .set({ deletedAt: new Date() })
+        .where(
+          inArray(
+            schema.TaskReference.id,
+            toRemove.map((r) => r.id)
+          )
+        )
     }
 
-    return task
-  }
-
-  /**
-   * Archive a task (soft delete)
-   */
-  async archiveTask(taskId: string, organizationId: string): Promise<TaskEntity> {
-    const [task] = await this.db
-      .update(schema.Task)
-      .set({
-        archivedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(schema.Task.id, taskId),
-          eq(schema.Task.organizationId, organizationId),
-          isNull(schema.Task.archivedAt)
-        )
+    // Add new references
+    const toAdd = referencedEntities.filter((e) => !currentRefIds.has(e.entityInstanceId))
+    if (toAdd.length > 0) {
+      await tx.insert(schema.TaskReference).values(
+        toAdd.map((ref) => ({
+          organizationId,
+          taskId,
+          referencedEntityInstanceId: ref.entityInstanceId,
+          referencedEntityDefinitionId: ref.entityDefinitionId,
+          createdById: userId,
+        }))
       )
-      .returning()
-
-    if (!task) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'Task not found or already archived' })
     }
 
-    return task
-  }
-
-  /**
-   * Unarchive a task
-   */
-  async unarchiveTask(taskId: string, organizationId: string): Promise<TaskEntity> {
-    const [task] = await this.db
+    // Update denormalized count
+    await tx
       .update(schema.Task)
-      .set({
-        archivedAt: null,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(schema.Task.id, taskId),
-          eq(schema.Task.organizationId, organizationId),
-          isNotNull(schema.Task.archivedAt)
-        )
-      )
-      .returning()
-
-    if (!task) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'Task not found or not archived' })
-    }
-
-    return task
+      .set({ referenceCount: referencedEntities.length })
+      .where(eq(schema.Task.id, taskId))
   }
 
   /**

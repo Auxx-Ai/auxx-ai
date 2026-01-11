@@ -7,7 +7,6 @@ export type {
   EntityReference,
   CreateTaskInput,
   UpdateTaskInput,
-  CompleteTaskInput,
   TaskFilterOptions,
   TaskGroup,
   GroupedTasksResponse,

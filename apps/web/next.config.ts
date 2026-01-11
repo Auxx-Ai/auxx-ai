@@ -24,6 +24,9 @@ const nextConfig = {
     '@auxx/email',
     '@auxx/ui',
   ],
+  experimental: {
+    turbopackFileSystemCacheForDev: true,
+  },
   poweredByHeader: false,
   reactStrictMode: true,
   // Override default externalization - exclude Prisma packages from externalization

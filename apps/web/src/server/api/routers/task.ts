@@ -81,16 +81,28 @@ export const taskRouter = createTRPCRouter({
   }),
 
   /**
-   * Update a task
+   * Update a task (handles ALL field updates including completion/archiving)
+   *
+   * @example Complete: { id: 'x', completedAt: new Date().toISOString(), completedById: userId }
+   * @example Reopen: { id: 'x', completedAt: null, completedById: null }
+   * @example Archive: { id: 'x', archivedAt: new Date().toISOString() }
+   * @example Unarchive: { id: 'x', archivedAt: null }
    */
   update: protectedProcedure
     .input(
       z.object({
         id: z.string(),
+        // Core fields
         title: z.string().min(1).max(500).optional(),
         description: z.string().optional().nullable(),
         deadline: absoluteDateSchema.optional().nullable(),
         priority: prioritySchema.optional().nullable(),
+        // Completion fields
+        completedAt: z.string().datetime().optional().nullable(),
+        completedById: z.string().optional().nullable(),
+        // Archive field
+        archivedAt: z.string().datetime().optional().nullable(),
+        // Relations
         assignedUserIds: z.array(z.string()).optional(),
         referencedEntities: z.array(entityReferenceSchema).optional(),
       })
@@ -105,72 +117,15 @@ export const taskRouter = createTRPCRouter({
           description: input.description ?? undefined,
           deadline: input.deadline,
           priority: (input.priority as TaskPriority | null) ?? undefined,
+          completedAt: input.completedAt,
+          completedById: input.completedById,
+          archivedAt: input.archivedAt,
           assignedUserIds: input.assignedUserIds,
           referencedEntities: input.referencedEntities,
         },
         organizationId,
         userId
       )
-    }),
-
-  /**
-   * Mark a task as complete
-   */
-  complete: protectedProcedure
-    .input(
-      z.object({
-        taskId: z.string(),
-        completionNotes: z.string().optional(),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-      const taskService = createTaskService(ctx.db)
-
-      return await taskService.completeTask(
-        {
-          taskId: input.taskId,
-          completionNotes: input.completionNotes,
-        },
-        organizationId,
-        userId
-      )
-    }),
-
-  /**
-   * Reopen a completed task
-   */
-  reopen: protectedProcedure
-    .input(z.object({ taskId: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      const { organizationId } = ctx.session
-      const taskService = createTaskService(ctx.db)
-
-      return await taskService.reopenTask(input.taskId, organizationId)
-    }),
-
-  /**
-   * Archive a task (soft delete)
-   */
-  archive: protectedProcedure
-    .input(z.object({ taskId: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      const { organizationId } = ctx.session
-      const taskService = createTaskService(ctx.db)
-
-      return await taskService.archiveTask(input.taskId, organizationId)
-    }),
-
-  /**
-   * Unarchive a task
-   */
-  unarchive: protectedProcedure
-    .input(z.object({ taskId: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      const { organizationId } = ctx.session
-      const taskService = createTaskService(ctx.db)
-
-      return await taskService.unarchiveTask(input.taskId, organizationId)
     }),
 
   /**

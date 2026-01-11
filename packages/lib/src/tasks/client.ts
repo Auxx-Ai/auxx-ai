@@ -16,6 +16,8 @@
  */
 
 export { DateLanguageModule } from './date-language-module'
+export { TextDateParser, type DateParseResult, type TextDateParserOptions } from './text-date-parser'
+export { type DatePattern } from './date-patterns'
 
 // Task filter and sort config
 export {

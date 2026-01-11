@@ -5,7 +5,11 @@
 import { cn } from '@auxx/ui/lib/utils'
 import { Badge } from '@auxx/ui/components/badge'
 import { TaskCheckbox } from './task-checkbox'
-import { useTaskMutations } from '../hooks/use-task-mutations'
+import { useTaskCompletion } from '../hooks/use-task-completion'
+import {
+  useTaskEffectiveCompletedAt,
+  useTaskHasPendingCompletion,
+} from '../hooks/use-task-effective-state'
 import { formatTaskDeadline } from '../utils/group-tasks-by-period'
 import type { TaskWithRelations } from '@auxx/lib/tasks'
 
@@ -26,18 +30,19 @@ interface TaskItemProps {
  * Clicking the checkbox toggles completion, clicking elsewhere opens the dialog.
  */
 export function TaskItem({ task, onClick, showEntityReferences = false }: TaskItemProps) {
-  const { completeTask, reopenTask, isCompleting } = useTaskMutations()
-  const isCompleted = !!task.completedAt
+  const { toggleCompletion } = useTaskCompletion()
+
+  // Use effective state (pending || stored)
+  const effectiveCompletedAt = useTaskEffectiveCompletedAt(task.id)
+  const hasPending = useTaskHasPendingCompletion(task.id)
+
+  const isCompleted = !!effectiveCompletedAt
 
   /**
    * Handle checkbox change
    */
   const handleCheckboxChange = (checked: boolean) => {
-    if (checked) {
-      completeTask.mutate({ taskId: task.id })
-    } else {
-      reopenTask.mutate({ taskId: task.id })
-    }
+    toggleCompletion(task.id, !checked)
   }
 
   return (
@@ -47,7 +52,8 @@ export function TaskItem({ task, onClick, showEntityReferences = false }: TaskIt
         'bg-illustration ring-border-illustration rounded-xl border border-transparent',
         'shadow shadow-black/10 ring-1 transition-all duration-200',
         'hover:bg-accent/50 cursor-pointer',
-        isCompleted && 'opacity-60'
+        isCompleted && 'opacity-60',
+        hasPending && 'ring-primary/30' // Subtle visual hint for pending state
       )}
     >
       {/* Checkbox (stops propagation) */}
@@ -55,7 +61,7 @@ export function TaskItem({ task, onClick, showEntityReferences = false }: TaskIt
         <TaskCheckbox
           checked={isCompleted}
           onCheckedChange={handleCheckboxChange}
-          disabled={isCompleting}
+          // Never disabled - allows rapid toggle for undo
         />
       </div>
 
