@@ -21,22 +21,20 @@ interface FieldWithRelationship {
 
 /**
  * Result from useResourceIdFromField hook.
- * Contains tableId (system resource ID or custom entity UUID).
+ * Contains entityDefinitionId (system resource ID or custom entity UUID).
  */
 export interface ResourceIdResult {
-  /** System resource ID (e.g., "contact", "ticket") or custom entity UUID */
-  tableId: string
-  /** Custom entity UUID (for custom entities only, same as tableId) */
-  entityDefinitionId?: string
+  /** Entity definition ID - system resource ID or custom entity UUID */
+  entityDefinitionId: string
 }
 
 /**
  * Hook to extract resource identification from a relationship field.
- * Returns tableId which is either a system resource ID or custom entity UUID.
+ * Returns entityDefinitionId which is either a system resource ID or custom entity UUID.
  *
  * The stored value in relatedEntityDefinitionId is:
- * - System resource ID (contact, ticket, etc.) - used directly as tableId
- * - UUID (EntityDefinition.id) - used directly as tableId (no entity_ prefix)
+ * - System resource ID (contact, ticket, etc.) - used directly as entityDefinitionId
+ * - UUID (EntityDefinition.id) - used directly as entityDefinitionId (no entity_ prefix)
  *
  * @param field - Field definition with relationship options
  * @returns ResourceIdResult or null if not a valid relationship field
@@ -46,15 +44,14 @@ export function useResourceIdFromField(field: FieldWithRelationship): ResourceId
     const relationship = field.options?.relationship
     if (!relationship) return null
 
-    // System resource (contact, ticket, etc.) - use relatedModelType as tableId
+    // System resource (contact, ticket, etc.) - use relatedModelType as entityDefinitionId
     if (relationship.relatedModelType) {
-      return { tableId: relationship.relatedModelType }
+      return { entityDefinitionId: relationship.relatedModelType }
     }
 
     // Custom entity - use relatedEntityDefinitionId (UUID directly, no prefix)
     if (relationship.relatedEntityDefinitionId) {
-      const uuid = relationship.relatedEntityDefinitionId
-      return { tableId: uuid, entityDefinitionId: uuid }
+      return { entityDefinitionId: relationship.relatedEntityDefinitionId }
     }
 
     return null

@@ -35,7 +35,7 @@ const resourceIdSchema = z.string().refine(
 )
 
 const getResourcesInputSchema = z.object({
-  tableId: resourceIdSchema,
+  entityDefinitionId: resourceIdSchema,
   limit: z.number().min(1).max(100).default(50),
   cursor: z.string().nullish(),
   search: z.string().optional(),
@@ -44,22 +44,22 @@ const getResourcesInputSchema = z.object({
 })
 
 const getResourceByIdInputSchema = z.object({
-  tableId: resourceIdSchema,
+  entityDefinitionId: resourceIdSchema,
   id: z.string(),
 })
 
 export const resourceRouter = createTRPCRouter({
   /**
    * Get paginated resources for picker
-   * Accepts tableId (system resource ID or custom entity UUID)
+   * Accepts entityDefinitionId (system resource ID or custom entity UUID)
    */
   getAll: protectedProcedure.input(getResourcesInputSchema).query(async ({ ctx, input }) => {
     const { organizationId, userId } = ctx.session
-    const { tableId } = input
+    const { entityDefinitionId } = input
 
     try {
       const service = new ResourcePickerService(organizationId, userId, ctx.db)
-      return await service.getResources({ ...input, tableId })
+      return await service.getResources({ ...input, entityDefinitionId })
     } catch (error: any) {
       if (error instanceof TRPCError) throw error
       throw new TRPCError({
@@ -82,7 +82,7 @@ export const resourceRouter = createTRPCRouter({
       if (!item) {
         throw new TRPCError({
           code: 'NOT_FOUND',
-          message: `Resource not found: ${input.tableId}:${input.id}`,
+          message: `Resource not found: ${input.entityDefinitionId}:${input.id}`,
         })
       }
 
@@ -130,16 +130,16 @@ export const resourceRouter = createTRPCRouter({
 
   /**
    * Search resources (alias for getAll with semantic meaning)
-   * Accepts either tableId (entity_products, contact) or apiSlug (products)
+   * Accepts either entityDefinitionId (entity_products, contact) or apiSlug (products)
    */
   search: protectedProcedure.input(getResourcesInputSchema).query(async ({ ctx, input }) => {
     const { organizationId, userId } = ctx.session
-    let { tableId } = input
+    let { entityDefinitionId } = input
     const { apiSlug } = input
 
     try {
-      // Resolve apiSlug to tableId if provided
-      if (apiSlug && !tableId) {
+      // Resolve apiSlug to entityDefinitionId if provided
+      if (apiSlug && !entityDefinitionId) {
         const registryService = new ResourceRegistryService(organizationId, ctx.db)
         const resource = await registryService.getByApiSlug(apiSlug)
         if (!resource) {
@@ -148,11 +148,11 @@ export const resourceRouter = createTRPCRouter({
             message: `Entity not found: ${apiSlug}`,
           })
         }
-        tableId = resource.id
+        entityDefinitionId = resource.id
       }
 
       const service = new ResourcePickerService(organizationId, userId, ctx.db)
-      return await service.getResources({ ...input, tableId: tableId! })
+      return await service.getResources({ ...input, entityDefinitionId: entityDefinitionId! })
     } catch (error: any) {
       if (error instanceof TRPCError) throw error
       throw new TRPCError({
@@ -168,7 +168,7 @@ export const resourceRouter = createTRPCRouter({
   invalidateCache: protectedProcedure
     .input(
       z.object({
-        tableId: resourceIdSchema,
+        entityDefinitionId: resourceIdSchema,
         id: z.string().optional(),
       })
     )
@@ -179,9 +179,9 @@ export const resourceRouter = createTRPCRouter({
         const service = new ResourcePickerService(organizationId, userId, ctx.db)
 
         if (input.id) {
-          await service.invalidateCacheById(input.tableId, input.id)
+          await service.invalidateCacheById(input.entityDefinitionId, input.id)
         } else {
-          await service.invalidateCacheByTable(input.tableId)
+          await service.invalidateCacheByTable(input.entityDefinitionId)
         }
 
         return { success: true }
@@ -225,7 +225,7 @@ export const resourceRouter = createTRPCRouter({
     .input(
       z.object({
         /** Resource type: 'contact', 'ticket', 'entity_xxx' */
-        tableId: z.string(),
+        entityDefinitionId: z.string(),
         /** Filter groups (optional) */
         filters: z.array(conditionGroupSchema).optional(),
         /** Sort configuration (optional) */
@@ -278,16 +278,16 @@ export const resourceRouter = createTRPCRouter({
       // No snapshotId - create new snapshot
       const result = await getOrCreateSnapshot({
         organizationId,
-        resourceType: input.tableId,
+        resourceType: input.entityDefinitionId,
         filters: (input.filters ?? []) as ConditionGroup[],
         sorting: input.sorting ?? [],
         executeQuery: async () => {
           // Route to appropriate query function
           // Check if system resource first
-          if (RESOURCE_TABLE_REGISTRY.some((r) => r.id === input.tableId)) {
+          if (RESOURCE_TABLE_REGISTRY.some((r) => r.id === input.entityDefinitionId)) {
             return querySystemResourceIds({
               db: ctx.db,
-              tableId: input.tableId as TableId,
+              tableId: input.entityDefinitionId as TableId,
               organizationId,
               filters: (input.filters ?? []) as ConditionGroup[],
               sorting: input.sorting ?? [],
@@ -297,7 +297,7 @@ export const resourceRouter = createTRPCRouter({
           // Otherwise treat as custom entity (UUID)
           return queryEntityInstanceIds({
             db: ctx.db,
-            entityDefinitionId: input.tableId,
+            entityDefinitionId: input.entityDefinitionId,
             organizationId,
             filters: (input.filters ?? []) as ConditionGroup[],
             sorting: input.sorting ?? [],

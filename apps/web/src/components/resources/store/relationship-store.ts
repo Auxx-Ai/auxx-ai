@@ -31,7 +31,7 @@ export function parseRelationshipKey(key: string): { resourceId: string; id: str
  */
 export const useRelationshipStore = createHydrationStore<ResourcePickerItem>({
   name: 'relationship',
-  getKeyFromValue: (item) => buildRelationshipKey(item.tableId, item.id),
+  getKeyFromValue: (item) => buildRelationshipKey(item.entityDefinitionId, item.id),
 })
 
 /**

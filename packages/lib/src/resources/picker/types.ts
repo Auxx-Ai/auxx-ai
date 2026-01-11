@@ -2,11 +2,11 @@
 
 /**
  * Input for paginated resource picker queries
- * Accepts both system TableId (e.g., 'contact') and custom entity IDs (e.g., 'entity_product')
+ * Accepts both system TableId (e.g., 'contact') and custom entity UUIDs
  */
 export interface GetResourcesInput {
-  /** Resource ID - can be system TableId or custom entity ID (entity_xxx) */
-  tableId: string
+  /** Entity definition ID - system resource ID (contact, ticket) or custom entity UUID */
+  entityDefinitionId: string
 
   /** Maximum items per page (1-100) */
   limit: number
@@ -31,11 +31,11 @@ export interface ResourcePickerItem {
   /** Resource ID */
   id: string
 
-  /** Resource type - can be system TableId or custom entity ID (entity_xxx) */
-  tableId: string
+  /** Entity definition ID - system resource ID (contact, ticket) or custom entity UUID */
+  entityDefinitionId: string
 
-  /** Primary identifier (from identifierField) */
-  identifier: string
+  /** Entity instance ID - the ID of this specific record */
+  entityInstanceId: string
 
   /** Display name (from displayNameField) */
   displayName: string
@@ -67,7 +67,7 @@ export interface PaginatedResourcesResult {
  * Single resource query
  */
 export interface GetResourceByIdInput {
-  /** Resource ID - can be system TableId or custom entity ID (entity_xxx) */
-  tableId: string
+  /** Entity definition ID - system resource ID (contact, ticket) or custom entity UUID */
+  entityDefinitionId: string
   id: string
 }

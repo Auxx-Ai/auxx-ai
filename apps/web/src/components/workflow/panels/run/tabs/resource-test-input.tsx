@@ -48,7 +48,7 @@ export function ResourceTestInput({
     error: fetchError,
   } = api.resource.getById.useQuery(
     {
-      tableId: resourceType,
+      entityDefinitionId: resourceType,
       id: inputs.selectedResourceId || '',
     },
     {

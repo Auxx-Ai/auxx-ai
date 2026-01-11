@@ -100,7 +100,7 @@ function createInitialState<TValue>(): HydrationStoreState<TValue> {
  * // Create a store for relationship items
  * const useRelationshipStore = createHydrationStore<ResourcePickerItem>({
  *   name: 'relationship',
- *   getKeyFromValue: (item) => `${item.tableId}:${item.id}`,
+ *   getKeyFromValue: (item) => `${item.entityDefinitionId}:${item.id}`,
  * })
  *
  * // Create a store for resource fields

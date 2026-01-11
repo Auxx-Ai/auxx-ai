@@ -47,40 +47,40 @@ export class ResourcePickerService {
    * Supports both system resources (TableId) and custom entities (entity_xxx)
    */
   async getResources(input: GetResourcesInput): Promise<PaginatedResourcesResult> {
-    const { tableId, limit, cursor, search, filters, skipCache } = input
+    const { entityDefinitionId, limit, cursor, search, filters, skipCache } = input
 
     // Check if it's a custom entity (entity_xxx format)
-    if (this.registryService.isCustomResource(tableId)) {
-      const resource = await this.registryService.getById(tableId)
+    if (this.registryService.isCustomResource(entityDefinitionId)) {
+      const resource = await this.registryService.getById(entityDefinitionId)
       if (!resource || !isCustomResource(resource)) {
-        throw new Error(`Unknown resource: ${tableId}`)
+        throw new Error(`Unknown resource: ${entityDefinitionId}`)
       }
       return this.getEntityInstances(resource, limit, cursor, search)
     }
 
     // Validate table exists in registry for system resources
-    if (!RESOURCE_TABLE_MAP[tableId as TableId]) {
-      throw new Error(`Unknown table: ${tableId}`)
+    if (!RESOURCE_TABLE_MAP[entityDefinitionId as TableId]) {
+      throw new Error(`Unknown table: ${entityDefinitionId}`)
     }
 
     // Check cache first
     if (!skipCache) {
-      const cached = await this.cache.getCachedResources(this.organizationId, tableId, {
+      const cached = await this.cache.getCachedResources(this.organizationId, entityDefinitionId, {
         cursor,
         search,
         filters,
       })
       if (cached) {
-        logger.debug('Cache hit', { tableId, cursor, search })
+        logger.debug('Cache hit', { entityDefinitionId, cursor, search })
         return cached
       }
     }
 
     // Fetch from database
-    const result = await this.fetchResourcesFromDb(tableId as TableId, limit, cursor, search, filters)
+    const result = await this.fetchResourcesFromDb(entityDefinitionId as TableId, limit, cursor, search, filters)
 
     // Cache result
-    await this.cache.cacheResources(this.organizationId, tableId, result, {
+    await this.cache.cacheResources(this.organizationId, entityDefinitionId, result, {
       cursor,
       search,
       filters,
@@ -94,11 +94,11 @@ export class ResourcePickerService {
    * Supports both system resources (TableId) and custom entities (entity_xxx)
    */
   async getResourceById(input: GetResourceByIdInput): Promise<ResourcePickerItem | null> {
-    const { tableId, id } = input
+    const { entityDefinitionId, id } = input
 
     // Check if it's a custom entity (entity_xxx format)
-    if (this.registryService.isCustomResource(tableId)) {
-      const resource = await this.registryService.getById(tableId)
+    if (this.registryService.isCustomResource(entityDefinitionId)) {
+      const resource = await this.registryService.getById(entityDefinitionId)
       if (!resource || !isCustomResource(resource)) {
         return null
       }
@@ -106,22 +106,22 @@ export class ResourcePickerService {
     }
 
     // Validate table for system resources
-    if (!RESOURCE_TABLE_MAP[tableId as TableId]) {
-      throw new Error(`Unknown table: ${tableId}`)
+    if (!RESOURCE_TABLE_MAP[entityDefinitionId as TableId]) {
+      throw new Error(`Unknown table: ${entityDefinitionId}`)
     }
 
     // Check cache
-    const cached = await this.cache.getCachedSingleResource(this.organizationId, tableId, id)
+    const cached = await this.cache.getCachedSingleResource(this.organizationId, entityDefinitionId, id)
     if (cached) {
-      logger.debug('Cache hit for single item', { tableId, id })
+      logger.debug('Cache hit for single item', { entityDefinitionId, id })
       return cached
     }
 
     // Fetch from database
-    const item = await this.fetchSingleResourceFromDb(tableId as TableId, id)
+    const item = await this.fetchSingleResourceFromDb(entityDefinitionId as TableId, id)
 
     if (item) {
-      await this.cache.cacheSingleResource(this.organizationId, tableId, item)
+      await this.cache.cacheSingleResource(this.organizationId, entityDefinitionId, item)
     }
 
     return item
@@ -435,7 +435,7 @@ export class ResourcePickerService {
   private transformToPickerItem(tableId: TableId, row: any): ResourcePickerItem {
     const displayConfig = RESOURCE_DISPLAY_CONFIG[tableId]
 
-    const identifier = row[displayConfig.identifierField]
+    const entityInstanceId = row[displayConfig.identifierField]
 
     const displayName =
       typeof displayConfig.displayNameField === 'string'
@@ -452,8 +452,8 @@ export class ResourcePickerService {
 
     return {
       id: row.id,
-      tableId,
-      identifier,
+      entityDefinitionId: tableId,
+      entityInstanceId,
       displayName,
       secondaryInfo,
       avatarUrl,
@@ -520,7 +520,7 @@ export class ResourcePickerService {
         (item) =>
           item.displayName?.toLowerCase().includes(searchLower) ||
           item.secondaryInfo?.toLowerCase().includes(searchLower) ||
-          item.identifier?.toLowerCase().includes(searchLower)
+          item.entityInstanceId?.toLowerCase().includes(searchLower)
       )
     }
 
@@ -569,8 +569,8 @@ export class ResourcePickerService {
   ): ResourcePickerItem {
     return {
       id: instance.id,
-      tableId: resource.id,
-      identifier: instance.id,
+      entityDefinitionId: resource.id,
+      entityInstanceId: instance.id,
       displayName: instance.displayName || instance.id,
       secondaryInfo: instance.secondaryDisplayValue || undefined,
       avatarUrl: instance.avatarUrl || undefined,
@@ -643,16 +643,16 @@ export class ResourcePickerService {
   }
 
   /**
-   * Invalidate cache for table
+   * Invalidate cache for entity definition
    */
-  async invalidateCacheByTable(tableId: string): Promise<void> {
-    await this.cache.invalidateByTable(tableId)
+  async invalidateCacheByTable(entityDefinitionId: string): Promise<void> {
+    await this.cache.invalidateByTable(entityDefinitionId)
   }
 
   /**
    * Invalidate cache for specific item
    */
-  async invalidateCacheById(tableId: string, id: string): Promise<void> {
-    await this.cache.invalidateById(tableId, id)
+  async invalidateCacheById(entityDefinitionId: string, id: string): Promise<void> {
+    await this.cache.invalidateById(entityDefinitionId, id)
   }
 }

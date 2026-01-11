@@ -16,7 +16,7 @@ export class ResourcePickerCacheService extends BaseCacheService {
    */
   private buildListKey(
     orgId: string,
-    tableId: string,
+    entityDefinitionId: string,
     options: {
       cursor?: string | null
       search?: string
@@ -28,7 +28,7 @@ export class ResourcePickerCacheService extends BaseCacheService {
     if (options.search) params.set('search', options.search)
     if (options.filters) params.set('filters', JSON.stringify(options.filters))
 
-    return this.buildKey('list', orgId, tableId, params.toString())
+    return this.buildKey('list', orgId, entityDefinitionId, params.toString())
   }
 
   /**
@@ -36,7 +36,7 @@ export class ResourcePickerCacheService extends BaseCacheService {
    */
   async cacheResources(
     orgId: string,
-    tableId: string,
+    entityDefinitionId: string,
     result: PaginatedResourcesResult,
     options: {
       cursor?: string | null
@@ -44,10 +44,10 @@ export class ResourcePickerCacheService extends BaseCacheService {
       filters?: Record<string, any>
     },
   ): Promise<void> {
-    const key = this.buildListKey(orgId, tableId, options)
+    const key = this.buildListKey(orgId, entityDefinitionId, options)
     await this.set(key, result, {
       ttl: 1800, // 30 minutes
-      tags: ['resource-picker', `table:${tableId}`, `org:${orgId}`],
+      tags: ['resource-picker', `entity:${entityDefinitionId}`, `org:${orgId}`],
     })
   }
 
@@ -56,14 +56,14 @@ export class ResourcePickerCacheService extends BaseCacheService {
    */
   async getCachedResources(
     orgId: string,
-    tableId: string,
+    entityDefinitionId: string,
     options: {
       cursor?: string | null
       search?: string
       filters?: Record<string, any>
     },
   ): Promise<PaginatedResourcesResult | null> {
-    const key = this.buildListKey(orgId, tableId, options)
+    const key = this.buildListKey(orgId, entityDefinitionId, options)
     return this.get<PaginatedResourcesResult>(key)
   }
 
@@ -72,13 +72,13 @@ export class ResourcePickerCacheService extends BaseCacheService {
    */
   async cacheSingleResource(
     orgId: string,
-    tableId: string,
+    entityDefinitionId: string,
     item: ResourcePickerItem,
   ): Promise<void> {
-    const key = this.buildKey('item', orgId, tableId, item.id)
+    const key = this.buildKey('item', orgId, entityDefinitionId, item.id)
     await this.set(key, item, {
       ttl: 3600, // 1 hour
-      tags: ['resource-picker', `table:${tableId}`, `org:${orgId}`, `id:${item.id}`],
+      tags: ['resource-picker', `entity:${entityDefinitionId}`, `org:${orgId}`, `id:${item.id}`],
     })
   }
 
@@ -87,25 +87,25 @@ export class ResourcePickerCacheService extends BaseCacheService {
    */
   async getCachedSingleResource(
     orgId: string,
-    tableId: string,
+    entityDefinitionId: string,
     id: string,
   ): Promise<ResourcePickerItem | null> {
-    const key = this.buildKey('item', orgId, tableId, id)
+    const key = this.buildKey('item', orgId, entityDefinitionId, id)
     return this.get<ResourcePickerItem>(key)
   }
 
   /**
-   * Invalidate by table
+   * Invalidate by entity definition
    */
-  async invalidateByTable(tableId: string): Promise<void> {
-    await this.invalidateByTag(`table:${tableId}`)
+  async invalidateByTable(entityDefinitionId: string): Promise<void> {
+    await this.invalidateByTag(`entity:${entityDefinitionId}`)
   }
 
   /**
    * Invalidate by ID
    */
-  async invalidateById(tableId: string, id: string): Promise<void> {
+  async invalidateById(entityDefinitionId: string, id: string): Promise<void> {
     await this.invalidateByTag(`id:${id}`)
-    await this.invalidateByTag(`table:${tableId}`)
+    await this.invalidateByTag(`entity:${entityDefinitionId}`)
   }
 }

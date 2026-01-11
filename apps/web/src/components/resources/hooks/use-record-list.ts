@@ -105,7 +105,7 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
   // Stable query input to prevent infinite loops
   const queryInput = useMemo(
     () => ({
-      tableId: resourceType,
+      entityDefinitionId: resourceType,
       filters: stableFilters.length > 0 ? stableFilters : undefined,
       sorting: stableSorting.length > 0 ? stableSorting : undefined,
       limit,

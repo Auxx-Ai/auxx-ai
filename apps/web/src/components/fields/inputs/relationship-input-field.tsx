@@ -6,6 +6,7 @@ import { useFieldNavigationOptional } from '../field-navigation-context'
 import {
   useRelationship,
   useResourceProvider,
+  useResource,
   buildRelationshipKey,
   getRelationshipStoreState,
 } from '~/components/resources'
@@ -24,8 +25,56 @@ import {
   CommandGroup,
 } from '@auxx/ui/components/command'
 import { cn } from '@auxx/ui/lib/utils'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import { isCustomResource, type ResourcePickerItem } from '@auxx/lib/resources/client'
 import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
+
+/** Props for RelationshipItem */
+interface RelationshipItemProps {
+  item: ResourcePickerItem
+  isSelected: boolean
+  onToggle: (id: string) => void
+}
+
+/**
+ * Single item in the relationship picker list
+ * Handles icon resolution per-item based on entity type
+ */
+function RelationshipItem({ item, isSelected, onToggle }: RelationshipItemProps) {
+  const { resource } = useResource(item.entityDefinitionId)
+  const iconColor = resource && isCustomResource(resource) ? resource.color : undefined
+
+  return (
+    <CommandItem
+      key={item.id}
+      value={item.id}
+      onSelect={() => onToggle(item.id)}
+      className="flex items-center gap-2">
+      {item.avatarUrl ? (
+        <Avatar className="size-5">
+          <AvatarImage src={item.avatarUrl} />
+          <AvatarFallback>{item.displayName?.[0]}</AvatarFallback>
+        </Avatar>
+      ) : (
+        <EntityIcon
+          iconId={resource?.icon ?? 'circle'}
+          color={iconColor ?? 'gray'}
+          size="sm"
+          inverse
+          className="-ms-0.5 inset-shadow-xs inset-shadow-black/20"
+        />
+      )}
+      <div className="flex flex-1 items-center gap-1 flex-row">
+        <span className="truncate">{item.displayName}</span>
+        {item.secondaryInfo && (
+          <span className="text-xs text-muted-foreground">{item.secondaryInfo}</span>
+        )}
+      </div>
+      <Check className={cn('size-4', isSelected ? 'opacity-100' : 'opacity-0')} />
+    </CommandItem>
+  )
+}
+
 /**
  * Input component for RELATIONSHIP field type
  * Displays an inline searchable list with selected items at top.
@@ -90,16 +139,16 @@ export function RelationshipInputField() {
   // Get the related resource for label and inline create capability
   const relatedResource = useMemo(() => {
     if (!resourceRef) return null
-    return getResourceById(resourceRef.tableId)
+    return getResourceById(resourceRef.entityDefinitionId)
   }, [resourceRef, getResourceById])
 
   // Only custom resources support inline create (system resources have dedicated flows)
   const canInlineCreate = relatedResource && isCustomResource(relatedResource)
 
-  // For useRelationship, use tableId directly (either system resource or UUID, no prefix needed)
+  // For useRelationship, use entityDefinitionId directly (either system resource or UUID, no prefix needed)
   const resourceIdForHydration = useMemo(() => {
     if (!resourceRef) return null
-    return resourceRef.tableId
+    return resourceRef.entityDefinitionId
   }, [resourceRef])
 
   // Hydrate selected items via global store (always available even if not in search)
@@ -121,7 +170,7 @@ export function RelationshipInputField() {
   // Always fetch search results
   const { data: searchResults, isLoading } = api.resource.search.useQuery(
     {
-      tableId: resourceRef?.tableId ?? '',
+      entityDefinitionId: resourceRef?.entityDefinitionId ?? '',
       search,
       limit: 20,
     },
@@ -246,13 +295,13 @@ export function RelationshipInputField() {
       try {
         // Fetch the newly created item to get display info
         const newItem = await utils.resource.getById.fetch({
-          tableId: resourceRef.tableId,
+          entityDefinitionId: resourceRef.entityDefinitionId,
           id: instanceId,
         })
 
         if (newItem) {
           // Add to relationship store for immediate hydration
-          const key = buildRelationshipKey(resourceRef.tableId, instanceId)
+          const key = buildRelationshipKey(resourceRef.entityDefinitionId, instanceId)
           getRelationshipStoreState().addHydratedItems({ [key]: newItem })
         }
       } catch (error) {
@@ -294,30 +343,12 @@ export function RelationshipInputField() {
           {hasSelectedSection && (
             <CommandGroup aria-label="Selected Items">
               {initiallySelectedItems.map((item) => (
-                <CommandItem
+                <RelationshipItem
                   key={item.id}
-                  value={item.id}
-                  onSelect={() => handleToggle(item.id)}
-                  className="flex items-center gap-2">
-                  {item.avatarUrl && (
-                    <Avatar className="size-4">
-                      <AvatarImage src={item.avatarUrl} />
-                      <AvatarFallback>{item.displayName?.[0]}</AvatarFallback>
-                    </Avatar>
-                  )}
-                  <div className="flex flex-1 items-center gap-1 flex-row">
-                    <span className="truncate">{item.displayName}</span>
-                    {item.secondaryInfo && (
-                      <span className="text-xs text-muted-foreground">{item.secondaryInfo}</span>
-                    )}
-                  </div>
-                  <Check
-                    className={cn(
-                      'size-4',
-                      currentSelectedIds.has(item.id) ? 'opacity-100' : 'opacity-0'
-                    )}
-                  />
-                </CommandItem>
+                  item={item}
+                  isSelected={currentSelectedIds.has(item.id)}
+                  onToggle={handleToggle}
+                />
               ))}
             </CommandGroup>
           )}
@@ -329,30 +360,12 @@ export function RelationshipInputField() {
           {hasResultsSection && (
             <CommandGroup aria-label="Available Items">
               {availableItems.map((item) => (
-                <CommandItem
+                <RelationshipItem
                   key={item.id}
-                  value={item.id}
-                  onSelect={() => handleToggle(item.id)}
-                  className="flex items-center  gap-2">
-                  {item.avatarUrl && (
-                    <Avatar className="size-4">
-                      <AvatarImage src={item.avatarUrl} />
-                      <AvatarFallback>{item.displayName?.[0]}</AvatarFallback>
-                    </Avatar>
-                  )}
-                  <div className="flex flex-1 flex-row items-center gap-1">
-                    <span className="truncate">{item.displayName}</span>
-                    {item.secondaryInfo && (
-                      <span className="text-xs text-muted-foreground">{item.secondaryInfo}</span>
-                    )}
-                  </div>
-                  <Check
-                    className={cn(
-                      'size-4',
-                      currentSelectedIds.has(item.id) ? 'opacity-100' : 'opacity-0'
-                    )}
-                  />
-                </CommandItem>
+                  item={item}
+                  isSelected={currentSelectedIds.has(item.id)}
+                  onToggle={handleToggle}
+                />
               ))}
             </CommandGroup>
           )}

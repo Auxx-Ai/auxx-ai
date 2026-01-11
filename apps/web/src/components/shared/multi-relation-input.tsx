@@ -108,7 +108,7 @@ export function MultiRelationInput({
   // Search for items when popover is open
   const { data: searchResults, isLoading: isSearching } = api.resource.search.useQuery(
     {
-      tableId: tableId!,
+      entityDefinitionId: tableId!,
       search: searchQuery,
       limit: 20,
     },
