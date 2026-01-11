@@ -35,8 +35,8 @@ interface TaskStoreState {
   /** Optimistic completion tracking: taskId → pending state */
   pendingCompletions: Map<string, PendingCompletion>
 
-  /** Debounced list update timers: taskId → timeoutId */
-  listUpdateTimers: Map<string, NodeJS.Timeout>
+  /** Single global timer for debounced batch updates */
+  globalUpdateTimer: NodeJS.Timeout | null
 
   /** Set multiple tasks (from list fetch) */
   setTasks: (tasks: TaskWithRelations[]) => void
@@ -83,21 +83,27 @@ interface TaskStoreState {
   hasPendingCompletion: (taskId: string) => boolean
 
   /**
-   * Schedule a list update after a delay.
-   * Cancels any existing timer for this task.
+   * Schedule a global update after a delay.
+   * Resets the timer on each call - batches all pending updates together.
    */
-  scheduleListUpdate: (taskId: string, callback: () => void, delayMs: number) => void
+  scheduleGlobalUpdate: (callback: () => void, delayMs: number) => void
 
   /**
-   * Cancel a scheduled list update for a task.
+   * Cancel the global update timer.
    */
-  cancelScheduledListUpdate: (taskId: string) => void
+  cancelGlobalUpdate: () => void
 
   /**
    * Clear pending completion state for a task.
-   * Called after query cache is updated to finalize the optimistic update.
+   * Called on error to rollback a single task.
    */
   clearPendingCompletion: (taskId: string) => void
+
+  /**
+   * Clear all pending completion states.
+   * Called after batch update to finalize all optimistic updates.
+   */
+  clearAllPendingCompletions: () => void
 }
 
 /**
@@ -109,7 +115,7 @@ export const useTaskStore = create<TaskStoreState>()(
     immer((set, get) => ({
       tasks: new Map(),
       pendingCompletions: new Map(),
-      listUpdateTimers: new Map(),
+      globalUpdateTimer: null,
 
       setTasks: (tasks) => {
         set((state) => {
@@ -132,10 +138,6 @@ export const useTaskStore = create<TaskStoreState>()(
         set((state) => {
           state.tasks.delete(taskId)
           state.pendingCompletions.delete(taskId)
-          // Clear any pending timer
-          const timer = state.listUpdateTimers.get(taskId)
-          if (timer) clearTimeout(timer)
-          state.listUpdateTimers.delete(taskId)
         })
       },
 
@@ -146,14 +148,14 @@ export const useTaskStore = create<TaskStoreState>()(
       },
 
       clearAll: () => {
-        set((state) => {
-          // Clear all timers
-          for (const timer of state.listUpdateTimers.values()) {
-            clearTimeout(timer)
-          }
-          state.tasks.clear()
-          state.pendingCompletions.clear()
-          state.listUpdateTimers.clear()
+        const state = get()
+        if (state.globalUpdateTimer) {
+          clearTimeout(state.globalUpdateTimer)
+        }
+        set((s) => {
+          s.tasks.clear()
+          s.pendingCompletions.clear()
+          s.globalUpdateTimer = null
         })
       },
 
@@ -216,33 +218,33 @@ export const useTaskStore = create<TaskStoreState>()(
         return get().pendingCompletions.has(taskId)
       },
 
-      scheduleListUpdate: (taskId, callback, delayMs) => {
+      scheduleGlobalUpdate: (callback, delayMs) => {
         const state = get()
 
-        // Clear existing timer for this task
-        const existingTimer = state.listUpdateTimers.get(taskId)
-        if (existingTimer) clearTimeout(existingTimer)
+        // Clear existing global timer
+        if (state.globalUpdateTimer) {
+          clearTimeout(state.globalUpdateTimer)
+        }
 
-        // Schedule new timer
+        // Schedule new timer - resets on each call
         const timer = setTimeout(() => {
           callback()
           set((s) => {
-            s.listUpdateTimers.delete(taskId)
+            s.globalUpdateTimer = null
           })
         }, delayMs)
 
         set((s) => {
-          s.listUpdateTimers.set(taskId, timer)
+          s.globalUpdateTimer = timer
         })
       },
 
-      cancelScheduledListUpdate: (taskId) => {
+      cancelGlobalUpdate: () => {
         const state = get()
-        const timer = state.listUpdateTimers.get(taskId)
-        if (timer) {
-          clearTimeout(timer)
+        if (state.globalUpdateTimer) {
+          clearTimeout(state.globalUpdateTimer)
           set((s) => {
-            s.listUpdateTimers.delete(taskId)
+            s.globalUpdateTimer = null
           })
         }
       },
@@ -250,6 +252,12 @@ export const useTaskStore = create<TaskStoreState>()(
       clearPendingCompletion: (taskId) => {
         set((s) => {
           s.pendingCompletions.delete(taskId)
+        })
+      },
+
+      clearAllPendingCompletions: () => {
+        set((s) => {
+          s.pendingCompletions.clear()
         })
       },
     }))

@@ -4,8 +4,7 @@
 
 import { useMemo, useCallback, useState, useRef } from 'react'
 import { Filter, X } from 'lucide-react'
-import { Button, buttonVariants } from '@auxx/ui/components/button'
-import { cn } from '@auxx/ui/lib/utils'
+import { Button } from '@auxx/ui/components/button'
 import { Switch } from '@auxx/ui/components/switch'
 import { Badge } from '@auxx/ui/components/badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
@@ -158,8 +157,7 @@ export function TaskFilterBar({
                   variant="ghost"
                   size="sm"
                   onClick={handleClearAll}
-                  className="h-6 px-2 text-xs"
-                >
+                  className="h-6 px-2 text-xs">
                   <X className="mr-1 size-3" />
                   Clear all
                 </Button>
@@ -174,8 +172,7 @@ export function TaskFilterBar({
               onConditionsChange={handleDraftChange}
               onGroupsChange={() => {}}
               getAvailableFields={() => fieldDefinitions}
-              getFieldDefinition={(id) => fieldDefinitions.find((f) => f.id === id)}
-            >
+              getFieldDefinition={(id) => fieldDefinitions.find((f) => f.id === id)}>
               <ConditionContainer
                 emptyStateText="Add a filter to start"
                 showAddButton
@@ -193,9 +190,12 @@ export function TaskFilterBar({
       <div className="flex-1" />
 
       {/* Show Completed Toggle */}
-      <label
-        className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), 'gap-2 cursor-pointer')}
-      >
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={disabled}
+        onClick={() => onIncludeCompletedChange(!includeCompleted)}
+        className="gap-2">
         <span className="text-muted-foreground text-xs">Show completed</span>
         <Switch
           size="sm"
@@ -203,7 +203,7 @@ export function TaskFilterBar({
           onCheckedChange={onIncludeCompletedChange}
           disabled={disabled}
         />
-      </label>
+      </Button>
     </div>
   )
 }

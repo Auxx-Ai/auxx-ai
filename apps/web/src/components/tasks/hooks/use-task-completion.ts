@@ -21,9 +21,8 @@ export function useTaskCompletion() {
   const setOptimisticCompletion = useTaskStore((s) => s.setOptimisticCompletion)
   const confirmCompletion = useTaskStore((s) => s.confirmCompletion)
   const rollbackCompletion = useTaskStore((s) => s.rollbackCompletion)
-  const scheduleListUpdate = useTaskStore((s) => s.scheduleListUpdate)
-  const cancelScheduledListUpdate = useTaskStore((s) => s.cancelScheduledListUpdate)
-  const clearPendingCompletion = useTaskStore((s) => s.clearPendingCompletion)
+  const scheduleGlobalUpdate = useTaskStore((s) => s.scheduleGlobalUpdate)
+  const clearAllPendingCompletions = useTaskStore((s) => s.clearAllPendingCompletions)
 
   // Track in-flight mutations to prevent duplicates
   const mutationVersionsRef = useRef<Map<string, number>>(new Map())
@@ -36,32 +35,36 @@ export function useTaskCompletion() {
         confirmCompletion(task.id, version)
         mutationVersionsRef.current.delete(task.id)
 
-        // Schedule delayed query cache update (no network request)
-        scheduleListUpdate(
-          task.id,
-          () => {
-            // Update all task.list query caches directly
-            queryClient.setQueriesData<{
-              tasks: TaskWithRelations[]
-              total: number
-              hasMore: boolean
-            }>(
-              { queryKey: [['task', 'list']] },
-              (oldData) => {
-                if (!oldData?.tasks) return oldData
-                return {
-                  ...oldData,
-                  tasks: oldData.tasks.map((t) =>
-                    t.id === task.id ? { ...t, completedAt: task.completedAt } : t
-                  ),
-                }
+        // Schedule/reset global timer - applies ALL pending on inactivity
+        scheduleGlobalUpdate(() => {
+          // Get all pending completions at callback time
+          const pendingCompletions = useTaskStore.getState().pendingCompletions
+
+          // Update all task.list query caches for ALL pending tasks at once
+          queryClient.setQueriesData<{
+            tasks: TaskWithRelations[]
+            total: number
+            hasMore: boolean
+          }>(
+            { queryKey: [['task', 'list']] },
+            (oldData) => {
+              if (!oldData?.tasks) return oldData
+              return {
+                ...oldData,
+                tasks: oldData.tasks.map((t) => {
+                  const pending = pendingCompletions.get(t.id)
+                  if (pending) {
+                    return { ...t, completedAt: pending.completedAt }
+                  }
+                  return t
+                }),
               }
-            )
-            // Clear pending state after cache is updated
-            clearPendingCompletion(task.id)
-          },
-          LIST_UPDATE_DELAY_MS
-        )
+            }
+          )
+
+          // Clear all pending states after cache is updated
+          clearAllPendingCompletions()
+        }, LIST_UPDATE_DELAY_MS)
       }
     },
     onError: (error, variables) => {
@@ -70,7 +73,6 @@ export function useTaskCompletion() {
       if (version !== undefined) {
         rollbackCompletion(taskId, version)
         mutationVersionsRef.current.delete(taskId)
-        cancelScheduledListUpdate(taskId)
       }
       toastError({ title: 'Failed to update task', description: error.message })
     },
@@ -78,13 +80,10 @@ export function useTaskCompletion() {
 
   /**
    * Toggle task completion with optimistic UI.
-   * Checkbox updates immediately, list reorders after delay.
+   * Checkbox updates immediately, list reorders after inactivity delay.
    */
   const toggleCompletion = useCallback(
     (taskId: string, currentlyCompleted: boolean) => {
-      // Cancel any pending list update for this task (user is toggling again)
-      cancelScheduledListUpdate(taskId)
-
       // Set optimistic state and get version
       const completedAt = currentlyCompleted ? null : new Date().toISOString()
       const version = setOptimisticCompletion(taskId, completedAt)
@@ -107,7 +106,7 @@ export function useTaskCompletion() {
         })
       }
     },
-    [cancelScheduledListUpdate, setOptimisticCompletion, updateTask, userId]
+    [setOptimisticCompletion, updateTask, userId]
   )
 
   return {

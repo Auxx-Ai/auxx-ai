@@ -2,7 +2,7 @@
 
 'use client'
 
-import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -15,7 +15,9 @@ import {
   DialogFooter,
   DialogDescription,
 } from '@auxx/ui/components/dialog'
-import { Button } from '@auxx/ui/components/button'
+import { Button, buttonVariants } from '@auxx/ui/components/button'
+import { Switch } from '@auxx/ui/components/switch'
+import { Kbd } from '@auxx/ui/components/kbd'
 import { cn } from '@auxx/ui/lib/utils'
 import { MentionNode } from '~/components/editor/extensions/mention-node'
 import { createMentionExtension } from '~/components/editor/extensions/mention-extension'
@@ -27,6 +29,9 @@ import { useTaskMutations } from '../hooks/use-task-mutations'
 import { api } from '~/trpc/react'
 import { TextDateParser, DateLanguageModule } from '@auxx/lib/tasks/client'
 import type { TaskWithRelations, CreateTaskInput, UpdateTaskInput } from '@auxx/lib/tasks'
+import { Tooltip } from '~/components/global/tooltip'
+import { SubmitOnEnter } from '~/components/global/comments/comment-composer'
+import { toastSuccess } from '@auxx/ui/components/toast'
 
 /**
  * Props for TaskDialog component
@@ -75,6 +80,7 @@ export function TaskDialog({
   const [deadline, setDeadline] = useState<Date | undefined>(undefined)
   const [deadlineManuallySet, setDeadlineManuallySet] = useState(false)
   const [assignedUserIds, setAssignedUserIds] = useState<string[]>([])
+  const [createMore, setCreateMore] = useState(false)
 
   // Mutations
   const { createTask, updateTask, isCreating, isUpdating } = useTaskMutations()
@@ -125,6 +131,9 @@ export function TaskDialog({
     return `<p>${task.title}</p>`
   }, [task])
 
+  // Ref to track handleSave for SubmitOnEnter extension (updated after handleSave is defined)
+  const handleSaveRef = useRef<() => void>(() => {})
+
   // Initialize tiptap editor
   const editor = useEditor(
     {
@@ -135,13 +144,19 @@ export function TaskDialog({
         Placeholder.configure({
           placeholder: 'What needs to be done? Use @mention to notify team members...',
         }),
+        SubmitOnEnter.configure({
+          isExpanded: () => false,
+          onSubmit: () => {
+            handleSaveRef.current()
+          },
+        }),
       ],
       content: initialContent,
       editorProps: {
         attributes: {
           class: cn(
             'prose prose-sm prose-p:my-0 focus:outline-hidden max-w-none',
-            'dark:prose-invert min-h-[30px]'
+            'dark:prose-invert'
           ),
         },
       },
@@ -217,17 +232,28 @@ export function TaskDialog({
     setDeadline(undefined)
     setDeadlineManuallySet(false)
     // Trigger re-parse after state update
-    setTimeout(() => {
-      if (editor) {
-        const text = editor.getText().trim()
-        const result = textDateParser.parse(text)
-        if (result.found && result.duration && result.confidence >= 0.7) {
-          const calculatedDate = dateModule.calculateTargetDate(result.duration)
-          setDeadline(calculatedDate)
-        }
-      }
-    }, 0)
+    // setTimeout(() => {
+    //   if (editor) {
+    //     const text = editor.getText().trim()
+    //     const result = textDateParser.parse(text)
+    //     if (result.found && result.duration && result.confidence >= 0.7) {
+    //       const calculatedDate = dateModule.calculateTargetDate(result.duration)
+    //       setDeadline(calculatedDate)
+    //     }
+    //   }
+    // }, 0)
   }, [editor, textDateParser, dateModule])
+
+  /**
+   * Reset form state for creating another task
+   */
+  const resetForm = useCallback(() => {
+    editor?.commands.clearContent()
+    setDeadline(undefined)
+    setDeadlineManuallySet(false)
+    setAssignedUserIds([])
+    setTimeout(() => editor?.commands.focus(), 100)
+  }, [editor])
 
   /**
    * Handle save button click
@@ -253,7 +279,8 @@ export function TaskDialog({
         assignedUserIds,
         referencedEntities: defaultReferencedEntity ? [defaultReferencedEntity] : undefined,
       }
-      await createTask.mutateAsync(input)
+      createTask.mutate(input)
+      toastSuccess({ title: 'Task created' })
     } else if (task) {
       const input: UpdateTaskInput = {
         id: task.id,
@@ -262,10 +289,15 @@ export function TaskDialog({
         deadline: deadline ? { type: 'static', value: deadline.toISOString() } : null,
         assignedUserIds,
       }
-      await updateTask.mutateAsync(input)
+      updateTask.mutate(input)
     }
 
-    onOpenChange(false)
+    // If createMore is enabled and we're in create mode, reset form instead of closing
+    if (createMore && mode === 'create') {
+      resetForm()
+    } else {
+      onOpenChange(false)
+    }
   }, [
     editor,
     mode,
@@ -276,6 +308,8 @@ export function TaskDialog({
     createTask,
     updateTask,
     onOpenChange,
+    createMore,
+    resetForm,
   ])
 
   /**
@@ -292,6 +326,9 @@ export function TaskDialog({
     setAssignedUserIds(members.map((m) => m.id))
   }, [])
 
+  // Update handleSaveRef with current handleSave function
+  handleSaveRef.current = handleSave
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent position="tc" size="xl" innerClassName="p-0">
@@ -304,10 +341,7 @@ export function TaskDialog({
 
         {/* Editor Area */}
         <div className="p-4">
-          <EditorContent
-            editor={editor}
-            className="w-full bg-transparent text-sm outline-hidden min-h-[30px]"
-          />
+          <EditorContent editor={editor} className="w-full bg-transparent text-sm outline-hidden" />
         </div>
 
         {/* Footer with pickers and actions (merged inline) */}
@@ -362,11 +396,35 @@ export function TaskDialog({
 
             {/* Right side: Actions */}
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={handleCancel} disabled={isSaving}>
-                Cancel
+              {/* Create more toggle - only shown in create mode */}
+              {mode === 'create' && (
+                <label
+                  className={cn(
+                    buttonVariants({ variant: 'ghost', size: 'sm' }),
+                    'gap-2 cursor-pointer'
+                  )}>
+                  <span className="text-muted-foreground text-xs">Create more</span>
+                  <Switch
+                    size="sm"
+                    checked={createMore}
+                    onCheckedChange={setCreateMore}
+                    disabled={isSaving}
+                  />
+                </label>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCancel}
+                disabled={isSaving && !createMore}>
+                Cancel <Kbd shortcut="esc" size="sm" variant="outline" />
               </Button>
-              <Button size="sm" onClick={handleSave} loading={isSaving} loadingText="Saving...">
-                Save
+              <Button
+                size="sm"
+                onClick={handleSave}
+                loading={isSaving && !createMore}
+                loadingText="Saving...">
+                Save <Kbd shortcut="enter" size="sm" variant="default" />
               </Button>
             </div>
           </div>

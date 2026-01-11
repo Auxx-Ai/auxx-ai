@@ -1,6 +1,8 @@
 // apps/web/src/components/tasks/hooks/use-tasks.ts
 
-import { useMemo, useCallback } from 'react'
+'use client'
+
+import { useMemo, useCallback, useEffect } from 'react'
 import { api } from '~/trpc/react'
 import { useTaskStore } from '../stores/task-store'
 import type { TaskWithRelations, TaskPriority } from '@auxx/lib/tasks'
@@ -106,7 +108,7 @@ export function useTasks({
   })
 
   // Sync to store when data changes
-  useMemo(() => {
+  useEffect(() => {
     if (data?.tasks) {
       setTasks(data.tasks)
     }

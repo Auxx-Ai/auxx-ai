@@ -305,7 +305,7 @@ export function RelationshipInputField() {
                       <AvatarFallback>{item.displayName?.[0]}</AvatarFallback>
                     </Avatar>
                   )}
-                  <div className="flex flex-1 flex-col">
+                  <div className="flex flex-1 items-center gap-1 flex-row">
                     <span className="truncate">{item.displayName}</span>
                     {item.secondaryInfo && (
                       <span className="text-xs text-muted-foreground">{item.secondaryInfo}</span>
@@ -333,14 +333,14 @@ export function RelationshipInputField() {
                   key={item.id}
                   value={item.id}
                   onSelect={() => handleToggle(item.id)}
-                  className="flex items-center gap-2">
+                  className="flex items-center  gap-2">
                   {item.avatarUrl && (
                     <Avatar className="size-4">
                       <AvatarImage src={item.avatarUrl} />
                       <AvatarFallback>{item.displayName?.[0]}</AvatarFallback>
                     </Avatar>
                   )}
-                  <div className="flex flex-1 flex-col">
+                  <div className="flex flex-1 flex-row items-center gap-1">
                     <span className="truncate">{item.displayName}</span>
                     {item.secondaryInfo && (
                       <span className="text-xs text-muted-foreground">{item.secondaryInfo}</span>

@@ -6,8 +6,8 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Loader2 } from 'lucide-react'
 
 const buttonVariants = cva(
-  `inline-flex items-center shrink-0 justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-1 
-  focus-visible:ring-ring/20 dark:focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0`,
+  `inline-flex items-center shrink-0 justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-1
+  focus-visible:ring-ring/20 dark:focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 [&_[data-slot=kbd-group]]:ml-1 [&:has([data-slot=kbd-group])]:pe-1.5`,
   {
     variants: {
       variant: {
@@ -72,6 +72,8 @@ function Button({
 
   return (
     <Comp
+      data-slot={`button-${variant ?? 'default'}`}
+      data-size={size}
       className={cn(buttonVariants({ variant, size, className }))}
       disabled={loading || props.disabled}
       aria-busy={loading}
