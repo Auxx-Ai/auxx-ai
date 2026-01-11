@@ -18,6 +18,8 @@ import type {
   ResourcePickerItem,
   PaginatedResourcesResult,
   GetResourceByIdInput,
+  GlobalSearchParams,
+  GlobalSearchResult,
 } from './types'
 
 const logger = createScopedLogger('resource-picker-service')
@@ -654,5 +656,303 @@ export class ResourcePickerService {
    */
   async invalidateCacheById(entityDefinitionId: string, id: string): Promise<void> {
     await this.cache.invalidateById(entityDefinitionId, id)
+  }
+
+  /**
+   * Search EntityInstances using PostgreSQL full-text search with GIN indexes.
+   * Supports both scoped search (specific entityDefinitionId) and global search (all EntityInstances).
+   *
+   * Uses:
+   * - Full-text search with ts_rank_cd on searchText column
+   * - Trigram similarity on displayName for fuzzy matching
+   * - ILIKE fallback for short queries or edge cases
+   * - If query is empty, returns first N records ordered by updatedAt
+   *
+   * @param params - Search parameters
+   * @returns Paginated search results with metadata
+   */
+  async search(params: GlobalSearchParams): Promise<GlobalSearchResult> {
+    const startTime = performance.now()
+    const {
+      query = '',
+      entityDefinitionId,
+      entityDefinitionIds,
+      limit = 25,
+      cursor,
+    } = params
+
+    const trimmedQuery = query.trim()
+
+    // Build entity definition filter
+    let entityDefFilter = sql``
+    if (entityDefinitionId) {
+      // Scoped search - single entity definition
+      entityDefFilter = sql`AND ei."entityDefinitionId" = ${entityDefinitionId}`
+    } else if (entityDefinitionIds && entityDefinitionIds.length > 0) {
+      // Filter to multiple entity definitions
+      const idsArray = `{${entityDefinitionIds.join(',')}}`
+      entityDefFilter = sql`AND ei."entityDefinitionId" = ANY(${idsArray}::text[])`
+    }
+    // If neither provided, search all EntityInstances (no filter)
+
+    // If no query, return first N records ordered by updatedAt
+    if (!trimmedQuery) {
+      return this.getRecentEntityInstances({
+        entityDefinitionId,
+        entityDefinitionIds,
+        limit,
+        cursor,
+      })
+    }
+
+    // Decode cursor if provided (for search results, cursor is score|id)
+    let cursorScore = 0
+    let cursorId = ''
+    if (cursor) {
+      const [score, id] = cursor.split('|')
+      cursorScore = parseFloat(score || '0')
+      cursorId = id || ''
+    }
+
+    // Build cursor pagination filter for search results
+    let cursorFilter = sql``
+    if (cursor && cursorId) {
+      cursorFilter = sql`AND (
+        (COALESCE(similarity(ei."displayName", ${trimmedQuery}), 0) * 2 + COALESCE(ts_rank_cd(
+          to_tsvector('english', COALESCE(ei."searchText", '')),
+          plainto_tsquery('english', ${trimmedQuery})
+        ), 0)) < ${cursorScore}
+        OR (
+          (COALESCE(similarity(ei."displayName", ${trimmedQuery}), 0) * 2 + COALESCE(ts_rank_cd(
+            to_tsvector('english', COALESCE(ei."searchText", '')),
+            plainto_tsquery('english', ${trimmedQuery})
+          ), 0)) = ${cursorScore}
+          AND ei.id < ${cursorId}
+        )
+      )`
+    }
+
+    // Execute full-text search with GIN indexes
+    const searchResults = (
+      await this.db.execute(sql`
+        SELECT
+          ei.id,
+          ei."entityDefinitionId",
+          ei."displayName",
+          ei."secondaryDisplayValue",
+          ei."avatarUrl",
+          ei."searchText",
+          ei."createdAt",
+          ei."updatedAt",
+          ed."singular" as "entityType",
+          ed."icon" as "entityIcon",
+          ed."color" as "entityColor",
+          -- Full-text search score on searchText
+          ts_rank_cd(
+            to_tsvector('english', COALESCE(ei."searchText", '')),
+            plainto_tsquery('english', ${trimmedQuery})
+          ) as text_score,
+          -- Trigram similarity on displayName (for typo tolerance)
+          similarity(ei."displayName", ${trimmedQuery}) as name_score,
+          -- Combined score for ranking
+          (COALESCE(similarity(ei."displayName", ${trimmedQuery}), 0) * 2 + COALESCE(ts_rank_cd(
+            to_tsvector('english', COALESCE(ei."searchText", '')),
+            plainto_tsquery('english', ${trimmedQuery})
+          ), 0)) as combined_score
+        FROM "EntityInstance" ei
+        JOIN "EntityDefinition" ed ON ei."entityDefinitionId" = ed.id
+        WHERE
+          ei."organizationId" = ${this.organizationId}
+          AND ei."archivedAt" IS NULL
+          AND (
+            -- Full-text match on searchText
+            to_tsvector('english', COALESCE(ei."searchText", '')) @@ plainto_tsquery('english', ${trimmedQuery})
+            -- OR trigram match on displayName (fuzzy)
+            OR similarity(ei."displayName", ${trimmedQuery}) > 0.3
+            -- OR ILIKE fallback for short queries
+            OR ei."displayName" ILIKE ${`%${trimmedQuery}%`}
+            OR ei."secondaryDisplayValue" ILIKE ${`%${trimmedQuery}%`}
+          )
+          ${entityDefFilter}
+          ${cursorFilter}
+        ORDER BY
+          -- Combine scores: prefer exact displayName matches, then text relevance
+          combined_score DESC,
+          ei."updatedAt" DESC,
+          ei.id DESC
+        LIMIT ${limit + 1}
+      `)
+    ).rows as Array<{
+      id: string
+      entityDefinitionId: string
+      displayName: string | null
+      secondaryDisplayValue: string | null
+      avatarUrl: string | null
+      searchText: string | null
+      createdAt: string
+      updatedAt: string
+      entityType: string
+      entityIcon: string | null
+      entityColor: string | null
+      text_score: number
+      name_score: number
+      combined_score: number
+    }>
+
+    // Generate next cursor
+    let nextCursor: string | null = null
+    if (searchResults.length > limit) {
+      const lastItem = searchResults.pop()!
+      nextCursor = `${lastItem.combined_score}|${lastItem.id}`
+    }
+
+    // Transform to ResourcePickerItem format
+    const items: ResourcePickerItem[] = searchResults.map((row) => ({
+      id: row.id,
+      entityDefinitionId: row.entityDefinitionId,
+      entityInstanceId: row.id,
+      displayName: row.displayName || row.id,
+      secondaryInfo: row.secondaryDisplayValue || undefined,
+      avatarUrl: row.avatarUrl || undefined,
+      data: {
+        ...row,
+        entityType: row.entityType,
+        entityIcon: row.entityIcon,
+        entityColor: row.entityColor,
+      },
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    }))
+
+    const processingTimeMs = performance.now() - startTime
+
+    logger.debug('Global search completed', {
+      query: trimmedQuery,
+      organizationId: this.organizationId,
+      resultsCount: items.length,
+      hasMore: nextCursor !== null,
+      processingTimeMs,
+    })
+
+    return {
+      items,
+      nextCursor,
+      hasMore: nextCursor !== null,
+      processingTimeMs,
+      query: trimmedQuery,
+    }
+  }
+
+  /**
+   * Get recent EntityInstances when no search query is provided.
+   * Returns records ordered by updatedAt DESC.
+   */
+  private async getRecentEntityInstances(params: {
+    entityDefinitionId?: string
+    entityDefinitionIds?: string[]
+    limit: number
+    cursor?: string
+  }): Promise<GlobalSearchResult> {
+    const startTime = performance.now()
+    const { entityDefinitionId, entityDefinitionIds, limit, cursor } = params
+
+    // Build entity definition filter
+    let entityDefFilter = sql``
+    if (entityDefinitionId) {
+      entityDefFilter = sql`AND ei."entityDefinitionId" = ${entityDefinitionId}`
+    } else if (entityDefinitionIds && entityDefinitionIds.length > 0) {
+      const idsArray = `{${entityDefinitionIds.join(',')}}`
+      entityDefFilter = sql`AND ei."entityDefinitionId" = ANY(${idsArray}::text[])`
+    }
+
+    // Decode cursor (for recent results, cursor is updatedAt|id)
+    let cursorFilter = sql``
+    if (cursor) {
+      const [updatedAt, id] = cursor.split('|')
+      if (updatedAt && id) {
+        cursorFilter = sql`AND (
+          ei."updatedAt" < ${updatedAt}::timestamp
+          OR (ei."updatedAt" = ${updatedAt}::timestamp AND ei.id < ${id})
+        )`
+      }
+    }
+
+    const results = (
+      await this.db.execute(sql`
+        SELECT
+          ei.id,
+          ei."entityDefinitionId",
+          ei."displayName",
+          ei."secondaryDisplayValue",
+          ei."avatarUrl",
+          ei."createdAt",
+          ei."updatedAt",
+          ed."singular" as "entityType",
+          ed."icon" as "entityIcon",
+          ed."color" as "entityColor"
+        FROM "EntityInstance" ei
+        JOIN "EntityDefinition" ed ON ei."entityDefinitionId" = ed.id
+        WHERE
+          ei."organizationId" = ${this.organizationId}
+          AND ei."archivedAt" IS NULL
+          ${entityDefFilter}
+          ${cursorFilter}
+        ORDER BY ei."updatedAt" DESC, ei.id DESC
+        LIMIT ${limit + 1}
+      `)
+    ).rows as Array<{
+      id: string
+      entityDefinitionId: string
+      displayName: string | null
+      secondaryDisplayValue: string | null
+      avatarUrl: string | null
+      createdAt: string
+      updatedAt: string
+      entityType: string
+      entityIcon: string | null
+      entityColor: string | null
+    }>
+
+    // Generate next cursor
+    let nextCursor: string | null = null
+    if (results.length > limit) {
+      const lastItem = results.pop()!
+      nextCursor = `${lastItem.updatedAt}|${lastItem.id}`
+    }
+
+    // Transform to ResourcePickerItem format
+    const items: ResourcePickerItem[] = results.map((row) => ({
+      id: row.id,
+      entityDefinitionId: row.entityDefinitionId,
+      entityInstanceId: row.id,
+      displayName: row.displayName || row.id,
+      secondaryInfo: row.secondaryDisplayValue || undefined,
+      avatarUrl: row.avatarUrl || undefined,
+      data: {
+        ...row,
+        entityType: row.entityType,
+        entityIcon: row.entityIcon,
+        entityColor: row.entityColor,
+      },
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    }))
+
+    const processingTimeMs = performance.now() - startTime
+
+    logger.debug('Recent entities fetched', {
+      organizationId: this.organizationId,
+      resultsCount: items.length,
+      hasMore: nextCursor !== null,
+      processingTimeMs,
+    })
+
+    return {
+      items,
+      nextCursor,
+      hasMore: nextCursor !== null,
+      processingTimeMs,
+      query: '',
+    }
   }
 }

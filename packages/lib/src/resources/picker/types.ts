@@ -71,3 +71,37 @@ export interface GetResourceByIdInput {
   entityDefinitionId: string
   id: string
 }
+
+/**
+ * Parameters for global entity search
+ */
+export interface GlobalSearchParams {
+  /** Search query string (optional - if empty, returns first N records) */
+  query?: string
+
+  /** Optional - if provided, searches only that entity type */
+  entityDefinitionId?: string
+
+  /** Optional - filter to multiple entity types (only used in global search mode) */
+  entityDefinitionIds?: string[]
+
+  /** Max results per page (default 25, max 100) */
+  limit?: number
+
+  /** Cursor for pagination (encoded score|id) */
+  cursor?: string
+}
+
+/**
+ * Global search result with metadata
+ */
+export interface GlobalSearchResult extends PaginatedResourcesResult {
+  /** Whether there are more results */
+  hasMore: boolean
+
+  /** Query processing time in milliseconds */
+  processingTimeMs: number
+
+  /** The search query that was executed */
+  query: string
+}

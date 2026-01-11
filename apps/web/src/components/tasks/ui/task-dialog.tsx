@@ -29,7 +29,6 @@ import { useTaskMutations } from '../hooks/use-task-mutations'
 import { api } from '~/trpc/react'
 import { TextDateParser, DateLanguageModule } from '@auxx/lib/tasks/client'
 import type { TaskWithRelations, CreateTaskInput, UpdateTaskInput } from '@auxx/lib/tasks'
-import { Tooltip } from '~/components/global/tooltip'
 import { SubmitOnEnter } from '~/components/global/comments/comment-composer'
 import { toastSuccess } from '@auxx/ui/components/toast'
 
@@ -231,17 +230,6 @@ export function TaskDialog({
   const handleDeadlineClear = useCallback(() => {
     setDeadline(undefined)
     setDeadlineManuallySet(false)
-    // Trigger re-parse after state update
-    // setTimeout(() => {
-    //   if (editor) {
-    //     const text = editor.getText().trim()
-    //     const result = textDateParser.parse(text)
-    //     if (result.found && result.duration && result.confidence >= 0.7) {
-    //       const calculatedDate = dateModule.calculateTargetDate(result.duration)
-    //       setDeadline(calculatedDate)
-    //     }
-    //   }
-    // }, 0)
   }, [editor, textDateParser, dateModule])
 
   /**

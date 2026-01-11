@@ -7,4 +7,6 @@ export type {
   ResourcePickerItem,
   PaginatedResourcesResult,
   GetResourceByIdInput,
+  GlobalSearchParams,
+  GlobalSearchResult,
 } from './types'

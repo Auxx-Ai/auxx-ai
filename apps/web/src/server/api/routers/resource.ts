@@ -43,6 +43,26 @@ const getResourcesInputSchema = z.object({
   skipCache: z.boolean().optional(),
 })
 
+/**
+ * Schema for global search endpoint
+ * entityDefinitionId is optional - if not provided, searches all EntityInstances
+ * query is optional - if empty, returns first N records
+ */
+const globalSearchInputSchema = z.object({
+  /** Optional - if provided, searches specific resource (system or custom entity) */
+  entityDefinitionId: resourceIdSchema.optional(),
+  /** Optional - resolve by apiSlug instead of entityDefinitionId */
+  apiSlug: z.string().optional(),
+  /** Optional search query - if empty, returns first N records */
+  query: z.string().max(500).optional().default(''),
+  /** Max results per page */
+  limit: z.number().min(1).max(100).default(25),
+  /** Cursor for pagination */
+  cursor: z.string().optional(),
+  /** Optional - filter to specific entity definitions (only used in global search mode) */
+  entityDefinitionIds: z.array(z.string()).optional(),
+})
+
 const getResourceByIdInputSchema = z.object({
   entityDefinitionId: resourceIdSchema,
   id: z.string(),
@@ -129,15 +149,21 @@ export const resourceRouter = createTRPCRouter({
     }),
 
   /**
-   * Search resources (alias for getAll with semantic meaning)
-   * Accepts either entityDefinitionId (entity_products, contact) or apiSlug (products)
+   * Search resources with optional global search support
+   *
+   * Behavior:
+   * - With entityDefinitionId (system resource like 'contact'): Use existing getResources() with search
+   * - With entityDefinitionId (custom entity): Use new search() with full-text search
+   * - Without entityDefinitionId: Global search across all EntityInstances
    */
-  search: protectedProcedure.input(getResourcesInputSchema).query(async ({ ctx, input }) => {
+  search: protectedProcedure.input(globalSearchInputSchema).query(async ({ ctx, input }) => {
     const { organizationId, userId } = ctx.session
     let { entityDefinitionId } = input
-    const { apiSlug } = input
+    const { apiSlug, query, limit, cursor, entityDefinitionIds } = input
 
     try {
+      const service = new ResourcePickerService(organizationId, userId, ctx.db)
+
       // Resolve apiSlug to entityDefinitionId if provided
       if (apiSlug && !entityDefinitionId) {
         const registryService = new ResourceRegistryService(organizationId, ctx.db)
@@ -151,8 +177,43 @@ export const resourceRouter = createTRPCRouter({
         entityDefinitionId = resource.id
       }
 
-      const service = new ResourcePickerService(organizationId, userId, ctx.db)
-      return await service.getResources({ ...input, entityDefinitionId: entityDefinitionId! })
+      // If entityDefinitionId provided, check if it's a system resource
+      if (entityDefinitionId) {
+        const isSystemResource = RESOURCE_TABLE_MAP[entityDefinitionId as TableId]
+
+        if (isSystemResource) {
+          // System resource - use existing getResources() with client-side search
+          // Pass search only if query is non-empty
+          const result = await service.getResources({
+            entityDefinitionId,
+            limit,
+            cursor: cursor ?? null,
+            search: query || undefined,
+          })
+          return {
+            ...result,
+            hasMore: result.nextCursor !== null,
+            processingTimeMs: 0,
+            query: query || '',
+          }
+        }
+
+        // Custom entity - use new search() with full-text search
+        return await service.search({
+          query: query || '',
+          entityDefinitionId,
+          limit,
+          cursor,
+        })
+      }
+
+      // No entityDefinitionId - global search across all EntityInstances
+      return await service.search({
+        query: query || '',
+        entityDefinitionIds,
+        limit,
+        cursor,
+      })
     } catch (error: any) {
       if (error instanceof TRPCError) throw error
       throw new TRPCError({

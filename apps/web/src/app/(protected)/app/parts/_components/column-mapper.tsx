@@ -656,15 +656,10 @@ export function CSVColumnMapper({
             {activeTab === 'preview' && (
               <Button
                 onClick={processImport}
-                disabled={isProcessing || validationErrors.length > 0}>
-                {isProcessing ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Processing...
-                  </>
-                ) : (
-                  'Import Data'
-                )}
+                disabled={isProcessing || validationErrors.length > 0}
+                loading={isProcessing}
+                loadingText="Processing...">
+                Import Data
               </Button>
             )}
           </DialogFooter>

@@ -4,7 +4,7 @@
 
 import { useMemo, useCallback, useState, useRef } from 'react'
 import { Filter, X } from 'lucide-react'
-import { Button } from '@auxx/ui/components/button'
+import { Button, buttonVariants } from '@auxx/ui/components/button'
 import { Switch } from '@auxx/ui/components/switch'
 import { Badge } from '@auxx/ui/components/badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
@@ -190,12 +190,12 @@ export function TaskFilterBar({
       <div className="flex-1" />
 
       {/* Show Completed Toggle */}
-      <Button
-        variant="ghost"
-        size="sm"
-        disabled={disabled}
-        onClick={() => onIncludeCompletedChange(!includeCompleted)}
-        className="gap-2">
+      <label
+        className={buttonVariants({
+          variant: 'ghost',
+          size: 'sm',
+          className: `gap-2 ${disabled ? 'pointer-events-none opacity-50' : 'cursor-pointer'}`,
+        })}>
         <span className="text-muted-foreground text-xs">Show completed</span>
         <Switch
           size="sm"
@@ -203,7 +203,7 @@ export function TaskFilterBar({
           onCheckedChange={onIncludeCompletedChange}
           disabled={disabled}
         />
-      </Button>
+      </label>
     </div>
   )
 }

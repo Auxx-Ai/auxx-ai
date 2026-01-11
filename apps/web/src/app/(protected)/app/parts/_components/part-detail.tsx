@@ -125,10 +125,7 @@ export function PartDetail({
       {/* Header with actions */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => router.push('/app/parts')}>
+          <Button variant="ghost" size="icon" onClick={() => router.push('/app/parts')}>
             <ArrowLeft />
           </Button>
           <div>
@@ -177,8 +174,12 @@ export function PartDetail({
                 disabled={isLoading}>
                 Cancel
               </Button>
-              <Button variant="destructive" onClick={handleDelete} disabled={isLoading}>
-                {isLoading ? 'Deleting...' : 'Delete Part'}
+              <Button
+                variant="destructive"
+                onClick={handleDelete}
+                loading={isLoading}
+                loadingText="Deleting...">
+                Delete Part
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -456,8 +457,7 @@ export function PartDetail({
                                 <DropdownMenuLabel>Actions</DropdownMenuLabel>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem asChild>
-                                  <Link
-                                    href={`/app/parts/${part.id}/subparts/${subpart.id}/edit`}>
+                                  <Link href={`/app/parts/${part.id}/subparts/${subpart.id}/edit`}>
                                     <Edit className="mr-2 h-4 w-4" />
                                     Edit
                                   </Link>
@@ -528,9 +528,7 @@ export function PartDetail({
                           </TableCell>
                           <TableCell className="text-right">
                             <Button asChild variant="ghost" size="sm">
-                              <Link href={`/app/parts/${parentPart.parentPart.id}`}>
-                                View
-                              </Link>
+                              <Link href={`/app/parts/${parentPart.parentPart.id}`}>View</Link>
                             </Button>
                           </TableCell>
                         </TableRow>
