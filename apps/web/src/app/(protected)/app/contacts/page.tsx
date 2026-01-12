@@ -24,7 +24,7 @@ import type { ExtendedColumnDef } from '~/components/dynamic-table'
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
 import { EmptyState } from '~/components/global/empty-state'
 import { useAllResources, useRecordList } from '~/components/resources'
-import { useCustomFieldValueSyncer } from '~/hooks/use-custom-field-value-syncer'
+import { useCustomFieldValueSyncer } from '~/components/resources/hooks/use-custom-field-value-syncer'
 import {
   MainPage,
   MainPageBreadcrumb,

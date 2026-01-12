@@ -14,11 +14,7 @@ import {
   type DragStartEvent,
   type DragOverEvent,
 } from '@dnd-kit/core'
-import {
-  SortableContext,
-  horizontalListSortingStrategy,
-  arrayMove,
-} from '@dnd-kit/sortable'
+import { SortableContext, horizontalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { ScrollArea, ScrollBar } from '@auxx/ui/components/scroll-area'
 import { Button } from '@auxx/ui/components/button'
 import { Plus } from 'lucide-react'
@@ -35,13 +31,17 @@ import {
   type CustomField,
   type KanbanDragItemType,
 } from '../dynamic-table/types'
-import type { SelectOption as RawSelectOption, TargetTimeInStatus, ModelType } from '@auxx/types/custom-field'
+import type {
+  SelectOption as RawSelectOption,
+  TargetTimeInStatus,
+  ModelType,
+} from '@auxx/types/custom-field'
 import {
   useCustomFieldValueStore,
   buildValueKey,
   type ResourceType,
-} from '~/stores/custom-field-value-store'
-import { useSaveFieldValue } from '~/hooks/use-save-field-value'
+} from '~/components/resources/store/custom-field-value-store'
+import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useCustomField } from '~/components/custom-fields/hooks/use-custom-field'
 import { toastError } from '@auxx/ui/components/toast'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
@@ -57,9 +57,8 @@ function extractRawValue(value: unknown): unknown {
   // Use SINGLE_SELECT since kanban groups by select fields
   const raw = formatToRawValue(value, FieldType.SINGLE_SELECT)
   // SINGLE_SELECT now returns array - extract first value for kanban grouping
-  return Array.isArray(raw) ? raw[0] ?? null : raw
+  return Array.isArray(raw) ? (raw[0] ?? null) : raw
 }
-
 
 /** Props for KanbanView component */
 interface KanbanViewProps<TData extends KanbanRow> {
@@ -471,7 +470,9 @@ export function KanbanView<TData extends KanbanRow>({
       } else {
         const card = data.find((d) => d.id === active.id)
         if (card) {
-          const sourceColumnId = String(extractRawValue(getValue(card.id, config.groupByFieldId)) ?? NO_STATUS_COLUMN_ID)
+          const sourceColumnId = String(
+            extractRawValue(getValue(card.id, config.groupByFieldId)) ?? NO_STATUS_COLUMN_ID
+          )
 
           // If dragged card is selected, drag all selected cards
           // Otherwise, just drag the single card
@@ -564,7 +565,15 @@ export function KanbanView<TData extends KanbanRow>({
         setSelectedCardIds(new Set())
       }
     },
-    [activeItem, columns, columnIds, config.groupByFieldId, getValue, onColumnReorder, saveBulkValues]
+    [
+      activeItem,
+      columns,
+      columnIds,
+      config.groupByFieldId,
+      getValue,
+      onColumnReorder,
+      saveBulkValues,
+    ]
   )
 
   /** Handle drag cancel */

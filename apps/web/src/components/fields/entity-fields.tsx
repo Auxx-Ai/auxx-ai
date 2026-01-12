@@ -19,7 +19,10 @@ import { EntityFieldsContent } from './entity-fields-content'
 import { useResource, useRecord, useRecordHydration } from '~/components/resources'
 import type { ResourceField } from '@auxx/lib/resources/client'
 import { sortFieldsForDisplay, isSystemResourceId } from '@auxx/lib/resources/client'
-import { type ResourceType, type StoredFieldValue } from '~/stores/custom-field-value-store'
+import {
+  type ResourceType,
+  type StoredFieldValue,
+} from '~/components/resources/store/custom-field-value-store'
 import type { StoreConfig } from './property-provider'
 import { useDynamicFieldOptions } from './hooks/use-dynamic-field-options'
 
@@ -64,7 +67,7 @@ function EntityFields({
     : 'entity'
 
   // State management
-  const [fieldValues] = useState<Record<string, { valueId?: string; value: StoredFieldValue }>>({})
+  // const [fieldValues] = useState<Record<string, { valueId?: string; value: StoredFieldValue }>>({})
   const closeHandlersRef = useRef<Record<string, () => void>>({})
   const openProviderIdRef = useRef<string | null>(null)
 
@@ -285,7 +288,7 @@ function EntityFields({
         sensors={sensors}
         handleDragEnd={handleDragEnd}
         fields={sortedFields}
-        fieldValues={fieldValues}
+        // fieldValues={fieldValues}
         isLoading={isLoading}
         isSortable={isSortable}
         handleDeleteField={handleDeleteField}

@@ -1,7 +1,10 @@
 // apps/web/src/components/resources/hooks/use-entity-values.ts
 
 import { useMemo } from 'react'
-import { useResourceFieldValues, type StoredFieldValue } from '~/stores/custom-field-value-store'
+import {
+  useResourceFieldValues,
+  type StoredFieldValue,
+} from '~/components/resources/store/custom-field-value-store'
 import { useResourceFields } from './use-resource-fields'
 
 /** Stable empty array */

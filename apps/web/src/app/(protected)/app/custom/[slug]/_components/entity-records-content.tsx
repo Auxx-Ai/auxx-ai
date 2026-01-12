@@ -40,7 +40,7 @@ import { EntityRecordDrawer } from './entity-record-drawer'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
-import { useCustomFieldValueSyncer } from '~/hooks/use-custom-field-value-syncer'
+import { useCustomFieldValueSyncer } from '~/components/resources/hooks/use-custom-field-value-syncer'
 import { useCombinedFilters } from '~/components/dynamic-table/hooks/use-combined-filters'
 import { useActiveViewConfig } from '~/components/dynamic-table/stores/view-store'
 import { useRecordList, useResource, type RecordMeta } from '~/components/resources'
@@ -419,9 +419,7 @@ export function EntityRecordsContent() {
                 Archive
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem
-                variant="destructive"
-                onClick={() => handleDelete(row.original.id)}>
+              <DropdownMenuItem variant="destructive" onClick={() => handleDelete(row.original.id)}>
                 <Trash2 />
                 Delete
               </DropdownMenuItem>
@@ -673,7 +671,7 @@ export function EntityRecordsContent() {
       </MainPage>
 
       {/* Create/Edit Dialog */}
-      {entityDefinitionId && (
+      {entityDefinitionId && isCreateDialogOpen && (
         <EntityInstanceDialog
           open={isCreateDialogOpen}
           onOpenChange={handleDialogOpenChange}
@@ -684,7 +682,7 @@ export function EntityRecordsContent() {
       )}
 
       {/* Bulk Update Dialog */}
-      {entityDefinitionId && (
+      {entityDefinitionId && isBulkUpdateDialogOpen && (
         <BulkUpdateEntityInstanceDialog
           open={isBulkUpdateDialogOpen}
           onOpenChange={setIsBulkUpdateDialogOpen}
@@ -709,17 +707,19 @@ export function EntityRecordsContent() {
       )}
 
       {/* Workflow Trigger Dialog */}
-      <MassWorkflowTriggerDialog
-        open={isWorkflowDialogOpen}
-        onOpenChange={setIsWorkflowDialogOpen}
-        resourceType="entity"
-        entitySlug={slug}
-        resourceIds={Array.from(selectedRowIds)}
-        onSuccess={() => {
-          setSelectedRowIds(new Set())
-          refresh()
-        }}
-      />
+      {isWorkflowDialogOpen && (
+        <MassWorkflowTriggerDialog
+          open={isWorkflowDialogOpen}
+          onOpenChange={setIsWorkflowDialogOpen}
+          resourceType="entity"
+          entitySlug={slug}
+          resourceIds={Array.from(selectedRowIds)}
+          onSuccess={() => {
+            setSelectedRowIds(new Set())
+            refresh()
+          }}
+        />
+      )}
 
       <ConfirmDeleteDialog />
       <ConfirmArchiveDialog />

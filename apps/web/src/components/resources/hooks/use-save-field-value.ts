@@ -7,7 +7,7 @@ import {
   buildValueKey,
   type ResourceType,
   type StoredFieldValue,
-} from '~/stores/custom-field-value-store'
+} from '~/components/resources/store/custom-field-value-store'
 import { toastError } from '@auxx/ui/components/toast'
 import {
   formatToTypedInput,

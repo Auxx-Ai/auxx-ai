@@ -23,7 +23,7 @@ import {
 import { CustomFieldCell } from './components/custom-field-cell'
 import type { ExtendedColumnDef } from './types'
 import type { ResourceField } from '@auxx/lib/resources/client'
-import type { ResourceType } from '~/stores/custom-field-value-store'
+import type { ResourceType } from '~/components/resources/store/custom-field-value-store'
 import { mapBaseTypeToFieldType } from '@auxx/lib/workflow-engine/client'
 
 // ─────────────────────────────────────────────────────────────────

@@ -5,7 +5,7 @@ import {
   useCustomFieldValueStore,
   buildValueKey,
   type StoredFieldValue,
-} from '~/stores/custom-field-value-store'
+} from '~/components/resources/store/custom-field-value-store'
 import { isSingleValueRelationship, type RelationshipType } from '@auxx/utils'
 import type { RelationshipFieldValue } from '@auxx/types/field-value'
 
@@ -109,10 +109,11 @@ export function useRelationshipSync() {
         } else {
           // Multi-value: filter out the sourceEntityId
           const currentArray = normalizeToArray(currentValue)
-          const newArray = currentArray.filter(
-            (v) => extractRelatedEntityId(v) !== sourceEntityId
-          )
-          console.log(LOG_PREFIX, 'Filtered array', { before: currentArray.length, after: newArray.length })
+          const newArray = currentArray.filter((v) => extractRelatedEntityId(v) !== sourceEntityId)
+          console.log(LOG_PREFIX, 'Filtered array', {
+            before: currentArray.length,
+            after: newArray.length,
+          })
           setValueOptimistic(key, newArray)
         }
       }
@@ -201,7 +202,10 @@ export function useRelationshipSync() {
             (v) => extractRelatedEntityId(v) === sourceEntityId
           )
           if (!alreadyExists) {
-            console.log(LOG_PREFIX, 'Appending to array', { before: currentArray.length, after: currentArray.length + 1 })
+            console.log(LOG_PREFIX, 'Appending to array', {
+              before: currentArray.length,
+              after: currentArray.length + 1,
+            })
             setValueOptimistic(key, [...currentArray, newRelValue])
           } else {
             console.log(LOG_PREFIX, 'Skipping add - already exists in array')
@@ -242,9 +246,7 @@ export function extractRelatedIds(value: StoredFieldValue): string[] {
   if (!value) return []
 
   if (Array.isArray(value)) {
-    return value
-      .map((v) => extractRelatedEntityId(v))
-      .filter((id): id is string => id !== null)
+    return value.map((v) => extractRelatedEntityId(v)).filter((id): id is string => id !== null)
   }
 
   const id = extractRelatedEntityId(value)

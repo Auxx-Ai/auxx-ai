@@ -7,7 +7,7 @@ import {
   useCustomFieldValue,
   useCustomFieldValueLoading,
   type ResourceType,
-} from '~/stores/custom-field-value-store'
+} from '~/components/resources/store/custom-field-value-store'
 import { formatToDisplayValue } from '@auxx/lib/field-values/client'
 import type { TypedFieldValue } from '@auxx/types/field-value'
 import { PrimaryCell } from './primary-cell'

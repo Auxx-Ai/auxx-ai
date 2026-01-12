@@ -16,9 +16,9 @@ import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor
 import { FieldInputRow } from './field-input-row'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
 import { useDirtyCheck } from '~/hooks/use-dirty-state'
-import { useSaveFieldValue } from '~/hooks/use-save-field-value'
+import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useResource } from '~/components/resources'
-import { useCustomFieldValueSyncer } from '~/hooks/use-custom-field-value-syncer'
+import { useCustomFieldValueSyncer } from '~/components/resources/hooks/use-custom-field-value-syncer'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
 
 interface BulkUpdateEntityInstanceDialogProps {
@@ -138,9 +138,7 @@ export function BulkUpdateEntityInstanceDialog({
 
         // Check if all values are the same
         const firstValue = fieldValues[0]
-        const allSame = fieldValues.every(
-          (v) => JSON.stringify(v) === JSON.stringify(firstValue)
-        )
+        const allSame = fieldValues.every((v) => JSON.stringify(v) === JSON.stringify(firstValue))
 
         computed[field.id] = {
           value: allSame ? firstValue : undefined,

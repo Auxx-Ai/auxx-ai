@@ -4,7 +4,7 @@ import { useCallback } from 'react'
 import {
   useCustomFieldValueStore,
   type ResourceType,
-} from '~/stores/custom-field-value-store'
+} from '~/components/resources/store/custom-field-value-store'
 
 /**
  * Hook providing invalidation methods for custom field values.

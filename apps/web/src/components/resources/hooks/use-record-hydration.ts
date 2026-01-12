@@ -1,7 +1,7 @@
 // apps/web/src/components/resources/hooks/use-record-hydration.ts
 
 import { useEffect, useRef } from 'react'
-import { hydrateFieldValues } from '~/stores/hydrate-field-values'
+import { hydrateFieldValues } from '~/components/resources/store/hydrate-field-values'
 import type { Resource } from '@auxx/lib/resources/client'
 
 interface UseRecordHydrationOptions {

@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react'
 import { api } from '~/trpc/react'
 import { useRecordStore, getRecordStoreState } from '../store/record-store'
-import { hydrateMultipleRecords } from '~/stores/hydrate-field-values'
+import { hydrateMultipleRecords } from '~/components/resources/store/hydrate-field-values'
 import type { Resource } from '@auxx/lib/resources/client'
 import type { ResourceRef } from '@auxx/types/resource'
 

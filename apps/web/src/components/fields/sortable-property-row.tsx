@@ -157,7 +157,7 @@ export function SortablePropertyRow({
       </div>
     )
   }
-
+  console.log('Rendering SortablePropertyRow for field:', value)
   // Normal mode: use full PropertyProvider/PropertyRow
   // PropertyProvider uses the global store for bi-directional sync
   return (

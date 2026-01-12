@@ -14,8 +14,8 @@ import {
   buildValueKey,
   type ResourceType,
   type StoredFieldValue,
-} from '~/stores/custom-field-value-store'
-import { useSaveFieldValue } from '~/hooks/use-save-field-value'
+} from '~/components/resources/store/custom-field-value-store'
+import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
 import type { ModelType } from '@auxx/types/custom-field'
 import type { FieldType } from '@auxx/database/types'
@@ -237,9 +237,10 @@ export function PropertyProvider({
 
   // Determine the actual initial value: store value takes precedence
   // storeValue is TypedFieldValue - extract raw value for component use
-  const effectiveInitialValue = storeValue !== undefined
-    ? extractRawValue(storeValue, field.fieldType)
-    : extractRawValue(initialValue, field.fieldType)
+  const effectiveInitialValue =
+    storeValue !== undefined
+      ? extractRawValue(storeValue, field.fieldType)
+      : extractRawValue(initialValue, field.fieldType)
 
   // ─── State ───
   const [currentValue, setCurrentValue] = useState<any>(effectiveInitialValue)

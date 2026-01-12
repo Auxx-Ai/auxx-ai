@@ -14,7 +14,7 @@ import { AddFieldRow } from './add-field-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { useFieldNavigation } from './field-navigation-context'
 import type { StoreConfig } from './property-provider'
-import type { StoredFieldValue } from '~/stores/custom-field-value-store'
+import type { StoredFieldValue } from '~/components/resources/store/custom-field-value-store'
 import type { ResourceField } from '@auxx/lib/resources/client'
 
 /**
@@ -35,7 +35,7 @@ export interface EntityFieldsContentProps {
   /** Unified sorted fields (system + custom) */
   fields: ResourceField[]
   /** Field values by key */
-  fieldValues: Record<string, { valueId?: string; value: StoredFieldValue }>
+  // fieldValues: Record<string, { valueId?: string; value: StoredFieldValue }>
   /** Loading state */
   isLoading: boolean
   /** Check if field is sortable */
@@ -68,7 +68,7 @@ export function EntityFieldsContent({
   sensors,
   handleDragEnd,
   fields,
-  fieldValues,
+  // fieldValues,
   isLoading,
   isSortable,
   handleDeleteField,
@@ -80,6 +80,7 @@ export function EntityFieldsContent({
   ConfirmDeleteDialog,
   storeConfig,
 }: EntityFieldsContentProps) {
+  // console.log('fieldValues:', fieldValues)
   const containerRef = useRef<HTMLDivElement>(null)
   const { focusedRowId, moveFocus, openFocusedRow, isPopoverCapturing, registerOpenHandler } =
     useFieldNavigation()
@@ -200,7 +201,7 @@ export function EntityFieldsContent({
                 // Use field.id for custom fields (guaranteed unique DB ID), system-{key} for system fields
                 const uniqueId = isSystemField ? `system-${fieldKey}` : field.id || fieldKey
                 const providerId = uniqueId
-                const fieldEntry = fieldValues[fieldKey]
+                // const fieldEntry = fieldValues[fieldKey]
                 const isReadOnly = field.capabilities.updatable === false
 
                 return (
@@ -214,9 +215,9 @@ export function EntityFieldsContent({
                       id: field.id || fieldKey,
                       name: field.label,
                       readOnly: isReadOnly,
-                      valueId: fieldEntry?.valueId,
+                      // valueId: fieldEntry?.valueId,
                     }}
-                    value={fieldEntry?.value}
+                    // value={fieldEntry?.value}
                     loading={isLoading}
                     isEditMode={isEditMode}
                     isSortable={isSortable(field)}

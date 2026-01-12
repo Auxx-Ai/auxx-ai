@@ -9,7 +9,7 @@ import {
   useCustomFieldValue,
   useCustomFieldValueLoading,
   type ResourceType,
-} from '~/stores/custom-field-value-store'
+} from '~/components/resources/store/custom-field-value-store'
 import { useResource } from '~/components/resources'
 
 interface CustomFieldCellProps {

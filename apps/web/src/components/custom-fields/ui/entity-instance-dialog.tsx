@@ -18,9 +18,9 @@ import { toastError } from '@auxx/ui/components/toast'
 import { api } from '~/trpc/react'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
 import { useDirtyCheck } from '~/hooks/use-dirty-state'
-import { useSaveFieldValue } from '~/hooks/use-save-field-value'
+import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useResource } from '~/components/resources'
-import { useCustomFieldValueSyncer } from '~/hooks/use-custom-field-value-syncer'
+import { useCustomFieldValueSyncer } from '~/components/resources/hooks/use-custom-field-value-syncer'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
 
 interface EntityInstanceDialogProps {
@@ -297,7 +297,8 @@ export function EntityInstanceDialog({
               loading={isPending}
               loadingText={isEditing ? 'Saving...' : 'Creating...'}
               disabled={editableFields.length === 0}>
-              {isEditing ? 'Save Changes' : `Create ${resourceLabel}`} <KbdSubmit variant="outline" size="sm" />
+              {isEditing ? 'Save Changes' : `Create ${resourceLabel}`}{' '}
+              <KbdSubmit variant="outline" size="sm" />
             </Button>
           </DialogFooter>
         </DialogContent>

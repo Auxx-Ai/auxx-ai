@@ -8,7 +8,7 @@ import {
   parseValueKey,
   type ResourceType,
   type StoredFieldValue,
-} from '~/stores/custom-field-value-store'
+} from '~/components/resources/store/custom-field-value-store'
 import type { VisibilityState } from '@tanstack/react-table'
 import { generateId } from '@auxx/utils/generateId'
 
@@ -50,9 +50,7 @@ interface SyncerResult {
  * Hook that syncs custom field values based on visible columns and rows.
  * Batches requests and deduplicates to minimize API calls.
  */
-export function useCustomFieldValueSyncer(
-  options: UseCustomFieldValueSyncerOptions
-): SyncerResult {
+export function useCustomFieldValueSyncer(options: UseCustomFieldValueSyncerOptions): SyncerResult {
   const {
     resourceType,
     entityDefId,
@@ -80,16 +78,13 @@ export function useCustomFieldValueSyncer(
   }, [customFieldColumnIds, columnVisibility])
 
   // Helper to check if a key is loading (uses getState, not subscription)
-  const isKeyLoading = useCallback(
-    (key: string) => {
-      const { loadingBatches } = useCustomFieldValueStore.getState()
-      for (const batch of Object.values(loadingBatches)) {
-        if (batch.keys.has(key)) return true
-      }
-      return false
-    },
-    []
-  )
+  const isKeyLoading = useCallback((key: string) => {
+    const { loadingBatches } = useCustomFieldValueStore.getState()
+    for (const batch of Object.values(loadingBatches)) {
+      if (batch.keys.has(key)) return true
+    }
+    return false
+  }, [])
 
   // Compute needed keys imperatively inside effect (not as reactive dependency)
   const computeNeededKeys = useCallback(() => {

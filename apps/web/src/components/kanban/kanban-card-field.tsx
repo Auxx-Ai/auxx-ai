@@ -6,7 +6,7 @@ import {
   useCustomFieldValue,
   useCustomFieldValueLoading,
   type ResourceType,
-} from '~/stores/custom-field-value-store'
+} from '~/components/resources/store/custom-field-value-store'
 import { renderCellValue, type CellConfig } from '~/components/dynamic-table'
 import { CellFieldEditor } from '~/components/dynamic-table/components/cell-field-editor'
 import { useCellSelectionOptional } from '~/components/dynamic-table/context/cell-selection-context'
@@ -104,12 +104,7 @@ export const KanbanCardField = memo(function KanbanCardField({
       )}
       onClick={handleClick}>
       {/* Field type icon */}
-      <EntityIcon
-        iconId={iconId}
-        variant="default"
-        size="xs"
-        className="text-muted-foreground"
-      />
+      <EntityIcon iconId={iconId} variant="default" size="xs" className="text-muted-foreground" />
 
       {/* Value display or empty placeholder */}
       <div className="truncate flex-1 [&_[data-slot=expandable-cell]]:min-h-6.5 [&_[data-slot=expandable-cell-inner]]:min-h-6.5">
