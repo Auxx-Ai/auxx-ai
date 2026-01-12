@@ -543,6 +543,7 @@ export function EntityIcon({
   size = 'default',
   style,
   className,
+  ...props
 }: EntityIconProps) {
   const iconData = getIcon(iconId)
   const colorData = color ? getIconColor(color) : null
@@ -562,7 +563,8 @@ export function EntityIcon({
         useColorClasses && !inverse && colorData?.iconColor,
         className
       )}
-      style={style}>
+      style={style}
+      {...props}>
       <Icon />
     </div>
   )

@@ -16,7 +16,13 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { cn } from '@auxx/ui/lib/utils'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import { isCustomResource, toResourceId, getDefinitionId, type ResourcePickerItem, type ResourceId } from '@auxx/lib/resources/client'
+import {
+  isCustomResource,
+  toResourceId,
+  getDefinitionId,
+  type ResourcePickerItem,
+  type ResourceId,
+} from '@auxx/lib/resources/client'
 import { useRelationship, useResource, useResourceProvider } from '~/components/resources'
 import { api } from '~/trpc/react'
 
@@ -288,11 +294,6 @@ export function ResourcePicker({
     [multi, value, onChange, isSelected, onSelectSingle]
   )
 
-  // Sync initial selected ids when value changes from parent
-  useEffect(() => {
-    setInitialSelectedIds(value)
-  }, [value])
-
   // Get related resource for create label
   const relatedResource = useMemo(() => {
     if (!entityDefinitionId) return null
@@ -313,7 +314,7 @@ export function ResourcePicker({
         disabled={disabled}
       />
       <CommandList>
-        {isLoading || isHydrating ? (
+        {isLoading ? (
           <div className="flex items-center justify-center py-6">
             <Loader2 className="size-4 animate-spin" />
           </div>

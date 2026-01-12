@@ -62,7 +62,8 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
     const map = new Map<string, Resource>()
     resourcesQuery.data?.forEach((r) => {
       map.set(r.id, r)
-      if (isCustomResource(r) && r.apiSlug) {
+      // Map apiSlug for both system and custom resources
+      if (r.apiSlug) {
         map.set(r.apiSlug, r)
       }
     })

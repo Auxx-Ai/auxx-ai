@@ -4,13 +4,11 @@ import { useMemo } from 'react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { formatCurrency, formatBytes, type CurrencyDisplayOptions } from '@auxx/utils'
 import { CheckSquare, Paperclip } from 'lucide-react'
-import { Badge } from '@auxx/ui/components/badge'
-import { Skeleton } from '@auxx/ui/components/skeleton'
 import { CopyableLinkCell } from '../components/copyable-link-cell'
 import { CellPadding, type CellConfig } from '../components/formatted-cell'
 import { TagsCellView } from '~/components/ui/tags-view'
 import { ItemsCellView } from '~/components/ui/items-list-view'
-import { useRelationship } from '~/components/resources'
+import { ResourceBadge } from '~/components/resources/ui'
 import {
   formatToRawValue,
   formatToDisplayValue,
@@ -34,6 +32,7 @@ type SelectOption = { label: string; value: string }
 
 /**
  * Relationship cell content - displays related entities with display names.
+ * Uses ResourceBadge component which handles its own data fetching and loading states.
  * Extracts relatedEntityDefinitionId from TypedFieldValue to determine resource type.
  * Standardized format:
  * - System resources: store model type string (e.g., "contact", "ticket")
@@ -43,34 +42,17 @@ function RelationshipCellContent({ value }: { value: unknown }) {
   // Extract ResourceIds from value using centralized utility
   const resourceIds = useMemo(() => extractRelationshipResourceIds(value), [value])
 
-  const { items: hydratedItems, isLoading } = useRelationship(resourceIds)
-
-  // Map items with per-item loading state
-  // hydratedItems[i] can be: ResourcePickerItem (found), null (not found), undefined (loading)
-  const items = resourceIds.map((resourceId, i) => {
-    const hydrated = hydratedItems[i]
-    const instanceId = getInstanceId(resourceId)
-    return {
-      id: instanceId,
-      displayName: hydrated?.displayName ?? instanceId.slice(-6),
-      isLoading: hydrated === undefined, // undefined = still loading
-      isNotFound: hydrated === null, // null = not found
-    }
-  })
+  // Map resourceIds to simple items for ItemsCellView
+  const items = resourceIds.map((resourceId) => ({
+    id: getInstanceId(resourceId),
+    resourceId, // Pass the full ResourceId to renderItem
+  }))
 
   return (
     <ItemsCellView
       items={items}
-      isLoading={isLoading && resourceIds.length === 0}
-      renderItem={(item) =>
-        item.isLoading ? (
-          <Skeleton className="h-5 w-16 rounded" />
-        ) : (
-          <Badge variant="pill" shape="tag" className="text-xs">
-            {item.isNotFound ? item.id : item.displayName}
-          </Badge>
-        )
-      }
+      isLoading={false} // ResourceBadge handles individual loading states
+      renderItem={(item) => <ResourceBadge resourceId={item.resourceId} link />}
     />
   )
 }
@@ -290,15 +272,13 @@ export function renderPhoneValue(
   // Merge column formatting with field options (column takes precedence)
   const opts: PhoneFieldOptions = {
     ...(config?.options as PhoneFieldOptions | undefined),
-    phoneFormat: formatting?.phoneFormat ?? (config?.options as PhoneFieldOptions | undefined)?.phoneFormat,
+    phoneFormat:
+      formatting?.phoneFormat ?? (config?.options as PhoneFieldOptions | undefined)?.phoneFormat,
   }
 
   // Use converter for display formatting
-  const formatted = formatToDisplayValue(
-    { type: 'text', value: phone },
-    'PHONE_INTL',
-    opts
-  ) as string || phone
+  const formatted =
+    (formatToDisplayValue({ type: 'text', value: phone }, 'PHONE_INTL', opts) as string) || phone
 
   return (
     <CellPadding expandDirection="horizontal">
@@ -518,7 +498,8 @@ const cellRenderers: Record<string, CellRenderer> = {
 
   // Text types with special rendering
   EMAIL: (value) => renderEmailValue(value),
-  PHONE_INTL: (value, formatting, config) => renderPhoneValue(value, formatting as PhoneColumnFormatting, config),
+  PHONE_INTL: (value, formatting, config) =>
+    renderPhoneValue(value, formatting as PhoneColumnFormatting, config),
   URL: (value) => renderUrlValue(value),
 
   // Boolean - pass config for displayOptions

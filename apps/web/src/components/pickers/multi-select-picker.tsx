@@ -407,22 +407,6 @@ export function MultiSelectPicker({
                       <div className="flex items-center justify-between w-full">
                         <div className="flex items-center gap-2">
                           {/* Selection indicator (checkbox/radio) or manage icon */}
-                          <div className="w-5 flex items-center justify-center">
-                            {isManageMode ? (
-                              <Pencil className="size-4 text-muted-foreground" />
-                            ) : multi ? (
-                              <Checkbox
-                                checked={localSelected.includes(opt.value)}
-                                className="pointer-events-none"
-                              />
-                            ) : (
-                              localSelected.includes(opt.value) && (
-                                <div className="rounded-full size-4 bg-info flex items-center justify-center border border-blue-800">
-                                  <Check className="size-2.5! text-white" strokeWidth={4} />
-                                </div>
-                              )
-                            )}
-                          </div>
 
                           {/* Color dot (if option has color) */}
                           {opt.color && (
@@ -437,21 +421,40 @@ export function MultiSelectPicker({
                           {/* Option label */}
                           <span>{opt.label}</span>
                         </div>
-
-                        {/* Delete button in manage mode */}
-                        {isManageMode && (
-                          <Button
-                            variant="destructive-hover"
-                            type="button"
-                            size="icon-xs"
-                            disabled={disabled}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              deleteOption(opt.value)
-                            }}>
-                            <Trash2 />
-                          </Button>
-                        )}
+                        <div className="flex items-center gap-1">
+                          <div className="flex items-center justify-center">
+                            {isManageMode ? (
+                              <span className="bg-secondary rounded-sm py-[1px] px-[3px] text-[10px]">
+                                Click to edit
+                              </span>
+                            ) : multi ? (
+                              <Checkbox
+                                checked={localSelected.includes(opt.value)}
+                                className="pointer-events-none"
+                              />
+                            ) : (
+                              localSelected.includes(opt.value) && (
+                                <div className="rounded-full size-4 bg-info flex items-center justify-center border border-blue-800">
+                                  <Check className="size-2.5! text-white" strokeWidth={4} />
+                                </div>
+                              )
+                            )}
+                          </div>
+                          {/* Delete button in manage mode */}
+                          {isManageMode && (
+                            <Button
+                              variant="destructive-hover"
+                              type="button"
+                              size="icon-xs"
+                              disabled={disabled}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                deleteOption(opt.value)
+                              }}>
+                              <Trash2 />
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </CommandItem>
                   ))}

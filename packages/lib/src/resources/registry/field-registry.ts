@@ -16,7 +16,7 @@ import { ModelTypeValues, ModelTypeMeta, type ModelType } from '@auxx/database/e
  * Resource Table Registry - Metadata about resource tables themselves
  * Derived from ModelTypeMeta for consistency (excludes 'entity' which is handled via EntityDefinition)
  *
- * This is the single source of truth for table-level metadata (labels, icons, plurals, etc.)
+ * This is the single source of truth for table-level metadata (labels, icons, plurals, colors, apiSlugs, etc.)
  */
 export const RESOURCE_TABLE_REGISTRY = ModelTypeValues.filter((id) => id !== 'entity').map(
   (id) => ({
@@ -24,6 +24,8 @@ export const RESOURCE_TABLE_REGISTRY = ModelTypeValues.filter((id) => id !== 'en
     label: ModelTypeMeta[id].label,
     plural: ModelTypeMeta[id].plural,
     icon: ModelTypeMeta[id].icon,
+    color: ModelTypeMeta[id].color,
+    apiSlug: ModelTypeMeta[id].apiSlug,
     dbName: ModelTypeMeta[id].dbTable,
   })
 )

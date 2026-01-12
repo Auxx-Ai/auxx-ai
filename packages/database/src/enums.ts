@@ -131,27 +131,29 @@ export const ModelTypes = {
 } as const
 
 /**
- * Model type metadata - labels, icons, plurals
+ * Model type metadata - labels, icons, plurals, colors, apiSlugs
  */
 export const ModelTypeMeta: Record<
   ModelType,
-  { label: string; plural: string; icon: string; dbTable: string }
+  { label: string; plural: string; icon: string; color: string; apiSlug: string; dbTable: string }
 > = {
-  contact: { label: 'Contact', plural: 'Contacts', icon: 'user', dbTable: 'Contact' },
-  ticket: { label: 'Ticket', plural: 'Tickets', icon: 'ticket', dbTable: 'Ticket' },
-  thread: { label: 'Thread', plural: 'Threads', icon: 'message-square', dbTable: 'Thread' },
-  user: { label: 'User', plural: 'Users', icon: 'users', dbTable: 'User' },
-  inbox: { label: 'Inbox', plural: 'Inboxes', icon: 'inbox', dbTable: 'Inbox' },
-  message: { label: 'Message', plural: 'Messages', icon: 'mail', dbTable: 'Message' },
+  contact: { label: 'Contact', plural: 'Contacts', icon: 'user', color: 'indigo', apiSlug: 'contacts', dbTable: 'Contact' },
+  ticket: { label: 'Ticket', plural: 'Tickets', icon: 'ticket', color: 'blue', apiSlug: 'tickets', dbTable: 'Ticket' },
+  thread: { label: 'Thread', plural: 'Threads', icon: 'message-square', color: 'purple', apiSlug: 'threads', dbTable: 'Thread' },
+  user: { label: 'User', plural: 'Users', icon: 'users', color: 'green', apiSlug: 'users', dbTable: 'User' },
+  inbox: { label: 'Inbox', plural: 'Inboxes', icon: 'inbox', color: 'indigo', apiSlug: 'inboxes', dbTable: 'Inbox' },
+  message: { label: 'Message', plural: 'Messages', icon: 'mail', color: 'teal', apiSlug: 'messages', dbTable: 'Message' },
   participant: {
     label: 'Participant',
     plural: 'Participants',
     icon: 'user',
+    color: 'amber',
+    apiSlug: 'participants',
     dbTable: 'Participant',
   },
-  dataset: { label: 'Dataset', plural: 'Datasets', icon: 'database', dbTable: 'Dataset' },
-  entity: { label: 'Entity', plural: 'Entities', icon: 'box', dbTable: 'EntityInstance' },
-  part: { label: 'Part', plural: 'Parts', icon: 'package', dbTable: 'Part' },
+  dataset: { label: 'Dataset', plural: 'Datasets', icon: 'database', color: 'purple', apiSlug: 'datasets', dbTable: 'Dataset' },
+  entity: { label: 'Entity', plural: 'Entities', icon: 'box', color: 'gray', apiSlug: 'entities', dbTable: 'EntityInstance' },
+  part: { label: 'Part', plural: 'Parts', icon: 'package', color: 'orange', apiSlug: 'parts', dbTable: 'Part' },
 }
 
 export const DatasetStatusValues = ['ACTIVE', 'INACTIVE', 'PROCESSING', 'ERROR'] as const

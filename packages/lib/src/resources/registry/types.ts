@@ -22,6 +22,7 @@ interface BaseResource {
   label: string
   plural: string
   icon: string
+  color: string
   /** Field definitions for this resource */
   fields: ResourceField[]
 }
@@ -29,6 +30,8 @@ interface BaseResource {
 /** System resource with static display config */
 export interface SystemResource extends BaseResource {
   type: 'system'
+  /** API slug (e.g., 'contacts', 'tickets') */
+  apiSlug: string
   /** Entity definition ID (same as id for system resources) */
   entityDefinitionId: string
   dbName: string
@@ -58,7 +61,6 @@ export interface DisplayFieldConfig {
 export interface CustomResource extends BaseResource {
   type: 'custom'
   apiSlug: string
-  color?: string
   entityDefinitionId: string
   organizationId: string
   display: {

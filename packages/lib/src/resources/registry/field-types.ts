@@ -37,6 +37,10 @@ export interface ResourceTableDefinition {
   readonly plural: string
   /** Icon name for UI */
   readonly icon: string
+  /** Color name for UI (e.g., 'blue', 'indigo', 'gray') */
+  readonly color: string
+  /** API slug (e.g., 'tickets', 'contacts') */
+  readonly apiSlug: string
   /** Database table name */
   readonly dbName: string
 }

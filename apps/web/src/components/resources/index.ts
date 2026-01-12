@@ -40,3 +40,6 @@ export {
   type RecordMeta,
   type ResourceId,
 } from './store'
+
+// Utilities
+export { getResourceLink, useResourceLink, type GetResourceLinkOptions } from './utils'

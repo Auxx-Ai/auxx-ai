@@ -67,7 +67,7 @@ function toCustomResourceBase(
     label: def.singular,
     plural: def.plural,
     icon: def.icon,
-    color: def.color ?? undefined,
+    color: def.color ?? 'gray',
     entityDefinitionId: def.id,
     organizationId: def.organizationId,
     display: {
@@ -97,6 +97,8 @@ function toSystemResourceBase(tableId: TableId): Omit<SystemResource, 'fields'> 
     label: entry.label,
     plural: entry.plural,
     icon: entry.icon,
+    color: entry.color,
+    apiSlug: entry.apiSlug,
     dbName: entry.dbName,
     display: {
       identifierField: displayConfig.identifierField,
