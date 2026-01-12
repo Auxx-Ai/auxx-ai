@@ -65,8 +65,7 @@ export function BulkUpdateEntityInstanceDialog({
 
   // Get values from store for all selected instances
   const { getValue } = useCustomFieldValueSyncer({
-    resourceType: 'entity',
-    entityDefId: entityDefinitionId,
+    entityDefinitionId,
     rowIds: selectedInstanceIds,
     customFieldColumnIds,
     columnVisibility: {},
@@ -94,9 +93,7 @@ export function BulkUpdateEntityInstanceDialog({
 
   // Use hook for store-synced bulk updates
   const { saveBulkMultipleFields } = useSaveFieldValue({
-    resourceType: 'entity',
-    entityDefId: entityDefinitionId,
-    modelType: 'entity',
+    entityDefinitionId,
     getFieldMetadata,
   })
 

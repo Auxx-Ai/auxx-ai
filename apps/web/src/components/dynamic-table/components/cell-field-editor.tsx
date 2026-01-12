@@ -5,14 +5,11 @@ import { useMemo } from 'react'
 import { Popover, PopoverContent } from '@auxx/ui/components/popover'
 import { Popover as PopoverPrimitive } from 'radix-ui'
 import type { CellSelectionConfig } from '../types'
-import {
-  PropertyProvider,
-  usePropertyContext,
-  type StoreConfig,
-} from '~/components/fields/property-provider'
+import { PropertyProvider, usePropertyContext } from '~/components/fields/property-provider'
 import { useFieldPopoverHandlers } from '~/components/fields/use-field-popover-handlers'
 import { getInputComponentForFieldType } from '~/components/fields/inputs/get-input-component'
 import { getFieldTypeMinWidth, getFieldTypeMaxWidth } from '@auxx/lib/custom-fields/types'
+import type { ResourceId } from '@auxx/lib/resources/client'
 
 interface CellFieldEditorProps {
   rowId: string
@@ -43,13 +40,13 @@ export function CellFieldEditor({
   // Get field definition from config
   const field = cellSelectionConfig.getFieldDefinition?.(columnId)
 
-  // Get store config for optimistic updates (required)
-  const storeConfig = useMemo<StoreConfig | undefined>(() => {
-    return cellSelectionConfig.getStoreConfig?.(rowId)
+  // Get resourceId for optimistic updates (required)
+  const resourceId = useMemo<ResourceId | undefined>(() => {
+    return cellSelectionConfig.getResourceId?.(rowId)
   }, [cellSelectionConfig, rowId])
 
-  if (!field || !storeConfig) {
-    // No field definition or store config - can't edit
+  if (!field || !resourceId) {
+    // No field definition or resourceId - can't edit
     onClose()
     return null
   }
@@ -59,7 +56,7 @@ export function CellFieldEditor({
       providerId={`cell-${rowId}-${columnId}`}
       field={field}
       loading={false}
-      storeConfig={storeConfig}>
+      resourceId={resourceId}>
       <CellFieldEditorInner onClose={onClose} anchorRef={anchorRef} />
     </PropertyProvider>
   )

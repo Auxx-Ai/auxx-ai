@@ -3,15 +3,12 @@
 
 import { useMemo, useRef, useEffect, createContext, useContext } from 'react'
 import type { CellSelectionConfig } from '../types'
-import {
-  PropertyProvider,
-  usePropertyContext,
-  type StoreConfig,
-} from '~/components/fields/property-provider'
+import { PropertyProvider, usePropertyContext } from '~/components/fields/property-provider'
 import { useFieldPopoverHandlers } from '~/components/fields/use-field-popover-handlers'
 import { getInputComponentForFieldType } from '~/components/fields/inputs/get-input-component'
 import { CellSelectionOverlay } from './cell-selection-overlay'
 import { cn } from '@auxx/ui/lib/utils'
+import type { ResourceId } from '@auxx/lib/resources/client'
 
 /** Context to signal inline editing mode to child input components */
 const InlineEditorContext = createContext(false)
@@ -50,13 +47,13 @@ export function InlineCellEditor({
   // Get field definition from config
   const field = cellSelectionConfig.getFieldDefinition?.(columnId)
 
-  // Get store config for optimistic updates (required)
-  const storeConfig = useMemo<StoreConfig | undefined>(() => {
-    return cellSelectionConfig.getStoreConfig?.(rowId)
+  // Get resourceId for optimistic updates (required)
+  const resourceId = useMemo<ResourceId | undefined>(() => {
+    return cellSelectionConfig.getResourceId?.(rowId)
   }, [cellSelectionConfig, rowId])
 
-  if (!field || !storeConfig) {
-    // No field definition or store config - can't edit
+  if (!field || !resourceId) {
+    // No field definition or resourceId - can't edit
     onClose()
     return null
   }
@@ -66,7 +63,7 @@ export function InlineCellEditor({
       providerId={`inline-${rowId}-${columnId}`}
       field={field}
       loading={false}
-      storeConfig={storeConfig}>
+      resourceId={resourceId}>
       <InlineCellEditorInner onClose={onClose} />
     </PropertyProvider>
   )

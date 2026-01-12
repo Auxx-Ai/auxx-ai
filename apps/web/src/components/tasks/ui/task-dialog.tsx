@@ -207,7 +207,7 @@ export function TaskDialog({
         // Load existing linked records from task references as ResourceId[]
         setLinkedRecords(
           task.references?.map((ref) =>
-            toResourceId(ref.entityDefinitionId, ref.entityInstanceId)
+            toResourceId(ref.referencedEntityDefinitionId, ref.referencedEntityInstanceId)
           ) ?? []
         )
       } else {

@@ -13,7 +13,7 @@ import type { CustomField } from '~/components/dynamic-table/types'
 import { KanbanCardField } from './kanban-card-field'
 import {
   useCustomFieldValue,
-  type ResourceType,
+  toResourceId,
 } from '~/components/resources/store/custom-field-value-store'
 
 /** Props for KanbanCard component */
@@ -34,10 +34,8 @@ interface KanbanCardProps {
   isBeingDragged?: boolean
   /** When true, clicking the card toggles selection instead of opening drawer */
   massSelectMode?: boolean
-  /** Resource type for store subscription */
-  resourceType: ResourceType
-  /** Entity definition ID (required for 'entity' resourceType) */
-  entityDefId?: string
+  /** Entity definition ID (e.g., 'contact', 'ticket', or custom entity UUID) */
+  entityDefinitionId: string
   /** Primary field ID for card title */
   primaryFieldId?: string
   /** Enable inline field editing (default: true) */
@@ -63,13 +61,15 @@ export const KanbanCard = memo(function KanbanCard({
   onSelectChange,
   isBeingDragged = false,
   massSelectMode = false,
-  resourceType,
-  entityDefId,
+  entityDefinitionId,
   primaryFieldId,
   editable = true,
 }: KanbanCardProps) {
+  // Build resourceId for store lookups
+  const resourceId = toResourceId(entityDefinitionId, id)
+
   // Fetch title directly from store (same pattern as KanbanCardField)
-  const primaryValue = useCustomFieldValue(resourceType, id, primaryFieldId ?? '', entityDefId)
+  const primaryValue = useCustomFieldValue(resourceId, primaryFieldId ?? '')
 
   // Format title for display
   const title =
@@ -165,8 +165,7 @@ export const KanbanCard = memo(function KanbanCard({
             {fields.map((field) => (
               <div key={field.id} className="text-xs text-muted-foreground truncate">
                 <KanbanCardField
-                  resourceType={resourceType}
-                  entityDefId={entityDefId}
+                  entityDefinitionId={entityDefinitionId}
                   rowId={id}
                   field={field}
                   editable={editable && !massSelectMode && !isDragging}

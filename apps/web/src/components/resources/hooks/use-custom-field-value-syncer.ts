@@ -4,22 +4,20 @@ import { useEffect, useMemo, useRef, useCallback } from 'react'
 import { api } from '~/trpc/react'
 import {
   useCustomFieldValueStore,
-  buildValueKey,
-  parseValueKey,
-  type ResourceType,
+  buildFieldValueKeyFromParts,
+  parseFieldValueKey,
+  type FieldValueKey,
   type StoredFieldValue,
 } from '~/components/resources/store/custom-field-value-store'
+import { toResourceIds } from '@auxx/lib/resources/client'
 import type { VisibilityState } from '@tanstack/react-table'
 import { generateId } from '@auxx/utils/generateId'
 
 interface UseCustomFieldValueSyncerOptions {
-  /** Resource type being displayed */
-  resourceType: ResourceType
+  /** Entity definition ID for the resources being displayed */
+  entityDefinitionId: string
 
-  /** Entity definition ID (required for 'entity' resourceType) */
-  entityDefId?: string
-
-  /** Row IDs currently loaded in the table */
+  /** Row IDs (entity instance IDs) currently loaded in the table */
   rowIds: string[]
 
   /** Column visibility state from DynamicTable */
@@ -52,8 +50,7 @@ interface SyncerResult {
  */
 export function useCustomFieldValueSyncer(options: UseCustomFieldValueSyncerOptions): SyncerResult {
   const {
-    resourceType,
-    entityDefId,
+    entityDefinitionId,
     rowIds,
     columnVisibility,
     customFieldColumnIds,
@@ -78,7 +75,7 @@ export function useCustomFieldValueSyncer(options: UseCustomFieldValueSyncerOpti
   }, [customFieldColumnIds, columnVisibility])
 
   // Helper to check if a key is loading (uses getState, not subscription)
-  const isKeyLoading = useCallback((key: string) => {
+  const isKeyLoading = useCallback((key: FieldValueKey) => {
     const { loadingBatches } = useCustomFieldValueStore.getState()
     for (const batch of Object.values(loadingBatches)) {
       if (batch.keys.has(key)) return true
@@ -88,29 +85,29 @@ export function useCustomFieldValueSyncer(options: UseCustomFieldValueSyncerOpti
 
   // Compute needed keys imperatively inside effect (not as reactive dependency)
   const computeNeededKeys = useCallback(() => {
-    if (!enabled || visibleFieldIds.length === 0 || rowIds.length === 0) {
+    if (!enabled || !entityDefinitionId || visibleFieldIds.length === 0 || rowIds.length === 0) {
       return []
     }
 
     const { values } = useCustomFieldValueStore.getState()
-    const keys: string[] = []
+    const keys: FieldValueKey[] = []
     for (const rowId of rowIds) {
       for (const fieldId of visibleFieldIds) {
-        const key = buildValueKey(resourceType, rowId, fieldId, entityDefId)
+        const key = buildFieldValueKeyFromParts(entityDefinitionId, rowId, fieldId)
         if (!(key in values) && !isKeyLoading(key)) {
           keys.push(key)
         }
       }
     }
     return keys
-  }, [enabled, visibleFieldIds, rowIds, resourceType, entityDefId, isKeyLoading])
+  }, [enabled, visibleFieldIds, rowIds, entityDefinitionId, isKeyLoading])
 
   // Mutation for batch fetching
   const batchFetch = api.fieldValue.batchGet.useMutation()
 
   // Debounced fetch trigger - runs when inputs change, computes needed keys imperatively
   useEffect(() => {
-    if (!enabled || visibleFieldIds.length === 0 || rowIds.length === 0) return
+    if (!enabled || !entityDefinitionId || visibleFieldIds.length === 0 || rowIds.length === 0) return
 
     // Clear any pending fetch
     if (pendingFetchRef.current) {
@@ -128,30 +125,30 @@ export function useCustomFieldValueSyncer(options: UseCustomFieldValueSyncerOpti
       // Mark as loading
       startLoading(batchId, neededKeys)
 
-      // Extract unique resourceIds and fieldIds from keys
-      const resourceIds = new Set<string>()
+      // Extract unique instanceIds and fieldIds from keys
+      const instanceIds = new Set<string>()
       const fieldIds = new Set<string>()
 
       for (const key of neededKeys) {
-        const parsed = parseValueKey(key)
-        resourceIds.add(parsed.resourceId)
-        fieldIds.add(parsed.fieldId)
+        const { resourceId, fieldId } = parseFieldValueKey(key)
+        // resourceId is entityDefinitionId:entityInstanceId, extract instance ID
+        const instanceId = resourceId.split(':')[1]
+        if (instanceId) instanceIds.add(instanceId)
+        fieldIds.add(fieldId)
       }
 
       // Compute all requested combinations (cartesian product)
-      const allRequestedCombinations = new Set<string>()
-      for (const resourceId of resourceIds) {
+      const allRequestedCombinations = new Set<FieldValueKey>()
+      for (const instanceId of instanceIds) {
         for (const fieldId of fieldIds) {
-          const key = buildValueKey(resourceType, resourceId, fieldId, entityDefId)
+          const key = buildFieldValueKeyFromParts(entityDefinitionId, instanceId, fieldId)
           allRequestedCombinations.add(key)
         }
       }
 
       try {
         const data = await batchFetch.mutateAsync({
-          resourceType,
-          entityDefId,
-          resourceIds: Array.from(resourceIds),
+          resourceIds: toResourceIds(entityDefinitionId, Array.from(instanceIds)),
           fieldIds: Array.from(fieldIds),
         })
 
@@ -159,7 +156,7 @@ export function useCustomFieldValueSyncer(options: UseCustomFieldValueSyncerOpti
         // Entries with actual data from batchGet
         const entriesMap = new Map(
           data.values.map((v) => [
-            buildValueKey(resourceType, v.resourceId, v.fieldId, entityDefId),
+            buildFieldValueKeyFromParts(entityDefinitionId, v.resourceId, v.fieldId),
             v.value,
           ])
         )
@@ -187,8 +184,7 @@ export function useCustomFieldValueSyncer(options: UseCustomFieldValueSyncerOpti
     enabled,
     visibleFieldIds,
     rowIds,
-    resourceType,
-    entityDefId,
+    entityDefinitionId,
     debounceMs,
     computeNeededKeys,
     batchFetch,
@@ -200,19 +196,19 @@ export function useCustomFieldValueSyncer(options: UseCustomFieldValueSyncerOpti
   // Get value accessor - reads directly from store via getState (stable function)
   const getValue = useCallback(
     (rowId: string, fieldId: string): StoredFieldValue | undefined => {
-      const key = buildValueKey(resourceType, rowId, fieldId, entityDefId)
+      const key = buildFieldValueKeyFromParts(entityDefinitionId, rowId, fieldId)
       return useCustomFieldValueStore.getState().values[key]
     },
-    [resourceType, entityDefId]
+    [entityDefinitionId]
   )
 
   // Loading state accessor
   const isValueLoading = useCallback(
     (rowId: string, fieldId: string): boolean => {
-      const key = buildValueKey(resourceType, rowId, fieldId, entityDefId)
+      const key = buildFieldValueKeyFromParts(entityDefinitionId, rowId, fieldId)
       return isKeyLoading(key)
     },
-    [resourceType, entityDefId, isKeyLoading]
+    [entityDefinitionId, isKeyLoading]
   )
 
   return {

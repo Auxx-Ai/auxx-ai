@@ -2,17 +2,17 @@
 
 import {
   useCustomFieldValueStore,
-  buildValueKey,
-  type ResourceType,
+  buildFieldValueKey,
   type StoredFieldValue,
 } from './custom-field-value-store'
 import { formatToTypedInput } from '@auxx/lib/field-values/client'
-import { isComputedField, type ResourceField, type Resource } from '@auxx/lib/resources/client'
+import { isComputedField, type Resource, type ResourceId } from '@auxx/lib/resources/client'
 import type { FieldType } from '@auxx/database/types'
 
 interface HydrationOptions {
   resource: Resource
-  recordId: string
+  /** ResourceId in format "entityDefinitionId:entityInstanceId" */
+  resourceId: ResourceId
   recordData: Record<string, unknown>
 }
 
@@ -22,13 +22,8 @@ interface HydrationOptions {
  *
  * This is a pure function that can be called from any context (not a hook).
  */
-export function hydrateFieldValues({ resource, recordId, recordData }: HydrationOptions): void {
+export function hydrateFieldValues({ resource, resourceId, recordData }: HydrationOptions): void {
   const entries: Array<{ key: string; value: StoredFieldValue }> = []
-
-  // Determine resource type for store key
-  const resourceType: ResourceType =
-    resource.type === 'custom' ? 'entity' : (resource.id as ResourceType)
-  const entityDefId = resource.type === 'custom' ? resource.entityDefinitionId : undefined
 
   // Process all fields (system + custom)
   for (const field of resource.fields) {
@@ -68,7 +63,8 @@ export function hydrateFieldValues({ resource, recordId, recordData }: Hydration
     })
 
     if (typedValue !== null) {
-      const storeKey = buildValueKey(resourceType, recordId, field.key, entityDefId)
+      // Use buildFieldValueKey with ResourceId directly
+      const storeKey = buildFieldValueKey(resourceId, field.key)
       entries.push({ key: storeKey, value: typedValue as StoredFieldValue })
     }
   }
@@ -85,13 +81,9 @@ export function hydrateFieldValues({ resource, recordId, recordData }: Hydration
  */
 export function hydrateMultipleRecords(
   resource: Resource,
-  records: Array<{ id: string; data: Record<string, unknown> }>
+  records: Array<{ resourceId: ResourceId; data: Record<string, unknown> }>
 ): void {
   const allEntries: Array<{ key: string; value: StoredFieldValue }> = []
-
-  const resourceType: ResourceType =
-    resource.type === 'custom' ? 'entity' : (resource.id as ResourceType)
-  const entityDefId = resource.type === 'custom' ? resource.entityDefinitionId : undefined
 
   for (const record of records) {
     for (const field of resource.fields) {
@@ -124,7 +116,8 @@ export function hydrateMultipleRecords(
       })
 
       if (typedValue !== null) {
-        const storeKey = buildValueKey(resourceType, record.id, field.key, entityDefId)
+        // Use buildFieldValueKey with ResourceId directly
+        const storeKey = buildFieldValueKey(record.resourceId, field.key)
         allEntries.push({ key: storeKey, value: typedValue as StoredFieldValue })
       }
     }

@@ -2,7 +2,7 @@
 
 import { type ColumnDef, type Table as TanstackTable } from '@tanstack/react-table'
 import { type LucideIcon } from 'lucide-react'
-import type { StoreConfig } from '~/components/fields/property-provider'
+import type { ResourceId } from '@auxx/lib/resources/client'
 import type { ModelType, TargetTimeInStatus } from '@auxx/types/custom-field'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import type { FieldType } from '@auxx/database/types'
@@ -52,8 +52,8 @@ export interface CellSelectionConfig {
   getFieldDefinition?: (columnId: string) => any
   /** Get cell value for editing */
   getCellValue?: (rowId: string, columnId: string) => any
-  /** Get store configuration for a row (required for optimistic updates) */
-  getStoreConfig: (rowId: string) => StoreConfig
+  /** Get ResourceId for a row (required for optimistic updates) */
+  getResourceId: (rowId: string) => ResourceId
 }
 
 /**

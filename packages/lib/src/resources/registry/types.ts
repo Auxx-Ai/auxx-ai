@@ -29,6 +29,8 @@ interface BaseResource {
 /** System resource with static display config */
 export interface SystemResource extends BaseResource {
   type: 'system'
+  /** Entity definition ID (same as id for system resources) */
+  entityDefinitionId: string
   dbName: string
   display: {
     identifierField: string

@@ -10,6 +10,7 @@ export { useResourceFields } from './use-resource-fields'
 // Record store hooks
 export { useRecordList } from './use-record-list'
 export { useRecord, useIsRecordLoading, useIsRecordPending } from './use-record'
+export { useRecords } from './use-records'
 export { useRecordInvalidation } from './use-record-invalidation'
 export { useRecordBatchFetcher } from './use-record-batch-fetcher'
 

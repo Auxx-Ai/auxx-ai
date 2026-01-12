@@ -53,6 +53,8 @@ export {
   toResourceIds,
   getInstanceId,
   getDefinitionId,
+  isSystemModelType,
+  getModelType,
 } from './resource-id'
 export type { ResourceId } from '@auxx/types/resource'
 

@@ -304,8 +304,7 @@ function ContactDrawerContent({
                       icon={<HouseIcon className="size-4" />}>
                       {contact?.id && (
                         <MemoEntityFields
-                          entityDefinitionId="contact"
-                          entityInstanceId={contact.id}
+                          resourceId={toResourceId('contact', contact.id)}
                         />
                       )}
                     </Section>

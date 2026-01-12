@@ -1,8 +1,8 @@
 // apps/web/src/components/resources/hooks/use-record-batch-fetcher.ts
 
-import { useEffect, useState, useRef, useMemo } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { api } from '~/trpc/react'
-import { useRecordStore, getRecordStoreState } from '../store/record-store'
+import { useRecordStore, getRecordStoreState, type RecordMeta } from '../store/record-store'
 import { hydrateMultipleRecords } from '~/components/resources/store/hydrate-field-values'
 import type { Resource, ResourceId } from '@auxx/lib/resources/client'
 import { toResourceId } from '@auxx/lib/resources/client'
@@ -17,62 +17,38 @@ interface UseRecordBatchFetcherOptions {
 
 /**
  * Hook that subscribes to record store pending fetches and executes them.
- * Uses existing resource.getByIds endpoint.
+ * Fetches mixed ResourceIds (multiple entity types) in a single API call.
  * Should be rendered once in ResourceProvider via RecordBatchFetcher component.
  *
- * Pattern: subscribe to pendingFetchIds size → schedule batch → fetch → sync to store → hydrate to field value store
+ * Pattern: subscribe to pendingFetchIds.size → schedule batch → fetch all types together → distribute to store → hydrate
  */
 export function useRecordBatchFetcher({ getResourceById }: UseRecordBatchFetcherOptions) {
-  // Track current batch being fetched: { resourceType, ids }
-  const [currentBatch, setCurrentBatch] = useState<{
-    resourceType: string
-    ids: string[]
-  } | null>(null)
+  // Track current batch being fetched (mixed ResourceIds)
+  const [currentBatch, setCurrentBatch] = useState<ResourceId[]>([])
 
-  // Track which resource types have pending timers
-  const pendingTimersRef = useRef<Set<string>>(new Set())
+  // Subscribe to pending count (triggers re-render when items are added)
+  const pendingCount = useRecordStore((s) => s.pendingFetchIds.size)
 
-  // Subscribe to pending fetch IDs to detect when batches are ready
-  const pendingFetchIds = useRecordStore((s) => s.pendingFetchIds)
-
-  // Schedule batch processing when pending IDs change
+  // Schedule batch processing when pending items exist
   useEffect(() => {
-    // If already fetching, wait
-    if (currentBatch) return
+    if (pendingCount === 0 || currentBatch.length > 0) return
 
-    // Find resource types with pending IDs
-    for (const [resourceType, pendingSet] of pendingFetchIds) {
-      if (pendingSet.size === 0) continue
-      if (pendingTimersRef.current.has(resourceType)) continue
-
-      // Schedule batch after delay
-      pendingTimersRef.current.add(resourceType)
-
-      const timer = setTimeout(() => {
-        pendingTimersRef.current.delete(resourceType)
-
-        // Get batch from store
-        const ids = getRecordStoreState().startBatch(resourceType)
-        if (ids.length > 0) {
-          setCurrentBatch({ resourceType, ids })
-        }
-      }, BATCH_DELAY)
-
-      // Only schedule one resource type at a time
-      return () => {
-        clearTimeout(timer)
-        pendingTimersRef.current.delete(resourceType)
+    const timer = setTimeout(() => {
+      const resourceIds = getRecordStoreState().startBatch()
+      if (resourceIds.length > 0) {
+        setCurrentBatch(resourceIds)
       }
-    }
-  }, [pendingFetchIds, currentBatch])
+    }, BATCH_DELAY)
 
-  // Stable query input - memoize to prevent creating new arrays
+    return () => clearTimeout(timer)
+  }, [pendingCount, currentBatch.length])
+
+  // Stable query input
   const queryItems = useMemo<ResourceId[]>(() => {
-    if (!currentBatch || currentBatch.ids.length === 0) return EMPTY_ITEMS
-    return currentBatch.ids.map((id) => toResourceId(currentBatch.resourceType, id))
+    return currentBatch.length > 0 ? currentBatch : EMPTY_ITEMS
   }, [currentBatch])
 
-  // Fetch current batch using existing resource.getByIds endpoint
+  // Fetch using existing resource.getByIds endpoint (handles mixed types)
   const { data, error } = api.resource.getByIds.useQuery(
     { items: queryItems },
     {
@@ -84,48 +60,73 @@ export function useRecordBatchFetcher({ getResourceById }: UseRecordBatchFetcher
 
   // Handle successful fetch
   useEffect(() => {
-    if (!data || !currentBatch) return
+    if (!data || currentBatch.length === 0) return
 
-    const { resourceType, ids } = currentBatch
+    // Group results by entityDefinitionId for store update
+    const byType = new Map<string, RecordMeta[]>()
+    const foundIds = new Set<ResourceId>()
 
-    // Extract data field from ResourcePickerItem and build records
-    const records = Object.values(data).map((item) => ({
-      id: item.id,
-      createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
-      updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
-      ...item.data,
-    }))
+    for (const item of Object.values(data)) {
+      const record: RecordMeta = {
+        id: item.id,
+        createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
+        updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
+        ...item.data,
+      }
 
-    // Sync to record store
+      const list = byType.get(item.entityDefinitionId) ?? []
+      list.push(record)
+      byType.set(item.entityDefinitionId, list)
+
+      // Track found ResourceIds
+      foundIds.add(toResourceId(item.entityDefinitionId, item.id))
+    }
+
+    // Identify missing items (requested but not returned = deleted/invalid)
+    const missingIds = currentBatch.filter((id) => !foundIds.has(id))
+    if (missingIds.length > 0) {
+      console.debug('[RecordBatchFetcher] Records not found:', missingIds)
+    }
+
+    // Update record store (still organized by resourceType internally)
     const store = getRecordStoreState()
-    store.setRecords(resourceType, records)
-    store.completeBatch(resourceType, ids)
+    for (const [resourceType, records] of byType) {
+      store.setRecords(resourceType, records)
+    }
+
+    // Mark missing items as not found
+    if (missingIds.length > 0) {
+      store.setNotFound(missingIds)
+    }
+
+    // Complete the batch (removes from loadingIds)
+    store.completeBatch(currentBatch)
 
     // Hydrate field values into customFieldValueStore
-    // This enables CustomFieldCell to access all field values (system + custom)
-    const resource = getResourceById(resourceType)
-    if (resource) {
-      hydrateMultipleRecords(
-        resource,
-        records.map((r) => ({ id: r.id, data: r as Record<string, unknown> }))
-      )
+    for (const [resourceType, records] of byType) {
+      const resource = getResourceById(resourceType)
+      if (resource) {
+        hydrateMultipleRecords(
+          resource,
+          records.map((r) => ({ id: r.id, data: r as Record<string, unknown> }))
+        )
+      }
     }
 
     // Clear batch to allow next fetch
-    setCurrentBatch(null)
+    setCurrentBatch([])
   }, [data, currentBatch, getResourceById])
 
   // Handle error
   useEffect(() => {
-    if (!error || !currentBatch) return
+    if (!error || currentBatch.length === 0) return
 
-    console.error(`Failed to fetch ${currentBatch.resourceType} records:`, error)
+    console.error('[RecordBatchFetcher] Failed to fetch records:', error)
 
     // Complete batch anyway to prevent infinite retries
-    const { resourceType, ids } = currentBatch
-    getRecordStoreState().completeBatch(resourceType, ids)
+    getRecordStoreState().completeBatch(currentBatch)
 
     // Clear batch to allow next fetch
-    setCurrentBatch(null)
+    setCurrentBatch([])
   }, [error, currentBatch])
 }

@@ -6,7 +6,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import {
   useCustomFieldValue,
   useCustomFieldValueLoading,
-  type ResourceType,
+  toResourceId,
 } from '~/components/resources/store/custom-field-value-store'
 import { formatToDisplayValue } from '@auxx/lib/field-values/client'
 import type { TypedFieldValue } from '@auxx/types/field-value'
@@ -16,10 +16,8 @@ import { PrimaryCell } from './primary-cell'
  * Props for PrimaryFieldCell component
  */
 interface PrimaryFieldCellProps {
-  /** Resource type for store subscription */
-  resourceType: ResourceType
-  /** Entity definition ID (required for 'entity' resourceType) */
-  entityDefId?: string
+  /** Entity definition ID (e.g., 'contact', 'ticket', or custom entity UUID) */
+  entityDefinitionId: string
   /** Row ID to look up value */
   rowId: string
   /** Field ID to look up value */
@@ -41,17 +39,19 @@ interface PrimaryFieldCellProps {
  * following the same pattern as CustomFieldCell.
  */
 export const PrimaryFieldCell = memo(function PrimaryFieldCell({
-  resourceType,
-  entityDefId,
+  entityDefinitionId,
   rowId,
   fieldId,
   fieldType,
   onTitleClick,
   children,
 }: PrimaryFieldCellProps) {
+  // Build resourceId for store lookups
+  const resourceId = toResourceId(entityDefinitionId, rowId)
+
   // Direct store subscription - triggers re-render when value changes
-  const value = useCustomFieldValue(resourceType, rowId, fieldId, entityDefId)
-  const isLoading = useCustomFieldValueLoading(resourceType, rowId, fieldId, entityDefId)
+  const value = useCustomFieldValue(resourceId, fieldId)
+  const isLoading = useCustomFieldValueLoading(resourceId, fieldId)
 
   // Format value for display
   const displayValue: string | null = useMemo(() => {

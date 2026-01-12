@@ -35,6 +35,7 @@ import { FieldValueValidator, fieldValueSchemas } from './field-value-validator'
 import { isBuiltInField, getBuiltInFieldHandler, getBuiltInFieldType } from '../custom-fields/built-in-fields'
 import { checkUniqueValueTyped } from '../custom-fields/check-unique-value-typed'
 import { ResourceRegistryService } from '../resources/registry/resource-registry-service'
+import { parseResourceId } from '../resources/resource-id'
 import { publisher } from '../events'
 import type { ContactFieldUpdatedEvent } from '../events/types'
 import type {
@@ -1230,6 +1231,9 @@ export class FieldValueService {
   /**
    * Efficiently get field values for multiple entities in a single batch query.
    *
+   * Uses the ResourceId format (entityDefinitionId:entityInstanceId) which encodes
+   * both the entity type and instance in a single value.
+   *
    * Returns a normalized array with one result per entity+field combination that has a value.
    * Missing combinations are omitted (rather than returning null for each missing field).
    *
@@ -1240,22 +1244,16 @@ export class FieldValueService {
    * - ResourceRegistryService caching for efficient field type lookups
    *
    * @param params - The BatchGetValuesInput object
-   * @param params.resourceType - Type of resource to batch retrieve
-   *                              Options: 'contact', 'ticket', 'entity'
-   *                              Example: 'contact'
-   * @param params.entityDefId - EntityDefinition UUID (REQUIRED if resourceType is 'entity')
-   *                             Identifies which custom entity type to fetch
-   *                             Example: "entity-def-123"
-   *                             Omit or undefined if resourceType is 'contact' or 'ticket'
-   * @param params.resourceIds - Array of entity/resource UUIDs to fetch
-   *                            Example: ["contact-1", "contact-2", "contact-3"]
+   * @param params.resourceIds - Array of ResourceIds in format "entityDefinitionId:entityInstanceId"
+   *                             Use toResourceIds() helper to build from entityDefinitionId + instanceIds
+   *                             Example: ["contact:contact-1", "contact:contact-2"]
    * @param params.fieldIds - Array of field UUIDs to retrieve
    *                          Example: ["field-email", "field-name", "field-status"]
    *
    * @returns BatchFieldValueResult containing:
    *          - values: Array of TypedFieldValueResult, one per entity+field with actual data
    *            Each result includes:
-   *            - resourceId: The entity UUID
+   *            - resourceId: The entity instance ID (NOT the full ResourceId)
    *            - fieldId: The field UUID
    *            - value: TypedFieldValue or TypedFieldValue[] (based on field type)
    *            - issues?: Array of validation issues (orphaned references, type mismatches)
@@ -1263,32 +1261,14 @@ export class FieldValueService {
    * @example
    * // Fetch email and name for 10 contacts
    * const result = await fieldValueService.batchGetValues({
-   *   resourceType: "contact",
-   *   resourceIds: ["contact-1", "contact-2", ..., "contact-10"],
+   *   resourceIds: toResourceIds("contact", ["contact-1", "contact-2", "contact-10"]),
    *   fieldIds: ["field-email", "field-name"]
    * });
    *
-   * // result.values might contain:
-   * // [
-   * //   {
-   * //     resourceId: "contact-1",
-   * //     fieldId: "field-email",
-   * //     value: { id: "fv-1", type: "text", value: "john@shop.com", ... }
-   * //   },
-   * //   {
-   * //     resourceId: "contact-1",
-   * //     fieldId: "field-name",
-   * //     value: { id: "fv-2", type: "text", value: "John Doe", ... }
-   * //   },
-   * //   ... (only combinations with actual values)
-   * // ]
-   *
    * @example
-   * // Fetch custom entity values with validation
+   * // Fetch custom entity values
    * const result = await fieldValueService.batchGetValues({
-   *   resourceType: "entity",
-   *   entityDefId: "custom-entity-def-456",
-   *   resourceIds: ["entity-instance-1", "entity-instance-2"],
+   *   resourceIds: toResourceIds(entityDefinitionId, instanceIds),
    *   fieldIds: ["field-title", "field-status", "field-related"]
    * });
    *
@@ -1299,20 +1279,27 @@ export class FieldValueService {
    * }
    */
   async batchGetValues(params: BatchGetValuesInput): Promise<BatchFieldValueResult> {
-    const { resourceType, entityDefId, resourceIds, fieldIds } = params
+    const { resourceIds, fieldIds } = params
 
     if (resourceIds.length === 0 || fieldIds.length === 0) {
       return { values: [] }
     }
 
-    // Query field values (metadata will be fetched via ResourceRegistryService)
+    // Parse ResourceIds to extract entityInstanceIds for DB query
+    const parsedResources = resourceIds.map((rid) => parseResourceId(rid))
+    const entityInstanceIds = parsedResources.map((p) => p.entityInstanceId)
+
+    // Get unique entityDefinitionIds for field type lookups
+    const uniqueEntityDefIds = [...new Set(parsedResources.map((p) => p.entityDefinitionId))]
+
+    // Query field values using instance IDs
     const rows = await this.db
       .select()
       .from(schema.FieldValue)
       .where(
         and(
           eq(schema.FieldValue.organizationId, this.organizationId),
-          inArray(schema.FieldValue.entityId, resourceIds),
+          inArray(schema.FieldValue.entityId, entityInstanceIds),
           inArray(schema.FieldValue.fieldId, fieldIds)
         )
       )
@@ -1327,14 +1314,20 @@ export class FieldValueService {
       valueMap.set(key, existing)
     }
 
-    // Fetch field type map once, using ResourceRegistryService cache
-    const fieldTypeMap = await this.getFieldTypeMap(resourceType, entityDefId, fieldIds)
+    // Build combined field type map from all entity definitions
+    const fieldTypeMap = new Map<string, FieldType>()
+    for (const entityDefId of uniqueEntityDefIds) {
+      const typeMap = await this.getFieldTypeMapByDefinition(entityDefId, fieldIds)
+      for (const [fid, ftype] of typeMap) {
+        fieldTypeMap.set(fid, ftype)
+      }
+    }
 
     // Build result with validation (only include combinations that have actual data)
     const results: TypedFieldValueResult[] = []
-    for (const entityId of resourceIds) {
+    for (const instanceId of entityInstanceIds) {
       for (const fieldId of fieldIds) {
-        const key = `${entityId}:${fieldId}`
+        const key = `${instanceId}:${fieldId}`
         const fieldRows = valueMap.get(key)
         const issues: string[] = []
 
@@ -1348,7 +1341,7 @@ export class FieldValueService {
             // Field definition not found - orphaned reference
             issues.push(`Field type not found for field ${fieldId}`)
             results.push({
-              resourceId: entityId,
+              resourceId: instanceId,
               fieldId,
               value: null,
               issues,
@@ -1372,7 +1365,7 @@ export class FieldValueService {
           }
 
           const result: TypedFieldValueResult = {
-            resourceId: entityId,
+            resourceId: instanceId,
             fieldId,
           }
 
@@ -1406,28 +1399,19 @@ export class FieldValueService {
    * value storage type. Throws if fieldType is missing, as it's required for
    * correct value storage and retrieval.
    *
-   * @param resourceType - 'contact', 'ticket', 'entity', etc.
-   * @param entityDefId - EntityDefinition ID if resourceType is 'entity'
+   * @param entityDefinitionId - Entity definition ID (e.g., 'contact', 'ticket', or a custom entity UUID)
    * @param fieldIds - Field IDs to fetch types for
    * @returns Map<fieldId, FieldType> with typed field types
    * @throws Error if resource not found, field type lookup fails, or fieldType is missing
    */
-  private async getFieldTypeMap(
-    resourceType: string,
-    entityDefId: string | undefined,
+  private async getFieldTypeMapByDefinition(
+    entityDefinitionId: string,
     fieldIds: string[]
   ): Promise<Map<string, FieldType>> {
-    // Determine the resource ID based on resourceType and entityDefId
-    const resourceId = resourceType === 'entity' ? entityDefId : resourceType
-
-    if (!resourceId) {
-      throw new Error(`Cannot determine resource ID from resourceType: ${resourceType}`)
-    }
-
-    // Fetch resource using service cache
-    const resource = await this.registryService.getById(resourceId)
+    // Fetch resource using service cache (entityDefinitionId works for both system and custom)
+    const resource = await this.registryService.getById(entityDefinitionId)
     if (!resource) {
-      throw new Error(`Resource not found: ${resourceId}`)
+      throw new Error(`Resource not found: ${entityDefinitionId}`)
     }
 
     // Build map of fieldId -> FieldType with strict validation
@@ -1437,7 +1421,7 @@ export class FieldValueService {
         // fieldType MUST exist - it's populated by mapCustomFieldsToResourceFields
         if (!field.fieldType) {
           throw new Error(
-            `[getFieldTypeMap] Field ${field.id} missing fieldType. ` +
+            `[getFieldTypeMapByDefinition] Field ${field.id} missing fieldType. ` +
               `ResourceField.fieldType must be set for value storage type determination.`
           )
         }

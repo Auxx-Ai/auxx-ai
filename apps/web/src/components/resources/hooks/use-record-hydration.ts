@@ -2,11 +2,12 @@
 
 import { useEffect, useRef } from 'react'
 import { hydrateFieldValues } from '~/components/resources/store/hydrate-field-values'
-import type { Resource } from '@auxx/lib/resources/client'
+import type { Resource, ResourceId } from '@auxx/lib/resources/client'
 
 interface UseRecordHydrationOptions {
   resource: Resource | undefined
-  recordId: string | undefined
+  /** ResourceId in format "entityDefinitionId:entityInstanceId" */
+  resourceId: ResourceId | undefined
   recordData: Record<string, unknown> | undefined
   enabled?: boolean
 }
@@ -17,7 +18,7 @@ interface UseRecordHydrationOptions {
  */
 export function useRecordHydration({
   resource,
-  recordId,
+  resourceId,
   recordData,
   enabled = true,
 }: UseRecordHydrationOptions): void {
@@ -25,18 +26,18 @@ export function useRecordHydration({
   const hydratedRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!enabled || !resource || !recordId || !recordData) return
+    if (!enabled || !resource || !resourceId || !recordData) return
 
     // Create fingerprint to detect changes
-    const fingerprint = `${recordId}:${JSON.stringify(recordData)}`
+    const fingerprint = `${resourceId}:${JSON.stringify(recordData)}`
     if (hydratedRef.current === fingerprint) return
 
     hydrateFieldValues({
       resource,
-      recordId,
+      resourceId,
       recordData,
     })
 
     hydratedRef.current = fingerprint
-  }, [enabled, resource, recordId, recordData])
+  }, [enabled, resource, resourceId, recordData])
 }

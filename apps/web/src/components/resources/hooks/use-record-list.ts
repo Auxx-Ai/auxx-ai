@@ -11,6 +11,7 @@ import {
   type RecordMeta,
 } from '../store/record-store'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import { toResourceId } from '@auxx/lib/resources/client'
 
 /** Stable empty array for default return */
 const EMPTY_IDS: string[] = []
@@ -175,7 +176,7 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
     const recordCache = useRecordStore.getState().records[resourceType]
     for (const id of allIds) {
       if (!recordCache?.has(id)) {
-        requestRecord(resourceType, id)
+        requestRecord(toResourceId(resourceType, id))
       }
     }
   }, [data, listKey, setList, resourceType, requestRecord])
@@ -206,8 +207,8 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
   // ─── RESOLVE ITEMS FROM RECORD STORE ─────────────────────────────────
   // Subscribe to record cache for this resource type
   const recordCache = useRecordStore((s) => s.records[resourceType])
-  const loadingIds = useRecordStore((s) => s.loadingIds.get(resourceType))
-  const pendingIds = useRecordStore((s) => s.pendingFetchIds.get(resourceType))
+  const loadingIds = useRecordStore((s) => s.loadingIds)
+  const pendingIds = useRecordStore((s) => s.pendingFetchIds)
 
   // Resolve items from cache - filter out undefined (not yet loaded)
   const items = useMemo(() => {
@@ -222,13 +223,14 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
     if (!recordIds.length) return false
     // Records are loading if we have fewer items than IDs, and some are pending/loading
     if (items.length < recordIds.length) {
-      const hasLoading = recordIds.some(
-        (id: string) => loadingIds?.has(id) || pendingIds?.has(id)
-      )
+      const hasLoading = recordIds.some((id: string) => {
+        const resourceId = toResourceId(resourceType, id)
+        return loadingIds.has(resourceId) || pendingIds.has(resourceId)
+      })
       return hasLoading
     }
     return false
-  }, [recordIds, items.length, loadingIds, pendingIds])
+  }, [recordIds, items.length, loadingIds, pendingIds, resourceType])
 
   return {
     recordIds,

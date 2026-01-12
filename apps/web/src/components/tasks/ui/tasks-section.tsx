@@ -7,6 +7,7 @@ import { ListTodo, Plus } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
+import { toResourceId } from '@auxx/lib/field-values/client'
 import { TasksList } from './tasks-list'
 import { TaskDialog } from './task-dialog'
 
@@ -54,10 +55,7 @@ export function TasksSection({ entityInstanceId, entityDefinitionId }: TasksSect
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         mode="create"
-        defaultReferencedEntity={{
-          entityInstanceId,
-          entityDefinitionId,
-        }}
+        defaultReferencedEntity={toResourceId(entityDefinitionId, entityInstanceId)}
       />
     </>
   )

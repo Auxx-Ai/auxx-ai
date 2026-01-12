@@ -2,7 +2,7 @@
 
 // Main component exports
 export { default as EntityFields } from './entity-fields'
-export { PropertyProvider, usePropertyContext, type StoreConfig } from './property-provider'
+export { PropertyProvider, usePropertyContext } from './property-provider'
 export { default as PropertyRow } from './property-row'
 export { FieldInput } from './field-input'
 export { SortablePropertyRow } from './sortable-property-row'

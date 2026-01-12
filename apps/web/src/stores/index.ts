@@ -18,13 +18,17 @@ export {
   type RunStatus,
 } from './workflow-run-status-store'
 
+// Custom field value store exports (commented - import directly from component path)
 // export {
 //   useCustomFieldValueStore,
 //   useCustomFieldValue,
 //   useCustomFieldValueLoading,
 //   useResourceFieldValues,
-//   buildValueKey,
-//   parseValueKey,
-//   type ResourceType as CustomFieldResourceType,
-//   type ValueKey,
+//   buildFieldValueKey,
+//   buildFieldValueKeyFromParts,
+//   parseFieldValueKey,
+//   toResourceId,
+//   parseResourceId,
+//   type FieldValueKey,
+//   type ResourceId,
 // } from '../components/resources/store/custom-field-value-store'

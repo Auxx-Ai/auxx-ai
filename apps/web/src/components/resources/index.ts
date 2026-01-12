@@ -16,6 +16,7 @@ export {
   // Record store hooks
   useRecordList,
   useRecord,
+  useRecords,
   useIsRecordLoading,
   useIsRecordPending,
   useRecordInvalidation,

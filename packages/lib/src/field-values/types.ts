@@ -1,6 +1,7 @@
 // packages/lib/src/field-values/types.ts
 
 import type { TypedFieldValue, TypedFieldValueInput } from '@auxx/types'
+import type { ResourceId } from '@auxx/types/resource'
 
 // =============================================================================
 // MODEL TYPES
@@ -123,11 +124,9 @@ export interface GetValuesInput {
   fieldIds?: string[]
 }
 
-/** Input for batch getting values */
+/** Input for batch getting values (uses ResourceId format: entityDefinitionId:entityInstanceId) */
 export interface BatchGetValuesInput {
-  resourceType: 'contact' | 'ticket' | 'entity'
-  entityDefId?: string
-  resourceIds: string[]
+  resourceIds: ResourceId[]
   fieldIds: string[]
 }
 

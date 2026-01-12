@@ -14,7 +14,6 @@ import {
   PrimaryFieldCell,
 } from '~/components/dynamic-table'
 import type { ExtendedColumnDef, CellSelectionConfig } from '~/components/dynamic-table'
-import type { StoreConfig } from '~/components/fields/property-provider'
 import { ModelTypes } from '@auxx/types/custom-field'
 import { EmptyState } from '~/components/global/empty-state'
 import { getIconForFieldType } from '~/components/dynamic-table/custom-field-column-factory'
@@ -43,7 +42,7 @@ import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-t
 import { useCustomFieldValueSyncer } from '~/components/resources/hooks/use-custom-field-value-syncer'
 import { useCombinedFilters } from '~/components/dynamic-table/hooks/use-combined-filters'
 import { useActiveViewConfig } from '~/components/dynamic-table/stores/view-store'
-import { useRecordList, useResource, type RecordMeta } from '~/components/resources'
+import { useRecordList, useResource, toResourceId, type RecordMeta } from '~/components/resources'
 import { isCustomResource, type ResourceField } from '@auxx/lib/resources/client'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 
@@ -264,8 +263,7 @@ export function EntityRecordsContent() {
 
   // Custom field value syncer - reads from store for reactive updates
   const { getValue, isValueLoading } = useCustomFieldValueSyncer({
-    resourceType: 'entity',
-    entityDefId: entityDefinitionId,
+    entityDefinitionId,
     rowIds,
     columnVisibility,
     customFieldColumnIds,
@@ -356,8 +354,7 @@ export function EntityRecordsContent() {
         size: field.fieldType === 'RELATIONSHIP' ? 180 : 150,
         cell: ({ row }) => (
           <CustomFieldCell
-            resourceType="entity"
-            entityDefId={entityDefinitionId!}
+            entityDefinitionId={entityDefinitionId!}
             rowId={row.original.id}
             fieldId={field.id}
             fieldType={field.fieldType!}
@@ -404,8 +401,7 @@ export function EntityRecordsContent() {
           size: 300,
           cell: ({ row }) => (
             <PrimaryFieldCell
-              resourceType="entity"
-              entityDefId={entityDefinitionId!}
+              entityDefinitionId={entityDefinitionId!}
               rowId={row.original.id}
               fieldId={primaryField.id}
               fieldType={primaryField.fieldType!}
@@ -488,7 +484,7 @@ export function EntityRecordsContent() {
   /**
    * Cell selection configuration for inline editing
    * Uses getValue from syncer for consistent value reads
-   * Uses getStoreConfig for optimistic updates via PropertyProvider
+   * Uses getResourceId for optimistic updates via PropertyProvider
    */
   const cellSelectionConfig: CellSelectionConfig = useMemo(
     () => ({
@@ -502,13 +498,8 @@ export function EntityRecordsContent() {
         const fieldId = columnId.replace('field_', '')
         return getValue(rowId, fieldId)
       },
-      // Store config for optimistic updates via PropertyProvider
-      getStoreConfig: (rowId: string): StoreConfig => ({
-        resourceType: 'entity',
-        resourceId: rowId,
-        entityDefId: entityDefinitionId,
-        modelType: ModelTypes.ENTITY,
-      }),
+      // ResourceId for optimistic updates via PropertyProvider
+      getResourceId: (rowId: string) => toResourceId(entityDefinitionId, rowId),
     }),
     [customFields, getValue, entityDefinitionId]
   )

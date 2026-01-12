@@ -23,7 +23,6 @@ import {
 import { CustomFieldCell } from './components/custom-field-cell'
 import type { ExtendedColumnDef } from './types'
 import type { ResourceField } from '@auxx/lib/resources/client'
-import type { ResourceType } from '~/components/resources/store/custom-field-value-store'
 import { mapBaseTypeToFieldType } from '@auxx/lib/workflow-engine/client'
 
 // ─────────────────────────────────────────────────────────────────
@@ -77,10 +76,8 @@ export const getIconForFieldType = (fieldType: string) => {
 
 /** Options for creating custom field columns */
 export interface CustomFieldColumnOptions {
-  /** Resource type for store subscription */
-  resourceType: ResourceType
-  /** Entity definition ID (required for 'entity' resourceType) */
-  entityDefId?: string
+  /** Entity definition ID (e.g., 'contact', 'ticket', or custom entity UUID) */
+  entityDefinitionId: string
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -93,28 +90,28 @@ export interface CustomFieldColumnOptions {
  * ensuring automatic re-renders when values change.
  *
  * @param fields - Array of ResourceField definitions
- * @param options - resourceType and optional entityDefId for store subscription
+ * @param options - entityDefinitionId for store subscription
  * @returns Array of ExtendedColumnDef columns
  *
  * @example
  * ```tsx
  * // Syncer still triggers batch fetches for visible columns
  * useCustomFieldValueSyncer({
- *   resourceType: 'contact',
+ *   entityDefinitionId: 'contact',
  *   rowIds: contacts.map(c => c.id),
  *   columnVisibility,
  *   customFieldColumnIds: fields.map(f => `customField_${f.id}`),
  * })
  *
  * // Cells subscribe directly to store - no getValue/isValueLoading needed
- * const columns = createCustomFieldColumns<Contact>(fields, { resourceType: 'contact' })
+ * const columns = createCustomFieldColumns<Contact>(fields, { entityDefinitionId: 'contact' })
  * ```
  */
 export function createCustomFieldColumns<T extends { id: string }>(
   fields: ResourceField[],
   options: CustomFieldColumnOptions
 ): ExtendedColumnDef<T>[] {
-  const { resourceType, entityDefId } = options
+  const { entityDefinitionId } = options
 
   return fields
     .filter((f) => f.id) // Only fields with IDs (custom fields)
@@ -146,8 +143,7 @@ export function createCustomFieldColumns<T extends { id: string }>(
         size: 150,
         cell: ({ row }) => (
           <CustomFieldCell
-            resourceType={resourceType}
-            entityDefId={entityDefId}
+            entityDefinitionId={entityDefinitionId}
             rowId={row.original.id}
             fieldId={fieldId}
             fieldType={fieldType}

@@ -3,7 +3,8 @@
 import { useCallback } from 'react'
 import {
   useCustomFieldValueStore,
-  type ResourceType,
+  toResourceId,
+  type ResourceId,
 } from '~/components/resources/store/custom-field-value-store'
 
 /**
@@ -14,15 +15,16 @@ export function useCustomFieldInvalidation() {
   const invalidateResource = useCustomFieldValueStore((s) => s.invalidateResource)
   const invalidateResources = useCustomFieldValueStore((s) => s.invalidateResources)
   const invalidateField = useCustomFieldValueStore((s) => s.invalidateField)
-  const invalidateResourceType = useCustomFieldValueStore((s) => s.invalidateResourceType)
+  const invalidateByDefinition = useCustomFieldValueStore((s) => s.invalidateByDefinition)
 
   /**
    * Invalidate after updating a single entity's field values.
    * Call this in your setValue mutation's success handler.
    */
   const onValueUpdated = useCallback(
-    (resourceType: ResourceType, resourceId: string, entityDefId?: string) => {
-      invalidateResource(resourceType, resourceId, entityDefId)
+    (entityDefinitionId: string, entityInstanceId: string) => {
+      const resourceId = toResourceId(entityDefinitionId, entityInstanceId)
+      invalidateResource(resourceId)
     },
     [invalidateResource]
   )
@@ -32,8 +34,9 @@ export function useCustomFieldInvalidation() {
    * Call this after bulk operations complete.
    */
   const onBulkValuesUpdated = useCallback(
-    (resourceType: ResourceType, resourceIds: string[], entityDefId?: string) => {
-      invalidateResources(resourceType, resourceIds, entityDefId)
+    (entityDefinitionId: string, entityInstanceIds: string[]) => {
+      const resourceIds = entityInstanceIds.map((id) => toResourceId(entityDefinitionId, id))
+      invalidateResources(resourceIds)
     },
     [invalidateResources]
   )
@@ -50,20 +53,20 @@ export function useCustomFieldInvalidation() {
   )
 
   /**
-   * Invalidate all values for a resource type.
+   * Invalidate all values for an entity definition.
    * Use sparingly - e.g., after major data imports.
    */
-  const onResourceTypeInvalidated = useCallback(
-    (resourceType: ResourceType, entityDefId?: string) => {
-      invalidateResourceType(resourceType, entityDefId)
+  const onEntityDefinitionInvalidated = useCallback(
+    (entityDefinitionId: string) => {
+      invalidateByDefinition(entityDefinitionId)
     },
-    [invalidateResourceType]
+    [invalidateByDefinition]
   )
 
   return {
     onValueUpdated,
     onBulkValuesUpdated,
     onFieldDefinitionChanged,
-    onResourceTypeInvalidated,
+    onEntityDefinitionInvalidated,
   }
 }

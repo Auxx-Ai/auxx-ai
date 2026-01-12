@@ -67,8 +67,7 @@ export function EntityInstanceDialog({
 
   // Get values from store for edit mode
   const { getValue } = useCustomFieldValueSyncer({
-    resourceType: 'entity',
-    entityDefId: entityDefinitionId,
+    entityDefinitionId,
     rowIds: editingInstanceId ? [editingInstanceId] : [],
     customFieldColumnIds,
     columnVisibility: {},
@@ -149,9 +148,7 @@ export function EntityInstanceDialog({
 
   // Save field values with Zustand store sync
   const { saveMultipleAsync, isPending: isSavingFields } = useSaveFieldValue({
-    resourceType: 'entity',
-    entityDefId: entityDefinitionId,
-    modelType: 'entity',
+    entityDefinitionId,
     getFieldMetadata,
   })
 

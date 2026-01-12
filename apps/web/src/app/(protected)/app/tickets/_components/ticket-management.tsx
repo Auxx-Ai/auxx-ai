@@ -277,7 +277,7 @@ export function TicketManagement({
     }
 
     const customCols = createCustomFieldColumns<Ticket>(customFields, {
-      resourceType: 'ticket',
+      entityDefinitionId: 'ticket',
     })
 
     // Insert custom fields before the actions column (last column)

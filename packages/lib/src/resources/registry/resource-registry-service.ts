@@ -92,6 +92,7 @@ function toSystemResourceBase(tableId: TableId): Omit<SystemResource, 'fields'> 
 
   return {
     id: entry.id,
+    entityDefinitionId: entry.id,
     type: 'system',
     label: entry.label,
     plural: entry.plural,

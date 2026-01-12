@@ -51,7 +51,7 @@ import {
 import { getFullName, getInitials } from '@auxx/utils'
 import { Avatar, AvatarFallback } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
-import { useRecord } from '~/components/resources'
+import { useRecord, toResourceId } from '~/components/resources'
 import { useTicketMutations } from './use-ticket-mutations'
 import type { Ticket } from './ticket-types'
 import { useRouter } from 'next/navigation'
@@ -186,8 +186,7 @@ export function TicketDetailDrawer({ ticketId, open, onOpenChange }: TicketDetai
 
   // Cache-first: instant if opened from table
   const { record: ticket, isLoading } = useRecord<Ticket>({
-    entityDefinitionId: 'ticket',
-    entityInstanceId: ticketId,
+    resourceId: ticketId ? toResourceId('ticket', ticketId) : null,
     enabled: !!open && !!ticketId,
   })
 
@@ -598,7 +597,7 @@ export function TicketDetailDrawer({ ticketId, open, onOpenChange }: TicketDetai
                 <div className="space-y-1">
                   <h4 className="text-sm ">Information</h4>
 
-                  <EntityFields entityDefinitionId="ticket" entityInstanceId={ticket.id} />
+                  <EntityFields resourceId={toResourceId('ticket', ticket.id)} />
                 </div>
                 <div className="space-y-1">
                   <h4 className="text-sm ">Customer</h4>

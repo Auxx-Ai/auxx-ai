@@ -38,10 +38,11 @@ import type {
 } from '@auxx/types/custom-field'
 import {
   useCustomFieldValueStore,
-  buildValueKey,
-  type ResourceType,
+  buildFieldValueKeyFromParts,
+  type FieldValueKey,
 } from '~/components/resources/store/custom-field-value-store'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
+import { getModelType } from '@auxx/lib/resources/client'
 import { useCustomField } from '~/components/custom-fields/hooks/use-custom-field'
 import { toastError } from '@auxx/ui/components/toast'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
@@ -86,12 +87,8 @@ interface KanbanViewProps<TData extends KanbanRow> {
   /** View-level visibility change (modifies view config, not field options) */
   onColumnVisibilityChange?: (columnId: string, visible: boolean) => void
 
-  /** Resource type for store key building */
-  resourceType: ResourceType
-  /** Entity definition ID (required for 'entity' resourceType) */
-  entityDefinitionId?: string
-  /** Model type for useSaveFieldValue */
-  modelType: ModelType
+  /** Entity definition ID (e.g., 'contact', 'ticket', or custom entity UUID) */
+  entityDefinitionId: string
 
   /** Selected card IDs (controlled mode - state lives in parent) */
   selectedCardIds?: Set<string>
@@ -110,10 +107,8 @@ interface KanbanDragOverlayProps<TData extends KanbanRow> {
     dragWidth?: number
   } | null
   cardFields: CustomField[]
-  /** Resource type for store subscription */
-  resourceType: ResourceType
-  /** Entity definition ID (required for 'entity' resourceType) */
-  entityDefId?: string
+  /** Entity definition ID (e.g., 'contact', 'ticket', or custom entity UUID) */
+  entityDefinitionId: string
   /** Primary field ID for card title */
   primaryFieldId?: string
 }
@@ -125,8 +120,7 @@ interface KanbanDragOverlayProps<TData extends KanbanRow> {
 function KanbanDragOverlay<TData extends KanbanRow>({
   activeItem,
   cardFields,
-  resourceType,
-  entityDefId,
+  entityDefinitionId,
   primaryFieldId,
 }: KanbanDragOverlayProps<TData>) {
   const draggedCards = activeItem?.draggedCards ?? []
@@ -165,8 +159,7 @@ function KanbanDragOverlay<TData extends KanbanRow>({
                   <KanbanCard
                     id={card.id}
                     fields={cardFields}
-                    resourceType={resourceType}
-                    entityDefId={entityDefId}
+                    entityDefinitionId={entityDefinitionId}
                     primaryFieldId={primaryFieldId}
                     editable={false}
                     isDragging
@@ -201,13 +194,13 @@ export function KanbanView<TData extends KanbanRow>({
   // View-level callback (modifies view config, not field options)
   onColumnVisibilityChange,
   // Self-contained props
-  resourceType,
   entityDefinitionId,
-  modelType,
   // Controlled selection (optional - falls back to internal state)
   selectedCardIds: controlledSelectedCardIds,
   onSelectedCardIdsChange,
 }: KanbanViewProps<TData>) {
+  // Derive modelType from entityDefinitionId
+  const modelType = getModelType(entityDefinitionId)
   const [activeItem, setActiveItem] = useState<{
     type: KanbanDragItemType
     id: string
@@ -234,10 +227,10 @@ export function KanbanView<TData extends KanbanRow>({
   // Create reactive getValue from store
   const getValue = useCallback(
     (rowId: string, fieldId: string): unknown => {
-      const key = buildValueKey(resourceType, rowId, fieldId, entityDefinitionId)
+      const key = buildFieldValueKeyFromParts(entityDefinitionId, rowId, fieldId)
       return storeValues[key]
     },
-    [storeValues, resourceType, entityDefinitionId]
+    [storeValues, entityDefinitionId]
   )
 
   // Field metadata provider for relationship sync (required by hook, but kanban only changes SINGLE_SELECT)
@@ -261,9 +254,7 @@ export function KanbanView<TData extends KanbanRow>({
 
   // useSaveFieldValue for internal card moves with optimistic updates
   const { saveBulkValues } = useSaveFieldValue({
-    resourceType,
-    entityDefId: entityDefinitionId,
-    modelType,
+    entityDefinitionId,
     getFieldMetadata,
   })
 
@@ -669,8 +660,7 @@ export function KanbanView<TData extends KanbanRow>({
                     id={card.id}
                     fields={cardFields}
                     updatedAt={card.updatedAt}
-                    resourceType={resourceType}
-                    entityDefId={entityDefinitionId}
+                    entityDefinitionId={entityDefinitionId}
                     primaryFieldId={primaryFieldId}
                     onClick={cardClickHandlers.get(card.id)}
                     isSelected={selectedCardIds.has(card.id)}
@@ -714,8 +704,7 @@ export function KanbanView<TData extends KanbanRow>({
                       id={card.id}
                       fields={cardFields}
                       updatedAt={card.updatedAt}
-                      resourceType={resourceType}
-                      entityDefId={entityDefinitionId}
+                      entityDefinitionId={entityDefinitionId}
                       primaryFieldId={primaryFieldId}
                       onClick={cardClickHandlers.get(card.id)}
                       isSelected={selectedCardIds.has(card.id)}
@@ -747,8 +736,7 @@ export function KanbanView<TData extends KanbanRow>({
         <KanbanDragOverlay
           activeItem={activeItem}
           cardFields={cardFields}
-          resourceType={resourceType}
-          entityDefId={entityDefinitionId}
+          entityDefinitionId={entityDefinitionId}
           primaryFieldId={primaryFieldId}
         />
       </DndContext>

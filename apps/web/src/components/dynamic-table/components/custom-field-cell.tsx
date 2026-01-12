@@ -8,15 +8,13 @@ import { FormattedCell, CellPadding } from './formatted-cell'
 import {
   useCustomFieldValue,
   useCustomFieldValueLoading,
-  type ResourceType,
+  toResourceId,
 } from '~/components/resources/store/custom-field-value-store'
 import { useResource } from '~/components/resources'
 
 interface CustomFieldCellProps {
-  /** Resource type for store subscription */
-  resourceType: ResourceType
-  /** Entity definition ID (required for 'entity' resourceType) */
-  entityDefId?: string
+  /** Entity definition ID (e.g., 'contact', 'ticket', or custom entity UUID) */
+  entityDefinitionId: string
   /** Row ID to look up value */
   rowId: string
   /** Field ID to look up value */
@@ -37,22 +35,22 @@ interface CustomFieldCellProps {
  * This bypasses row memoization issues by subscribing directly to data sources.
  */
 export const CustomFieldCell = memo(function CustomFieldCell({
-  resourceType,
-  entityDefId,
+  entityDefinitionId,
   rowId,
   fieldId,
   fieldType,
   columnId,
   options: propOptions,
 }: CustomFieldCellProps) {
+  // Build resourceId for store lookups
+  const resourceId = toResourceId(entityDefinitionId, rowId)
+
   // Direct store subscription - triggers re-render when value changes
-  const value = useCustomFieldValue(resourceType, rowId, fieldId, entityDefId)
-  const isLoading = useCustomFieldValueLoading(resourceType, rowId, fieldId, entityDefId)
+  const value = useCustomFieldValue(resourceId, fieldId)
+  const isLoading = useCustomFieldValueLoading(resourceId, fieldId)
 
   // Direct resource subscription - triggers re-render when field options change
-  // Use entityDefId for custom entities, resourceType for system resources
-  const resourceId = entityDefId || resourceType
-  const { resource } = useResource(resourceId)
+  const { resource } = useResource(entityDefinitionId)
 
   // Get field options from resource (reactive) with prop fallback
   const options = useMemo(() => {

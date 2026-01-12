@@ -7,6 +7,7 @@ import { Button } from '@auxx/ui/components/button'
 import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import EntityFields from '~/components/fields/entity-fields'
+import { toResourceId } from '~/components/resources'
 import { InventoryDialog } from './inventory-dialog'
 import type { RouterOutputs } from '~/trpc/react'
 
@@ -42,7 +43,7 @@ export function PartsDrawerOverview({ partId, part, isLoading }: PartsDrawerOver
   return (
     <>
       {/* Part Fields using EntityFields */}
-      <EntityFields entityDefinitionId="part" entityInstanceId={part.id} className="m-4" />
+      <EntityFields resourceId={toResourceId('part', part.id)} className="m-4" />
 
       {/* Inventory Section */}
       <Section

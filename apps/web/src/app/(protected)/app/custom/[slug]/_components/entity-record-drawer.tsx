@@ -226,8 +226,7 @@ export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
                       icon={<Gauge className="size-4 text-muted-foreground/50" />}>
                       {resource && entityDefinitionId && entityInstanceId && (
                         <EntityFields
-                          entityDefinitionId={entityDefinitionId}
-                          entityInstanceId={entityInstanceId}
+                          resourceId={toResourceId(entityDefinitionId, entityInstanceId)}
                           preloadedFields={customFields}
                           onMutationSuccess={onMutationSuccess}
                           className=""

@@ -12,28 +12,19 @@ import {
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { getSmartSortPositions } from '@auxx/utils'
 import { FieldNavigationProvider } from './field-navigation-context'
-import { ModelTypes, type ModelType } from '@auxx/types/custom-field'
 import { useCustomField } from '~/components/custom-fields/hooks/use-custom-field'
 import { useConfirm } from '~/hooks/use-confirm'
 import { EntityFieldsContent } from './entity-fields-content'
-import { useResource, useRecord, useRecordHydration, toResourceId } from '~/components/resources'
-import type { ResourceField } from '@auxx/lib/resources/client'
-import { sortFieldsForDisplay, isSystemResourceId } from '@auxx/lib/resources/client'
-import {
-  type ResourceType,
-  type StoredFieldValue,
-} from '~/components/resources/store/custom-field-value-store'
-import type { StoreConfig } from './property-provider'
+import { useResource, useRecord, useRecordHydration } from '~/components/resources'
+import { parseResourceId, sortFieldsForDisplay, type ResourceField, type ResourceId } from '@auxx/lib/resources/client'
 import { useDynamicFieldOptions } from './hooks/use-dynamic-field-options'
 
 /**
  * Props for EntityFields component
  */
 interface EntityFieldsProps {
-  /** Entity definition ID - system resource (e.g. 'contact') or custom entity UUID */
-  entityDefinitionId: string
-  /** The specific instance ID within that entity type */
-  entityInstanceId: string
+  /** ResourceId in format "entityDefinitionId:entityInstanceId" */
+  resourceId: ResourceId
   /** Pre-loaded custom fields (avoids refetch for entity instances) */
   preloadedFields?: any[]
   /** Callback after successful mutation (e.g., to refetch parent data) */
@@ -50,24 +41,15 @@ interface EntityFieldsProps {
  * with proper isSystem, showInPanel, and systemSortOrder properties.
  */
 function EntityFields({
-  entityDefinitionId,
-  entityInstanceId,
+  resourceId,
   preloadedFields,
   onMutationSuccess,
   className,
 }: EntityFieldsProps) {
-  // Derive modelType from entityDefinitionId
-  // System resources use their ID as modelType, custom entities use 'entity'
-  const isSystemResource = isSystemResourceId(entityDefinitionId)
-  const modelType: ModelType = isSystemResource ? (entityDefinitionId as ModelType) : 'entity'
-
-  // Determine resource type for store
-  const resourceType: ResourceType = isSystemResource
-    ? (entityDefinitionId as ResourceType)
-    : 'entity'
+  // Parse resourceId to get components
+  const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
 
   // State management
-  // const [fieldValues] = useState<Record<string, { valueId?: string; value: StoredFieldValue }>>({})
   const closeHandlersRef = useRef<Record<string, () => void>>({})
   const openProviderIdRef = useRef<string | null>(null)
 
@@ -102,14 +84,14 @@ function EntityFields({
 
   // Fetch record data (uses cache from list view, fetches if needed)
   const { record, isLoading: recordLoading } = useRecord({
-    resourceId: entityInstanceId ? toResourceId(entityDefinitionId, entityInstanceId) : null,
-    enabled: !!entityInstanceId && !!resource,
+    resourceId,
+    enabled: !!resource,
   })
 
   // Hydrate field values into the store when data changes
   useRecordHydration({
     resource,
-    recordId: entityInstanceId,
+    resourceId,
     recordData: record as Record<string, unknown> | undefined,
     enabled: !!record && !!resource,
   })
@@ -251,26 +233,7 @@ function EntityFields({
     return !field.isSystem && field.capabilities.updatable !== false
   }
 
-  // ─────────────────────────────────────────────────────────────────
-  // STORE CONFIG
-  // ─────────────────────────────────────────────────────────────────
-
-  const storeConfig: StoreConfig | undefined = useMemo(() => {
-    if (!entityInstanceId) return undefined
-    return {
-      resourceType,
-      resourceId: entityInstanceId,
-      entityDefId: isSystemResource ? undefined : entityDefinitionId,
-      modelType,
-    }
-  }, [resourceType, entityInstanceId, entityDefinitionId, isSystemResource, modelType])
-
   const isLoading = resourceLoading || optionsLoading || recordLoading
-
-  // Don't render until we have store config (requires entityId)
-  if (!storeConfig) {
-    return null
-  }
 
   return (
     <FieldNavigationProvider>
@@ -287,7 +250,6 @@ function EntityFields({
         sensors={sensors}
         handleDragEnd={handleDragEnd}
         fields={sortedFields}
-        // fieldValues={fieldValues}
         isLoading={isLoading}
         isSortable={isSortable}
         handleDeleteField={handleDeleteField}
@@ -297,7 +259,7 @@ function EntityFields({
         registerProviderClose={registerProviderClose}
         unregisterProviderClose={unregisterProviderClose}
         ConfirmDeleteDialog={ConfirmDeleteDialog}
-        storeConfig={storeConfig}
+        resourceId={resourceId}
       />
     </FieldNavigationProvider>
   )

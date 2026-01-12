@@ -4,17 +4,17 @@ import { useCallback } from 'react'
 import { api } from '~/trpc/react'
 import {
   useCustomFieldValueStore,
-  buildValueKey,
-  type ResourceType,
+  buildFieldValueKeyFromParts,
+  type FieldValueKey,
   type StoredFieldValue,
 } from '~/components/resources/store/custom-field-value-store'
+import { getModelType } from '@auxx/lib/resources/client'
 import { toastError } from '@auxx/ui/components/toast'
 import {
   formatToTypedInput,
   formatToRawValue,
   isArrayReturnFieldType,
 } from '@auxx/lib/field-values/client'
-import type { ModelType } from '@auxx/types/custom-field'
 import {
   useRelationshipSync,
   extractRelatedIds,
@@ -37,11 +37,10 @@ interface FieldMetadata {
 }
 
 interface UseSaveFieldValueOptions {
-  resourceType: ResourceType
-  /** Default resourceId - can be overridden per-call */
+  /** Entity definition ID (e.g., 'contact', 'ticket', or a custom entity UUID) */
+  entityDefinitionId: string
+  /** Default resourceId (entity instance ID) - can be overridden per-call */
   resourceId?: string
-  entityDefId?: string
-  modelType: ModelType
   /** Optional callback after successful save */
   onSuccess?: () => void
   /** Optional field metadata provider for relationship sync */
@@ -54,14 +53,10 @@ interface UseSaveFieldValueOptions {
  * Automatically rolls back on error.
  */
 export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
-  const {
-    resourceType,
-    resourceId: defaultResourceId,
-    entityDefId,
-    modelType,
-    onSuccess,
-    getFieldMetadata,
-  } = options
+  const { entityDefinitionId, resourceId: defaultResourceId, onSuccess, getFieldMetadata } = options
+
+  // Derive modelType from entityDefinitionId
+  const modelType = getModelType(entityDefinitionId)
 
   // Get store actions
   const setValue = useCustomFieldValueStore((s) => s.setValue)
@@ -111,7 +106,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
       value: StoredFieldValue | unknown,
       fieldType: FieldType
     ): void => {
-      const key = buildValueKey(resourceType, resourceId, fieldId, entityDefId)
+      const key = buildFieldValueKeyFromParts(entityDefinitionId, resourceId, fieldId)
       const store = useCustomFieldValueStore.getState()
 
       // Capture old value for relationship sync rollback
@@ -129,7 +124,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
       let oldIds: string[] = []
       let newIds: string[] = []
 
-      if (fieldType === 'RELATIONSHIP' && entityDefId) {
+      if (fieldType === 'RELATIONSHIP' && entityDefinitionId) {
         const metadata = getFieldMetadata?.(fieldId)
         const rel = metadata?.relationship
 
@@ -141,7 +136,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
           inverseInfo = {
             inverseFieldId: rel.inverseFieldId,
             inverseRelationshipType: getInverseCardinality(rel.relationshipType),
-            sourceEntityDefinitionId: entityDefId,
+            sourceEntityDefinitionId: entityDefinitionId,
             targetEntityDefId: rel.relatedEntityDefinitionId,
             sourceFieldId: fieldId,
           }
@@ -219,8 +214,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
       )
     },
     [
-      resourceType,
-      entityDefId,
+      entityDefinitionId,
       modelType,
       mutation,
       setValueOptimistic,
@@ -268,7 +262,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
       value: StoredFieldValue | unknown,
       fieldType: FieldType
     ): Promise<{ success: boolean; id?: string } | undefined> => {
-      const key = buildValueKey(resourceType, resourceId, fieldId, entityDefId)
+      const key = buildFieldValueKeyFromParts(entityDefinitionId, resourceId, fieldId)
       const store = useCustomFieldValueStore.getState()
 
       // Capture old value for relationship sync rollback
@@ -286,7 +280,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
       let oldIds: string[] = []
       let newIds: string[] = []
 
-      if (fieldType === 'RELATIONSHIP' && entityDefId) {
+      if (fieldType === 'RELATIONSHIP' && entityDefinitionId) {
         const metadata = getFieldMetadata?.(fieldId)
         const rel = metadata?.relationship
 
@@ -298,7 +292,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
           inverseInfo = {
             inverseFieldId: rel.inverseFieldId,
             inverseRelationshipType: getInverseCardinality(rel.relationshipType),
-            sourceEntityDefinitionId: entityDefId,
+            sourceEntityDefinitionId: entityDefinitionId,
             targetEntityDefId: rel.relatedEntityDefinitionId,
             sourceFieldId: fieldId,
           }
@@ -376,8 +370,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
       }
     },
     [
-      resourceType,
-      entityDefId,
+      entityDefinitionId,
       modelType,
       mutation,
       setValueOptimistic,
@@ -430,7 +423,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
       // Build keys, capture versions, and apply optimistic updates
       const keyVersions: Array<{ key: string; version: number }> = []
       for (const { fieldId, value, fieldType } of fieldValues) {
-        const key = buildValueKey(resourceType, resourceId, fieldId, entityDefId)
+        const key = buildFieldValueKeyFromParts(entityDefinitionId, resourceId, fieldId)
         const version = store.incrementMutationVersion(key)
         keyVersions.push({ key, version })
         const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
@@ -478,8 +471,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
       )
     },
     [
-      resourceType,
-      entityDefId,
+      entityDefinitionId,
       modelType,
       bulkMutation,
       setValueOptimistic,
@@ -506,7 +498,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
       // Build keys, capture versions, and apply optimistic updates
       const keyVersions: Array<{ key: string; version: number }> = []
       for (const { fieldId, value, fieldType } of fieldValues) {
-        const key = buildValueKey(resourceType, resourceId, fieldId, entityDefId)
+        const key = buildFieldValueKeyFromParts(entityDefinitionId, resourceId, fieldId)
         const version = store.incrementMutationVersion(key)
         keyVersions.push({ key, version })
         const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
@@ -552,8 +544,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
       }
     },
     [
-      resourceType,
-      entityDefId,
+      entityDefinitionId,
       modelType,
       bulkMutation,
       setValueOptimistic,
@@ -618,10 +609,10 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
       const store = useCustomFieldValueStore.getState()
 
       // Build keys, capture versions, and apply optimistic updates
-      const keyVersions: Array<{ key: string; version: number }> = []
+      const keyVersions: Array<{ key: FieldValueKey; version: number }> = []
       const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
       for (const id of resourceIds) {
-        const key = buildValueKey(resourceType, id, fieldId, entityDefId)
+        const key = buildFieldValueKeyFromParts(entityDefinitionId, id, fieldId)
         const version = store.incrementMutationVersion(key)
         keyVersions.push({ key, version })
         setValueOptimistic(key, typedValue)
@@ -663,8 +654,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
       )
     },
     [
-      resourceType,
-      entityDefId,
+      entityDefinitionId,
       modelType,
       bulkMutation,
       setValueOptimistic,
@@ -692,7 +682,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
       const keyVersions: Array<{ key: string; version: number }> = []
       for (const resourceId of resourceIds) {
         for (const { fieldId, value, fieldType } of fieldValues) {
-          const key = buildValueKey(resourceType, resourceId, fieldId, entityDefId)
+          const key = buildFieldValueKeyFromParts(entityDefinitionId, resourceId, fieldId)
           const version = store.incrementMutationVersion(key)
           keyVersions.push({ key, version })
           const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
@@ -741,8 +731,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
       )
     },
     [
-      resourceType,
-      entityDefId,
+      entityDefinitionId,
       modelType,
       bulkMutation,
       setValueOptimistic,

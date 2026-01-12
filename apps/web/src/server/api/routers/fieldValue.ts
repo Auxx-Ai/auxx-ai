@@ -136,15 +136,14 @@ export const fieldValueRouter = createTRPCRouter({
     }),
 
   /**
-   * Batch get values for syncer
-   * Returns TypedFieldValue directly (no legacy wrapper)
+   * Batch get values for syncer.
+   * Uses ResourceId format (entityDefinitionId:entityInstanceId).
+   * Returns TypedFieldValue directly (no legacy wrapper).
    */
   batchGet: protectedProcedure
     .input(
       z.object({
-        resourceType: z.enum(['contact', 'ticket', 'entity']),
-        entityDefId: z.string().optional(),
-        resourceIds: z.array(z.string()).max(500),
+        resourceIds: z.array(z.string()).max(500), // ResourceId format
         fieldIds: z.array(z.string()).max(50),
       })
     )
@@ -155,9 +154,7 @@ export const fieldValueRouter = createTRPCRouter({
         ctx.db
       )
       return await service.batchGetValues({
-        resourceType: input.resourceType,
-        entityDefId: input.entityDefId,
-        resourceIds: input.resourceIds,
+        resourceIds: input.resourceIds as any, // Cast to ResourceId[]
         fieldIds: input.fieldIds,
       })
     }),

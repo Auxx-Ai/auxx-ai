@@ -5,7 +5,7 @@ import { memo, useState, useCallback, useRef } from 'react'
 import {
   useCustomFieldValue,
   useCustomFieldValueLoading,
-  type ResourceType,
+  toResourceId,
 } from '~/components/resources/store/custom-field-value-store'
 import { renderCellValue, type CellConfig } from '~/components/dynamic-table'
 import { CellFieldEditor } from '~/components/dynamic-table/components/cell-field-editor'
@@ -21,10 +21,8 @@ import type { CustomField } from '~/components/dynamic-table/types'
  * Props for KanbanCardField component
  */
 interface KanbanCardFieldProps {
-  /** Resource type for store subscription */
-  resourceType: ResourceType
-  /** Entity definition ID (required for 'entity' resourceType) */
-  entityDefId?: string
+  /** Entity definition ID (e.g., 'contact', 'ticket', or custom entity UUID) */
+  entityDefinitionId: string
   /** Row/record ID */
   rowId: string
   /** Full field definition (includes options for rendering) */
@@ -41,16 +39,18 @@ interface KanbanCardFieldProps {
  * Supports inline editing via CellFieldEditor using cellSelectionConfig from context.
  */
 export const KanbanCardField = memo(function KanbanCardField({
-  resourceType,
-  entityDefId,
+  entityDefinitionId,
   rowId,
   field,
   editable = true,
   className,
 }: KanbanCardFieldProps) {
+  // Build resourceId for store lookups
+  const resourceId = toResourceId(entityDefinitionId, rowId)
+
   // Direct store subscription - triggers re-render when value changes
-  const value = useCustomFieldValue(resourceType, rowId, field.id, entityDefId)
-  const isLoading = useCustomFieldValueLoading(resourceType, rowId, field.id, entityDefId)
+  const value = useCustomFieldValue(resourceId, field.id)
+  const isLoading = useCustomFieldValueLoading(resourceId, field.id)
 
   // Get cellSelectionConfig from context (same config used by table)
   const cellSelectionContext = useCellSelectionOptional()

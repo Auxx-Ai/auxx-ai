@@ -4,6 +4,8 @@ import { useMemo } from 'react'
 import {
   useResourceFieldValues,
   type StoredFieldValue,
+  parseResourceId,
+  type ResourceId,
 } from '~/components/resources/store/custom-field-value-store'
 import { useResourceFields } from './use-resource-fields'
 
@@ -18,10 +20,8 @@ interface PreloadedValue {
 }
 
 interface UseEntityValuesOptions {
-  /** Entity definition ID (used as resourceId to get fields) */
-  entityDefinitionId: string | undefined
-  /** Entity instance ID */
-  instanceId: string | undefined
+  /** ResourceId in format "entityDefinitionId:entityInstanceId" */
+  resourceId: ResourceId | null | undefined
 }
 
 interface UseEntityValuesResult {
@@ -39,9 +39,13 @@ interface UseEntityValuesResult {
  * Returns values in the format expected by EntityFields.preloadedValues.
  */
 export function useEntityValues({
-  entityDefinitionId,
-  instanceId,
+  resourceId,
 }: UseEntityValuesOptions): UseEntityValuesResult {
+  // Parse resourceId to get components
+  const { entityDefinitionId, entityInstanceId } = resourceId
+    ? parseResourceId(resourceId)
+    : { entityDefinitionId: undefined, entityInstanceId: undefined }
+
   // Get fields for this entity definition
   const { fields, isLoading } = useResourceFields(entityDefinitionId ?? null)
 
@@ -57,12 +61,10 @@ export function useEntityValues({
     return ids.length > 0 ? ids : EMPTY_FIELD_IDS
   }, [fieldIdsKey])
 
-  // Get field values from store
+  // Get field values from store using ResourceId directly
   const rawFieldValues = useResourceFieldValues(
-    'entity',
-    instanceId ?? '',
-    activeFieldIds,
-    entityDefinitionId
+    resourceId ?? ('' as ResourceId),
+    activeFieldIds
   )
 
   // Stabilize fieldValues - only change when actual content changes
@@ -71,14 +73,14 @@ export function useEntityValues({
 
   // Transform to preloadedValues format
   const preloadedValues = useMemo(() => {
-    if (!instanceId || !activeFieldIds.length) return []
+    if (!entityInstanceId || !activeFieldIds.length) return []
 
     return activeFieldIds.map((fieldId) => ({
-      id: `${instanceId}_${fieldId}`,
+      id: `${entityInstanceId}_${fieldId}`,
       fieldId,
       value: fieldValues[fieldId] ?? null,
     }))
-  }, [instanceId, activeFieldIds, fieldValues])
+  }, [entityInstanceId, activeFieldIds, fieldValues])
 
   return {
     preloadedValues,

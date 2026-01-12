@@ -1,6 +1,7 @@
 // packages/lib/src/resources/resource-id.ts
 
 import type { ResourceId } from '@auxx/types/resource'
+import { ModelTypeValues, type ModelType } from '@auxx/database/enums'
 
 /**
  * Create a ResourceId from entityDefinitionId and entityInstanceId.
@@ -53,4 +54,20 @@ export function getInstanceId(resourceId: ResourceId): string {
  */
 export function getDefinitionId(resourceId: ResourceId): string {
   return parseResourceId(resourceId).entityDefinitionId
+}
+
+/**
+ * Check if an entityDefinitionId is a system ModelType.
+ */
+export function isSystemModelType(entityDefinitionId: string): entityDefinitionId is ModelType {
+  return (ModelTypeValues as readonly string[]).includes(entityDefinitionId)
+}
+
+/**
+ * Derive ModelType from entityDefinitionId.
+ * If entityDefinitionId is a known system ModelType, return it.
+ * Otherwise (custom entity UUID), return 'entity'.
+ */
+export function getModelType(entityDefinitionId: string): ModelType {
+  return isSystemModelType(entityDefinitionId) ? entityDefinitionId : 'entity'
 }

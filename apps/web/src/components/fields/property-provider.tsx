@@ -11,13 +11,13 @@ import {
 } from 'react'
 import {
   useCustomFieldValueStore,
-  buildValueKey,
-  type ResourceType,
+  buildFieldValueKey,
+  type FieldValueKey,
   type StoredFieldValue,
 } from '~/components/resources/store/custom-field-value-store'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
-import type { ModelType } from '@auxx/types/custom-field'
+import { parseResourceId, type ResourceId } from '@auxx/lib/resources/client'
 import type { FieldType } from '@auxx/database/types'
 /**
  * property-provider.tsx
@@ -100,14 +100,6 @@ interface PropertyContextValue {
 
 const PropertyContext = createContext<PropertyContextValue | undefined>(undefined)
 
-/** Store configuration for bi-directional sync with table */
-export interface StoreConfig {
-  resourceType: ResourceType
-  resourceId: string
-  entityDefId?: string
-  modelType: ModelType
-}
-
 interface PropertyProviderProps {
   field: any
   value?: any
@@ -116,8 +108,8 @@ interface PropertyProviderProps {
   onOpenChange?: (providerId: string, isOpen: boolean) => void
   registerClose?: (providerId: string, closeFn: () => void) => void
   unregisterClose?: (providerId: string) => void
-  /** Store configuration for bi-directional sync with table (required for saving) */
-  storeConfig: StoreConfig
+  /** ResourceId in format "entityDefinitionId:entityInstanceId" (required for saving) */
+  resourceId: ResourceId
   children: ReactNode
 }
 
@@ -196,17 +188,15 @@ export function PropertyProvider({
   onOpenChange,
   registerClose,
   unregisterClose,
-  storeConfig,
+  resourceId,
   children,
 }: PropertyProviderProps) {
+  // Parse resourceId to get components
+  const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+
   // ─── Store Integration ───
-  // Get value from store
-  const storeKey = buildValueKey(
-    storeConfig.resourceType,
-    storeConfig.resourceId,
-    field.id,
-    storeConfig.entityDefId
-  )
+  // Get value from store using ResourceId directly
+  const storeKey = buildFieldValueKey(resourceId, field.id)
   const storeValue = useCustomFieldValueStore((s) => s.values[storeKey])
 
   // Field metadata provider for relationship sync
@@ -222,16 +212,14 @@ export function PropertyProvider({
     [field]
   )
 
-  // Use store save hook
+  // Use store save hook (still uses instance ID internally)
   const {
     saveFieldValue: storeSave,
     saveFieldValueAsync: storeSaveAsync,
     isPending: isSaving,
   } = useSaveFieldValue({
-    resourceType: storeConfig.resourceType,
-    resourceId: storeConfig.resourceId,
-    entityDefId: storeConfig.entityDefId,
-    modelType: storeConfig.modelType,
+    entityDefinitionId,
+    resourceId: entityInstanceId,
     getFieldMetadata,
   })
 

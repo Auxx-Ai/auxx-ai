@@ -5,12 +5,10 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { useShallow } from 'zustand/react/shallow'
 import type { TypedFieldValue } from '@auxx/types/field-value'
+import { toResourceId, parseResourceId, type ResourceId } from '@auxx/lib/resources/client'
 
-/** Resource types that support custom fields */
-export type ResourceType = 'contact' | 'ticket' | 'entity'
-
-/** Key format: `${resourceType}:${entityDefId?}:${resourceId}:${fieldId}` */
-export type ValueKey = string
+/** Branded string type for field value cache keys */
+export type FieldValueKey = string & { readonly __brand: 'FieldValueKey' }
 
 /**
  * Stored value type - can be:
@@ -35,41 +33,41 @@ interface PendingUpdate {
 
 interface CustomFieldValueState {
   /** Cached values by composite key (use Record for Zustand reactivity) */
-  values: Record<ValueKey, StoredFieldValue>
+  values: Record<FieldValueKey, StoredFieldValue>
 
   /** Keys currently being fetched (for dedup) - keyed by batch ID */
   loadingBatches: Record<string, LoadingBatch>
 
   /** Timestamp of last update per key (for staleness checks) */
-  updatedAt: Record<ValueKey, number>
+  updatedAt: Record<FieldValueKey, number>
 
   /** Pending optimistic updates (key → {newValue, originalValue}) */
-  pendingUpdates: Record<ValueKey, PendingUpdate>
+  pendingUpdates: Record<FieldValueKey, PendingUpdate>
 
   /** Mutation version per key - incremented on each mutation initiation for race condition handling */
-  mutationVersions: Record<ValueKey, number>
+  mutationVersions: Record<FieldValueKey, number>
 
   // ─────────────────────────────────────────────────────────────────
   // SETTERS
   // ─────────────────────────────────────────────────────────────────
 
   /** Set multiple values (batch update from API) */
-  setValues: (entries: Array<{ key: ValueKey; value: StoredFieldValue }>) => void
+  setValues: (entries: Array<{ key: FieldValueKey; value: StoredFieldValue }>) => void
 
   /** Set a single value (optimistic update on save) */
-  setValue: (key: ValueKey, value: StoredFieldValue) => void
+  setValue: (key: FieldValueKey, value: StoredFieldValue) => void
 
   /** Set value optimistically (stores original for rollback) */
-  setValueOptimistic: (key: ValueKey, newValue: StoredFieldValue) => void
+  setValueOptimistic: (key: FieldValueKey, newValue: StoredFieldValue) => void
 
   /** Confirm optimistic update succeeded */
-  confirmOptimistic: (key: ValueKey) => void
+  confirmOptimistic: (key: FieldValueKey) => void
 
   /** Rollback optimistic update on error */
-  rollbackOptimistic: (key: ValueKey) => void
+  rollbackOptimistic: (key: FieldValueKey) => void
 
   /** Mark a batch of keys as loading */
-  startLoading: (batchId: string, keys: ValueKey[]) => void
+  startLoading: (batchId: string, keys: FieldValueKey[]) => void
 
   /** Clear loading state for a batch */
   finishLoading: (batchId: string) => void
@@ -79,20 +77,16 @@ interface CustomFieldValueState {
   // ─────────────────────────────────────────────────────────────────
 
   /** Invalidate a single resource (after updating a contact/ticket/entity) */
-  invalidateResource: (resourceType: ResourceType, resourceId: string, entityDefId?: string) => void
+  invalidateResource: (resourceId: ResourceId) => void
 
   /** Invalidate a specific field across all resources (after field definition change) */
   invalidateField: (fieldId: string) => void
 
   /** Invalidate multiple resources (after bulk update) */
-  invalidateResources: (
-    resourceType: ResourceType,
-    resourceIds: string[],
-    entityDefId?: string
-  ) => void
+  invalidateResources: (resourceIds: ResourceId[]) => void
 
-  /** Invalidate all values for a resource type (nuclear option) */
-  invalidateResourceType: (resourceType: ResourceType, entityDefId?: string) => void
+  /** Invalidate all values for an entity definition (nuclear option) */
+  invalidateByDefinition: (entityDefinitionId: string) => void
 
   /** Clear everything (on logout, org switch, etc.) */
   clearAll: () => void
@@ -102,72 +96,82 @@ interface CustomFieldValueState {
   // ─────────────────────────────────────────────────────────────────
 
   /** Check if a key is currently being fetched */
-  isKeyLoading: (key: ValueKey) => boolean
+  isKeyLoading: (key: FieldValueKey) => boolean
 
   /** Check if a value exists in cache */
-  hasValue: (key: ValueKey) => boolean
+  hasValue: (key: FieldValueKey) => boolean
 
   // ─────────────────────────────────────────────────────────────────
   // MUTATION VERSION TRACKING (for race condition handling)
   // ─────────────────────────────────────────────────────────────────
 
   /** Increment mutation version for a key, returns the new version */
-  incrementMutationVersion: (key: ValueKey) => number
+  incrementMutationVersion: (key: FieldValueKey) => number
 
   /** Get current mutation version for a key (returns 0 if not set) */
-  getMutationVersion: (key: ValueKey) => number
+  getMutationVersion: (key: FieldValueKey) => number
 }
 
 // ─────────────────────────────────────────────────────────────────
 // KEY HELPERS
 // ─────────────────────────────────────────────────────────────────
 
-/** Build a value key - uses : separator for easier parsing */
-export function buildValueKey(
-  resourceType: ResourceType,
-  resourceId: string,
-  fieldId: string,
-  entityDefId?: string
-): ValueKey {
-  if (resourceType === 'entity' && entityDefId) {
-    return `entity:${entityDefId}:${resourceId}:${fieldId}`
-  }
-  return `${resourceType}::${resourceId}:${fieldId}`
+/**
+ * Build a field value key from ResourceId and fieldId.
+ * Format: `${entityDefinitionId}:${entityInstanceId}:${fieldId}`
+ */
+export function buildFieldValueKey(resourceId: ResourceId, fieldId: string): FieldValueKey {
+  return `${resourceId}:${fieldId}` as FieldValueKey
 }
 
-/** Parse a value key back to components */
-export function parseValueKey(key: ValueKey): {
-  resourceType: ResourceType
-  entityDefId: string | undefined
-  resourceId: string
+/**
+ * Build a field value key from individual components.
+ * Convenience function when you have components but not a ResourceId.
+ */
+export function buildFieldValueKeyFromParts(
+  entityDefinitionId: string,
+  entityInstanceId: string,
+  fieldId: string
+): FieldValueKey {
+  return `${entityDefinitionId}:${entityInstanceId}:${fieldId}` as FieldValueKey
+}
+
+/**
+ * Parse a field value key back to ResourceId and fieldId.
+ * Use parseResourceId() on the returned resourceId if you need entityDefinitionId/entityInstanceId.
+ */
+export function parseFieldValueKey(key: FieldValueKey): {
+  resourceId: ResourceId
   fieldId: string
 } {
-  const [resourceType, entityDefId, resourceId, fieldId] = key.split(':')
+  const parts = key.split(':')
+  if (parts.length < 3) {
+    console.error('[parseFieldValueKey] Malformed key:', key)
+    return {
+      resourceId: key as unknown as ResourceId,
+      fieldId: '',
+    }
+  }
+  const entityDefinitionId = parts[0]!
+  const entityInstanceId = parts[1]!
+  const fieldId = parts.slice(2).join(':') // Handle fieldIds that might contain colons
   return {
-    resourceType: resourceType as ResourceType,
-    entityDefId: entityDefId || undefined,
-    resourceId: resourceId!,
-    fieldId: fieldId!,
+    resourceId: toResourceId(entityDefinitionId, entityInstanceId),
+    fieldId,
   }
 }
 
-/** Check if a key matches a resource */
-export function keyMatchesResource(
-  key: ValueKey,
-  resourceType: ResourceType,
-  resourceId: string,
-  entityDefId?: string
-): boolean {
-  const parsed = parseValueKey(key)
-  return (
-    parsed.resourceType === resourceType &&
-    parsed.resourceId === resourceId &&
-    (resourceType !== 'entity' || parsed.entityDefId === entityDefId)
-  )
+/**
+ * Check if a key matches a resource (any field on that resource).
+ */
+export function fieldValueKeyMatchesResource(key: FieldValueKey, resourceId: ResourceId): boolean {
+  return key.startsWith(`${resourceId}:`)
 }
 
-/** Check if a key matches a field */
-export function keyMatchesField(key: ValueKey, fieldId: string): boolean {
+/**
+ * Check if a key matches a specific field (on any resource).
+ */
+export function fieldValueKeyMatchesField(key: FieldValueKey, fieldId: string): boolean {
   return key.endsWith(`:${fieldId}`)
 }
 
@@ -260,15 +264,15 @@ export const useCustomFieldValueStore = create<CustomFieldValueState>()(
 
     // ─── INVALIDATION ───────────────────────────────────────────────
 
-    invalidateResource: (resourceType, resourceId, entityDefId) => {
+    invalidateResource: (resourceId) => {
       set((state) => {
         const newValues = { ...state.values }
         const newUpdatedAt = { ...state.updatedAt }
 
         for (const key of Object.keys(newValues)) {
-          if (keyMatchesResource(key, resourceType, resourceId, entityDefId)) {
-            delete newValues[key]
-            delete newUpdatedAt[key]
+          if (fieldValueKeyMatchesResource(key as FieldValueKey, resourceId)) {
+            delete newValues[key as FieldValueKey]
+            delete newUpdatedAt[key as FieldValueKey]
           }
         }
 
@@ -282,9 +286,9 @@ export const useCustomFieldValueStore = create<CustomFieldValueState>()(
         const newUpdatedAt = { ...state.updatedAt }
 
         for (const key of Object.keys(newValues)) {
-          if (keyMatchesField(key, fieldId)) {
-            delete newValues[key]
-            delete newUpdatedAt[key]
+          if (fieldValueKeyMatchesField(key as FieldValueKey, fieldId)) {
+            delete newValues[key as FieldValueKey]
+            delete newUpdatedAt[key as FieldValueKey]
           }
         }
 
@@ -292,21 +296,17 @@ export const useCustomFieldValueStore = create<CustomFieldValueState>()(
       })
     },
 
-    invalidateResources: (resourceType, resourceIds, entityDefId) => {
+    invalidateResources: (resourceIds) => {
       set((state) => {
         const newValues = { ...state.values }
         const newUpdatedAt = { ...state.updatedAt }
         const resourceIdSet = new Set(resourceIds)
 
         for (const key of Object.keys(newValues)) {
-          const parsed = parseValueKey(key)
-          if (
-            parsed.resourceType === resourceType &&
-            resourceIdSet.has(parsed.resourceId) &&
-            (resourceType !== 'entity' || parsed.entityDefId === entityDefId)
-          ) {
-            delete newValues[key]
-            delete newUpdatedAt[key]
+          const { resourceId } = parseFieldValueKey(key as FieldValueKey)
+          if (resourceIdSet.has(resourceId)) {
+            delete newValues[key as FieldValueKey]
+            delete newUpdatedAt[key as FieldValueKey]
           }
         }
 
@@ -314,16 +314,16 @@ export const useCustomFieldValueStore = create<CustomFieldValueState>()(
       })
     },
 
-    invalidateResourceType: (resourceType, entityDefId) => {
+    invalidateByDefinition: (entityDefinitionId) => {
       set((state) => {
-        const prefix = entityDefId ? `entity:${entityDefId}:` : `${resourceType}:`
+        const prefix = `${entityDefinitionId}:`
         const newValues = { ...state.values }
         const newUpdatedAt = { ...state.updatedAt }
 
         for (const key of Object.keys(newValues)) {
           if (key.startsWith(prefix)) {
-            delete newValues[key]
-            delete newUpdatedAt[key]
+            delete newValues[key as FieldValueKey]
+            delete newUpdatedAt[key as FieldValueKey]
           }
         }
 
@@ -374,25 +374,18 @@ export const useCustomFieldValueStore = create<CustomFieldValueState>()(
  * Subscribe to a single value. Component only re-renders when this specific value changes.
  */
 export function useCustomFieldValue(
-  resourceType: ResourceType,
-  resourceId: string,
-  fieldId: string,
-  entityDefId?: string
+  resourceId: ResourceId,
+  fieldId: string
 ): StoredFieldValue | undefined {
-  const key = buildValueKey(resourceType, resourceId, fieldId, entityDefId)
+  const key = buildFieldValueKey(resourceId, fieldId)
   return useCustomFieldValueStore((state) => state.values[key])
 }
 
 /**
  * Subscribe to loading state for a specific value.
  */
-export function useCustomFieldValueLoading(
-  resourceType: ResourceType,
-  resourceId: string,
-  fieldId: string,
-  entityDefId?: string
-): boolean {
-  const key = buildValueKey(resourceType, resourceId, fieldId, entityDefId)
+export function useCustomFieldValueLoading(resourceId: ResourceId, fieldId: string): boolean {
+  const key = buildFieldValueKey(resourceId, fieldId)
   return useCustomFieldValueStore((state) => state.isKeyLoading(key))
 }
 
@@ -401,10 +394,8 @@ export function useCustomFieldValueLoading(
  * Uses stable selector with useShallow for memoization to prevent infinite loops.
  */
 export function useResourceFieldValues(
-  resourceType: ResourceType,
-  resourceId: string,
-  fieldIds: string[],
-  entityDefId?: string
+  resourceId: ResourceId,
+  fieldIds: string[]
 ): Record<string, StoredFieldValue | undefined> {
   // Stabilize inputs - only change selector when actual content changes
   const fieldIdsKey = fieldIds.join(',')
@@ -414,12 +405,12 @@ export function useResourceFieldValues(
     (state: CustomFieldValueState) => {
       const result: Record<string, StoredFieldValue | undefined> = {}
       for (const fieldId of fieldIds) {
-        const key = buildValueKey(resourceType, resourceId, fieldId, entityDefId)
+        const key = buildFieldValueKey(resourceId, fieldId)
         result[fieldId] = state.values[key]
       }
       return result
     },
-    [fieldIdsKey, resourceType, resourceId, entityDefId]
+    [fieldIdsKey, resourceId]
   )
 
   // Wrap stable selector with useShallow for shallow comparison
@@ -427,3 +418,8 @@ export function useResourceFieldValues(
 
   return useCustomFieldValueStore(memoizedSelector)
 }
+
+// ─────────────────────────────────────────────────────────────────
+// RE-EXPORTS for convenience
+// ─────────────────────────────────────────────────────────────────
+export { toResourceId, parseResourceId, type ResourceId } from '@auxx/lib/resources/client'

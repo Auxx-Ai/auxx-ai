@@ -13,9 +13,7 @@ import { SortablePropertyRow } from './sortable-property-row'
 import { AddFieldRow } from './add-field-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { useFieldNavigation } from './field-navigation-context'
-import type { StoreConfig } from './property-provider'
-import type { StoredFieldValue } from '~/components/resources/store/custom-field-value-store'
-import type { ResourceField } from '@auxx/lib/resources/client'
+import type { ResourceField, ResourceId } from '@auxx/lib/resources/client'
 
 /**
  * Props for EntityFieldsContent component (unified version)
@@ -34,8 +32,6 @@ export interface EntityFieldsContentProps {
   handleDragEnd: (event: DragEndEvent) => Promise<void>
   /** Unified sorted fields (system + custom) */
   fields: ResourceField[]
-  /** Field values by key */
-  // fieldValues: Record<string, { valueId?: string; value: StoredFieldValue }>
   /** Loading state */
   isLoading: boolean
   /** Check if field is sortable */
@@ -47,8 +43,8 @@ export interface EntityFieldsContentProps {
   registerProviderClose: (providerId: string, closeFn: () => void) => void
   unregisterProviderClose: (providerId: string) => void
   ConfirmDeleteDialog: React.FC
-  /** Store configuration for bi-directional sync (required for saving) */
-  storeConfig: StoreConfig
+  /** ResourceId in format "entityDefinitionId:entityInstanceId" */
+  resourceId: ResourceId
 }
 
 /**
@@ -68,7 +64,6 @@ export function EntityFieldsContent({
   sensors,
   handleDragEnd,
   fields,
-  // fieldValues,
   isLoading,
   isSortable,
   handleDeleteField,
@@ -78,9 +73,8 @@ export function EntityFieldsContent({
   registerProviderClose,
   unregisterProviderClose,
   ConfirmDeleteDialog,
-  storeConfig,
+  resourceId,
 }: EntityFieldsContentProps) {
-  // console.log('fieldValues:', fieldValues)
   const containerRef = useRef<HTMLDivElement>(null)
   const { focusedRowId, moveFocus, openFocusedRow, isPopoverCapturing, registerOpenHandler } =
     useFieldNavigation()
@@ -215,9 +209,7 @@ export function EntityFieldsContent({
                       id: field.id || fieldKey,
                       name: field.label,
                       readOnly: isReadOnly,
-                      // valueId: fieldEntry?.valueId,
                     }}
-                    // value={fieldEntry?.value}
                     loading={isLoading}
                     isEditMode={isEditMode}
                     isSortable={isSortable(field)}
@@ -229,7 +221,7 @@ export function EntityFieldsContent({
                     unregisterClose={unregisterProviderClose}
                     registerOpen={registerRowOpen}
                     unregisterOpen={unregisterRowOpen}
-                    storeConfig={storeConfig}
+                    resourceId={resourceId}
                   />
                 )
               })}

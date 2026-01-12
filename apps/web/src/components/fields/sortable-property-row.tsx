@@ -5,11 +5,12 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, Pencil, Trash2 } from 'lucide-react'
 import PropertyRow from './property-row'
-import { PropertyProvider, usePropertyContext, type StoreConfig } from './property-provider'
+import { PropertyProvider, usePropertyContext } from './property-provider'
 import { useFieldNavigationOptional } from './field-navigation-context'
 import { Button } from '@auxx/ui/components/button'
 import { useEffect, useRef, useCallback } from 'react'
 import { cn } from '@auxx/ui/lib/utils'
+import type { ResourceId } from '@auxx/lib/resources/client'
 
 /**
  * Props for SortablePropertyRow component
@@ -35,8 +36,8 @@ interface SortablePropertyRowProps {
   registerOpen?: (providerId: string, openFn: () => void) => void
   /** Unregister open function when row unmounts */
   unregisterOpen?: (providerId: string) => void
-  /** Store configuration for bi-directional sync with table (required for saving) */
-  storeConfig: StoreConfig
+  /** ResourceId in format "entityDefinitionId:entityInstanceId" */
+  resourceId: ResourceId
 }
 
 /**
@@ -60,7 +61,7 @@ export function SortablePropertyRow({
   unregisterClose,
   registerOpen,
   unregisterOpen,
-  storeConfig,
+  resourceId,
 }: SortablePropertyRowProps) {
   const nav = useFieldNavigationOptional()
   const openFnRef = useRef<(() => void) | null>(null)
@@ -157,7 +158,6 @@ export function SortablePropertyRow({
       </div>
     )
   }
-  console.log('Rendering SortablePropertyRow for field:', value)
   // Normal mode: use full PropertyProvider/PropertyRow
   // PropertyProvider uses the global store for bi-directional sync
   return (
@@ -174,7 +174,7 @@ export function SortablePropertyRow({
         field={field}
         value={value}
         loading={loading}
-        storeConfig={storeConfig}>
+        resourceId={resourceId}>
         <PropertyRowWithNavigation
           openFnRef={openFnRef}
           onFocus={() => nav?.setFocusedRow(providerId)}

@@ -220,7 +220,7 @@ export default function CustomerListPage() {
   // Custom field value syncer - triggers batch fetches for visible columns
   // Cells subscribe directly to store via CustomFieldCell
   useCustomFieldValueSyncer({
-    resourceType: 'contact',
+    entityDefinitionId: 'contact',
     rowIds,
     columnVisibility,
     customFieldColumnIds,
@@ -378,7 +378,7 @@ export default function CustomerListPage() {
     }
 
     const customFieldColumns = createCustomFieldColumns<Contact>(customFields, {
-      resourceType: 'contact',
+      entityDefinitionId: 'contact',
     })
 
     // Insert custom fields before the actions column (last column)

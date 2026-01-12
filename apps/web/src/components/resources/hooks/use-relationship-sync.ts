@@ -3,7 +3,8 @@
 import { useCallback } from 'react'
 import {
   useCustomFieldValueStore,
-  buildValueKey,
+  buildFieldValueKeyFromParts,
+  type FieldValueKey,
   type StoredFieldValue,
 } from '~/components/resources/store/custom-field-value-store'
 import { isSingleValueRelationship, type RelationshipType } from '@auxx/utils'
@@ -86,7 +87,7 @@ export function useRelationshipSync() {
 
       // ═══ Remove source from entities that were unlinked ═══
       for (const targetId of removedIds) {
-        const key = buildValueKey('entity', targetId, inverseFieldId, targetEntityDefId)
+        const key = buildFieldValueKeyFromParts(targetEntityDefId, targetId, inverseFieldId)
         const currentValue = currentValues[key]
         const hasCache = key in currentValues
 
@@ -124,12 +125,13 @@ export function useRelationshipSync() {
       // This works even when the target entity itself isn't in cache.
       if (isSingleValue && addedIds.length > 0) {
         const { sourceFieldId } = inverseInfo
-        const keyPrefix = `entity:${sourceEntityDefinitionId}:`
+        // New key format: ${entityDefinitionId}:${entityInstanceId}:${fieldId}
+        const keyPrefix = `${sourceEntityDefinitionId}:`
         const keySuffix = `:${sourceFieldId}`
 
         // Find all cached keys for this field type (e.g., all Vendor.products caches)
         for (const [cacheKey, cacheValue] of Object.entries(currentValues)) {
-          // Skip if not matching pattern: entity:{entityDefId}:{entityId}:{fieldId}
+          // Skip if not matching pattern: {entityDefId}:{entityId}:{fieldId}
           if (!cacheKey.startsWith(keyPrefix) || !cacheKey.endsWith(keySuffix)) continue
 
           // Extract the owner ID from the cache key
@@ -152,14 +154,14 @@ export function useRelationshipSync() {
               before: ownerArray.length,
               after: filteredArray.length,
             })
-            setValueOptimistic(cacheKey, filteredArray)
+            setValueOptimistic(cacheKey as FieldValueKey, filteredArray)
           }
         }
       }
 
       // ═══ Add source to entities that were linked ═══
       for (const targetId of addedIds) {
-        const key = buildValueKey('entity', targetId, inverseFieldId, targetEntityDefId)
+        const key = buildFieldValueKeyFromParts(targetEntityDefId, targetId, inverseFieldId)
         const currentValue = currentValues[key]
         const hasCache = key in currentValues
 
