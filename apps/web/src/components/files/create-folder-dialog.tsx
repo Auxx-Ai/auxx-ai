@@ -112,7 +112,8 @@ function CreateFolderDialogContent({ parentFolderId, onClose }: CreateFolderDial
           variant="outline"
           disabled={!folderName.trim() || isCreatingFolder}
           loading={isCreatingFolder}
-          loadingText="Creating...">
+          loadingText="Creating..."
+          data-dialog-submit>
           Create Folder <KbdSubmit variant="outline" size="sm" />
         </Button>
       </DialogFooter>

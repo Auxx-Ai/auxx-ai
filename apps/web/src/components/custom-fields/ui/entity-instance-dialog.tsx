@@ -32,6 +32,8 @@ interface EntityInstanceDialogProps {
   editingInstanceId?: string | null
   /** Callback after successful save */
   onSaved?: (instanceId: string) => void
+  /** Preset field values for CREATE mode. Format: { fieldId: value } */
+  presetValues?: Record<string, unknown>
 }
 
 /**
@@ -44,6 +46,7 @@ export function EntityInstanceDialog({
   entityDefinitionId,
   editingInstanceId,
   onSaved,
+  presetValues,
 }: EntityInstanceDialogProps) {
   const isEditing = !!editingInstanceId
   const utils = api.useUtils()
@@ -117,6 +120,15 @@ export function EntityInstanceDialog({
             initValues[field.id] = field.defaultValue
           }
         }
+
+        // Apply preset values (overrides defaults)
+        if (presetValues) {
+          for (const [fieldId, value] of Object.entries(presetValues)) {
+            if (value !== undefined && value !== null) {
+              initValues[fieldId] = value
+            }
+          }
+        }
       }
 
       setValues(initValues)
@@ -124,7 +136,7 @@ export function EntityInstanceDialog({
       setErrors({})
       setTouched(new Set())
     }
-  }, [open, editingInstanceId, editableFields, setInitial, getValue])
+  }, [open, editingInstanceId, editableFields, presetValues, setInitial, getValue])
 
   // Create instance mutation
   const createInstance = api.entityInstance.create.useMutation({
@@ -293,7 +305,8 @@ export function EntityInstanceDialog({
               onClick={handleSubmit}
               loading={isPending}
               loadingText={isEditing ? 'Saving...' : 'Creating...'}
-              disabled={editableFields.length === 0}>
+              disabled={editableFields.length === 0}
+              data-dialog-submit>
               {isEditing ? 'Save Changes' : `Create ${resourceLabel}`}{' '}
               <KbdSubmit variant="outline" size="sm" />
             </Button>

@@ -16,7 +16,12 @@ import { useCustomField } from '~/components/custom-fields/hooks/use-custom-fiel
 import { useConfirm } from '~/hooks/use-confirm'
 import { EntityFieldsContent } from './entity-fields-content'
 import { useResource, useRecord, useRecordHydration } from '~/components/resources'
-import { parseResourceId, sortFieldsForDisplay, type ResourceField, type ResourceId } from '@auxx/lib/resources/client'
+import {
+  parseResourceId,
+  sortFieldsForDisplay,
+  type ResourceField,
+  type ResourceId,
+} from '@auxx/lib/resources/client'
 import { useDynamicFieldOptions } from './hooks/use-dynamic-field-options'
 
 /**
@@ -25,8 +30,6 @@ import { useDynamicFieldOptions } from './hooks/use-dynamic-field-options'
 interface EntityFieldsProps {
   /** ResourceId in format "entityDefinitionId:entityInstanceId" */
   resourceId: ResourceId
-  /** Pre-loaded custom fields (avoids refetch for entity instances) */
-  preloadedFields?: any[]
   /** Callback after successful mutation (e.g., to refetch parent data) */
   onMutationSuccess?: () => void
   /** Additional className for the outer container */
@@ -40,12 +43,7 @@ interface EntityFieldsProps {
  * MIGRATED: Fields are now sourced from Resource.fields (system + custom combined)
  * with proper isSystem, showInPanel, and systemSortOrder properties.
  */
-function EntityFields({
-  resourceId,
-  preloadedFields,
-  onMutationSuccess,
-  className,
-}: EntityFieldsProps) {
+function EntityFields({ resourceId, onMutationSuccess, className }: EntityFieldsProps) {
   // Parse resourceId to get components
   const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
 
@@ -204,9 +202,7 @@ function EntityFields({
 
     setEditingField(null)
 
-    if (preloadedFields) {
-      onMutationSuccess?.()
-    }
+    onMutationSuccess?.()
   }
 
   const handleDeleteField = async (fieldId: string, fieldName: string) => {
@@ -220,9 +216,7 @@ function EntityFields({
 
     if (confirmed) {
       await destroy.mutateAsync({ id: fieldId })
-      if (preloadedFields) {
-        onMutationSuccess?.()
-      }
+      onMutationSuccess?.()
     }
   }
 
@@ -246,7 +240,6 @@ function EntityFields({
         editingField={editingField}
         handleSaveField={handleSaveField}
         isPending={isPending}
-        currentResourceId={entityDefinitionId}
         sensors={sensors}
         handleDragEnd={handleDragEnd}
         fields={sortedFields}

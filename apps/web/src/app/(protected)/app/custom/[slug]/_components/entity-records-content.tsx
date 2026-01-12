@@ -572,8 +572,7 @@ export function EntityRecordsContent() {
       <EntityRecordDrawer
         open={isDrawerOpen}
         onOpenChange={handleDrawerOpenChange}
-        entityInstanceId={selectedInstanceId}
-        entityDefinitionId={entityDefinitionId}
+        resourceId={toResourceId(entityDefinitionId, selectedInstanceId)}
         onDeleteInstance={handleDrawerDelete}
         onMutationSuccess={refresh}
       />
@@ -720,8 +719,9 @@ export function EntityRecordsContent() {
         <EntityRecordDrawer
           open={isDrawerOpen}
           onOpenChange={handleDrawerOpenChange}
-          entityInstanceId={selectedInstanceId}
-          entityDefinitionId={entityDefinitionId}
+          resourceId={
+            selectedInstanceId ? toResourceId(entityDefinitionId, selectedInstanceId) : undefined
+          }
           onDeleteInstance={handleDrawerDelete}
           onMutationSuccess={refresh}
         />

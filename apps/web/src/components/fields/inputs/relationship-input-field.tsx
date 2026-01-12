@@ -3,9 +3,18 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { usePropertyContext } from '../property-provider'
 import { useFieldNavigationOptional } from '../field-navigation-context'
-import { useResourceProvider, toResourceId, getRelationshipStoreState } from '~/components/resources'
+import {
+  useResourceProvider,
+  toResourceId,
+  getRelationshipStoreState,
+} from '~/components/resources'
 import { useResourceIdFromField } from '../hooks/use-resource-id-from-field'
-import { extractRelationshipResourceIds, getInstanceId, type ResourceId } from '@auxx/lib/field-values/client'
+import {
+  extractRelationshipResourceIds,
+  getInstanceId,
+  parseResourceId,
+  type ResourceId,
+} from '@auxx/lib/field-values/client'
 import { api } from '~/trpc/react'
 import { isCustomResource } from '@auxx/lib/resources/client'
 import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
@@ -21,7 +30,7 @@ import { ResourcePicker } from '~/components/pickers/resource-picker'
  * - Delegates UI to ResourcePicker component
  */
 export function RelationshipInputField() {
-  const { value, field, commitValue, onBeforeClose } = usePropertyContext()
+  const { value, field, commitValue, onBeforeClose, resourceId } = usePropertyContext()
   const nav = useFieldNavigationOptional()
 
   const relationship = field.options?.relationship
@@ -128,6 +137,37 @@ export function RelationshipInputField() {
     setIsCreateDialogOpen(true)
   }, [])
 
+  /**
+   * Compute preset values for the inverse relationship field.
+   * When creating a new related entity, automatically link back to the parent.
+   */
+  const computePresetValues = useCallback((): Record<string, unknown> | undefined => {
+    // Only preset if we have an inverse relationship configured
+    const inverseFieldId = relationship?.inverseFieldId
+    if (!inverseFieldId || !resourceRef || !resourceId) {
+      return undefined
+    }
+
+    // Parse parent resource info from context
+    const { entityDefinitionId: parentEntityDefId, entityInstanceId: parentInstanceId } =
+      parseResourceId(resourceId)
+
+    if (!parentInstanceId) {
+      return undefined
+    }
+
+    // Return preset value in relationship field format
+    // Format: array of { relatedEntityId, relatedEntityDefinitionId } objects
+    return {
+      [inverseFieldId]: [
+        {
+          relatedEntityId: parentInstanceId,
+          relatedEntityDefinitionId: parentEntityDefId,
+        },
+      ],
+    }
+  }, [relationship, resourceRef, resourceId])
+
   // Get tRPC utils for fetching
   const utils = api.useUtils()
 
@@ -200,6 +240,7 @@ export function RelationshipInputField() {
           onOpenChange={setIsCreateDialogOpen}
           entityDefinitionId={relatedResource.entityDefinitionId!}
           onSaved={handleCreatedInstance}
+          presetValues={computePresetValues()}
         />
       )}
     </div>

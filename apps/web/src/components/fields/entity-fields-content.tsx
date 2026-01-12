@@ -13,7 +13,7 @@ import { SortablePropertyRow } from './sortable-property-row'
 import { AddFieldRow } from './add-field-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { useFieldNavigation } from './field-navigation-context'
-import type { ResourceField, ResourceId } from '@auxx/lib/resources/client'
+import { parseResourceId, type ResourceField, type ResourceId } from '@auxx/lib/resources/client'
 
 /**
  * Props for EntityFieldsContent component (unified version)
@@ -27,7 +27,6 @@ export interface EntityFieldsContentProps {
   editingField: any | null
   handleSaveField: (fieldData: any) => Promise<void>
   isPending: boolean
-  currentResourceId: string
   sensors: SensorDescriptor<SensorOptions>[]
   handleDragEnd: (event: DragEndEvent) => Promise<void>
   /** Unified sorted fields (system + custom) */
@@ -60,7 +59,6 @@ export function EntityFieldsContent({
   editingField,
   handleSaveField,
   isPending,
-  currentResourceId,
   sensors,
   handleDragEnd,
   fields,
@@ -75,6 +73,9 @@ export function EntityFieldsContent({
   ConfirmDeleteDialog,
   resourceId,
 }: EntityFieldsContentProps) {
+  // Parse resourceId to get entityDefinitionId
+  const { entityDefinitionId } = parseResourceId(resourceId)
+
   const containerRef = useRef<HTMLDivElement>(null)
   const { focusedRowId, moveFocus, openFocusedRow, isPopoverCapturing, registerOpenHandler } =
     useFieldNavigation()
@@ -148,7 +149,7 @@ export function EntityFieldsContent({
           editingField={editingField}
           onSave={handleSaveField}
           isPending={isPending}
-          currentResourceId={currentResourceId}
+          currentResourceId={entityDefinitionId}
         />
       )}
 

@@ -34,6 +34,7 @@ import type { FieldType } from '@auxx/database/types'
 interface PropertyContextValue {
   // ─── Data ───
   field: any
+  resourceId: ResourceId
   /** Current value (local if editing, server if not) */
   value: any
   /** Last confirmed server value - use for dirty comparison */
@@ -420,6 +421,7 @@ export function PropertyProvider({
   // ─── Context Value ───
   const contextValue: PropertyContextValue = {
     field,
+    resourceId,
     value: currentValue,
     serverValue,
     isLoading: loading,

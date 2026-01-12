@@ -17,6 +17,7 @@ import { EntityIcon } from '@auxx/ui/components/icons'
 import EntityFields from '~/components/fields/entity-fields'
 import { useResource, useRecord, toResourceId } from '~/components/resources'
 import type { ResourceField } from '@auxx/lib/resources/client'
+import { parseResourceId, type ResourceId } from '@auxx/lib/field-values/client'
 import DrawerComments from '~/components/global/comments/drawer-comments'
 import { TimelineTab } from '~/components/timeline'
 import { createCustomEntityType } from '@auxx/lib/timeline/client'
@@ -39,10 +40,8 @@ interface EntityRecordDrawerProps {
   open?: boolean
   /** Callback when open state changes */
   onOpenChange?: (open: boolean) => void
-  /** Entity instance ID (stable string primitive) */
-  entityInstanceId: string | undefined
-  /** Entity definition ID (stable string primitive) */
-  entityDefinitionId: string | undefined
+  /** ResourceId in format "entityDefinitionId:entityInstanceId" */
+  resourceId: ResourceId | undefined
   /** Optional handler invoked when deleting the entity instance */
   onDeleteInstance?: (instanceId: string) => Promise<void> | void
   /** Callback after successful mutation (e.g., to refetch parent data) */
@@ -56,8 +55,7 @@ interface EntityRecordDrawerProps {
 export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
   open,
   onOpenChange,
-  entityInstanceId,
-  entityDefinitionId,
+  resourceId,
   onDeleteInstance,
   onMutationSuccess,
 }: EntityRecordDrawerProps) {
@@ -70,22 +68,25 @@ export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
 
   const [activeTab, setActiveTab] = useQueryState('tab', { defaultValue: 'overview' })
 
+  // Parse resourceId to get components
+  const { entityDefinitionId, entityInstanceId } = resourceId
+    ? parseResourceId(resourceId)
+    : { entityDefinitionId: '', entityInstanceId: '' }
+
   // Get resource with fields
   const { resource } = useResource(entityDefinitionId ?? null)
 
   // Derive custom fields from resource.fields (filter to fields with id = custom fields only)
-  const customFields = React.useMemo(
-    () => resource?.fields.filter((f): f is ResourceField & { id: string } => !!f.id) ?? [],
-    [resource?.fields]
-  )
+  // const customFields = React.useMemo(
+  //   () => resource?.fields.filter((f): f is ResourceField & { id: string } => !!f.id) ?? [],
+  //   [resource?.fields]
+  // )
 
   // Fetch entity record from cache (populated by batch fetcher when list loads)
   // Returns displayName, secondaryDisplayValue, createdAt, updatedAt, and all field values
   const { record: cachedRecord, isLoading: isRecordLoading } = useRecord({
-    resourceId: entityDefinitionId && entityInstanceId
-      ? toResourceId(entityDefinitionId, entityInstanceId)
-      : null,
-    enabled: !!open && !!entityInstanceId && !!entityDefinitionId,
+    resourceId: resourceId ?? null,
+    enabled: !!open && !!resourceId,
   })
 
   // Display values come directly from the cached record
@@ -122,7 +123,7 @@ export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
     return entityDefinitionId ? createCustomEntityType(entityDefinitionId) : null
   }, [entityDefinitionId])
 
-  if (!open || !entityInstanceId) return null
+  if (!open || !resourceId) return null
 
   return (
     <DockableDrawer
@@ -224,10 +225,9 @@ export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
                       title="Overview"
                       collapsible={false}
                       icon={<Gauge className="size-4 text-muted-foreground/50" />}>
-                      {resource && entityDefinitionId && entityInstanceId && (
+                      {resource && resourceId && (
                         <EntityFields
-                          resourceId={toResourceId(entityDefinitionId, entityInstanceId)}
-                          preloadedFields={customFields}
+                          resourceId={resourceId}
                           onMutationSuccess={onMutationSuccess}
                           className=""
                         />
