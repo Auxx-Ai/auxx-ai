@@ -15,25 +15,19 @@ import { api } from '~/trpc/react'
 import { isSystemResource, isCustomResource } from '@auxx/lib/resources/client'
 import { Label } from '@auxx/ui/components/label'
 import { EntityIcon } from '@auxx/ui/components/icons'
+import { RELATIONSHIP_TYPES as RELATIONSHIP_TYPE_VALUES, type RelationshipOptions } from '@auxx/types/custom-field'
 
-/** Relationship cardinality options */
-const RELATIONSHIP_TYPES = [
-  { value: 'belongs_to', label: 'Belongs To' },
-  { value: 'has_one', label: 'Has One' },
-  { value: 'has_many', label: 'Has Many' },
-  { value: 'many_to_many', label: 'Many to Many' },
-] as const
+// Re-export RelationshipOptions for consumers of this component
+export type { RelationshipOptions }
 
-/**
- * Relationship configuration options for the field editor
- */
-export interface RelationshipOptions {
-  relatedResourceId: string
-  relationshipType: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
-  inverseName: string
-  inverseDescription?: string
-  inverseIcon?: string
-}
+/** Relationship cardinality options for UI display */
+const RELATIONSHIP_TYPES = RELATIONSHIP_TYPE_VALUES.map((value) => ({
+  value,
+  label: value
+    .split('_')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' '),
+}))
 
 interface RelationshipFieldEditorProps {
   options: RelationshipOptions

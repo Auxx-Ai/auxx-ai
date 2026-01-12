@@ -2,11 +2,8 @@
 
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
-import { FieldValueService, type ModelType } from '@auxx/lib/field-values'
-import { ModelTypes, ModelTypeValues } from '@auxx/types/custom-field'
-
-/** Zod schema for ModelType validation */
-const modelTypeSchema = z.enum(ModelTypeValues)
+import { FieldValueService } from '@auxx/lib/field-values'
+import { parseResourceId, getModelType, type ResourceId } from '@auxx/lib/resources/client'
 
 /** Typed value input schema for multi-value fields */
 const typedValueInputSchema = z.object({
@@ -19,117 +16,135 @@ const typedValueInputSchema = z.object({
 /**
  * Field Value Router - handles all field value operations
  * Uses FieldValueService directly for all operations
+ * ResourceId format: "entityDefinitionId:entityInstanceId"
  */
 export const fieldValueRouter = createTRPCRouter({
   /**
-   * Set a single field value for a resource
+   * Set a single field value for a resource.
+   * Expects resourceId in ResourceId format (entityDefinitionId:entityInstanceId).
    */
   set: protectedProcedure
     .input(
       z.object({
-        resourceId: z.string(),
+        resourceId: z.string(), // ResourceId format
         fieldId: z.string(),
         value: z.any().nullable(),
-        modelType: modelTypeSchema.default(ModelTypes.CONTACT),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      const { entityDefinitionId, entityInstanceId } = parseResourceId(input.resourceId as ResourceId)
+      const modelType = getModelType(entityDefinitionId)
+
       const service = new FieldValueService(
         ctx.session.organizationId,
         ctx.session.user.id,
         ctx.db
       )
       return await service.setValueWithBuiltIn({
-        entityId: input.resourceId,
+        entityId: entityInstanceId,
         fieldId: input.fieldId,
         value: input.value ?? null,
-        modelType: input.modelType as ModelType,
+        modelType,
       })
     }),
 
   /**
-   * Set multiple field values for one resource
+   * Set multiple field values for one resource.
+   * Expects resourceId in ResourceId format.
    */
   setMany: protectedProcedure
     .input(
       z.object({
-        resourceId: z.string(),
+        resourceId: z.string(), // ResourceId format
         values: z.array(
           z.object({
             fieldId: z.string(),
             value: z.any().nullable(),
           })
         ),
-        modelType: modelTypeSchema.default(ModelTypes.CONTACT),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      const { entityDefinitionId, entityInstanceId } = parseResourceId(input.resourceId as ResourceId)
+      const modelType = getModelType(entityDefinitionId)
+
       const service = new FieldValueService(
         ctx.session.organizationId,
         ctx.session.user.id,
         ctx.db
       )
       return await service.setValuesForEntity({
-        entityId: input.resourceId,
+        entityId: entityInstanceId,
         values: input.values.map((v) => ({
           fieldId: v.fieldId,
           value: v.value ?? null,
         })),
-        modelType: input.modelType as ModelType,
+        modelType,
       })
     }),
 
   /**
-   * Set values for multiple resources (bulk operation)
+   * Set values for multiple resources (bulk operation).
+   * Expects resourceIds in ResourceId format.
    */
   setBulk: protectedProcedure
     .input(
       z.object({
-        resourceIds: z.array(z.string()).min(1),
+        resourceIds: z.array(z.string()).min(1), // ResourceId format
         values: z.array(
           z.object({
             fieldId: z.string(),
             value: z.any().nullable(),
           })
         ),
-        modelType: modelTypeSchema.default(ModelTypes.ENTITY),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Parse first resourceId to get entityDefinitionId (all should have same definition)
+      const { entityDefinitionId } = parseResourceId(input.resourceIds[0] as ResourceId)
+      const modelType = getModelType(entityDefinitionId)
+
+      // Extract instance IDs from ResourceIds
+      const entityIds = input.resourceIds.map(
+        (rid) => parseResourceId(rid as ResourceId).entityInstanceId
+      )
+
       const service = new FieldValueService(
         ctx.session.organizationId,
         ctx.session.user.id,
         ctx.db
       )
       return await service.setBulkValues({
-        entityIds: input.resourceIds,
+        entityIds,
         values: input.values.map((v) => ({
           fieldId: v.fieldId,
           value: v.value ?? null,
         })),
-        modelType: input.modelType as ModelType,
+        modelType,
       })
     }),
 
   /**
-   * Delete a field value for a resource
+   * Delete a field value for a resource.
+   * Expects resourceId in ResourceId format.
    */
   delete: protectedProcedure
     .input(
       z.object({
-        resourceId: z.string(),
+        resourceId: z.string(), // ResourceId format
         fieldId: z.string(),
-        modelType: modelTypeSchema.default(ModelTypes.CONTACT),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      const { entityInstanceId } = parseResourceId(input.resourceId as ResourceId)
+
       const service = new FieldValueService(
         ctx.session.organizationId,
         ctx.session.user.id,
         ctx.db
       )
       await service.deleteValue({
-        entityId: input.resourceId,
+        entityId: entityInstanceId,
         fieldId: input.fieldId,
       })
       return { success: true }
@@ -161,11 +176,12 @@ export const fieldValueRouter = createTRPCRouter({
 
   /**
    * Add value to multi-value field (MULTI_SELECT, TAGS, etc.)
+   * Expects resourceId in ResourceId format.
    */
   add: protectedProcedure
     .input(
       z.object({
-        resourceId: z.string(),
+        resourceId: z.string(), // ResourceId format
         fieldId: z.string(),
         fieldType: z.string(),
         value: typedValueInputSchema,
@@ -175,13 +191,15 @@ export const fieldValueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      const { entityInstanceId } = parseResourceId(input.resourceId as ResourceId)
+
       const service = new FieldValueService(
         ctx.session.organizationId,
         ctx.session.user.id,
         ctx.db
       )
       return await service.addValue({
-        entityId: input.resourceId,
+        entityId: entityInstanceId,
         fieldId: input.fieldId,
         fieldType: input.fieldType,
         value: input.value as any,

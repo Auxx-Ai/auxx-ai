@@ -22,7 +22,7 @@ export async function updateEntityInstance(params: UpdateEntityInstanceParams) {
   const { id, organizationId, data } = params
 
   const updateData: Record<string, unknown> = {
-    updatedAt: new Date().toISOString(),
+    updatedAt: new Date(),
   }
   if ('archivedAt' in data) {
     updateData.archivedAt = data.archivedAt

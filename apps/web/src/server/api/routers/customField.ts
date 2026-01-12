@@ -7,6 +7,7 @@ import {
   ModelTypes,
   ModelTypeValues,
   fieldOptionsUnionSchema,
+  relationshipOptionsSchema,
   type ModelType,
 } from '@auxx/types/custom-field'
 import { FieldType } from '@auxx/database/enums'
@@ -85,19 +86,7 @@ export const customFieldRouter = createTRPCRouter({
         modelType: modelTypeSchema.optional(),
         entityDefinitionId: z.string().nullish(),
         /** Relationship options - required when type is RELATIONSHIP */
-        relationship: z
-          .object({
-            relatedResourceId: z.string().optional(),
-            relatedModelType: modelTypeSchema.nullish(),
-            relatedEntityDefinitionId: z.string().nullish(),
-            relationshipType: z.enum(['belongs_to', 'has_one', 'has_many', 'many_to_many']),
-            displayFieldId: z.string().nullish(),
-            inverseName: z.string(),
-            inverseDescription: z.string().optional(),
-            inverseIcon: z.string().optional(),
-            inverseDisplayFieldId: z.string().nullish(),
-          })
-          .optional(),
+        relationship: relationshipOptionsSchema.optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {

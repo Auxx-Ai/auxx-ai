@@ -1,21 +1,14 @@
 // apps/web/src/components/fields/hooks/use-resource-id-from-field.ts
 
 import { useMemo } from 'react'
-
-/**
- * Relationship options from a field definition
- */
-interface RelationshipOptions {
-  relatedEntityDefinitionId?: string
-  relatedModelType?: string
-}
+import type { RelationshipConfig } from '@auxx/types/custom-field'
 
 /**
  * Field structure with optional relationship options
  */
 interface FieldWithRelationship {
   options?: {
-    relationship?: RelationshipOptions
+    relationship?: Pick<RelationshipConfig, 'relatedEntityDefinitionId'>
   }
 }
 
@@ -34,7 +27,7 @@ export interface ResourceIdResult {
  *
  * The stored value in relatedEntityDefinitionId is:
  * - System resource ID (contact, ticket, etc.) - used directly as entityDefinitionId
- * - UUID (EntityDefinition.id) - used directly as entityDefinitionId (no entity_ prefix)
+ * - UUID (EntityDefinition.id) - used directly as entityDefinitionId
  *
  * @param field - Field definition with relationship options
  * @returns ResourceIdResult or null if not a valid relationship field
@@ -44,12 +37,7 @@ export function useResourceIdFromField(field: FieldWithRelationship): ResourceId
     const relationship = field.options?.relationship
     if (!relationship) return null
 
-    // System resource (contact, ticket, etc.) - use relatedModelType as entityDefinitionId
-    if (relationship.relatedModelType) {
-      return { entityDefinitionId: relationship.relatedModelType }
-    }
-
-    // Custom entity - use relatedEntityDefinitionId (UUID directly, no prefix)
+    // relatedEntityDefinitionId is the unified ID for both system and custom resources
     if (relationship.relatedEntityDefinitionId) {
       return { entityDefinitionId: relationship.relatedEntityDefinitionId }
     }

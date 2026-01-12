@@ -29,18 +29,12 @@ export function RelationshipInputField() {
     relationship?.relationshipType === 'belongs_to' || relationship?.relationshipType === 'has_one'
 
   // Get relatedEntityDefinitionId for storing with values
+  // relatedEntityDefinitionId is the unified ID for both system and custom resources
   const relatedEntityDefinitionId = useMemo(() => {
-    // For custom entities, use the stored relatedEntityDefinitionId
     if (relationship?.relatedEntityDefinitionId) {
       return relationship.relatedEntityDefinitionId
     }
-    // For system resources, use the relatedModelType (e.g., "contact", "ticket")
-    if (relationship?.relatedModelType) {
-      return relationship.relatedModelType
-    }
-    console.warn(
-      '[RelationshipInputField] Neither relatedEntityDefinitionId nor relatedModelType found'
-    )
+    console.warn('[RelationshipInputField] relatedEntityDefinitionId not found')
     return ''
   }, [relationship])
 

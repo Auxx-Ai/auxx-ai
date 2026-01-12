@@ -56,8 +56,7 @@ export function FieldInputRow({
     fieldType === 'RELATIONSHIP' ? extractRelationshipData(value).resourceIds : value
 
   // Get relatedEntityDefinitionId for wrapping ResourceId[] back to RelationshipFieldValue on save
-  const relatedEntityDefinitionId =
-    relationshipConfig?.relatedEntityDefinitionId ?? relationshipConfig?.relatedModelType ?? null
+  const relatedEntityDefinitionId = relationshipConfig?.relatedEntityDefinitionId ?? null
 
   // Determine if relationship is multi-select using helper
   const isMulti = isMultiRelationship(relationshipConfig?.relationshipType)

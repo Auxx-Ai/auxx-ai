@@ -242,56 +242,34 @@ async function createRelationshipFieldWithInverse(input: {
   const {
     relatedResourceId,
     relationshipType,
-    displayFieldId,
     inverseName,
     inverseDescription,
     inverseIcon,
-    inverseDisplayFieldId,
   } = relationship
 
-  // Start with legacy values if provided
-  let relatedModelType = relationship.relatedModelType
-  let relatedEntityDefinitionId = relationship.relatedEntityDefinitionId
+  // relatedResourceId is the unified ID - either a system ModelType or a custom entity UUID
+  // Both are stored in relatedEntityDefinitionId for simplicity
+  const relatedEntityDefinitionId = relatedResourceId
 
-  // Handle relatedResourceId - either a system ModelType or an entityDefinitionId
-  if (relatedResourceId) {
-    const isSystemModelType = (ModelTypeValues as readonly string[]).includes(relatedResourceId)
-
-    if (isSystemModelType) {
-      relatedModelType = relatedResourceId as ModelType
-      relatedEntityDefinitionId = null
-    } else {
-      // It's an entityDefinitionId
-      relatedEntityDefinitionId = relatedResourceId
-      relatedModelType = null
-    }
-  }
-
-  // Validate: exactly one of relatedModelType or relatedEntityDefinitionId
-  const hasModelType = relatedModelType !== null && relatedModelType !== undefined
-  const hasEntityDef = relatedEntityDefinitionId !== null && relatedEntityDefinitionId !== undefined
-
-  if (!hasModelType && !hasEntityDef) {
+  if (!relatedEntityDefinitionId) {
     return err({
       code: 'VALIDATION_ERROR' as const,
-      message: 'Either relatedModelType, relatedEntityDefinitionId, or relatedResourceId must be specified',
+      message: 'relatedResourceId must be specified for relationship fields',
     })
   }
-  if (hasModelType && hasEntityDef) {
-    return err({
-      code: 'VALIDATION_ERROR' as const,
-      message: 'Cannot specify both relatedModelType and relatedEntityDefinitionId',
-    })
-  }
+
+  // Determine if this is a system resource or custom entity
+  const isSystemModelType = (ModelTypeValues as readonly string[]).includes(relatedEntityDefinitionId)
 
   // modelType is already lowercase and matches DB format directly
   const dbModelType = modelType
   const inverseCardinality = getInverseCardinality(relationshipType)
 
   // Determine inverse field's modelType and entityDefinitionId
-  // relatedModelType is already lowercase, or use 'entity' for custom entities
-  const inverseModelType = relatedModelType ?? 'entity'
-  const inverseEntityDefinitionId = relatedEntityDefinitionId || null
+  // For system resources: modelType = the related system type (e.g., 'contact')
+  // For custom entities: modelType = 'entity', entityDefinitionId = UUID
+  const inverseModelType = isSystemModelType ? relatedEntityDefinitionId : 'entity'
+  const inverseEntityDefinitionId = isSystemModelType ? null : relatedEntityDefinitionId
 
   // Execute in transaction
   const result = await fromDatabase(
@@ -321,12 +299,9 @@ async function createRelationshipFieldWithInverse(input: {
             icon,
             isCustom: true,
             relationship: {
-              // relatedModelType is already lowercase
-              relatedModelType: relatedModelType ?? null,
-              relatedEntityDefinitionId: relatedEntityDefinitionId || null,
+              relatedEntityDefinitionId,
               inverseFieldId: null,
               relationshipType,
-              displayFieldId: displayFieldId || null,
               isInverse: false,
             } as RelationshipConfig,
           },
@@ -339,6 +314,11 @@ async function createRelationshipFieldWithInverse(input: {
       }
 
       // 2. Create inverse field
+      // For the inverse field, relatedEntityDefinitionId points back to the source:
+      // - If source is system resource: use modelType (e.g., 'contact')
+      // - If source is custom entity: use entityDefinitionId (UUID)
+      const inverseRelatedEntityDefinitionId =
+        modelType === ModelTypes.ENTITY ? entityDefinitionId! : dbModelType
       const inverseFieldResult = await tx
         .insert(schema.CustomField)
         .values({
@@ -354,12 +334,9 @@ async function createRelationshipFieldWithInverse(input: {
             icon: inverseIcon,
             isCustom: true,
             relationship: {
-              // modelType is already lowercase, use null for custom entities
-              relatedModelType: modelType !== ModelTypes.ENTITY ? dbModelType : null,
-              relatedEntityDefinitionId: modelType === ModelTypes.ENTITY ? entityDefinitionId : null,
+              relatedEntityDefinitionId: inverseRelatedEntityDefinitionId,
               inverseFieldId: primaryField.id,
               relationshipType: inverseCardinality,
-              displayFieldId: inverseDisplayFieldId || null,
               isInverse: true,
             } as RelationshipConfig,
           },

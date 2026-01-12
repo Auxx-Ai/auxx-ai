@@ -113,8 +113,7 @@ export function FieldInputAdapter({
       }
 
       // Derive entityDefinitionId from relationship config
-      const entityDefinitionId =
-        relationship.relatedEntityDefinitionId ?? relationship.relatedModelType ?? null
+      const entityDefinitionId = relationship.relatedEntityDefinitionId ?? null
 
       if (!entityDefinitionId) {
         return <div className="text-muted-foreground text-sm">Missing entity definition</div>

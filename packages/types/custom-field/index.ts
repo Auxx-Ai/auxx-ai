@@ -232,39 +232,63 @@ export const fieldOptionsUnionSchema = z.union([
 // RELATIONSHIP TYPES
 // =============================================================================
 
+/** Supported relationship cardinality values as const array (for Zod schemas) */
+export const RELATIONSHIP_TYPES = ['belongs_to', 'has_one', 'has_many', 'many_to_many'] as const
+
+/** Zod schema for relationship type validation - import this in all routers/schemas */
+export const relationshipTypeSchema = z.enum(RELATIONSHIP_TYPES)
+
 /** Supported relationship cardinality types */
-export type RelationshipType = 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
+export type RelationshipType = (typeof RELATIONSHIP_TYPES)[number]
 
 /**
  * Relationship configuration stored in options.relationship
+ * This is the stored/persisted config for relationship fields
  */
 export interface RelationshipConfig {
-  relatedEntityDefinitionId: string | null
-  relatedModelType: string | null
+  /** Entity definition ID of the related entity (system or custom) */
+  relatedEntityDefinitionId: string
+  /** Field ID of the inverse relationship field */
   inverseFieldId: string | null
+  /** Cardinality of the relationship */
   relationshipType: RelationshipType
-  displayFieldId: string | null
+  /** Whether this field is the inverse side of the relationship */
   isInverse: boolean
 }
 
+/** Zod schema for RelationshipConfig validation */
+export const relationshipConfigSchema = z.object({
+  relatedEntityDefinitionId: z.string(),
+  inverseFieldId: z.string().nullable(),
+  relationshipType: relationshipTypeSchema,
+  isInverse: z.boolean(),
+})
+
 /**
- * Relationship-specific options for CreateCustomFieldInput
- * When type is RELATIONSHIP, these additional fields are required
+ * Input options for creating a new relationship field
+ * Used in CreateCustomFieldInput - supports both new and legacy input formats
  */
 export interface RelationshipOptions {
-  /** Unified resource ID format (e.g., 'contact', 'entity_product') - preferred */
+  /** Unified resource ID format (e.g., 'contact', 'entity_product') */
   relatedResourceId?: string
-  /** System resource ModelType (e.g., 'contact', 'ticket') - legacy, use relatedResourceId */
-  relatedModelType?: string | null
-  /** Custom entity definition UUID - legacy, use relatedResourceId */
-  relatedEntityDefinitionId?: string | null
+  /** Relationship cardinality type */
   relationshipType: RelationshipType
-  displayFieldId?: string | null
+  /** Name for the inverse field that will be created */
   inverseName: string
+  /** Description for the inverse field */
   inverseDescription?: string
+  /** Icon for the inverse field */
   inverseIcon?: string
-  inverseDisplayFieldId?: string | null
 }
+
+/** Zod schema for RelationshipOptions input validation */
+export const relationshipOptionsSchema = z.object({
+  relatedResourceId: z.string(),
+  relationshipType: relationshipTypeSchema,
+  inverseName: z.string(),
+  inverseDescription: z.string().optional(),
+  inverseIcon: z.string().optional(),
+})
 
 // =============================================================================
 // UNIQUENESS

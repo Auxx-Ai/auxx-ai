@@ -122,19 +122,11 @@ export interface RelationshipConfig {
   onUpdate?: 'CASCADE' | 'RESTRICT'
 
   /**
-   * UUID of the related custom entity definition (for custom entity relationships)
-   * Used to preserve the original EntityDefinition.id when relationship is to a custom entity
-   * @optional - only populated for custom entity relationships
+   * Entity definition ID of the related resource.
+   * For system resources: the resource type (e.g., 'contact', 'ticket')
+   * For custom entities: the EntityDefinition UUID
    */
   relatedEntityDefinitionId?: string
-
-  /**
-   * System resource model type (for system resource relationships)
-   * Examples: 'contact', 'ticket', 'thread', 'user'
-   * Used to distinguish system relationships from custom entity relationships
-   * @optional - only populated for system resource relationships
-   */
-  relatedModelType?: string
 }
 
 /**

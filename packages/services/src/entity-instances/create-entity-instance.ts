@@ -25,7 +25,7 @@ export async function createEntityInstance(params: CreateEntityInstanceParams) {
         entityDefinitionId,
         organizationId,
         createdById: createdById ?? null,
-        updatedAt: new Date().toISOString(),
+        updatedAt: new Date(),
       })
       .returning(),
     'create-entity-instance'

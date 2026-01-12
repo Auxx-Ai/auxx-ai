@@ -1,7 +1,9 @@
 // packages/utils/src/relationships.ts
 
-/** Relationship cardinality types for custom entity fields */
-export type RelationshipType = 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
+import type { RelationshipType } from '@auxx/types/custom-field'
+
+// Re-export RelationshipType for consumers that import from @auxx/utils
+export type { RelationshipType }
 
 /**
  * Get the inverse cardinality for a relationship type.

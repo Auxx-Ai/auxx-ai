@@ -83,12 +83,10 @@ export interface FieldOptions {
   // RELATIONSHIP (nested - for UI consumers)
   // ─────────────────────────────────────────────────────────────
   relationship?: {
-    /** Entity definition UUID for custom entity relationships */
+    /** Entity definition ID (system resource ID or custom entity UUID) */
     relatedEntityDefinitionId?: string
-    /** Model type for system resource relationships (e.g., 'contact', 'ticket') */
-    relatedModelType?: string
     /** Relationship cardinality */
-    relationshipType?: 'belongs_to' | 'has_one' | 'has_many'
+    relationshipType?: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
   }
 }
 

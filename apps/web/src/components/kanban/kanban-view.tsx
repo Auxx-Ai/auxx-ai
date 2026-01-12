@@ -245,7 +245,6 @@ export function KanbanView<TData extends KanbanRow>({
           inverseFieldId?: string
           relationshipType?: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
           relatedEntityDefinitionId?: string
-          relatedModelType?: string
         },
       }
     },
@@ -549,7 +548,8 @@ export function KanbanView<TData extends KanbanRow>({
         saveBulkValues(
           cardsToMove.map((card) => card.id),
           config.groupByFieldId,
-          newValue
+          newValue,
+          groupByField.fieldType ?? 'SINGLE_SELECT'
         )
 
         // Clear selection after drop

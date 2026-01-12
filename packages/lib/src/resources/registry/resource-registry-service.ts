@@ -546,9 +546,8 @@ export class ResourceRegistryService {
           celebration?: boolean
         }[]
         relationship?: {
-          relatedModelType?: string
           relatedEntityDefinitionId?: string
-          relationshipType?: 'belongs_to' | 'has_one' | 'has_many'
+          relationshipType?: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
         }
       }
 
@@ -558,32 +557,28 @@ export class ResourceRegistryService {
       let optionsRelationship:
         | {
             relatedEntityDefinitionId?: string
-            relatedModelType?: string
-            relationshipType?: 'belongs_to' | 'has_one' | 'has_many'
+            relationshipType?: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
           }
         | undefined
 
       if (field.type === FieldTypeEnum.RELATIONSHIP) {
         const rel = rawOptions?.relationship
 
-        let targetTable: string | undefined
-        if (rel?.relatedModelType) {
-          targetTable = rel.relatedModelType
-        } else if (rel?.relatedEntityDefinitionId) {
-          targetTable = rel.relatedEntityDefinitionId
-        }
+        // relatedEntityDefinitionId is the unified ID for both system and custom resources
+        const targetTable = rel?.relatedEntityDefinitionId
 
         if (targetTable) {
           relationship = {
             targetTable,
-            cardinality: rel?.relationshipType === 'has_many' ? 'one-to-many' : 'many-to-one',
-            relatedEntityDefinitionId: rel?.relatedEntityDefinitionId,
-            relatedModelType: rel?.relatedModelType,
+            cardinality:
+              rel?.relationshipType === 'has_many' || rel?.relationshipType === 'many_to_many'
+                ? 'one-to-many'
+                : 'many-to-one',
+            relatedEntityDefinitionId: rel.relatedEntityDefinitionId,
           }
         }
 
-        // Pass through full relationship config for UI consumers
-        // Includes: isInverse, inverseFieldId, displayFieldId, relatedModelType, relationshipType, relatedEntityDefinitionId
+        // Pass through relationship config for UI consumers
         optionsRelationship = rel
       }
 

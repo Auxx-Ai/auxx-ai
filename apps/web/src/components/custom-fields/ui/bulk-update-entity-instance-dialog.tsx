@@ -84,7 +84,6 @@ export function BulkUpdateEntityInstanceDialog({
           inverseFieldId?: string
           relationshipType?: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
           relatedEntityDefinitionId?: string
-          relatedModelType?: string
         },
       }
     },

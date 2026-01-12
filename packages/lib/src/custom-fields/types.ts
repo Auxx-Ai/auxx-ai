@@ -10,6 +10,7 @@ import {
   type SelectOption,
   currencyOptionsSchema,
   fileOptionsSchema,
+  relationshipConfigSchema,
 } from '@auxx/types/custom-field'
 
 // Re-export types needed by other lib modules
@@ -290,16 +291,7 @@ export const dateFieldOptionsSchema = baseFieldOptionsSchema.extend({
   maxDate: z.string().optional(),
 })
 export const relationshipFieldOptionsSchema = baseFieldOptionsSchema.extend({
-  relationship: z
-    .object({
-      relatedEntityDefinitionId: z.string().nullable(),
-      relatedModelType: z.string().nullable(),
-      inverseFieldId: z.string().nullable(),
-      relationshipType: z.enum(['belongs_to', 'has_one', 'has_many']),
-      displayFieldId: z.string().nullable(),
-      isInverse: z.boolean(),
-    })
-    .optional(),
+  relationship: relationshipConfigSchema.optional(),
 })
 
 /** Currency display options schema */

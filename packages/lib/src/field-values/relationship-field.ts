@@ -2,7 +2,11 @@
 
 import type { RelationshipFieldValue, RelationshipFieldValueInput, TypedFieldValue } from '@auxx/types/field-value'
 import type { ResourceId } from '@auxx/types/resource'
+import type { RelationshipType } from '@auxx/types/custom-field'
 import { toResourceId, getInstanceId } from '../resources/resource-id'
+
+// Re-export RelationshipType for consumers
+export type { RelationshipType }
 
 /**
  * Extracted relationship data with ResourceIds ready for useRelationship
@@ -13,9 +17,6 @@ export interface RelationshipData {
   /** Unique entity definition IDs found in the value (for mixed-type relationships) */
   entityDefinitionIds: string[]
 }
-
-/** Valid relationship cardinality types */
-export type RelationshipType = 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
 
 // ============================================================================
 // TYPE GUARDS - Narrow and validate relationship values
