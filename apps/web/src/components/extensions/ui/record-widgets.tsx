@@ -1,4 +1,4 @@
-// apps/web/src/components/record/record-widgets.tsx
+// apps/web/src/components/extensions/ui/record-widgets.tsx
 'use client'
 
 import { useSurfaces } from '~/lib/extensions/use-surfaces'

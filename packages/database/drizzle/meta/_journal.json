@@ -414,6 +414,13 @@
       "when": 1768116333553,
       "tag": "0058_add_index_entity_instance",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1768249300549,
+      "tag": "0059_add_entity_def_to_field_value",
+      "breakpoints": true
     }
   ]
 }

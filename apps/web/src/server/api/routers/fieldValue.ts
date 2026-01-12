@@ -3,7 +3,7 @@
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { FieldValueService } from '@auxx/lib/field-values'
-import { parseResourceId, getModelType, type ResourceId } from '@auxx/lib/resources/client'
+import type { ResourceId } from '@auxx/types/resource'
 
 /** Typed value input schema for multi-value fields */
 const typedValueInputSchema = z.object({
@@ -32,17 +32,11 @@ export const fieldValueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { entityDefinitionId, entityInstanceId } = parseResourceId(
-        input.resourceId as ResourceId
-      )
-      const modelType = getModelType(entityDefinitionId)
-
       const service = new FieldValueService(ctx.session.organizationId, ctx.session.user.id, ctx.db)
       return await service.setValueWithBuiltIn({
-        entityId: entityInstanceId,
+        resourceId: input.resourceId as ResourceId,
         fieldId: input.fieldId,
         value: input.value ?? null,
-        modelType,
       })
     }),
 
@@ -98,23 +92,13 @@ export const fieldValueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Parse first resourceId to get entityDefinitionId (all should have same definition)
-      const { entityDefinitionId } = parseResourceId(input.resourceIds[0] as ResourceId)
-      const modelType = getModelType(entityDefinitionId)
-
-      // Extract instance IDs from ResourceIds
-      const entityIds = input.resourceIds.map(
-        (rid) => parseResourceId(rid as ResourceId).entityInstanceId
-      )
-
       const service = new FieldValueService(ctx.session.organizationId, ctx.session.user.id, ctx.db)
       return await service.setBulkValues({
-        entityIds,
+        resourceIds: input.resourceIds as ResourceId[],
         values: input.values.map((v) => ({
           fieldId: v.fieldId,
           value: v.value ?? null,
         })),
-        modelType,
       })
     }),
 
@@ -130,11 +114,9 @@ export const fieldValueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { entityInstanceId } = parseResourceId(input.resourceId as ResourceId)
-
       const service = new FieldValueService(ctx.session.organizationId, ctx.session.user.id, ctx.db)
       await service.deleteValue({
-        entityId: entityInstanceId,
+        resourceId: input.resourceId as ResourceId,
         fieldId: input.fieldId,
       })
       return { success: true }
@@ -177,11 +159,9 @@ export const fieldValueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { entityInstanceId } = parseResourceId(input.resourceId as ResourceId)
-
       const service = new FieldValueService(ctx.session.organizationId, ctx.session.user.id, ctx.db)
       return await service.addValue({
-        entityId: entityInstanceId,
+        resourceId: input.resourceId as ResourceId,
         fieldId: input.fieldId,
         fieldType: input.fieldType,
         value: input.value as any,

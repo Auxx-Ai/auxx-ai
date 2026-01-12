@@ -9,3 +9,13 @@
 export type ResourceId = string & { readonly __brand: 'ResourceId' }
 
 export { resourceIdSchema } from './schema'
+export {
+  toResourceId,
+  parseResourceId,
+  isResourceId,
+  toResourceIds,
+  getInstanceId,
+  getDefinitionId,
+  isSystemModelType,
+  getModelType,
+} from './utils'

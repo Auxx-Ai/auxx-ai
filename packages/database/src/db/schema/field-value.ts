@@ -40,7 +40,7 @@ export const FieldValue = pgTable(
     /** Timestamp when last updated (uses $defaultFn since column lacks DB default) */
     updatedAt: timestamp({ precision: 3 })
       .notNull()
-      .$defaultFn(() => new Date())
+      .defaultNow()
       .$onUpdate(() => new Date()),
 
     /** Organization this value belongs to (denormalized for query performance) */
@@ -55,6 +55,9 @@ export const FieldValue = pgTable(
 
     /** Entity ID (Contact, Ticket, EntityInstance, or other entity) */
     entityId: text().notNull(),
+
+    /** Entity definition ID (system type like "contact" or custom entity UUID) */
+    entityDefinitionId: text().notNull(),
 
     // ========================================
     // Typed value columns (only ONE populated per row)
@@ -102,17 +105,29 @@ export const FieldValue = pgTable(
     // Primary lookups
     index('FieldValue_organizationId_idx').using('btree', table.organizationId.asc().nullsLast()),
     index('FieldValue_entityId_idx').using('btree', table.entityId.asc().nullsLast()),
+    index('FieldValue_entityDefinitionId_idx').using(
+      'btree',
+      table.entityDefinitionId.asc().nullsLast()
+    ),
     index('FieldValue_fieldId_idx').using('btree', table.fieldId.asc().nullsLast()),
     index('FieldValue_entityId_fieldId_idx').using(
       'btree',
       table.entityId.asc().nullsLast(),
       table.fieldId.asc().nullsLast()
     ),
+    index('FieldValue_entityDefinitionId_entityId_idx').using(
+      'btree',
+      table.entityDefinitionId.asc().nullsLast(),
+      table.entityId.asc().nullsLast()
+    ),
 
     // Option and relationship lookups
     index('FieldValue_optionId_idx').using('btree', table.optionId.asc().nullsLast()),
     index('FieldValue_relatedEntityId_idx').using('btree', table.relatedEntityId.asc().nullsLast()),
-    index('FieldValue_relatedEntityDefinitionId_idx').using('btree', table.relatedEntityDefinitionId.asc().nullsLast()),
+    index('FieldValue_relatedEntityDefinitionId_idx').using(
+      'btree',
+      table.relatedEntityDefinitionId.asc().nullsLast()
+    ),
 
     // Unique per sortKey (allows multi-value with ordering)
     uniqueIndex('FieldValue_entity_field_sortKey_key').using(

@@ -14,7 +14,7 @@ import {
 } from './display-field-types'
 import { ResourceRegistryService } from '../resources/registry/resource-registry-service'
 import { FieldValueService } from './field-value-service'
-import { toResourceIds } from '../resources/resource-id'
+import { toResourceIds, getInstanceId } from '../resources/resource-id'
 import type { ResourceField } from '../resources/registry/field-types'
 import type { CustomResource } from '../resources/registry/types'
 import type { TypedFieldValue } from '@auxx/types'
@@ -121,10 +121,11 @@ export class DisplayFieldService {
       })
 
       // Group by entityId for easy lookup
+      // Extract instanceId from ResourceId for local Map lookup
       const valuesByEntity = new Map<string, TypedFieldValue | TypedFieldValue[]>()
       for (const result of batchResult.values) {
         if (result.value) {
-          valuesByEntity.set(result.resourceId, result.value)
+          valuesByEntity.set(getInstanceId(result.resourceId), result.value)
         }
       }
 

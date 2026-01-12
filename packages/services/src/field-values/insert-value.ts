@@ -3,6 +3,7 @@
 import { database, schema } from '@auxx/database'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
+import { parseResourceId } from '@auxx/types/resource'
 import type { InsertFieldValueInput, FieldValueRow } from './types'
 
 /**
@@ -12,12 +13,16 @@ import type { InsertFieldValueInput, FieldValueRow } from './types'
  * @returns Result with inserted row
  */
 export async function insertFieldValue(input: InsertFieldValueInput) {
+  // Split ResourceId at DB boundary
+  const { entityDefinitionId, entityInstanceId } = parseResourceId(input.resourceId)
+
   const dbResult = await fromDatabase(
     database
       .insert(schema.FieldValue)
       .values({
         organizationId: input.organizationId,
-        entityId: input.entityId,
+        entityId: entityInstanceId,
+        entityDefinitionId: entityDefinitionId,
         fieldId: input.fieldId,
         sortKey: input.sortKey,
         valueText: input.valueText ?? null,
@@ -51,20 +56,24 @@ export async function batchInsertFieldValues(inputs: InsertFieldValueInput[]) {
     return ok([])
   }
 
-  const values = inputs.map((input) => ({
-    organizationId: input.organizationId,
-    entityId: input.entityId,
-    fieldId: input.fieldId,
-    sortKey: input.sortKey,
-    valueText: input.valueText ?? null,
-    valueNumber: input.valueNumber ?? null,
-    valueBoolean: input.valueBoolean ?? null,
-    valueDate: input.valueDate ?? null,
-    valueJson: input.valueJson ?? null,
-    optionId: input.optionId ?? null,
-    relatedEntityId: input.relatedEntityId ?? null,
-    relatedEntityDefinitionId: input.relatedEntityDefinitionId ?? null,
-  }))
+  const values = inputs.map((input) => {
+    const { entityDefinitionId, entityInstanceId } = parseResourceId(input.resourceId)
+    return {
+      organizationId: input.organizationId,
+      entityId: entityInstanceId,
+      entityDefinitionId: entityDefinitionId,
+      fieldId: input.fieldId,
+      sortKey: input.sortKey,
+      valueText: input.valueText ?? null,
+      valueNumber: input.valueNumber ?? null,
+      valueBoolean: input.valueBoolean ?? null,
+      valueDate: input.valueDate ?? null,
+      valueJson: input.valueJson ?? null,
+      optionId: input.optionId ?? null,
+      relatedEntityId: input.relatedEntityId ?? null,
+      relatedEntityDefinitionId: input.relatedEntityDefinitionId ?? null,
+    }
+  })
 
   const dbResult = await fromDatabase(
     database.insert(schema.FieldValue).values(values).returning(),

@@ -154,11 +154,12 @@ export function useCustomFieldValueSyncer(options: UseCustomFieldValueSyncerOpti
 
         // Update store with fetched TypedFieldValues AND mark all combinations as loaded
         // Entries with actual data from batchGet
+        // Note: v.resourceId is now proper ResourceId format, so extract instanceId
         const entriesMap = new Map(
-          data.values.map((v) => [
-            buildFieldValueKeyFromParts(entityDefinitionId, v.resourceId, v.fieldId),
-            v.value,
-          ])
+          data.values.map((v) => {
+            const instanceId = v.resourceId.split(':')[1]!
+            return [buildFieldValueKeyFromParts(entityDefinitionId, instanceId, v.fieldId), v.value]
+          })
         )
 
         // Mark all requested combinations as loaded (including ones with no data)

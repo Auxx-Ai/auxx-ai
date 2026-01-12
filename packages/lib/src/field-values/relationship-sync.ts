@@ -23,6 +23,8 @@ export interface InverseFieldInfo {
   inverseRelationshipType: RelationshipType
   /** The entity definition ID that the inverse field points TO (source entity's type) */
   sourceEntityDefinitionId: string
+  /** The entity definition ID of the target entity (for building ResourceId in inserts) */
+  targetEntityDefinitionId: string
   /** The source field's ID (for cascade cleanup when inverse is single-value) */
   sourceFieldId: string
 }
@@ -181,6 +183,7 @@ export async function syncInverseRelationships(
       inverseFieldId: inverseInfo.inverseFieldId,
       inverseRelationshipType: inverseInfo.inverseRelationshipType,
       sourceEntityDefinitionId: inverseInfo.sourceEntityDefinitionId,
+      targetEntityDefinitionId: inverseInfo.targetEntityDefinitionId,
       additions: new Map(addedIds.map((targetId) => [targetId, new Set([entityId])])),
       sourceFieldId: inverseInfo.sourceFieldId,
     })
@@ -254,6 +257,7 @@ export async function syncInverseRelationshipsBulk(
       inverseFieldId,
       inverseRelationshipType,
       sourceEntityDefinitionId,
+      targetEntityDefinitionId: inverseInfo.targetEntityDefinitionId,
       additions,
       sourceFieldId: inverseInfo.sourceFieldId,
     })
@@ -321,6 +325,7 @@ interface BatchAddParams {
   inverseFieldId: string
   inverseRelationshipType: RelationshipType
   sourceEntityDefinitionId: string
+  targetEntityDefinitionId: string
   /** Map: targetEntityId → Set of sourceEntityIds to add to that target's inverse */
   additions: Map<string, Set<string>>
   /** The source field's ID (for cascade cleanup when inverse is single-value) */
@@ -343,7 +348,7 @@ async function batchAddToInverse(
   ctx: RelationshipSyncContext,
   params: BatchAddParams
 ): Promise<void> {
-  const { inverseFieldId, inverseRelationshipType, sourceEntityDefinitionId, additions, sourceFieldId } = params
+  const { inverseFieldId, inverseRelationshipType, sourceEntityDefinitionId, targetEntityDefinitionId, additions, sourceFieldId } = params
 
   if (additions.size === 0) return
 
@@ -435,6 +440,7 @@ async function batchAddToInverse(
       [...finalValue.entries()].map(([targetId, sourceId]) => ({
         organizationId: ctx.organizationId,
         entityId: targetId,
+        entityDefinitionId: targetEntityDefinitionId,
         fieldId: inverseFieldId,
         relatedEntityId: sourceId,
         relatedEntityDefinitionId: sourceEntityDefinitionId,
@@ -502,6 +508,7 @@ async function batchAddToInverse(
       return {
         organizationId: ctx.organizationId,
         entityId: targetId,
+        entityDefinitionId: targetEntityDefinitionId,
         fieldId: inverseFieldId,
         relatedEntityId: sourceId,
         relatedEntityDefinitionId: sourceEntityDefinitionId,

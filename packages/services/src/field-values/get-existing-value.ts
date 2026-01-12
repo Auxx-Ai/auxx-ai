@@ -20,6 +20,7 @@ export async function getExistingFieldValue(input: GetExistingValueInput) {
     database
       .select({
         id: schema.FieldValue.id,
+        entityDefinitionId: schema.FieldValue.entityDefinitionId,
         valueText: schema.FieldValue.valueText,
         valueNumber: schema.FieldValue.valueNumber,
         valueBoolean: schema.FieldValue.valueBoolean,

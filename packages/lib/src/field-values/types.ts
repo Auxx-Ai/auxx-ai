@@ -20,7 +20,7 @@ export type ModelType = 'contact' | 'ticket' | 'thread' | 'entity'
  * Automatically updates EntityInstance.displayName if this is the primary display field.
  */
 export interface SetValueInput {
-  entityId: string
+  resourceId: ResourceId
   fieldId: string
   /** Raw value - service will convert based on field type */
   value: unknown
@@ -31,10 +31,9 @@ export interface SetValueInput {
  * Replaces CustomFieldService.setValue
  */
 export interface SetValueWithBuiltInInput {
-  entityId: string
+  resourceId: ResourceId
   fieldId: string
   value: unknown
-  modelType: ModelType
   /** Whether to publish events (default: true) */
   publishEvents?: boolean
   /** Skip inverse relationship sync (used by bulk operations that handle sync separately) */
@@ -46,9 +45,8 @@ export interface SetValueWithBuiltInInput {
  * Replaces CustomFieldService.setValues
  */
 export interface SetValuesForEntityInput {
-  entityId: string
+  resourceId: ResourceId
   values: Array<{ fieldId: string; value: unknown }>
-  modelType: ModelType
   /** Whether to publish events (default: true) */
   publishEvents?: boolean
   /** Skip inverse relationship sync (used by bulk operations that handle sync separately) */
@@ -60,9 +58,8 @@ export interface SetValuesForEntityInput {
  * Replaces CustomFieldService.bulkSetValues
  */
 export interface SetBulkValuesInput {
-  entityIds: string[]
+  resourceIds: ResourceId[]
   values: Array<{ fieldId: string; value: unknown }>
-  modelType: ModelType
 }
 
 /**
@@ -95,7 +92,7 @@ export interface SetValuesResult {
  * Does NOT update displayName - caller is responsible for that.
  */
 export interface SetValueWithTypeInput {
-  entityId: string
+  resourceId: ResourceId
   fieldId: string
   fieldType: string
   value: TypedFieldValueInput | TypedFieldValueInput[] | null
@@ -105,7 +102,7 @@ export interface SetValueWithTypeInput {
 
 /** Input for adding a value to a multi-value field */
 export interface AddValueInput {
-  entityId: string
+  resourceId: ResourceId
   fieldId: string
   fieldType: string
   value: TypedFieldValueInput
@@ -114,13 +111,13 @@ export interface AddValueInput {
 
 /** Input for getting a single field value */
 export interface GetValueInput {
-  entityId: string
+  resourceId: ResourceId
   fieldId: string
 }
 
 /** Input for getting multiple values */
 export interface GetValuesInput {
-  entityId: string
+  resourceId: ResourceId
   fieldIds?: string[]
 }
 
@@ -132,7 +129,7 @@ export interface BatchGetValuesInput {
 
 /** Input for deleting values */
 export interface DeleteValueInput {
-  entityId: string
+  resourceId: ResourceId
   fieldId: string
 }
 
@@ -142,7 +139,7 @@ export interface DeleteValueInput {
 
 /** Single result from batch get */
 export interface TypedFieldValueResult {
-  resourceId: string
+  resourceId: ResourceId
   fieldId: string
   value: TypedFieldValue | TypedFieldValue[] | null
   /** Issues found with this field (only present if there are issues) */
@@ -162,6 +159,7 @@ export interface BatchFieldValueResult {
 export interface FieldValueRow {
   id: string
   entityId: string
+  entityDefinitionId: string
   fieldId: string
   organizationId: string
   valueText: string | null

@@ -1,6 +1,7 @@
 // packages/services/src/field-values/types.ts
 
 import type { TypedFieldValue, TypedFieldValueInput } from '@auxx/types'
+import type { ResourceId } from '@auxx/types/resource'
 
 // =============================================================================
 // ERROR TYPES
@@ -68,6 +69,7 @@ export interface GetExistingValueInput {
 /** Existing field value row */
 export interface ExistingFieldValueRow {
   id: string
+  entityDefinitionId: string
   valueText: string | null
   valueNumber: number | null
   valueBoolean: boolean | null
@@ -79,9 +81,9 @@ export interface ExistingFieldValueRow {
   sortKey: string
 }
 
-/** Input for inserting a field value */
+/** Input for inserting a field value - uses ResourceId */
 export interface InsertFieldValueInput {
-  entityId: string
+  resourceId: ResourceId
   fieldId: string
   organizationId: string
   sortKey: string
@@ -127,6 +129,7 @@ export interface UpdateDisplayNameInput {
 export interface FieldValueRow {
   id: string
   entityId: string
+  entityDefinitionId: string
   fieldId: string
   organizationId: string
   valueText: string | null
