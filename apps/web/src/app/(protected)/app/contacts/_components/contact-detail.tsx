@@ -21,7 +21,6 @@ import {
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
 import EntityFields from '~/components/fields/entity-fields'
-import { ModelTypes } from '@auxx/types/custom-field'
 import CustomerMergeDialog from './customer-merge-dialog'
 import CustomerSpamDialog from './customer-spam-dialog'
 import CustomerOrdersTab from './customer-orders-tab'
@@ -105,7 +104,7 @@ function ContactDetailSidebar({
       </div>
 
       {/* Entity Fields - directly below person card, no tabs */}
-      <MemoEntityFields modelType={ModelTypes.CONTACT} entityId={customer.id} className="m-4" />
+      <MemoEntityFields entityDefinitionId="contact" entityInstanceId={customer.id} className="m-4" />
 
       {/* Groups and Sources Sections - matching ticket-detail-drawer.tsx pattern */}
       <div className="space-y-4 p-4 pt-0">

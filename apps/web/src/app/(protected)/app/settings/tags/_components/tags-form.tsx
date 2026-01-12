@@ -13,7 +13,6 @@ import {
   DialogFooter,
   DialogDescription,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Form,
@@ -86,7 +85,7 @@ export function TagFormDialog({
   )
 }
 
-/** Inner content component - must be inside DialogContent for useDialogSubmit to work */
+/** Inner content component */
 function TagFormDialogContent({
   editingTag,
   onOpenChange,
@@ -163,12 +162,6 @@ function TagFormDialogContent({
   // Loading state
   const isSubmitting = createTag.isPending || updateTag.isPending
 
-  // Register Meta+Enter submit handler
-  const { formProps } = useDialogSubmit({
-    onSubmit: form.handleSubmit(onSubmit),
-    disabled: isSubmitting,
-  })
-
   // Recursive function to render tag options with proper indentation
   const renderTagOptions = (tags: any[], depth = 0, path: string[] = [], excludeId?: string) => {
     if (!tags) return null
@@ -206,7 +199,7 @@ function TagFormDialogContent({
       </DialogHeader>
 
       <Form {...form}>
-        <form {...formProps}>
+        <form onSubmit={form.handleSubmit(onSubmit)}>
           <div className="space-y-4">
             {/* Title field */}
             <div className="grid w-full grid-cols-[38px_auto] items-center justify-items-start gap-x-0">

@@ -38,7 +38,7 @@ export {
   fileConverter,
 } from './converters'
 
-// Row types (exported from types.ts, not value-converter.ts)
+// Relationship utilities
 export {
   extractRelationshipData,
   extractRelationshipRefs,
@@ -48,7 +48,12 @@ export {
   isRelationshipFieldValue,
   isRelationshipFieldValueArray,
   convertRawToRelationshipInput,
+  isMultiRelationship,
+  toResourceRef,
+  toResourceRefs,
+  toResourceRefsFromId,
   type RelationshipData,
+  type RelationshipType,
 } from './relationship-field'
 
 // Relationship sync (bidirectional integrity)

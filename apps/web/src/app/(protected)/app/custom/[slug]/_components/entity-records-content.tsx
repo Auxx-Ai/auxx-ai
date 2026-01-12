@@ -698,13 +698,15 @@ export function EntityRecordsContent() {
       )}
 
       {/* Custom Field Dialog */}
-      <CustomFieldDialog
-        open={isFieldDialogOpen}
-        onOpenChange={setIsFieldDialogOpen}
-        onSave={handleSaveField}
-        isPending={isCreatingField}
-        currentResourceId={resource?.id}
-      />
+      {isFieldDialogOpen && (
+        <CustomFieldDialog
+          open={isFieldDialogOpen}
+          onOpenChange={setIsFieldDialogOpen}
+          onSave={handleSaveField}
+          isPending={isCreatingField}
+          currentResourceId={resource?.id}
+        />
+      )}
 
       {/* Workflow Trigger Dialog */}
       <MassWorkflowTriggerDialog

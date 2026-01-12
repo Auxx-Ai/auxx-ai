@@ -13,7 +13,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
@@ -58,7 +57,7 @@ interface DuplicateWorkflowDialogContentProps {
   onClose: () => void
 }
 
-/** Inner content component - must be inside DialogContent for useDialogSubmit to work */
+/** Inner content component */
 function DuplicateWorkflowDialogContent({
   workflowId,
   workflowName,
@@ -92,12 +91,6 @@ function DuplicateWorkflowDialogContent({
     duplicateWorkflow.mutate({ id: workflowId, name: name.trim() })
   }
 
-  // Register Meta+Enter submit handler
-  useDialogSubmit({
-    onSubmit: handleDuplicate,
-    disabled: !name.trim() || duplicateWorkflow.isPending,
-  })
-
   return (
     <>
       <DialogHeader>
@@ -124,7 +117,8 @@ function DuplicateWorkflowDialogContent({
           onClick={handleDuplicate}
           loading={duplicateWorkflow.isPending}
           loadingText="Duplicating..."
-          disabled={!name.trim() || duplicateWorkflow.isPending}>
+          disabled={!name.trim() || duplicateWorkflow.isPending}
+          data-dialog-submit>
           Duplicate <KbdSubmit variant="outline" size="sm" />
         </Button>
       </DialogFooter>

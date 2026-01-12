@@ -10,7 +10,6 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Field,
@@ -327,15 +326,6 @@ export function EntityDefinitionDialog({
     slug.trim().length > 0 &&
     (isEditing || slugExists === false)
 
-  // Register Meta+Enter submit handler
-  useDialogSubmit({
-    onSubmit: () => {
-      const fakeEvent = { preventDefault: () => {} } as React.FormEvent
-      handleSubmit(fakeEvent)
-    },
-    disabled: !isValid || isPending,
-  })
-
   // Handle form submission
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -604,13 +594,15 @@ export function EntityDefinitionDialog({
       </Dialog>
 
       {/* Custom field dialog shown after entity creation */}
-      <CustomFieldDialog
-        open={customFieldDialogOpen}
-        onOpenChange={handleCustomFieldDialogClose}
-        onSave={handleCustomFieldSave}
-        isPending={createCustomField.isPending}
-        currentResourceId={createdEntityId ?? undefined}
-      />
+      {customFieldDialogOpen && (
+        <CustomFieldDialog
+          open={customFieldDialogOpen}
+          onOpenChange={handleCustomFieldDialogClose}
+          onSave={handleCustomFieldSave}
+          isPending={createCustomField.isPending}
+          currentResourceId={createdEntityId ?? undefined}
+        />
+      )}
 
       <ConfirmDialog />
     </>

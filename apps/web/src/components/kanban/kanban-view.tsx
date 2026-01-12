@@ -270,8 +270,7 @@ export function KanbanView<TData extends KanbanRow>({
 
   // useCustomField for column option mutations (label, color, etc.)
   const { update: updateField } = useCustomField({
-    modelType,
-    entityDefinitionId,
+    entityDefinitionId: entityDefinitionId || modelType,
   })
 
   /** Get current options from groupByField for mutations (includes pending optimistic options) */

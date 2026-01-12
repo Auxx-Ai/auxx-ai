@@ -4,7 +4,9 @@
 import { useState, useCallback, useMemo } from 'react'
 import { FieldType } from '@auxx/database/enums'
 import type { FieldOptions } from '@auxx/lib/field-values/client'
+import { isMultiRelationship } from '@auxx/lib/field-values/client'
 import type { SelectOption } from '@auxx/types/custom-field'
+import type { ResourceRef } from '@auxx/types/resource'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
 import { SelectFieldInput, getSelectConfig } from './select-input-field'
 import {
@@ -102,7 +104,7 @@ export function FieldInputAdapter({
   switch (fieldType) {
     // ─────────────────────────────────────────────────────────────────
     // RELATIONSHIP - uses MultiRelationInput directly
-    // Value: string[] (array of entity IDs)
+    // Value: ResourceRef[] (array of resource references)
     // ─────────────────────────────────────────────────────────────────
     case FieldType.RELATIONSHIP: {
       const relationship = fieldOptions?.relationship
@@ -110,14 +112,26 @@ export function FieldInputAdapter({
         return <div className="text-muted-foreground text-sm">Missing relationship config</div>
       }
 
-      // Value should already be string[] - caller is responsible for conversion
-      const ids = (value as string[]) || []
+      // Derive entityDefinitionId from relationship config
+      const entityDefinitionId =
+        relationship.relatedEntityDefinitionId ?? relationship.relatedModelType ?? null
+
+      if (!entityDefinitionId) {
+        return <div className="text-muted-foreground text-sm">Missing entity definition</div>
+      }
+
+      // Derive multi from relationship type using helper
+      const multi = isMultiRelationship(relationship.relationshipType)
+
+      // Value is already ResourceRef[] from caller - just pass through
+      const refs = (value as ResourceRef[]) || []
 
       return (
         <MultiRelationInput
-          relationship={relationship}
-          value={ids}
+          entityDefinitionId={entityDefinitionId}
+          value={refs}
           onChange={onChange}
+          multi={multi}
           placeholder={placeholder}
           disabled={disabled}
           className={className}

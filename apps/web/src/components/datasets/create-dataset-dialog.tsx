@@ -16,7 +16,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Form,
@@ -92,7 +91,7 @@ interface CreateDatasetDialogContentProps {
   onClose: () => void
 }
 
-/** Inner content component - must be inside DialogContent for useDialogSubmit to work */
+/** Inner content component */
 function CreateDatasetDialogContent({ onSuccess, onClose }: CreateDatasetDialogContentProps) {
   const form = useForm<CreateDatasetForm>({
     resolver: standardSchemaResolver(createDatasetSchema),
@@ -191,12 +190,6 @@ function CreateDatasetDialogContent({ onSuccess, onClose }: CreateDatasetDialogC
     })
   }
 
-  // Register Meta+Enter submit handler
-  const { formProps } = useDialogSubmit({
-    onSubmit: form.handleSubmit(onSubmit),
-    disabled: createDataset.isPending,
-  })
-
   return (
     <>
       <DialogHeader>
@@ -207,7 +200,7 @@ function CreateDatasetDialogContent({ onSuccess, onClose }: CreateDatasetDialogC
       </DialogHeader>
 
       <Form {...form}>
-        <form {...formProps} className="space-y-4">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           <FormField
             control={form.control}
             name="name"

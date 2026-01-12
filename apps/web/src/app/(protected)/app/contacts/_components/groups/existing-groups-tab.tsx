@@ -5,7 +5,6 @@ import { useContactMutations } from '../use-contact-mutations'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { DialogFooter } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Users, Plus } from 'lucide-react'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
@@ -120,12 +119,6 @@ export default function ExistingGroupsTab({
     }
   }
 
-  // Register Meta+Enter submit handler
-  useDialogSubmit({
-    onSubmit: handleSaveGroups,
-    disabled: mutations.addToGroup.isPending || mutations.removeFromGroup.isPending,
-  })
-
   return (
     <>
       {groups && groups.length > 0 ? (
@@ -171,6 +164,7 @@ export default function ExistingGroupsTab({
             Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
           </Button>
           <Button
+            data-dialog-submit
             onClick={handleSaveGroups}
             size="sm"
             variant="outline"

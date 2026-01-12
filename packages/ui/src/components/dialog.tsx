@@ -19,30 +19,18 @@ const Dialog: typeof DialogPrimitive.Root = (props) => (
 type DialogContextValue = {
   isInsideDialog: boolean
   portalContainerRef: React.RefObject<HTMLDivElement | null> | null
-  /** Ref to the submit handler registered by useDialogSubmit */
-  submitHandlerRef: React.MutableRefObject<(() => void) | null>
-  /** Ref to track if submit is disabled */
-  disabledRef: React.MutableRefObject<boolean>
 }
-
-/** Default refs for context (used outside of dialog) */
-const defaultSubmitHandlerRef = { current: null }
-const defaultDisabledRef = { current: false }
 
 export const DialogContext = React.createContext<DialogContextValue>({
   isInsideDialog: false,
   portalContainerRef: null,
-  submitHandlerRef: defaultSubmitHandlerRef,
-  disabledRef: defaultDisabledRef,
 })
 
-const DialogProvider = ({ children }: React.PropsWithChildren<DialogContextValue>) => (
+const DialogProvider = ({ children }: React.PropsWithChildren<{ isInsideDialog: boolean }>) => (
   <DialogContext.Provider
     value={{
       isInsideDialog: true,
       portalContainerRef: null,
-      submitHandlerRef: defaultSubmitHandlerRef,
-      disabledRef: defaultDisabledRef,
     }}>
     {children}
   </DialogContext.Provider>
@@ -121,20 +109,32 @@ function DialogContent({
   ...props
 }: DialogContentProps) {
   const portalContainerRef = React.useRef<HTMLDivElement>(null)
-  const submitHandlerRef = React.useRef<(() => void) | null>(null)
-  const disabledRef = React.useRef<boolean>(false)
+  const contentRef = React.useRef<HTMLDivElement>(null)
 
-  // Handle Meta+Enter keyboard shortcut
+  // Handle Meta+Enter keyboard shortcut - DOM-based approach
+  // This queries the DOM directly for the submit button, avoiding context timing issues
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Check for Cmd+Enter (Mac) or Ctrl+Enter (Windows/Linux)
-      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-        // Don't trigger if disabled or no handler registered
-        if (disabledRef.current || !submitHandlerRef.current) return
+      if (!((e.metaKey || e.ctrlKey) && e.key === 'Enter')) return
 
+      const content = contentRef.current
+      if (!content) return
+
+      // Only handle if the event target is inside this dialog
+      // This prevents handling events from other dialogs
+      if (!content.contains(e.target as Node)) return
+
+      // Find submit button - supports both form buttons and standalone buttons
+      // Priority: [data-dialog-submit] > button[type="submit"]
+      const submitButton = content.querySelector<HTMLButtonElement>(
+        '[data-dialog-submit]:not(:disabled), button[type="submit"]:not(:disabled)'
+      )
+
+      if (submitButton) {
         e.preventDefault()
-        e.stopPropagation()
-        submitHandlerRef.current()
+        e.stopImmediatePropagation() // Prevent other dialog listeners
+        submitButton.click()
       }
     }
 
@@ -152,9 +152,9 @@ function DialogContent({
         <DialogPrimitive.Content
           className={cn(dialogVariants({ variant, size, position, className }))}
           {...props}>
-          <DialogContext.Provider
-            value={{ isInsideDialog: true, portalContainerRef, submitHandlerRef, disabledRef }}>
+          <DialogContext.Provider value={{ isInsideDialog: true, portalContainerRef }}>
             <div
+              ref={contentRef}
               className={cn(
                 'bg-background ring-1 ring-ring/20 dark:bg-primary-100/80 p-4 relative rounded-[16px] flex flex-col min-h-0',
                 innerClassName

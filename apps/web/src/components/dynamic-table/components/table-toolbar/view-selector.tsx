@@ -51,7 +51,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Label } from '@auxx/ui/components/label'
 import { RadioGroup, RadioGroupItemCard } from '@auxx/ui/components/radio-group'
@@ -314,19 +313,6 @@ export function ViewSelector({
   const canSave = Boolean(activeView && hasUnsavedChanges && !isSaving)
   const showUnsavedBadge = Boolean(activeView && hasUnsavedChanges && !isSaving)
 
-  // Register Meta+Enter for Create View dialog
-  useDialogSubmit({
-    onSubmit: handleCreateView,
-    disabled:
-      createView.isPending ||
-      (viewType === 'kanban' && !selectedFieldId && !newFieldName.trim()),
-  })
-
-  // Register Meta+Enter for Rename View dialog
-  useDialogSubmit({
-    onSubmit: handleRenameView,
-    disabled: !newViewName.trim() || updateView.isPending,
-  })
 
   const handleSave = async () => {
     if (!activeView || !onSave) {
@@ -623,6 +609,7 @@ export function ViewSelector({
               Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
             </Button>
             <Button
+              data-dialog-submit
               onClick={handleCreateView}
               size="sm"
               variant="outline"
@@ -666,6 +653,7 @@ export function ViewSelector({
               Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
             </Button>
             <Button
+              data-dialog-submit
               size="sm"
               variant="outline"
               onClick={handleRenameView}

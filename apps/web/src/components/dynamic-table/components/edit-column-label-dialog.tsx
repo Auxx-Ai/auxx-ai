@@ -11,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
@@ -60,7 +59,7 @@ interface EditColumnLabelDialogContentProps {
   onClose: () => void
 }
 
-/** Inner content component - must be inside DialogContent for useDialogSubmit to work */
+/** Inner content component */
 function EditColumnLabelDialogContent({
   open,
   originalLabel,
@@ -92,12 +91,6 @@ function EditColumnLabelDialogContent({
     onSave(null)
     onClose()
   }
-
-  // Register Meta+Enter submit handler
-  useDialogSubmit({
-    onSubmit: handleSave,
-    disabled: false,
-  })
 
   return (
     <>
@@ -132,7 +125,7 @@ function EditColumnLabelDialogContent({
             <Button size="sm" variant="ghost" onClick={onClose}>
               Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
             </Button>
-            <Button onClick={handleSave} size="sm" variant="outline">
+            <Button onClick={handleSave} size="sm" variant="outline" data-dialog-submit>
               Save <KbdSubmit variant="outline" size="sm" />
             </Button>
           </div>

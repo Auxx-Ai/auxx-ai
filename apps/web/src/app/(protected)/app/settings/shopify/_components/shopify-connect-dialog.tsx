@@ -14,7 +14,6 @@ import {
   DialogFooter,
   DialogClose,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
@@ -78,11 +77,6 @@ export function ShopifyConnectDialog({
     defaultValues: { shopDomain: '' },
   })
 
-  // Register Meta+Enter submit handler
-  useDialogSubmit({
-    onSubmit: form.handleSubmit(onSubmit),
-    disabled: isConnecting,
-  })
 
   const onSubmit = (values: ShopDomainSchema) => {
     setIsConnecting(true)

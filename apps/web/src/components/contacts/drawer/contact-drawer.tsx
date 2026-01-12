@@ -23,11 +23,10 @@ import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { DrawerHeader } from '@auxx/ui/components/drawer'
 import { OverflowTabsList, Tabs, TabsContent } from '@auxx/ui/components/tabs'
 import { api } from '~/trpc/react'
-import { useRecordWithFetch } from '~/components/resources'
+import { useRecord } from '~/components/resources'
 import { useQueryState } from 'nuqs'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import EntityFields from '../../fields/entity-fields'
-import { ModelTypes } from '@auxx/types/custom-field'
 import DrawerTickets from './drawer-tickets'
 import DrawerOrders from './drawer-orders'
 import DrawerConversations from './drawer-conversations'
@@ -92,9 +91,9 @@ export function ContactDrawer({
   }, [activeTab, setActiveTab])
 
   // Try record cache first (populated by batch fetcher when list loads)
-  const { record: contact, isLoading: isCacheLoading } = useRecordWithFetch({
-    resourceType: 'contact',
-    id: contactId,
+  const { record: contact, isLoading: isCacheLoading } = useRecord({
+    entityDefinitionId: 'contact',
+    entityInstanceId: contactId,
     enabled: !!open && !!contactId,
   })
   // Fall back to API if not in cache (for fields not included in batch fetch)
@@ -304,7 +303,9 @@ function ContactDrawerContent({
                       initialOpen
                       collapsible={false}
                       icon={<HouseIcon className="size-4" />}>
-                      <MemoEntityFields modelType={ModelTypes.CONTACT} entityId={contact?.id} />
+                      {contact?.id && (
+                        <MemoEntityFields entityDefinitionId="contact" entityInstanceId={contact.id} />
+                      )}
                     </Section>
                   </ScrollArea>
                 </TabsContent>

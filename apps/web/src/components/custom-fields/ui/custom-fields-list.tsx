@@ -27,13 +27,12 @@ import { useCustomField } from '~/components/custom-fields/hooks/use-custom-fiel
 import { EmptyState } from '~/components/global/empty-state'
 import { CustomFieldRow } from '~/components/custom-fields/ui/field-list'
 import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
-import { type ModelType } from '@auxx/lib/resources/client'
 import { useConfirm } from '~/hooks/use-confirm'
 
 /** Props for CustomFieldsList component */
 interface CustomFieldsListProps {
-  modelType: ModelType
-  entityDefinitionId?: string
+  /** Entity definition ID - system resource (e.g. 'contact') or custom entity UUID */
+  entityDefinitionId: string | undefined
   /** Resource ID for the current entity (used by relationship field editor) */
   currentResourceId?: string
 }
@@ -42,7 +41,6 @@ interface CustomFieldsListProps {
  * FieldList component for displaying a list of custom fields used inside app/settings
  */
 export function CustomFieldsList({
-  modelType,
   entityDefinitionId,
   currentResourceId,
 }: CustomFieldsListProps) {
@@ -54,7 +52,6 @@ export function CustomFieldsList({
   const [confirmDelete, ConfirmDeleteDialog] = useConfirm()
   // Use sortedFields for local drag order, fallback to API fields
   const { create, update, fields, isLoading, isPending, destroy } = useCustomField({
-    modelType,
     entityDefinitionId,
   })
   const [sortedFields, setSortedFields] = useState<any[]>([])
@@ -80,13 +77,11 @@ export function CustomFieldsList({
       // Update existing field - include the id
       await update.mutateAsync({ ...fieldData, id: editingField.id })
     } else {
-      // Create new field
-      const values = {
+      // Create new field - modelType is derived from entityDefinitionId on server
+      await create.mutateAsync({
         ...fieldData,
-        modelType,
-        entityDefinitionId: entityDefinitionId || undefined,
-      }
-      await create.mutateAsync(values)
+        entityDefinitionId,
+      })
     }
     setEditingField(null)
   }
@@ -143,14 +138,16 @@ export function CustomFieldsList({
       <ConfirmDeleteDialog />
 
       {/* Custom Field Dialog for Create/Edit */}
-      <CustomFieldDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        editingField={editingField}
-        onSave={handleSave}
-        isPending={isPending}
-        currentResourceId={currentResourceId}
-      />
+      {dialogOpen && (
+        <CustomFieldDialog
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          editingField={editingField}
+          onSave={handleSave}
+          isPending={isPending}
+          currentResourceId={currentResourceId}
+        />
+      )}
 
       {isLoading ? (
         <EmptyState

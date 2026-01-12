@@ -8,7 +8,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
@@ -87,12 +86,6 @@ export function DialogWebhook({ open, onClose, webhook, onSuccess }: DialogWebho
     await testWebhook.mutateAsync({ url: currentUrl })
   }
 
-  // Register Meta+Enter submit handler
-  const { formProps } = useDialogSubmit({
-    onSubmit: form.handleSubmit(onSubmit),
-    disabled: create.isPending || update.isPending,
-  })
-
   return (
     <Dialog open={open} onOpenChange={(open) => !open && onClose()}>
       <DialogContent size="sm" position="tc">
@@ -100,7 +93,7 @@ export function DialogWebhook({ open, onClose, webhook, onSuccess }: DialogWebho
           <DialogTitle>{webhook ? 'Edit Webhook' : 'Create Webhook'}</DialogTitle>
         </DialogHeader>
         <Form {...form}>
-          <form {...formProps} className="">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="">
             <div className="space-y-4">
               <div className="space-y-2 mt-3">
                 <FormField

@@ -1,7 +1,7 @@
 // apps/web/src/app/(protected)/app/tickets/_components/ticket-link-dialog.tsx
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useCallback } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -11,7 +11,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -23,6 +22,8 @@ import {
 } from '@auxx/ui/components/select'
 import { api } from '~/trpc/react'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
+import { toResourceRefsFromId } from '@auxx/lib/field-values/client'
+import type { ResourceRef } from '@auxx/types/resource'
 
 /**
  * Relation types with human-readable labels
@@ -89,7 +90,7 @@ interface TicketLinkDialogContentProps {
   onSuccess?: () => void
 }
 
-/** Inner content component - must be inside DialogContent for useDialogSubmit to work */
+/** Inner content component */
 function TicketLinkDialogContent({
   ticketId,
   relatedTicketIds,
@@ -104,6 +105,17 @@ function TicketLinkDialogContent({
     () => [ticketId, ...relatedTicketIds],
     [ticketId, relatedTicketIds]
   )
+
+  // Convert selectedTicketId to ResourceRef[]
+  const selectedRefs = useMemo(
+    () => toResourceRefsFromId('ticket', selectedTicketId),
+    [selectedTicketId]
+  )
+
+  // Handle selection change from MultiRelationInput
+  const handleChange = useCallback((refs: ResourceRef[]) => {
+    setSelectedTicketId(refs[0]?.entityInstanceId || null)
+  }, [])
 
   // Mutation to add a relation
   const addRelationMutation = api.ticket.addRelation.useMutation({
@@ -125,12 +137,6 @@ function TicketLinkDialogContent({
       relation: relationType,
     })
   }
-
-  // Register Meta+Enter submit handler (onClick pattern - no form)
-  useDialogSubmit({
-    onSubmit: handleAddRelation,
-    disabled: !selectedTicketId || addRelationMutation.isPending,
-  })
 
   return (
     <>
@@ -159,9 +165,9 @@ function TicketLinkDialogContent({
         <div className="space-y-1 flex flex-col">
           <label className="text-sm font-medium">Select ticket</label>
           <MultiRelationInput
-            resourceId="ticket"
-            value={selectedTicketId ? [selectedTicketId] : []}
-            onChange={(ids) => setSelectedTicketId(ids[0] || null)}
+            entityDefinitionId="ticket"
+            value={selectedRefs}
+            onChange={handleChange}
             excludeIds={excludeIds}
             placeholder="Search tickets..."
             multi={false}
@@ -179,7 +185,8 @@ function TicketLinkDialogContent({
           onClick={handleAddRelation}
           disabled={!selectedTicketId || addRelationMutation.isPending}
           loading={addRelationMutation.isPending}
-          loadingText="Adding...">
+          loadingText="Adding..."
+          data-dialog-submit>
           Add Link <KbdSubmit variant="outline" size="sm" />
         </Button>
       </DialogFooter>

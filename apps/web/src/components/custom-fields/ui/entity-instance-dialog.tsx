@@ -10,7 +10,6 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'

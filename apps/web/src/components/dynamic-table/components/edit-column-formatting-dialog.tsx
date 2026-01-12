@@ -10,7 +10,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import { FieldGroup, Field, FieldLabel } from '@auxx/ui/components/field'
@@ -186,9 +185,6 @@ export function EditColumnFormattingDialog({
     onOpenChange(false)
   }
 
-  // Register Meta+Enter submit handler
-  useDialogSubmit({ onSubmit: handleSave, disabled: false })
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="md" position="tc">
@@ -258,7 +254,7 @@ export function EditColumnFormattingDialog({
               <Button size="sm" variant="ghost" onClick={() => onOpenChange(false)}>
                 Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
               </Button>
-              <Button onClick={handleSave} size="sm" variant="outline">
+              <Button onClick={handleSave} size="sm" variant="outline" data-dialog-submit>
                 Save <KbdSubmit variant="outline" size="sm" />
               </Button>
             </div>

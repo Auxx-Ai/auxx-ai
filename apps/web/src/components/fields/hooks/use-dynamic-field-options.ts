@@ -12,9 +12,10 @@ import {
  * Hook to fetch dynamic options for a single field.
  * Returns options array if field has dynamicOptionsKey, otherwise undefined.
  */
-export function useFieldDynamicOptions(
-  field: ResourceField | undefined
-): { options: DynamicOption[] | undefined; isLoading: boolean } {
+export function useFieldDynamicOptions(field: ResourceField | undefined): {
+  options: DynamicOption[] | undefined
+  isLoading: boolean
+} {
   const key = field?.dynamicOptionsKey
 
   // Get registry entry (stable reference)
@@ -36,10 +37,11 @@ export function useFieldDynamicOptions(
  * NOTE: This is a compatibility layer. In the new architecture,
  * options are loaded per-field in PropertyRow via useFieldDynamicOptions.
  */
-export function useDynamicFieldOptions(
-  fields: ResourceField[],
-  _modelType: string // Ignored - options determined by dynamicOptionsKey
-): { fields: ResourceField[]; isLoading: boolean; error: any } {
+export function useDynamicFieldOptions(fields: ResourceField[]): {
+  fields: ResourceField[]
+  isLoading: boolean
+  error: any
+} {
   // Extract unique dynamicOptionsKeys
   const keys = useMemo(() => {
     const keySet = new Set<string>()
@@ -53,36 +55,36 @@ export function useDynamicFieldOptions(
 
   // Call hooks for each key (must be unconditional)
   // This is a workaround - proper implementation loads per-field
-  const contactGroups =
-    DYNAMIC_OPTIONS_REGISTRY.contactGroups?.useOptions(keys.includes('contactGroups')) ?? {
-      data: undefined,
-      isLoading: false,
-    }
-  const teamMembers =
-    DYNAMIC_OPTIONS_REGISTRY.teamMembers?.useOptions(keys.includes('teamMembers')) ?? {
-      data: undefined,
-      isLoading: false,
-    }
-  const contacts =
-    DYNAMIC_OPTIONS_REGISTRY.contacts?.useOptions(keys.includes('contacts')) ?? {
-      data: undefined,
-      isLoading: false,
-    }
-  const integrations =
-    DYNAMIC_OPTIONS_REGISTRY.integrations?.useOptions(keys.includes('integrations')) ?? {
-      data: undefined,
-      isLoading: false,
-    }
-  const inboxes =
-    DYNAMIC_OPTIONS_REGISTRY.inboxes?.useOptions(keys.includes('inboxes')) ?? {
-      data: undefined,
-      isLoading: false,
-    }
-  const tags =
-    DYNAMIC_OPTIONS_REGISTRY.tags?.useOptions(keys.includes('tags')) ?? {
-      data: undefined,
-      isLoading: false,
-    }
+  const contactGroups = DYNAMIC_OPTIONS_REGISTRY.contactGroups?.useOptions(
+    keys.includes('contactGroups')
+  ) ?? {
+    data: undefined,
+    isLoading: false,
+  }
+  const teamMembers = DYNAMIC_OPTIONS_REGISTRY.teamMembers?.useOptions(
+    keys.includes('teamMembers')
+  ) ?? {
+    data: undefined,
+    isLoading: false,
+  }
+  const contacts = DYNAMIC_OPTIONS_REGISTRY.contacts?.useOptions(keys.includes('contacts')) ?? {
+    data: undefined,
+    isLoading: false,
+  }
+  const integrations = DYNAMIC_OPTIONS_REGISTRY.integrations?.useOptions(
+    keys.includes('integrations')
+  ) ?? {
+    data: undefined,
+    isLoading: false,
+  }
+  const inboxes = DYNAMIC_OPTIONS_REGISTRY.inboxes?.useOptions(keys.includes('inboxes')) ?? {
+    data: undefined,
+    isLoading: false,
+  }
+  const tags = DYNAMIC_OPTIONS_REGISTRY.tags?.useOptions(keys.includes('tags')) ?? {
+    data: undefined,
+    isLoading: false,
+  }
 
   // Build options map
   const optionsMap = useMemo(() => {
@@ -125,7 +127,11 @@ export function useDynamicFieldOptions(
           ...field,
           options: {
             ...field.options,
-            options: field.enumValues.map((e) => ({ value: e.dbValue, label: e.label, color: e.color })),
+            options: field.enumValues.map((e) => ({
+              value: e.dbValue,
+              label: e.label,
+              color: e.color,
+            })),
           },
         }
       }

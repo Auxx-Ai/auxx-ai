@@ -16,7 +16,6 @@ export {
   useRecord,
   useIsRecordLoading,
   useIsRecordPending,
-  useRecordWithFetch,
   useRecordInvalidation,
   useRecordHydration,
   // Entity field values

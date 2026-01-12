@@ -11,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
@@ -60,7 +59,7 @@ interface CreateFolderDialogContentProps {
   onClose: () => void
 }
 
-/** Inner content component - must be inside DialogContent for useDialogSubmit to work */
+/** Inner content component */
 function CreateFolderDialogContent({ parentFolderId, onClose }: CreateFolderDialogContentProps) {
   const [folderName, setFolderName] = useState('')
   const { createFolder, isCreatingFolder } = useFilesystemContext()
@@ -78,14 +77,12 @@ function CreateFolderDialogContent({ parentFolderId, onClose }: CreateFolderDial
     }
   }
 
-  // Register Meta+Enter submit handler
-  const { formProps } = useDialogSubmit({
-    onSubmit: handleSubmit,
-    disabled: !folderName.trim() || isCreatingFolder,
-  })
-
   return (
-    <form {...formProps}>
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        handleSubmit()
+      }}>
       <DialogHeader>
         <DialogTitle>Create New Folder</DialogTitle>
         <DialogDescription>Enter a name for the new folder.</DialogDescription>

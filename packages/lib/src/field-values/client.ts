@@ -48,7 +48,7 @@ export {
 // Row types (for inferTypedValueFromRow)
 export type { FieldValueRow } from './types'
 
-// Legacy relationship field utilities
+// Relationship utilities
 export {
   extractRelationshipData,
   extractRelationshipRefs,
@@ -56,7 +56,12 @@ export {
   validateRelationshipValue,
   validateEntityDefinitionId,
   convertRawToRelationshipInput,
+  isMultiRelationship,
+  toResourceRef,
+  toResourceRefs,
+  toResourceRefsFromId,
   type RelationshipData,
+  type RelationshipType,
 } from './relationship-field'
 
 /**

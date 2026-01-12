@@ -12,7 +12,6 @@ import { toast } from 'sonner'
 import { Form, FormControl, FormField, FormItem, FormMessage } from '@auxx/ui/components/form'
 import { EmojiPicker } from '~/components/pickers/emoji-picker'
 import { DialogFooter } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { cn } from '@auxx/ui/lib/utils'
 
@@ -94,12 +93,6 @@ export function GroupDetailDialog({ mode, groupId, onSuccess, onCancel }: GroupD
   }
 
   const isLoading = isLoadingGroup || createMutation.isPending || updateMutation.isPending
-
-  // Register Meta+Enter submit handler
-  useDialogSubmit({
-    onSubmit: form.handleSubmit(onSubmit),
-    disabled: isLoading,
-  })
 
   return (
     <div>

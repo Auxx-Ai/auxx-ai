@@ -37,7 +37,6 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { useConfirm } from '~/hooks/use-confirm'
 import { Skeleton } from '@auxx/ui/components/skeleton'
@@ -173,12 +172,6 @@ export function MemberList({ groupId }: MemberListProps) {
   const handleUpdateMemberStatus = (userId: string, isActive: boolean) => {
     updateMemberStatusMutation.mutate({ groupId, userId, isActive })
   }
-
-  // Register Meta+Enter submit handler for Add Members dialog
-  useDialogSubmit({
-    onSubmit: handleAddMembers,
-    disabled: selectedMembers.length === 0 || addMembersMutation.isPending,
-  })
 
   // Helper function to get user initials
   const getInitials = (name: string) => {
@@ -413,6 +406,7 @@ export function MemberList({ groupId }: MemberListProps) {
               Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
             </Button>
             <Button
+              data-dialog-submit
               variant="outline"
               size="sm"
               onClick={handleAddMembers}

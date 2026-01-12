@@ -146,14 +146,16 @@ export function EntityFieldsContent({
       <ConfirmDeleteDialog />
 
       {/* Custom Field Dialog for creating/editing fields */}
-      <CustomFieldDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        editingField={editingField}
-        onSave={handleSaveField}
-        isPending={isPending}
-        currentResourceId={currentResourceId}
-      />
+      {dialogOpen && (
+        <CustomFieldDialog
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          editingField={editingField}
+          onSave={handleSaveField}
+          isPending={isPending}
+          currentResourceId={currentResourceId}
+        />
+      )}
 
       {/* Styled card container with keyboard navigation */}
       <div

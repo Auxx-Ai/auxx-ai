@@ -12,7 +12,6 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -176,11 +175,6 @@ export function EditCredentialDialog({
 
   const credentialType = credentialData ? getCredentialType(credentialData.info.type) : null
 
-  // Register Meta+Enter submit handler
-  useDialogSubmit({
-    onSubmit: handleSave,
-    disabled: !form.formState.isValid || isSaving || isLoading,
-  })
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -255,7 +249,8 @@ export function EditCredentialDialog({
             onClick={handleSave}
             disabled={!form.formState.isValid || isSaving || isLoading}
             loading={isSaving}
-            loadingText="Saving...">
+            loadingText="Saving..."
+            data-dialog-submit>
             Save Changes <KbdSubmit variant="default" size="sm" />
           </Button>
         </DialogFooter>

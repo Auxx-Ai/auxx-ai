@@ -11,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
@@ -70,7 +69,7 @@ interface RenameItemDialogContentProps {
   onClose: () => void
 }
 
-/** Inner content component - must be inside DialogContent for useDialogSubmit to work */
+/** Inner content component */
 function RenameItemDialogContent({
   item,
   open,
@@ -112,12 +111,6 @@ function RenameItemDialogContent({
     }
   }
 
-  // Register Meta+Enter submit handler
-  const { formProps } = useDialogSubmit({
-    onSubmit: handleSubmit,
-    disabled: !newName.trim() || newName.trim() === item?.name || isRenaming,
-  })
-
   /**
    * Get dialog content based on item type
    */
@@ -125,7 +118,11 @@ function RenameItemDialogContent({
   const itemTypeCapitalized = item?.type === 'folder' ? 'Folder' : 'File'
 
   return (
-    <form {...formProps}>
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        handleSubmit()
+      }}>
       <DialogHeader>
         <DialogTitle>Rename {itemTypeCapitalized}</DialogTitle>
         <DialogDescription>Enter a new name for this {itemType}.</DialogDescription>

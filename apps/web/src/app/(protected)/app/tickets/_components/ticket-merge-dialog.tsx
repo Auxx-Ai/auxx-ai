@@ -1,7 +1,7 @@
 // apps/web/src/app/(protected)/app/tickets/_components/ticket-merge-dialog.tsx
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Dialog,
@@ -12,12 +12,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { api } from '~/trpc/react'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
+import type { ResourceRef } from '@auxx/types/resource'
 
 /**
  * Props for TicketMergeDialog
@@ -73,20 +73,27 @@ interface TicketMergeDialogContentProps {
   onMergeComplete?: () => void
 }
 
-/** Inner content component - must be inside DialogContent for useDialogSubmit to work */
+/** Inner content component */
 function TicketMergeDialogContent({
   primaryTicketId,
   onClose,
   onMergeComplete,
 }: TicketMergeDialogContentProps) {
-  const [ticketsToMergeIds, setTicketsToMergeIds] = useState<string[]>([])
+  // State is now ResourceRef[]
+  const [ticketsToMerge, setTicketsToMerge] = useState<ResourceRef[]>([])
   const router = useRouter()
+
+  // Derive IDs when needed for API calls
+  const ticketsToMergeIds = useMemo(
+    () => ticketsToMerge.map((ref) => ref.entityInstanceId),
+    [ticketsToMerge]
+  )
 
   const { mutate: mergeTickets, isPending } = api.ticket.mergeTickets.useMutation({
     onSuccess: () => {
       toastSuccess({ description: 'Tickets have been successfully merged' })
       onClose()
-      setTicketsToMergeIds([])
+      setTicketsToMerge([])
       router.refresh()
       onMergeComplete?.()
     },
@@ -98,7 +105,7 @@ function TicketMergeDialogContent({
   /**
    * Handle merge action
    */
-  const handleMerge = () => {
+  const handleMerge = useCallback(() => {
     if (ticketsToMergeIds.length === 0) {
       toastError({
         title: 'Invalid selection',
@@ -107,13 +114,7 @@ function TicketMergeDialogContent({
       return
     }
     mergeTickets({ primaryTicketId, ticketsToMergeIds })
-  }
-
-  // Register Meta+Enter submit handler
-  useDialogSubmit({
-    onSubmit: handleMerge,
-    disabled: ticketsToMergeIds.length === 0 || isPending,
-  })
+  }, [ticketsToMergeIds, mergeTickets, primaryTicketId])
 
   return (
     <>
@@ -129,9 +130,9 @@ function TicketMergeDialogContent({
         <div className="grid gap-2">
           <label className="text-sm font-medium">Tickets to Merge</label>
           <MultiRelationInput
-            resourceId="ticket"
-            value={ticketsToMergeIds}
-            onChange={setTicketsToMergeIds}
+            entityDefinitionId="ticket"
+            value={ticketsToMerge}
+            onChange={setTicketsToMerge}
             excludeIds={[primaryTicketId]}
             placeholder="Search tickets to merge..."
             multi={true}
@@ -149,7 +150,8 @@ function TicketMergeDialogContent({
           onClick={handleMerge}
           disabled={ticketsToMergeIds.length === 0}
           loading={isPending}
-          loadingText="Merging...">
+          loadingText="Merging..."
+          data-dialog-submit>
           Merge Tickets <KbdSubmit variant="outline" size="sm" />
         </Button>
       </DialogFooter>

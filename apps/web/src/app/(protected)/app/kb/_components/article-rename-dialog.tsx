@@ -9,7 +9,6 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Form, FormControl, FormField, FormItem, FormMessage } from '@auxx/ui/components/form'
 import { Input } from '@auxx/ui/components/input'
@@ -63,11 +62,6 @@ export function ArticleRenameDialog({
     }
   }
 
-  // Register Meta+Enter submit handler
-  useDialogSubmit({
-    onSubmit: form.handleSubmit(handleSubmit),
-    disabled: isLoading,
-  })
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

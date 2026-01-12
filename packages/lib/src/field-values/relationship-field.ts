@@ -3,11 +3,18 @@
 import type { RelationshipFieldValue, RelationshipFieldValueInput, TypedFieldValue } from '@auxx/types/field-value'
 import type { ResourceRef } from '@auxx/types/resource'
 
-/** Extracted relationship data - always normalized to arrays */
+/**
+ * Extracted relationship data with ResourceRefs ready for useRelationship
+ */
 export interface RelationshipData {
-  ids: string[]
-  entityDefinitionId: string | null
+  /** ResourceRef[] ready for direct use with useRelationship */
+  references: ResourceRef[]
+  /** Unique entity definition IDs found in the value (for mixed-type relationships) */
+  entityDefinitionIds: string[]
 }
+
+/** Valid relationship cardinality types */
+export type RelationshipType = 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
 
 // ============================================================================
 // TYPE GUARDS - Narrow and validate relationship values
@@ -34,44 +41,65 @@ export function isRelationshipFieldValueArray(v: unknown): v is RelationshipFiel
 // ============================================================================
 
 /**
- * Extract IDs and entityDefinitionId from ANY format.
+ * Extract ResourceRefs and entityDefinitionIds from ANY relationship value format.
  * Handles: objects, arrays, strings, null, undefined.
- * ALWAYS returns an object with arrays (never null/undefined).
+ *
+ * @returns { references, entityDefinitionIds } - ready for useRelationship
+ *
+ * @example
+ * const { references } = extractRelationshipData(value)
+ * const { items } = useRelationship(references)
  */
 export function extractRelationshipData(value: unknown): RelationshipData {
   if (!value) {
-    return { ids: [], entityDefinitionId: null }
+    return { references: [], entityDefinitionIds: [] }
   }
+
+  const references: ResourceRef[] = []
+  const entityDefinitionIdSet = new Set<string>()
 
   // Array of full objects or IDs
   if (Array.isArray(value)) {
-    const ids: string[] = []
-    let entityDefinitionId: string | null = null
-
     for (const item of value) {
       if (typeof item === 'object' && item !== null && 'relatedEntityId' in item) {
         const rel = item as RelationshipFieldValue
-        ids.push(rel.relatedEntityId)
-        if (!entityDefinitionId) entityDefinitionId = rel.relatedEntityDefinitionId || null
-      } else if (typeof item === 'string') {
-        ids.push(item)
+        const entityDefId = rel.relatedEntityDefinitionId
+        if (entityDefId && rel.relatedEntityId) {
+          references.push({
+            entityDefinitionId: entityDefId,
+            entityInstanceId: rel.relatedEntityId,
+          })
+          entityDefinitionIdSet.add(entityDefId)
+        }
       }
+      // Skip raw string IDs - we need entityDefinitionId to create valid ResourceRef
     }
 
-    return { ids, entityDefinitionId }
+    return {
+      references,
+      entityDefinitionIds: Array.from(entityDefinitionIdSet),
+    }
   }
 
   // Single object with relatedEntityId
   if (typeof value === 'object' && 'relatedEntityId' in value) {
     const rel = value as RelationshipFieldValue
-    return {
-      ids: [rel.relatedEntityId],
-      entityDefinitionId: rel.relatedEntityDefinitionId || null,
+    const entityDefId = rel.relatedEntityDefinitionId
+    if (entityDefId && rel.relatedEntityId) {
+      return {
+        references: [
+          {
+            entityDefinitionId: entityDefId,
+            entityInstanceId: rel.relatedEntityId,
+          },
+        ],
+        entityDefinitionIds: [entityDefId],
+      }
     }
   }
 
-  // Raw ID string
-  return { ids: [String(value)], entityDefinitionId: null }
+  // Raw ID string or invalid format - cannot create ResourceRef without entityDefinitionId
+  return { references: [], entityDefinitionIds: [] }
 }
 
 // ============================================================================
@@ -247,20 +275,61 @@ export function validateEntityDefinitionId(entityDefinitionId: string | null): b
 
 /**
  * Extract ResourceRef[] from ANY relationship value format.
- * Returns empty array if entityDefinitionId cannot be determined.
- *
- * Use this for the new useRelationship(refs) API.
+ * Convenience wrapper around extractRelationshipData(value).references
  */
 export function extractRelationshipRefs(value: unknown): ResourceRef[] {
-  const { ids, entityDefinitionId } = extractRelationshipData(value)
+  return extractRelationshipData(value).references
+}
 
-  // Cannot create refs without entityDefinitionId
-  if (!entityDefinitionId || ids.length === 0) {
-    return []
-  }
+// ============================================================================
+// RELATIONSHIP HELPERS - Canonical utilities for relationship handling
+// ============================================================================
 
-  return ids.map((id) => ({
-    entityDefinitionId,
-    entityInstanceId: id,
-  }))
+/**
+ * Determine if a relationship type allows multiple selections.
+ *
+ * @param relationshipType - The relationship cardinality type
+ * @returns true if has_many or many_to_many, false for belongs_to/has_one/undefined
+ *
+ * @example
+ * const multi = isMultiRelationship(field.options?.relationship?.relationshipType)
+ */
+export function isMultiRelationship(relationshipType?: RelationshipType | string): boolean {
+  return relationshipType === 'has_many' || relationshipType === 'many_to_many'
+}
+
+/**
+ * Create a single ResourceRef from entityDefinitionId and entityInstanceId.
+ *
+ * @example
+ * const ref = toResourceRef('ticket', ticketId)
+ */
+export function toResourceRef(entityDefinitionId: string, entityInstanceId: string): ResourceRef {
+  return { entityDefinitionId, entityInstanceId }
+}
+
+/**
+ * Create ResourceRef[] from entityDefinitionId and array of IDs.
+ *
+ * @example
+ * const refs = toResourceRefs('contact', ['id1', 'id2'])
+ */
+export function toResourceRefs(entityDefinitionId: string, ids: string[]): ResourceRef[] {
+  return ids.map((id) => ({ entityDefinitionId, entityInstanceId: id }))
+}
+
+/**
+ * Create ResourceRef[] from entityDefinitionId and optional single ID.
+ * Returns empty array if id is falsy.
+ *
+ * @example
+ * const refs = toResourceRefsFromId('ticket', selectedTicketId)
+ * // selectedTicketId = 'abc' → [{ entityDefinitionId: 'ticket', entityInstanceId: 'abc' }]
+ * // selectedTicketId = null → []
+ */
+export function toResourceRefsFromId(
+  entityDefinitionId: string,
+  id: string | null | undefined
+): ResourceRef[] {
+  return id ? [{ entityDefinitionId, entityInstanceId: id }] : []
 }

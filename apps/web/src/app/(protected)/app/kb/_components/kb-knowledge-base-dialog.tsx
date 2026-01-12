@@ -13,7 +13,6 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Form,
@@ -80,7 +79,7 @@ interface KnowledgeBaseDialogContentProps {
   onClose: () => void
 }
 
-/** Inner content component - must be inside DialogContent for useDialogSubmit to work */
+/** Inner content component */
 function KnowledgeBaseDialogContent({
   open,
   onSubmit,
@@ -119,12 +118,6 @@ function KnowledgeBaseDialogContent({
     }
   }
 
-  // Register Meta+Enter submit handler
-  const { formProps } = useDialogSubmit({
-    onSubmit: form.handleSubmit(onSubmit),
-    disabled: isSubmitting,
-  })
-
   return (
     <>
       <DialogHeader className="mb-4">
@@ -132,7 +125,7 @@ function KnowledgeBaseDialogContent({
       </DialogHeader>
 
       <Form {...form}>
-        <form {...formProps} className="space-y-4">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           <FormField
             control={form.control}
             name="name"

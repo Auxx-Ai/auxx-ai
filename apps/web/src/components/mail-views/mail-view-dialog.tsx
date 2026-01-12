@@ -13,7 +13,6 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
@@ -202,12 +201,6 @@ export function MailViewDialog({ isOpen, onClose, mailViewId }: MailViewDialogPr
   // Compute disabled state for submit
   const isSubmitDisabled =
     isLoadingMailView || createMailView.isPending || updateMailView.isPending
-
-  // Register Meta+Enter submit handler
-  useDialogSubmit({
-    onSubmit: methods.handleSubmit(onSubmit),
-    disabled: isSubmitDisabled,
-  })
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && guardedClose()}>

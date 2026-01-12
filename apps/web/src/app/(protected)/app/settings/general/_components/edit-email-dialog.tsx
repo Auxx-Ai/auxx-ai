@@ -16,7 +16,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Form,
@@ -86,11 +85,6 @@ export function EditEmailDialog({
     mode: 'onTouched',
   })
 
-  // Register Meta+Enter submit handler
-  useDialogSubmit({
-    onSubmit: form.handleSubmit(onSubmit),
-    disabled: !form.formState.isValid || isSubmitting,
-  })
 
   /**
    * Handle form submission

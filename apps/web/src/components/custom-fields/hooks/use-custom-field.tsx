@@ -1,27 +1,26 @@
 // apps/web/src/components/custom-fields/hooks/use-custom-field.tsx
 
-import { type ModelType } from '@auxx/lib/resources/client'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { api } from '~/trpc/react'
 
 /** Props for useCustomField hook */
 interface UseCustomFieldProps {
-  modelType: ModelType
-  entityDefinitionId?: string
+  /** Entity definition ID - system resource (e.g. 'contact') or custom entity UUID */
+  entityDefinitionId: string | undefined
   /** Skip fetching fields (useful when only mutations are needed) */
   skipFetch?: boolean
 }
 
 /** Hook for managing custom fields */
-export function useCustomField({ modelType, entityDefinitionId, skipFetch }: UseCustomFieldProps) {
+export function useCustomField({ entityDefinitionId, skipFetch }: UseCustomFieldProps) {
   const utils = api.useUtils()
 
-  // API hooks - include entityDefinitionId for custom entities
+  // API hooks - modelType is derived from entityDefinitionId on server
   const {
     data: fields,
     refetch,
     isLoading,
-  } = api.customField.getAll.useQuery({ modelType, entityDefinitionId }, { enabled: !skipFetch })
+  } = api.customField.getAll.useQuery({ entityDefinitionId }, { enabled: !skipFetch })
 
   /** Invalidate resource definitions cache so workflow nodes get updated fields */
   const invalidateResourceDefinitions = () => {

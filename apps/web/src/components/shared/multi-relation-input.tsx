@@ -15,32 +15,21 @@ import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
 import type { ResourceRef } from '@auxx/types/resource'
 
 /**
- * Relationship config shape from field.options?.relationship
- */
-export interface RelationshipConfigProp {
-  relatedEntityDefinitionId?: string
-  relatedModelType?: string
-  relationshipType?: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
-}
-
-/**
  * Props for MultiRelationInput
  */
 export interface MultiRelationInputProps {
-  /** Relationship config from field.options?.relationship - preferred way to configure */
-  relationship?: RelationshipConfigProp
+  /** Entity definition ID filter:
+   * - undefined: Global search (all entity types) - NOT YET SUPPORTED
+   * - string: Single entity type
+   * - string[]: Multiple specific entity types - NOT YET SUPPORTED
+   */
+  entityDefinitionId?: string | string[]
 
-  /** Resource ID for the target table (system ID or custom entity UUID) */
-  resourceId?: string
-
-  /** Table ID for system resources or custom entity UUID */
-  tableId?: string
-
-  /** Currently selected IDs */
-  value: string[]
+  /** Currently selected resource references */
+  value: ResourceRef[]
 
   /** Callback when selection changes */
-  onChange: (ids: string[]) => void
+  onChange: (refs: ResourceRef[]) => void
 
   /** Whether the input is disabled */
   disabled?: boolean
@@ -54,10 +43,10 @@ export interface MultiRelationInputProps {
   /** Maximum items to show in the trigger before collapsing */
   maxDisplayItems?: number
 
-  /** Allow multiple selections - if not provided, inferred from relationship.relationshipType */
+  /** Allow multiple selections (default: true) */
   multi?: boolean
 
-  /** IDs to exclude from search results */
+  /** IDs to exclude from search results (entityInstanceIds) */
   excludeIds?: string[]
 }
 
@@ -68,52 +57,27 @@ export interface MultiRelationInputProps {
  * Supports selecting multiple related records with checkbox-style toggling.
  */
 export function MultiRelationInput({
-  relationship,
-  resourceId,
-  tableId: tableIdProp,
+  entityDefinitionId,
   value = [],
   onChange,
   disabled = false,
   placeholder = 'Select items...',
   className,
   maxDisplayItems = 3,
-  multi: multiProp,
+  multi = true,
   excludeIds = [],
 }: MultiRelationInputProps) {
   const [open, setOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
 
-  // Derive tableId from relationship config or legacy props
+  // Derive tableId for search - use first entity definition if array
   const tableId = useMemo(() => {
-    if (relationship) {
-      return relationship.relatedEntityDefinitionId ?? relationship.relatedModelType ?? null
-    }
-    return tableIdProp ?? resourceId ?? null
-  }, [relationship, tableIdProp, resourceId])
+    if (!entityDefinitionId) return null
+    return Array.isArray(entityDefinitionId) ? entityDefinitionId[0] : entityDefinitionId
+  }, [entityDefinitionId])
 
-  // Derive multi from relationship config or explicit prop
-  const multi = useMemo(() => {
-    if (multiProp !== undefined) return multiProp
-    if (relationship?.relationshipType) {
-      return (
-        relationship.relationshipType === 'has_many' ||
-        relationship.relationshipType === 'many_to_many'
-      )
-    }
-    return true // default to multi
-  }, [multiProp, relationship?.relationshipType])
-
-  // Build ResourceRefs for hydration
-  const selectedRefs = useMemo<ResourceRef[]>(() => {
-    if (!tableId) return []
-    return value.map((id) => ({
-      entityDefinitionId: tableId,
-      entityInstanceId: id,
-    }))
-  }, [tableId, value])
-
-  // Get hydrated items for selected IDs from the store
-  const { items: selectedItems, isLoading: isLoadingSelected } = useRelationship(selectedRefs)
+  // Get hydrated items for selected refs from the store
+  const { items: selectedItems, isLoading: isLoadingSelected } = useRelationship(value)
 
   // Search for items when popover is open
   const { data: searchResults, isLoading: isSearching } = api.resource.search.useQuery(
@@ -139,6 +103,23 @@ export function MultiRelationInput({
   }, [searchResults, excludeIds])
 
   /**
+   * Handle selection change from MultiSelectPicker
+   * Convert string IDs back to ResourceRef[]
+   */
+  const handleSelectionChange = useCallback(
+    (ids: string[]) => {
+      if (!tableId) return
+
+      const refs: ResourceRef[] = ids.map((id) => ({
+        entityDefinitionId: tableId,
+        entityInstanceId: id,
+      }))
+      onChange(refs)
+    },
+    [tableId, onChange]
+  )
+
+  /**
    * Handle single-select: close popover after selection
    */
   const handleSelectSingle = useCallback(() => {
@@ -156,6 +137,9 @@ export function MultiRelationInput({
     },
     [onChange]
   )
+
+  // Convert value to string[] for MultiSelectPicker
+  const selectedIds = useMemo(() => value.map((ref) => ref.entityInstanceId), [value])
 
   const hasValue = value.length > 0
 
@@ -188,7 +172,9 @@ export function MultiRelationInput({
       <div className="flex flex-wrap gap-1 flex-1 py-0.5">
         {displayItems.map((item, i) => (
           <Badge key={item?.id ?? i} variant="outline" className="text-xs">
-            <div className="truncate">{item?.displayName ?? value[i]?.slice(-6) ?? '?'}</div>
+            <div className="truncate">
+              {item?.displayName ?? value[i]?.entityInstanceId.slice(-6) ?? '?'}
+            </div>
           </Badge>
         ))}
         {remainingCount > 0 && (
@@ -228,8 +214,8 @@ export function MultiRelationInput({
         align="start">
         <MultiSelectPicker
           options={selectOptions}
-          value={value}
-          onChange={onChange}
+          value={selectedIds}
+          onChange={handleSelectionChange}
           isLoading={isSearching}
           onSearchChange={setSearchQuery}
           canManage={false}

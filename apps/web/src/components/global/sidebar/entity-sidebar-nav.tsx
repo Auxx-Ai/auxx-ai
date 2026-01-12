@@ -291,12 +291,14 @@ export function EntitySidebarNav() {
         )}
       </SidebarGroup>
 
-      <EntityDefinitionDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        editingEntity={editingEntity}
-        onSuccess={() => refetch()}
-      />
+      {dialogOpen && (
+        <EntityDefinitionDialog
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          editingEntity={editingEntity}
+          onSuccess={() => refetch()}
+        />
+      )}
 
       <ConfirmDialog />
     </>

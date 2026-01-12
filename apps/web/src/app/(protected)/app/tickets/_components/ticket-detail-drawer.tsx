@@ -51,7 +51,7 @@ import {
 import { getFullName, getInitials } from '@auxx/utils'
 import { Avatar, AvatarFallback } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
-import { useRecordWithFetch } from '~/components/resources'
+import { useRecord } from '~/components/resources'
 import { useTicketMutations } from './use-ticket-mutations'
 import type { Ticket } from './ticket-types'
 import { useRouter } from 'next/navigation'
@@ -61,7 +61,6 @@ import { Tooltip } from '~/components/global/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
 import { api } from '~/trpc/react'
 import EntityFields from '~/components/fields/entity-fields'
-import { ModelTypes } from '@auxx/types/custom-field'
 import DrawerComments from '~/components/global/comments/drawer-comments'
 import { TicketMergeDialog } from './ticket-merge-dialog'
 import { TicketLinkDialog } from './ticket-link-dialog'
@@ -186,9 +185,9 @@ export function TicketDetailDrawer({ ticketId, open, onOpenChange }: TicketDetai
   const [confirm, ConfirmDialog] = useConfirm()
 
   // Cache-first: instant if opened from table
-  const { record: ticket, isLoading } = useRecordWithFetch<Ticket>({
-    resourceType: 'ticket',
-    id: ticketId,
+  const { record: ticket, isLoading } = useRecord<Ticket>({
+    entityDefinitionId: 'ticket',
+    entityInstanceId: ticketId,
     enabled: !!open && !!ticketId,
   })
 
@@ -599,7 +598,7 @@ export function TicketDetailDrawer({ ticketId, open, onOpenChange }: TicketDetai
                 <div className="space-y-1">
                   <h4 className="text-sm ">Information</h4>
 
-                  <EntityFields modelType={ModelTypes.TICKET} entityId={ticket.id} />
+                  <EntityFields entityDefinitionId="ticket" entityInstanceId={ticket.id} />
                 </div>
                 <div className="space-y-1">
                   <h4 className="text-sm ">Customer</h4>

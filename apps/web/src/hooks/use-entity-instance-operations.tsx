@@ -48,7 +48,6 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
 
   // Custom field mutations
   const { create: createField } = useCustomField({
-    modelType: 'entity',
     entityDefinitionId,
     skipFetch: true,
   })
@@ -194,9 +193,9 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
   /** Handle saving a new custom field */
   const handleSaveField = useCallback(
     async (fieldData: Record<string, unknown>) => {
+      // modelType is derived from entityDefinitionId on server
       await createField.mutateAsync({
         ...fieldData,
-        modelType: 'entity',
         entityDefinitionId,
       })
       // Invalidate custom fields query

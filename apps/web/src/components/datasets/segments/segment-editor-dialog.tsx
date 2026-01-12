@@ -11,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import { Textarea } from '@auxx/ui/components/textarea'
@@ -66,7 +65,7 @@ interface SegmentEditorDialogContentProps {
   onClose: () => void
 }
 
-/** Inner content component - must be inside DialogContent for useDialogSubmit to work */
+/** Inner content component */
 function SegmentEditorDialogContent({
   segment,
   open,
@@ -137,12 +136,6 @@ function SegmentEditorDialogContent({
     onClose()
   }
 
-  // Register Meta+Enter submit handler
-  useDialogSubmit({
-    onSubmit: handleSave,
-    disabled: !content.trim() || content.trim() === segment.content || isPending || isSaving,
-  })
-
   return (
     <>
       <DialogHeader>
@@ -206,7 +199,8 @@ function SegmentEditorDialogContent({
           variant="outline"
           loading={isPending || isSaving}
           loadingText="Saving..."
-          disabled={!content.trim() || content.trim() === segment.content}>
+          disabled={!content.trim() || content.trim() === segment.content}
+          data-dialog-submit>
           Save Changes <KbdSubmit variant="outline" size="sm" />
         </Button>
       </DialogFooter>

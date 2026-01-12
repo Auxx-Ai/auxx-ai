@@ -16,7 +16,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Form,
@@ -83,7 +82,7 @@ interface MassPriorityDialogContentProps {
   onClose: () => void
 }
 
-/** Inner content component - must be inside DialogContent for useDialogSubmit to work */
+/** Inner content component */
 function MassPriorityDialogContent({
   ticketIds,
   onSuccess,
@@ -118,12 +117,6 @@ function MassPriorityDialogContent({
   const selectedPriority = form.watch('priority')
   const disableSubmit = disableActions || !selectedPriority
 
-  // Register Meta+Enter submit handler
-  const { formProps } = useDialogSubmit({
-    onSubmit: form.handleSubmit(onSubmit),
-    disabled: disableSubmit,
-  })
-
   return (
     <>
       <DialogHeader>
@@ -134,7 +127,7 @@ function MassPriorityDialogContent({
       </DialogHeader>
 
       <Form {...form}>
-        <form {...formProps}>
+        <form onSubmit={form.handleSubmit(onSubmit)}>
           <FormField
             control={form.control}
             name="priority"

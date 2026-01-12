@@ -11,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import { api } from '~/trpc/react'
@@ -65,7 +64,7 @@ interface MassAssignDialogContentProps {
   onClose: () => void
 }
 
-/** Inner content component - must be inside DialogContent for useDialogSubmit to work */
+/** Inner content component */
 function MassAssignDialogContent({ ticketIds, onSuccess, onClose }: MassAssignDialogContentProps) {
   const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>([])
   const { onBulkUpdated } = useRecordInvalidation()
@@ -109,12 +108,6 @@ function MassAssignDialogContent({ ticketIds, onSuccess, onClose }: MassAssignDi
   const handleRemoveAgent = (agentId: string) => {
     setSelectedAgentIds(selectedAgentIds.filter((id) => id !== agentId))
   }
-
-  // Register Meta+Enter submit handler
-  useDialogSubmit({
-    onSubmit: handleSubmit,
-    disabled: updateAssignmentMutation.isPending || selectedAgentIds.length === 0,
-  })
 
   return (
     <>
@@ -182,7 +175,8 @@ function MassAssignDialogContent({ ticketIds, onSuccess, onClose }: MassAssignDi
           onClick={handleSubmit}
           disabled={updateAssignmentMutation.isPending || selectedAgentIds.length === 0}
           loading={updateAssignmentMutation.isPending}
-          loadingText="Assigning...">
+          loadingText="Assigning..."
+          data-dialog-submit>
           Assign Tickets <KbdSubmit variant="outline" size="sm" />
         </Button>
       </DialogFooter>

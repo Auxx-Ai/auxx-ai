@@ -2,60 +2,37 @@
 'use client'
 
 import * as React from 'react'
-import { DialogContext } from '../components/dialog'
 
 interface UseDialogSubmitOptions {
   /** The submit handler - can be a form handleSubmit or a simple function */
   onSubmit: (() => void) | ((e?: React.BaseSyntheticEvent) => Promise<void>)
-  /** Whether submit is disabled (e.g., while loading) */
+  /** Whether submit is disabled (e.g., while loading) - no longer used, set disabled on button instead */
   disabled?: boolean
 }
 
 interface UseDialogSubmitReturn {
   /** Props to spread on a form element */
-  formProps: { onSubmit: (e: React.FormEvent) => void }
+  formProps: {
+    onSubmit: (e: React.FormEvent) => void
+  }
 }
 
 /**
- * Hook to register a dialog submit handler for Meta+Enter keyboard shortcut.
- * Works inside DialogContent - the submit handler is triggered when
- * user presses Cmd+Enter (Mac) or Ctrl+Enter (Windows/Linux).
+ * @deprecated This hook is no longer needed. DialogContent automatically handles
+ * Meta+Enter for forms with a submit button using DOM-based detection.
  *
- * @example
- * // Pattern A: With React Hook Form
- * const { formProps } = useDialogSubmit({
- *   onSubmit: form.handleSubmit(onSubmit),
- *   disabled: isPending,
- * })
- * <form {...formProps}>...</form>
+ * Migration:
+ * - For forms: Just use `<form onSubmit={form.handleSubmit(onSubmit)}>` with
+ *   `<Button type="submit" disabled={isPending}>`. The disabled state is now
+ *   detected from the button's disabled attribute.
+ * - For non-form dialogs: Add `data-dialog-submit` to the primary action button.
  *
- * @example
- * // Pattern B: No form (onClick)
- * useDialogSubmit({
- *   onSubmit: handleSave,
- *   disabled: isSaving,
- * })
- * <Button onClick={handleSave}>Save</Button>
+ * This hook is kept for backwards compatibility and returns formProps for forms.
  */
 export function useDialogSubmit(options: UseDialogSubmitOptions): UseDialogSubmitReturn {
   const { onSubmit, disabled = false } = options
-  const { submitHandlerRef, disabledRef } = React.useContext(DialogContext)
 
-  // Keep refs in sync with current values
-  React.useEffect(() => {
-    submitHandlerRef.current = () => {
-      // Call with undefined to simulate form submit without event
-      onSubmit()
-    }
-    disabledRef.current = disabled
-
-    return () => {
-      submitHandlerRef.current = null
-      disabledRef.current = false
-    }
-  }, [onSubmit, disabled, submitHandlerRef, disabledRef])
-
-  // Form props for form-based usage
+  // Form props for backwards compatibility
   const formProps = React.useMemo(
     () => ({
       onSubmit: (e: React.FormEvent) => {

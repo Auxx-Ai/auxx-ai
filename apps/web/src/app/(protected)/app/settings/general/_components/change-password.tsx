@@ -15,7 +15,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
@@ -138,7 +137,7 @@ interface ChangePasswordDialogContentProps {
   onClose: () => void
 }
 
-/** Inner content component - must be inside DialogContent for useDialogSubmit to work */
+/** Inner content component */
 function ChangePasswordDialogContent({
   hasPassword,
   currentPassword,
@@ -153,12 +152,6 @@ function ChangePasswordDialogContent({
   handlePasswordSubmit,
   onClose,
 }: ChangePasswordDialogContentProps) {
-  // Register Meta+Enter submit handler
-  useDialogSubmit({
-    onSubmit: handlePasswordSubmit,
-    disabled: loading,
-  })
-
   return (
     <>
       <DialogHeader>
@@ -225,7 +218,8 @@ function ChangePasswordDialogContent({
           size="sm"
           loading={loading}
           loadingText="Saving..."
-          onClick={handlePasswordSubmit}>
+          onClick={handlePasswordSubmit}
+          data-dialog-submit>
           {hasPassword ? 'Change Password' : 'Add Password'}
           <KbdSubmit variant="outline" size="sm" />
         </Button>

@@ -11,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
@@ -103,12 +102,6 @@ export default function NewCustomerForm({ open, onOpenChange, onSuccess }: NewCu
 
     mutations.createContact.mutate(formData)
   }
-
-  // Register Meta+Enter submit handler
-  useDialogSubmit({
-    onSubmit: handleCreateCustomer,
-    disabled: !formData.email || mutations.createContact.isPending,
-  })
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -212,7 +205,8 @@ export default function NewCustomerForm({ open, onOpenChange, onSuccess }: NewCu
             disabled={!formData.email || mutations.createContact.isPending}
             loading={mutations.createContact.isPending}
             loadingText="Creating..."
-            variant="outline">
+            variant="outline"
+            data-dialog-submit>
             Create Customer <KbdSubmit variant="outline" size="sm" />
           </Button>
         </DialogFooter>

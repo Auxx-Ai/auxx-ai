@@ -137,19 +137,20 @@ function ModelFieldsPage() {
         )}
 
         <CustomFieldsList
-          modelType={isSystem ? (model as ModelType) : ModelTypes.ENTITY}
-          entityDefinitionId={isSystem ? undefined : entityDefinition?.id}
+          entityDefinitionId={currentResourceId}
           currentResourceId={currentResourceId}
         />
       </SettingsPage>
 
       {/* Edit entity definition dialog */}
-      <EntityDefinitionDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        editingEntity={editingEntity}
-        onSuccess={() => refetch()}
-      />
+      {dialogOpen && (
+        <EntityDefinitionDialog
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          editingEntity={editingEntity}
+          onSuccess={() => refetch()}
+        />
+      )}
     </>
   )
 }

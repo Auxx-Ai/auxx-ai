@@ -13,7 +13,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Form,
@@ -48,6 +47,8 @@ import CustomerSelect from '~/components/global/select-customer'
 import { TicketPriorityColors, TicketTypeIcons } from '~/components/tickets/shared'
 import { TicketType, TicketPriority } from '@auxx/database/enums'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
+import { toResourceRefsFromId } from '@auxx/lib/field-values/client'
+import type { ResourceRef } from '@auxx/types/resource'
 
 /** Base form schema for ticket creation/editing */
 const baseFormSchema = z.object({
@@ -331,12 +332,6 @@ export default function TicketFormDialog({
     ? 'Update the ticket details below.'
     : 'Fill out the form below to create a new support ticket.'
 
-  // Register Meta+Enter submit handler
-  useDialogSubmit({
-    onSubmit: form.handleSubmit(onSubmit),
-    disabled: isPending,
-  })
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-screen max-w-3xl overflow-y-scroll">
@@ -519,9 +514,9 @@ export default function TicketFormDialog({
                     <FormLabel>Parent Ticket (Optional)</FormLabel>
                     <FormControl>
                       <MultiRelationInput
-                        resourceId="ticket"
-                        value={field.value ? [field.value] : []}
-                        onChange={(ids) => field.onChange(ids[0] || '')}
+                        entityDefinitionId="ticket"
+                        value={toResourceRefsFromId('ticket', field.value)}
+                        onChange={(refs: ResourceRef[]) => field.onChange(refs[0]?.entityInstanceId || '')}
                         excludeIds={ticket?.id ? [ticket.id] : []}
                         placeholder="No parent ticket"
                         multi={false}

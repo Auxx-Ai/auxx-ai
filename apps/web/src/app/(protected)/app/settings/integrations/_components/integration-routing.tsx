@@ -11,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Select,
@@ -105,12 +104,6 @@ export default function IntegrationRouting({ integration, inboxes }: Integration
       }
     }
   }
-
-  // Register Meta+Enter submit handler for Connect inbox dialog
-  useDialogSubmit({
-    onSubmit: handleConnectInbox,
-    disabled: !selectedInboxId || addIntegration.isPending,
-  })
 
   return (
     <div className="p-6 space-y-10">
@@ -219,6 +212,7 @@ export default function IntegrationRouting({ integration, inboxes }: Integration
                 Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
               </Button>
               <Button
+                data-dialog-submit
                 onClick={handleConnectInbox}
                 disabled={!selectedInboxId || addIntegration.isPending}
                 variant="outline"

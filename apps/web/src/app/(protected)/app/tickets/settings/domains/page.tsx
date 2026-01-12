@@ -28,7 +28,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
@@ -74,7 +73,7 @@ interface AddDomainDialogContentProps {
   onClose: () => void
 }
 
-/** Inner content component - must be inside DialogContent for useDialogSubmit to work */
+/** Inner content component */
 function AddDomainDialogContent({ onDomainRegistered, onClose }: AddDomainDialogContentProps) {
   const [subdomain, setSubdomain] = useState('')
   const [routingPrefix, setRoutingPrefix] = useState('ticket')
@@ -137,12 +136,6 @@ function AddDomainDialogContent({ onDomainRegistered, onClose }: AddDomainDialog
       routingPrefix,
     })
   }
-
-  // Register Meta+Enter submit handler
-  useDialogSubmit({
-    onSubmit: handleRegister,
-    disabled: subdomain.length < 3 || (subdomainData && !subdomainData.isAvailable) || registerDomain.isPending,
-  })
 
   /** Format example email address */
   const formatExampleEmail = (domain: string, prefix: string = routingPrefix) => {
@@ -248,7 +241,8 @@ function AddDomainDialogContent({ onDomainRegistered, onClose }: AddDomainDialog
           onClick={handleRegister}
           loading={registerDomain.isPending}
           loadingText="Registering..."
-          disabled={subdomain.length < 3 || (subdomainData && !subdomainData.isAvailable)}>
+          disabled={subdomain.length < 3 || (subdomainData && !subdomainData.isAvailable)}
+          data-dialog-submit>
           Register Subdomain <KbdSubmit variant="outline" size="sm" />
         </Button>
       </DialogFooter>

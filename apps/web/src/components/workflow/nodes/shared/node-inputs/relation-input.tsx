@@ -7,6 +7,8 @@ import { MultiRelationInput } from '~/components/shared/multi-relation-input'
 import { useResourceFields } from '~/components/resources'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { createNodeInput, type NodeInputProps } from './base-node-input'
+import { toResourceRefs } from '@auxx/lib/field-values/client'
+import type { ResourceRef } from '@auxx/types/resource'
 
 interface RelationInputProps extends NodeInputProps {
   /** Field name */
@@ -66,10 +68,16 @@ export const RelationInput = createNodeInput<RelationInputProps>(
       return []
     }, [value])
 
-    // Handle change - convert back to string ID
+    // Convert arrayValue to ResourceRef[] for MultiRelationInput
+    const selectedRefs = useMemo(
+      () => (targetResourceId ? toResourceRefs(targetResourceId, arrayValue) : []),
+      [arrayValue, targetResourceId]
+    )
+
+    // Handle change - convert ResourceRef[] back to string ID
     const handleChange = useCallback(
-      (ids: string[]) => {
-        const id = ids[0] ?? ''
+      (refs: ResourceRef[]) => {
+        const id = refs[0]?.entityInstanceId ?? ''
         onChange(name, id)
       },
       [onChange, name]
@@ -91,8 +99,8 @@ export const RelationInput = createNodeInput<RelationInputProps>(
 
     return (
       <MultiRelationInput
-        resourceId={targetResourceId}
-        value={arrayValue}
+        entityDefinitionId={targetResourceId}
+        value={selectedRefs}
         onChange={handleChange}
         disabled={isLoading}
         placeholder={placeholder}

@@ -17,11 +17,10 @@ import { EntityIcon } from '@auxx/ui/components/icons'
 import EntityFields from '~/components/fields/entity-fields'
 import { useResource } from '~/components/resources'
 import type { ResourceField } from '@auxx/lib/resources/client'
-import { ModelTypes } from '@auxx/types/custom-field'
 import DrawerComments from '~/components/global/comments/drawer-comments'
 import { TimelineTab } from '~/components/timeline'
 import { createCustomEntityType } from '@auxx/lib/timeline/client'
-import { useRecordWithFetch } from '~/components/resources'
+import { useRecord } from '~/components/resources'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
@@ -83,9 +82,9 @@ export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
 
   // Fetch entity record from cache (populated by batch fetcher when list loads)
   // Returns displayName, secondaryDisplayValue, createdAt, updatedAt, and all field values
-  const { record: cachedRecord, isLoading: isRecordLoading } = useRecordWithFetch({
-    resourceType: entityDefinitionId ?? '',
-    id: entityInstanceId,
+  const { record: cachedRecord, isLoading: isRecordLoading } = useRecord({
+    entityDefinitionId,
+    entityInstanceId,
     enabled: !!open && !!entityInstanceId && !!entityDefinitionId,
   })
 
@@ -227,9 +226,8 @@ export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
                       icon={<Gauge className="size-4 text-muted-foreground/50" />}>
                       {resource && entityDefinitionId && entityInstanceId && (
                         <EntityFields
-                          modelType={ModelTypes.ENTITY}
-                          entityId={entityInstanceId}
                           entityDefinitionId={entityDefinitionId}
+                          entityInstanceId={entityInstanceId}
                           preloadedFields={customFields}
                           onMutationSuccess={onMutationSuccess}
                           className=""

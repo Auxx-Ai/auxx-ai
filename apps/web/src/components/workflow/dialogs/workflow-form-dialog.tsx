@@ -13,7 +13,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
@@ -164,16 +163,10 @@ export function WorkflowFormDialog(props: WorkflowFormDialogProps) {
 
   const error = props.mode === 'create' ? createWorkflow.error : updateWorkflow.error
 
-  // Register Meta+Enter submit handler
-  const { formProps } = useDialogSubmit({
-    onSubmit: handleSubmit,
-    disabled: isPending,
-  })
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]" position="tc">
-        <form {...formProps}>
+        <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>{dialogTitle}</DialogTitle>
             <DialogDescription>{dialogDescription}</DialogDescription>

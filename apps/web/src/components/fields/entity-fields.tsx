@@ -16,9 +16,9 @@ import { ModelTypes, type ModelType } from '@auxx/types/custom-field'
 import { useCustomField } from '~/components/custom-fields/hooks/use-custom-field'
 import { useConfirm } from '~/hooks/use-confirm'
 import { EntityFieldsContent } from './entity-fields-content'
-import { useResource, useRecordWithFetch, useRecordHydration } from '~/components/resources'
+import { useResource, useRecord, useRecordHydration } from '~/components/resources'
 import type { ResourceField } from '@auxx/lib/resources/client'
-import { sortFieldsForDisplay } from '@auxx/lib/resources/client'
+import { sortFieldsForDisplay, isSystemResourceId } from '@auxx/lib/resources/client'
 import { type ResourceType, type StoredFieldValue } from '~/stores/custom-field-value-store'
 import type { StoreConfig } from './property-provider'
 import { useDynamicFieldOptions } from './hooks/use-dynamic-field-options'
@@ -27,10 +27,10 @@ import { useDynamicFieldOptions } from './hooks/use-dynamic-field-options'
  * Props for EntityFields component
  */
 interface EntityFieldsProps {
-  modelType: ModelType
-  entityId: string
-  /** For entity instances: indicates entity instance mode */
-  entityDefinitionId?: string
+  /** Entity definition ID - system resource (e.g. 'contact') or custom entity UUID */
+  entityDefinitionId: string
+  /** The specific instance ID within that entity type */
+  entityInstanceId: string
   /** Pre-loaded custom fields (avoids refetch for entity instances) */
   preloadedFields?: any[]
   /** Callback after successful mutation (e.g., to refetch parent data) */
@@ -47,21 +47,21 @@ interface EntityFieldsProps {
  * with proper isSystem, showInPanel, and systemSortOrder properties.
  */
 function EntityFields({
-  modelType,
-  entityId,
   entityDefinitionId,
+  entityInstanceId,
   preloadedFields,
   onMutationSuccess,
   className,
 }: EntityFieldsProps) {
-  // Detect entity instance mode
-  const isEntityInstance = !!entityDefinitionId
-
-  // Determine the modelType to use for mutations
-  const mutationModelType = isEntityInstance ? ModelTypes.ENTITY : modelType
+  // Derive modelType from entityDefinitionId
+  // System resources use their ID as modelType, custom entities use 'entity'
+  const isSystemResource = isSystemResourceId(entityDefinitionId)
+  const modelType: ModelType = isSystemResource ? (entityDefinitionId as ModelType) : 'entity'
 
   // Determine resource type for store
-  const resourceType: ResourceType = isEntityInstance ? 'entity' : (modelType as ResourceType)
+  const resourceType: ResourceType = isSystemResource
+    ? (entityDefinitionId as ResourceType)
+    : 'entity'
 
   // State management
   const [fieldValues] = useState<Record<string, { valueId?: string; value: StoredFieldValue }>>({})
@@ -77,7 +77,6 @@ function EntityFields({
 
   // Use custom field hook for creating/updating/deleting fields (skip fetching - fields come from resource)
   const { create, update, isPending, destroy } = useCustomField({
-    modelType: mutationModelType,
     entityDefinitionId,
     skipFetch: true,
   })
@@ -96,20 +95,19 @@ function EntityFields({
   // ─────────────────────────────────────────────────────────────────
 
   // Get resource from ResourceProvider (single source of truth)
-  const resourceId = entityDefinitionId || modelType
-  const { resource, isLoading: resourceLoading } = useResource(resourceId)
+  const { resource, isLoading: resourceLoading } = useResource(entityDefinitionId)
 
   // Fetch record data (uses cache from list view, fetches if needed)
-  const { record, isLoading: recordLoading } = useRecordWithFetch({
-    resourceType: resourceId,
-    id: entityId,
-    enabled: !!entityId && !!resource,
+  const { record, isLoading: recordLoading } = useRecord({
+    entityDefinitionId,
+    entityInstanceId,
+    enabled: !!entityInstanceId && !!resource,
   })
 
   // Hydrate field values into the store when data changes
   useRecordHydration({
     resource,
-    recordId: entityId,
+    recordId: entityInstanceId,
     recordData: record as Record<string, unknown> | undefined,
     enabled: !!record && !!resource,
   })
@@ -125,10 +123,8 @@ function EntityFields({
   }, [resource?.fields])
 
   // Enrich fields with dynamic options
-  const { fields: enrichedFields, isLoading: optionsLoading } = useDynamicFieldOptions(
-    displayFields,
-    modelType
-  )
+  const { fields: enrichedFields, isLoading: optionsLoading } =
+    useDynamicFieldOptions(displayFields)
 
   // Use optimistic order during drag, otherwise use enriched fields directly
   // This avoids the infinite loop caused by useEffect + setState
@@ -215,10 +211,10 @@ function EntityFields({
     if (editingField) {
       await update.mutateAsync({ ...fieldData, id: editingField.id })
     } else {
+      // modelType is derived from entityDefinitionId on server
       await create.mutateAsync({
         ...fieldData,
-        modelType: mutationModelType,
-        entityDefinitionId: entityDefinitionId || undefined,
+        entityDefinitionId,
       })
     }
 
@@ -258,14 +254,14 @@ function EntityFields({
   // ─────────────────────────────────────────────────────────────────
 
   const storeConfig: StoreConfig | undefined = useMemo(() => {
-    if (!entityId) return undefined
+    if (!entityInstanceId) return undefined
     return {
       resourceType,
-      resourceId: entityId,
-      entityDefId: entityDefinitionId,
-      modelType: mutationModelType,
+      resourceId: entityInstanceId,
+      entityDefId: isSystemResource ? undefined : entityDefinitionId,
+      modelType,
     }
-  }, [resourceType, entityId, entityDefinitionId, mutationModelType])
+  }, [resourceType, entityInstanceId, entityDefinitionId, isSystemResource, modelType])
 
   const isLoading = resourceLoading || optionsLoading || recordLoading
 
@@ -285,7 +281,7 @@ function EntityFields({
         editingField={editingField}
         handleSaveField={handleSaveField}
         isPending={isPending}
-        currentResourceId={resourceId}
+        currentResourceId={entityDefinitionId}
         sensors={sensors}
         handleDragEnd={handleDragEnd}
         fields={sortedFields}

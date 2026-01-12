@@ -16,7 +16,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   InputGroup,
@@ -224,7 +223,7 @@ interface SecretConnectionDialogContentProps {
   onClose: () => void
 }
 
-/** Inner content component - must be inside DialogContent for useDialogSubmit to work */
+/** Inner content component */
 function SecretConnectionDialogContent({
   connectionLabel,
   connectionType,
@@ -236,12 +235,6 @@ function SecretConnectionDialogContent({
   handleSaveSecret,
   onClose,
 }: SecretConnectionDialogContentProps) {
-  // Register Meta+Enter submit handler
-  useDialogSubmit({
-    onSubmit: handleSaveSecret,
-    disabled: saveSecret.isPending || !secret.trim(),
-  })
-
   return (
     <>
       <DialogHeader>
@@ -292,7 +285,8 @@ function SecretConnectionDialogContent({
           size="sm"
           onClick={handleSaveSecret}
           loading={saveSecret.isPending}
-          loadingText="Saving...">
+          loadingText="Saving..."
+          data-dialog-submit>
           Save Connection <KbdSubmit variant="outline" size="sm" />
         </Button>
       </DialogFooter>

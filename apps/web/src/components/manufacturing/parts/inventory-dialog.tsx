@@ -11,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import { Separator } from '@auxx/ui/components/separator'
@@ -150,9 +149,6 @@ export function InventoryDialog({
     }
   }
 
-  // Register Meta+Enter submit handler
-  useDialogSubmit({ onSubmit: handleSubmit, disabled: isPending })
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]" position="tc">
@@ -270,7 +266,8 @@ export function InventoryDialog({
             size="sm"
             variant="outline"
             loading={isPending}
-            loadingText={isEditMode ? 'Updating...' : 'Creating...'}>
+            loadingText={isEditMode ? 'Updating...' : 'Creating...'}
+            data-dialog-submit>
             {isEditMode ? 'Update Inventory' : 'Create Inventory'} <KbdSubmit variant="outline" size="sm" />
           </Button>
         </DialogFooter>

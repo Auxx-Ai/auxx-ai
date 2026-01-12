@@ -3,8 +3,9 @@
 
 import { VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
-import { extractRelationshipData } from '@auxx/lib/field-values/client'
+import { extractRelationshipData, isMultiRelationship } from '@auxx/lib/field-values/client'
 import type { ResourceField } from '@auxx/lib/resources/client'
+import type { ResourceRef } from '@auxx/types/resource'
 
 /**
  * Props for FieldInputRow
@@ -41,34 +42,33 @@ export function FieldInputRow({
 }: FieldInputRowProps) {
   const isRequired = field.required ?? field.capabilities?.required ?? false
   const fieldType = field.fieldType ?? 'TEXT'
-
-  // Normalize value for FieldInputAdapter
-  // - RELATIONSHIP: extract IDs from any format
-  // - SELECT types: ensure string[]
-  const normalizedValue =
-    fieldType === 'RELATIONSHIP' ? extractRelationshipData(value).ids : value
-
-  // Get relatedEntityDefinitionId for wrapping relationship IDs on save
   const relationshipConfig = field.options?.relationship
+
+  // For RELATIONSHIP: pass ResourceRef[] directly to FieldInputAdapter
+  // FieldInputAdapter will pass it through to MultiRelationInput (no double conversion)
+  const normalizedValue =
+    fieldType === 'RELATIONSHIP' ? extractRelationshipData(value).references : value
+
+  // Get relatedEntityDefinitionId for wrapping ResourceRef[] back to RelationshipFieldValue on save
   const relatedEntityDefinitionId =
     relationshipConfig?.relatedEntityDefinitionId ?? relationshipConfig?.relatedModelType ?? null
 
-  // Determine if relationship is multi-select
-  const isMultiRelationship = relationshipConfig?.relationshipType === 'has_many'
+  // Determine if relationship is multi-select using helper
+  const isMulti = isMultiRelationship(relationshipConfig?.relationshipType)
 
   /**
    * Handle value changes from FieldInputAdapter
-   * For relationships, wrap IDs with relatedEntityDefinitionId
+   * For relationships: convert ResourceRef[] back to RelationshipFieldValue[] for saving
    */
   const handleChange = (newValue: unknown) => {
     if (fieldType === 'RELATIONSHIP' && relatedEntityDefinitionId) {
-      // Wrap IDs with relatedEntityDefinitionId for saving
-      const ids = newValue as string[]
-      const values = ids.map((id) => ({
-        relatedEntityId: id,
-        relatedEntityDefinitionId,
+      // Convert ResourceRef[] back to RelationshipFieldValue[] for saving
+      const refs = newValue as ResourceRef[]
+      const values = refs.map((ref) => ({
+        relatedEntityId: ref.entityInstanceId,
+        relatedEntityDefinitionId: ref.entityDefinitionId,
       }))
-      onChange(field.id!, isMultiRelationship ? values : (values[0] ?? null))
+      onChange(field.id!, isMulti ? values : (values[0] ?? null))
     } else {
       onChange(field.id!, newValue)
     }

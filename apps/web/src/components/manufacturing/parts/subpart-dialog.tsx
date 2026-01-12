@@ -11,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
@@ -196,12 +195,6 @@ export function SubpartDialog({
     }
   }
 
-  // Register Meta+Enter submit handler
-  useDialogSubmit({
-    onSubmit: handleSubmit,
-    disabled: noAvailableParts || hasCyclicDependency || isPending,
-  })
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]" position="tc">
@@ -295,7 +288,8 @@ export function SubpartDialog({
             variant="outline"
             loading={isPending}
             loadingText={isEditMode ? 'Updating...' : 'Adding...'}
-            disabled={noAvailableParts || hasCyclicDependency}>
+            disabled={noAvailableParts || hasCyclicDependency}
+            data-dialog-submit>
             {isEditMode ? 'Update Subpart' : 'Add Subpart'} <KbdSubmit variant="outline" size="sm" />
           </Button>
         </DialogFooter>

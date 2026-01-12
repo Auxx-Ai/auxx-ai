@@ -211,12 +211,14 @@ export default function CustomFieldsPage() {
         </TableBody>
       </Table>
 
-      <EntityDefinitionDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        editingEntity={editingEntity}
-        onSuccess={handleDialogSuccess}
-      />
+      {dialogOpen && (
+        <EntityDefinitionDialog
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          editingEntity={editingEntity}
+          onSuccess={handleDialogSuccess}
+        />
+      )}
 
       {entityForNewInstance && (
         <EntityInstanceDialog

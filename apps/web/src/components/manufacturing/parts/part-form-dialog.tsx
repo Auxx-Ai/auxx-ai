@@ -12,7 +12,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
@@ -144,9 +143,6 @@ export function PartFormDialog({ open, onOpenChange, part, onSuccess }: PartForm
       })
     }
   }
-
-  // Register Meta+Enter submit handler
-  useDialogSubmit({ onSubmit: handleSubmit, disabled: isPending })
 
   // Handler for vendor part field changes
   const handleVendorPartChange = useCallback((field: keyof VendorPartFormValues, value: any) => {
@@ -299,7 +295,8 @@ export function PartFormDialog({ open, onOpenChange, part, onSuccess }: PartForm
             variant="outline"
             size="sm"
             loading={isPending}
-            loadingText={isEditMode ? 'Updating...' : 'Creating...'}>
+            loadingText={isEditMode ? 'Updating...' : 'Creating...'}
+            data-dialog-submit>
             {isEditMode ? 'Update Part' : 'Create Part'} <KbdSubmit variant="outline" size="sm" />
           </Button>
         </DialogFooter>

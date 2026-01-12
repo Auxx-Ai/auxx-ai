@@ -64,13 +64,10 @@ export function RelationshipInputField() {
   const canInlineCreate = relatedResource && isCustomResource(relatedResource)
 
   // Convert field value to ResourceRef[] for ResourcePicker
+  // extractRelationshipData now returns references directly
   const currentRefs = useMemo<ResourceRef[]>(() => {
     if (!resourceRef) return []
-    const { ids } = extractRelationshipData(value)
-    return ids.map((id) => ({
-      entityDefinitionId: resourceRef.entityDefinitionId,
-      entityInstanceId: id,
-    }))
+    return extractRelationshipData(value).references
   }, [value, resourceRef])
 
   // Track current selection in local state for save-on-close pattern
@@ -94,7 +91,7 @@ export function RelationshipInputField() {
   useEffect(() => {
     onBeforeClose.current = () => {
       const currentIds = localRefsRef.current.map((ref) => ref.entityInstanceId)
-      const originalIds = extractRelationshipData(value).ids
+      const originalIds = extractRelationshipData(value).references.map((r) => r.entityInstanceId)
 
       // Only save if selection changed
       const hasChanged =

@@ -13,7 +13,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Select,
@@ -167,9 +166,6 @@ export function SnippetSharing({
     (sharingType === SnippetSharingTypeEnum.GROUPS ||
       sharingType === SnippetSharingTypeEnum.MEMBERS) &&
     selectedItems.length === 0
-
-  // Register Meta+Enter submit handler
-  useDialogSubmit({ onSubmit: handleSave, disabled: isSubmitDisabled })
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -384,7 +380,8 @@ export function SnippetSharing({
             onClick={handleSave}
             variant="outline"
             size="sm"
-            disabled={isSubmitDisabled}>
+            disabled={isSubmitDisabled}
+            data-dialog-submit>
             Save Sharing Settings <KbdSubmit variant="outline" size="sm" />
           </Button>
         </DialogFooter>

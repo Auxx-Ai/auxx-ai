@@ -11,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -69,7 +68,7 @@ interface MassStatusDialogContentProps {
   onClose: () => void
 }
 
-/** Inner content component - must be inside DialogContent for useDialogSubmit to work */
+/** Inner content component */
 function MassStatusDialogContent({ ticketIds, onSuccess, onClose }: MassStatusDialogContentProps) {
   const [status, setStatus] = useState<string>('')
   const { onBulkUpdated } = useRecordInvalidation()
@@ -94,12 +93,6 @@ function MassStatusDialogContent({ ticketIds, onSuccess, onClose }: MassStatusDi
 
     await updateStatus.mutateAsync({ ticketIds, status: status as any })
   }
-
-  // Register Meta+Enter submit handler
-  useDialogSubmit({
-    onSubmit: handleSubmit,
-    disabled: updateStatus.isPending || !status,
-  })
 
   return (
     <>
@@ -140,7 +133,8 @@ function MassStatusDialogContent({ ticketIds, onSuccess, onClose }: MassStatusDi
           onClick={handleSubmit}
           disabled={updateStatus.isPending || !status}
           loading={updateStatus.isPending}
-          loadingText="Updating...">
+          loadingText="Updating..."
+          data-dialog-submit>
           Update Status <KbdSubmit variant="outline" size="sm" />
         </Button>
       </DialogFooter>

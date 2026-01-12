@@ -10,11 +10,12 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
+import { toResourceRefsFromId } from '@auxx/lib/field-values/client'
+import type { ResourceRef } from '@auxx/types/resource'
 import { api } from '~/trpc/react'
 import { toastError } from '@auxx/ui/components/toast'
 import type { VendorPartEntity as VendorPart } from '@auxx/database/models'
@@ -159,9 +160,6 @@ export function VendorPartDialog({
     }
   }
 
-  // Register Meta+Enter submit handler
-  useDialogSubmit({ onSubmit: handleSubmit, disabled: isPending })
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]" position="tc">
@@ -185,9 +183,9 @@ export function VendorPartDialog({
               validationError={errors.partId}
               validationType="error">
               <MultiRelationInput
-                resourceId="part"
-                value={values.partId ? [values.partId] : []}
-                onChange={(ids) => handleChange('partId', ids[0] ?? '')}
+                entityDefinitionId="part"
+                value={toResourceRefsFromId('part', values.partId)}
+                onChange={(refs: ResourceRef[]) => handleChange('partId', refs[0]?.entityInstanceId ?? '')}
                 placeholder="Select part..."
                 disabled={isPending || isEditMode}
                 multi={false}
@@ -220,7 +218,8 @@ export function VendorPartDialog({
             variant="outline"
             size="sm"
             loading={isPending}
-            loadingText={isEditMode ? 'Updating...' : 'Adding...'}>
+            loadingText={isEditMode ? 'Updating...' : 'Adding...'}
+            data-dialog-submit>
             {isEditMode ? 'Update Supplier' : 'Add Supplier'} <KbdSubmit variant="outline" size="sm" />
           </Button>
         </DialogFooter>

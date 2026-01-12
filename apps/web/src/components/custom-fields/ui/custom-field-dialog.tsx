@@ -15,7 +15,6 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@auxx/ui/components/dialog'
-import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Input } from '@auxx/ui/components/input'
 import { Textarea } from '@auxx/ui/components/textarea'
@@ -117,6 +116,7 @@ export function CustomFieldDialog({
   currentResourceId,
 }: CustomFieldDialogProps) {
   const isEditing = !!editingField
+
   // Form setup
   const form = useForm<CustomFieldFormValues>({
     resolver: standardSchemaResolver(customFieldFormSchema),
@@ -254,9 +254,12 @@ export function CustomFieldDialog({
 
       if (editingField) {
         // Edit mode: populate form with existing field data
+        const fieldType =
+          (editingField.fieldType as FieldTypeType) || editingField.type || FieldType.TEXT
         form.reset({
           name: editingField.name || '',
-          type: (editingField.fieldType as FieldTypeType) || editingField.type || FieldType.TEXT,
+          type: fieldType,
+          fieldType: fieldType,
           description: editingField.description || '',
           required: editingField.required || false,
           isUnique: editingField.isUnique || false,
@@ -353,6 +356,7 @@ export function CustomFieldDialog({
         form.reset({
           name: '',
           type: FieldType.TEXT,
+          fieldType: FieldType.TEXT,
           description: '',
           required: false,
           isUnique: false,
@@ -537,12 +541,6 @@ export function CustomFieldDialog({
   // Watch isUnique to hide default value when unique is checked
   const isUnique = form.watch('isUnique')
 
-  // Register Meta+Enter submit handler
-  const { formProps } = useDialogSubmit({
-    onSubmit: form.handleSubmit(handleSubmit),
-    disabled: isPending,
-  })
-
   /** Render type-aware default value input */
   const renderDefaultValueInput = () => {
     // Hide default value in edit mode or for unique fields
@@ -661,7 +659,7 @@ export function CustomFieldDialog({
             </DialogDescription>
           </DialogHeader>
           <Form {...form}>
-            <form {...formProps}>
+            <form onSubmit={form.handleSubmit(handleSubmit)}>
               <FieldGroup className="gap-4">
                 {/* Field Type Selector - Only shown in create mode */}
                 {!isEditing && (
@@ -695,7 +693,10 @@ export function CustomFieldDialog({
                               return (
                                 <DropdownMenuItem
                                   key={type}
-                                  onClick={() => form.setValue('type', type)}
+                                  onClick={() => {
+                                    form.setValue('type', type)
+                                    form.setValue('fieldType', type)
+                                  }}
                                   className="flex items-start gap-2 ps-1">
                                   <EntityIcon iconId={option.iconId} variant="full" size="sm" />
                                   <span className="font-medium">{option.label}</span>
@@ -818,7 +819,8 @@ export function CustomFieldDialog({
                   variant="outline"
                   loading={isPending}
                   loadingText={isEditing ? 'Saving...' : 'Creating...'}>
-                  {isEditing ? 'Save Changes' : 'Create Field'} <KbdSubmit variant="outline" size="sm" />
+                  {isEditing ? 'Save Changes' : 'Create Field'}{' '}
+                  <KbdSubmit variant="outline" size="sm" />
                 </Button>
               </DialogFooter>
             </form>
