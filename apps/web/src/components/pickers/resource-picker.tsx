@@ -16,7 +16,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { cn } from '@auxx/ui/lib/utils'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import { isCustomResource, toResourceId, type ResourcePickerItem, type ResourceId } from '@auxx/lib/resources/client'
+import { isCustomResource, toResourceId, getDefinitionId, type ResourcePickerItem, type ResourceId } from '@auxx/lib/resources/client'
 import { useRelationship, useResource, useResourceProvider } from '~/components/resources'
 import { api } from '~/trpc/react'
 
@@ -35,11 +35,11 @@ interface ResourceItemProps {
  * Displays avatar or entity icon with name and secondary info.
  */
 function ResourceItem({ item, isSelected, onToggle, showEntityType }: ResourceItemProps) {
-  const { resource } = useResource(item.entityDefinitionId)
+  const { resource } = useResource(getDefinitionId(item.resourceId))
   const iconColor = resource && isCustomResource(resource) ? resource.color : undefined
 
   const handleSelect = () => {
-    onToggle(toResourceId(item.entityDefinitionId, item.id))
+    onToggle(item.resourceId)
   }
 
   return (
@@ -252,8 +252,7 @@ export function ResourcePicker({
   const availableItems = useMemo(() => {
     if (!searchResults?.items) return []
     return searchResults.items.filter((item) => {
-      const resourceId = toResourceId(item.entityDefinitionId, item.id)
-      return !wasInitiallySelected(resourceId)
+      return !wasInitiallySelected(item.resourceId)
     })
   }, [searchResults, wasInitiallySelected])
 
@@ -326,12 +325,11 @@ export function ResourcePicker({
             {hasSelectedSection && (
               <CommandGroup aria-label="Selected Items">
                 {filteredSelectedItems.map((item) => {
-                  const resourceId = toResourceId(item.entityDefinitionId, item.id)
                   return (
                     <ResourceItem
-                      key={resourceId}
+                      key={item.resourceId}
                       item={item}
-                      isSelected={isSelected(resourceId)}
+                      isSelected={isSelected(item.resourceId)}
                       onToggle={handleToggle}
                       showEntityType={showEntityType}
                     />
@@ -347,12 +345,11 @@ export function ResourcePicker({
             {hasResultsSection && (
               <CommandGroup aria-label="Available Items">
                 {availableItems.map((item) => {
-                  const resourceId = toResourceId(item.entityDefinitionId, item.id)
                   return (
                     <ResourceItem
-                      key={resourceId}
+                      key={item.resourceId}
                       item={item}
-                      isSelected={isSelected(resourceId)}
+                      isSelected={isSelected(item.resourceId)}
                       onToggle={handleToggle}
                       showEntityType={showEntityType}
                     />

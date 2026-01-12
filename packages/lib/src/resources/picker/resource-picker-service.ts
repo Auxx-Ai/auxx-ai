@@ -22,7 +22,7 @@ import type {
   GlobalSearchResult,
 } from './types'
 import type { ResourceId } from '@auxx/types/resource'
-import { parseResourceId } from '../resource-id'
+import { parseResourceId, toResourceId } from '../resource-id'
 
 const logger = createScopedLogger('resource-picker-service')
 
@@ -456,8 +456,7 @@ export class ResourcePickerService {
 
     return {
       id: row.id,
-      entityDefinitionId: tableId,
-      entityInstanceId,
+      resourceId: toResourceId(tableId, entityInstanceId),
       displayName,
       secondaryInfo,
       avatarUrl,
@@ -573,8 +572,7 @@ export class ResourcePickerService {
   ): ResourcePickerItem {
     return {
       id: instance.id,
-      entityDefinitionId: resource.id,
-      entityInstanceId: instance.id,
+      resourceId: toResourceId(resource.id, instance.id),
       displayName: instance.displayName || instance.id,
       secondaryInfo: instance.secondaryDisplayValue || undefined,
       avatarUrl: instance.avatarUrl || undefined,
@@ -589,10 +587,10 @@ export class ResourcePickerService {
    * Works with both system resources (TableId) and custom entities (entity_slug)
    *
    * @param resourceIds - Array of ResourceId (format: entityDefinitionId:entityInstanceId)
-   * @returns Record keyed by entityInstanceId
+   * @returns Record keyed by ResourceId
    */
-  async getResourcesByIds(resourceIds: ResourceId[]): Promise<Record<string, ResourcePickerItem>> {
-    const result: Record<string, ResourcePickerItem> = {}
+  async getResourcesByIds(resourceIds: ResourceId[]): Promise<Record<ResourceId, ResourcePickerItem>> {
+    const result: Record<ResourceId, ResourcePickerItem> = {}
 
     // Group by entityDefinitionId for efficient batching
     const grouped = new Map<string, string[]>()
@@ -610,7 +608,7 @@ export class ResourcePickerService {
           const resource = await this.registryService.getById(entityDefinitionId)
           if (resource && isCustomResource(resource)) {
             const fetched = await this.fetchEntityInstancesByIds(resource, ids)
-            for (const item of fetched) result[item.id] = item
+            for (const item of fetched) result[item.resourceId] = item
           }
         } else if (RESOURCE_TABLE_MAP[entityDefinitionId as TableId]) {
           // System resource - use existing fetchResourcesFromDb with ID filter
@@ -621,7 +619,7 @@ export class ResourcePickerService {
             undefined,
             { id: ids }
           )
-          for (const item of fetched) result[item.id] = item
+          for (const item of fetched) result[item.resourceId] = item
         }
       })
     )
@@ -813,8 +811,7 @@ export class ResourcePickerService {
     // Transform to ResourcePickerItem format
     const items: ResourcePickerItem[] = searchResults.map((row) => ({
       id: row.id,
-      entityDefinitionId: row.entityDefinitionId,
-      entityInstanceId: row.id,
+      resourceId: toResourceId(row.entityDefinitionId, row.id),
       displayName: row.displayName || row.id,
       secondaryInfo: row.secondaryDisplayValue || undefined,
       avatarUrl: row.avatarUrl || undefined,
@@ -927,8 +924,7 @@ export class ResourcePickerService {
     // Transform to ResourcePickerItem format
     const items: ResourcePickerItem[] = results.map((row) => ({
       id: row.id,
-      entityDefinitionId: row.entityDefinitionId,
-      entityInstanceId: row.id,
+      resourceId: toResourceId(row.entityDefinitionId, row.id),
       displayName: row.displayName || row.id,
       secondaryInfo: row.secondaryDisplayValue || undefined,
       avatarUrl: row.avatarUrl || undefined,

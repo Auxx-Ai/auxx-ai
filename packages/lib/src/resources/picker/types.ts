@@ -1,5 +1,7 @@
 // packages/lib/src/resources/picker/types.ts
 
+import type { ResourceId } from '@auxx/types/resource'
+
 /**
  * Input for paginated resource picker queries
  * Accepts both system TableId (e.g., 'contact') and custom entity UUIDs
@@ -28,14 +30,11 @@ export interface GetResourcesInput {
  * Resource item formatted for picker display
  */
 export interface ResourcePickerItem {
-  /** Resource ID */
+  /** Instance ID (just the entity instance ID, not the full ResourceId) */
   id: string
 
-  /** Entity definition ID - system resource ID (contact, ticket) or custom entity UUID */
-  entityDefinitionId: string
-
-  /** Entity instance ID - the ID of this specific record */
-  entityInstanceId: string
+  /** Full ResourceId in format "entityDefinitionId:entityInstanceId" */
+  resourceId: ResourceId
 
   /** Display name (from displayNameField) */
   displayName: string

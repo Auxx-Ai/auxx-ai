@@ -32,14 +32,12 @@ export const fieldValueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { entityDefinitionId, entityInstanceId } = parseResourceId(input.resourceId as ResourceId)
+      const { entityDefinitionId, entityInstanceId } = parseResourceId(
+        input.resourceId as ResourceId
+      )
       const modelType = getModelType(entityDefinitionId)
 
-      const service = new FieldValueService(
-        ctx.session.organizationId,
-        ctx.session.user.id,
-        ctx.db
-      )
+      const service = new FieldValueService(ctx.session.organizationId, ctx.session.user.id, ctx.db)
       return await service.setValueWithBuiltIn({
         entityId: entityInstanceId,
         fieldId: input.fieldId,
@@ -52,36 +50,36 @@ export const fieldValueRouter = createTRPCRouter({
    * Set multiple field values for one resource.
    * Expects resourceId in ResourceId format.
    */
-  setMany: protectedProcedure
-    .input(
-      z.object({
-        resourceId: z.string(), // ResourceId format
-        values: z.array(
-          z.object({
-            fieldId: z.string(),
-            value: z.any().nullable(),
-          })
-        ),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const { entityDefinitionId, entityInstanceId } = parseResourceId(input.resourceId as ResourceId)
-      const modelType = getModelType(entityDefinitionId)
+  // setMany: protectedProcedure
+  //   .input(
+  //     z.object({
+  //       resourceId: z.string(), // ResourceId format
+  //       values: z.array(
+  //         z.object({
+  //           fieldId: z.string(),
+  //           value: z.any().nullable(),
+  //         })
+  //       ),
+  //     })
+  //   )
+  //   .mutation(async ({ ctx, input }) => {
+  //     const { entityDefinitionId, entityInstanceId } = parseResourceId(input.resourceId as ResourceId)
+  //     const modelType = getModelType(entityDefinitionId)
 
-      const service = new FieldValueService(
-        ctx.session.organizationId,
-        ctx.session.user.id,
-        ctx.db
-      )
-      return await service.setValuesForEntity({
-        entityId: entityInstanceId,
-        values: input.values.map((v) => ({
-          fieldId: v.fieldId,
-          value: v.value ?? null,
-        })),
-        modelType,
-      })
-    }),
+  //     const service = new FieldValueService(
+  //       ctx.session.organizationId,
+  //       ctx.session.user.id,
+  //       ctx.db
+  //     )
+  //     return await service.setValuesForEntity({
+  //       entityId: entityInstanceId,
+  //       values: input.values.map((v) => ({
+  //         fieldId: v.fieldId,
+  //         value: v.value ?? null,
+  //       })),
+  //       modelType,
+  //     })
+  //   }),
 
   /**
    * Set values for multiple resources (bulk operation).
@@ -109,11 +107,7 @@ export const fieldValueRouter = createTRPCRouter({
         (rid) => parseResourceId(rid as ResourceId).entityInstanceId
       )
 
-      const service = new FieldValueService(
-        ctx.session.organizationId,
-        ctx.session.user.id,
-        ctx.db
-      )
+      const service = new FieldValueService(ctx.session.organizationId, ctx.session.user.id, ctx.db)
       return await service.setBulkValues({
         entityIds,
         values: input.values.map((v) => ({
@@ -138,11 +132,7 @@ export const fieldValueRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { entityInstanceId } = parseResourceId(input.resourceId as ResourceId)
 
-      const service = new FieldValueService(
-        ctx.session.organizationId,
-        ctx.session.user.id,
-        ctx.db
-      )
+      const service = new FieldValueService(ctx.session.organizationId, ctx.session.user.id, ctx.db)
       await service.deleteValue({
         entityId: entityInstanceId,
         fieldId: input.fieldId,
@@ -163,11 +153,7 @@ export const fieldValueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const service = new FieldValueService(
-        ctx.session.organizationId,
-        ctx.session.user.id,
-        ctx.db
-      )
+      const service = new FieldValueService(ctx.session.organizationId, ctx.session.user.id, ctx.db)
       return await service.batchGetValues({
         resourceIds: input.resourceIds as any, // Cast to ResourceId[]
         fieldIds: input.fieldIds,
@@ -193,11 +179,7 @@ export const fieldValueRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { entityInstanceId } = parseResourceId(input.resourceId as ResourceId)
 
-      const service = new FieldValueService(
-        ctx.session.organizationId,
-        ctx.session.user.id,
-        ctx.db
-      )
+      const service = new FieldValueService(ctx.session.organizationId, ctx.session.user.id, ctx.db)
       return await service.addValue({
         entityId: entityInstanceId,
         fieldId: input.fieldId,
@@ -213,11 +195,7 @@ export const fieldValueRouter = createTRPCRouter({
   remove: protectedProcedure
     .input(z.object({ valueId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const service = new FieldValueService(
-        ctx.session.organizationId,
-        ctx.session.user.id,
-        ctx.db
-      )
+      const service = new FieldValueService(ctx.session.organizationId, ctx.session.user.id, ctx.db)
       await service.removeValue(input.valueId)
       return { success: true }
     }),

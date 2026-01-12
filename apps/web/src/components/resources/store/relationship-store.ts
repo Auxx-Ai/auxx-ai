@@ -10,7 +10,7 @@ import { toResourceId, parseResourceId, type ResourceId } from '@auxx/lib/resour
  */
 export const useRelationshipStore = createHydrationStore<ResourcePickerItem>({
   name: 'relationship',
-  getKeyFromValue: (item) => toResourceId(item.entityDefinitionId, item.id),
+  getKeyFromValue: (item) => item.resourceId,
 })
 
 /**
@@ -22,7 +22,7 @@ export interface RelationshipStoreState extends HydrationStore<ResourcePickerIte
   /** Get items pending fetch as ResourceId[] */
   getItemsToFetch: () => ResourceId[]
   /** Add hydrated items. Pass requestedKeys to mark missing items as not found. */
-  addHydratedItems: (items: Record<string, ResourcePickerItem>, requestedKeys?: string[]) => void
+  addHydratedItems: (items: Record<ResourceId, ResourcePickerItem>, requestedKeys?: ResourceId[]) => void
 }
 
 /**

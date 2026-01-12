@@ -5,7 +5,7 @@ import { api } from '~/trpc/react'
 import { useRecordStore, getRecordStoreState, type RecordMeta } from '../store/record-store'
 import { hydrateMultipleRecords } from '~/components/resources/store/hydrate-field-values'
 import type { Resource, ResourceId } from '@auxx/lib/resources/client'
-import { toResourceId } from '@auxx/lib/resources/client'
+import { toResourceId, getDefinitionId } from '@auxx/lib/resources/client'
 
 const BATCH_DELAY = 50
 const EMPTY_ITEMS: ResourceId[] = []
@@ -63,7 +63,7 @@ export function useRecordBatchFetcher({ getResourceById }: UseRecordBatchFetcher
     if (!data || currentBatch.length === 0) return
 
     // Group results by entityDefinitionId for store update
-    const byType = new Map<string, RecordMeta[]>()
+    const byEntityDefinitionId = new Map<string, RecordMeta[]>()
     const foundIds = new Set<ResourceId>()
 
     for (const item of Object.values(data)) {
@@ -74,12 +74,14 @@ export function useRecordBatchFetcher({ getResourceById }: UseRecordBatchFetcher
         ...item.data,
       }
 
-      const list = byType.get(item.entityDefinitionId) ?? []
+      const entityDefinitionId = getDefinitionId(item.resourceId)
+
+      const list = byEntityDefinitionId.get(entityDefinitionId) ?? []
       list.push(record)
-      byType.set(item.entityDefinitionId, list)
+      byEntityDefinitionId.set(entityDefinitionId, list)
 
       // Track found ResourceIds
-      foundIds.add(toResourceId(item.entityDefinitionId, item.id))
+      foundIds.add(item.resourceId)
     }
 
     // Identify missing items (requested but not returned = deleted/invalid)
@@ -90,8 +92,8 @@ export function useRecordBatchFetcher({ getResourceById }: UseRecordBatchFetcher
 
     // Update record store (still organized by resourceType internally)
     const store = getRecordStoreState()
-    for (const [resourceType, records] of byType) {
-      store.setRecords(resourceType, records)
+    for (const [entityDefinitionId, records] of byEntityDefinitionId) {
+      store.setRecords(entityDefinitionId, records)
     }
 
     // Mark missing items as not found
@@ -103,12 +105,15 @@ export function useRecordBatchFetcher({ getResourceById }: UseRecordBatchFetcher
     store.completeBatch(currentBatch)
 
     // Hydrate field values into customFieldValueStore
-    for (const [resourceType, records] of byType) {
-      const resource = getResourceById(resourceType)
+    for (const [entityDefinitionId, records] of byEntityDefinitionId) {
+      const resource = getResourceById(entityDefinitionId)
       if (resource) {
         hydrateMultipleRecords(
           resource,
-          records.map((r) => ({ id: r.id, data: r as Record<string, unknown> }))
+          records.map((r) => ({
+            resourceId: toResourceId(entityDefinitionId, r.id),
+            data: r as Record<string, unknown>,
+          }))
         )
       }
     }
