@@ -9,8 +9,7 @@ import { Button } from '@auxx/ui/components/button'
 import { Loader2, AlertCircle } from 'lucide-react'
 import type { ResourceId } from '@auxx/lib/workflow-engine/client'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
-import { toResourceRefsFromId } from '@auxx/lib/field-values/client'
-import type { ResourceRef } from '@auxx/types/resource'
+import { toResourceId, getInstanceId, type ResourceId as FieldResourceId } from '@auxx/lib/field-values/client'
 import { CodeEditor, CodeLanguage } from '~/components/workflow/ui/code-editor'
 import Field from '~/components/workflow/ui/field'
 import Section from '~/components/workflow/ui/section'
@@ -142,8 +141,8 @@ export function ResourceTestInput({
               <MultiRelationInput
                 className="flex-1"
                 entityDefinitionId={resourceType}
-                value={toResourceRefsFromId(resourceType, inputs.selectedResourceId)}
-                onChange={(refs: ResourceRef[]) => handleResourceSelect(refs[0] ? { referenceId: refs[0].entityInstanceId } : null)}
+                value={inputs.selectedResourceId ? [toResourceId(resourceType, inputs.selectedResourceId)] : []}
+                onChange={(resourceIds: FieldResourceId[]) => handleResourceSelect(resourceIds[0] ? { referenceId: getInstanceId(resourceIds[0]) } : null)}
                 multi={false}
               />
             </VarEditorFieldRow>

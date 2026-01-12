@@ -47,8 +47,7 @@ import CustomerSelect from '~/components/global/select-customer'
 import { TicketPriorityColors, TicketTypeIcons } from '~/components/tickets/shared'
 import { TicketType, TicketPriority } from '@auxx/database/enums'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
-import { toResourceRefsFromId } from '@auxx/lib/field-values/client'
-import type { ResourceRef } from '@auxx/types/resource'
+import { toResourceId, getInstanceId, type ResourceId } from '@auxx/lib/field-values/client'
 
 /** Base form schema for ticket creation/editing */
 const baseFormSchema = z.object({
@@ -515,8 +514,8 @@ export default function TicketFormDialog({
                     <FormControl>
                       <MultiRelationInput
                         entityDefinitionId="ticket"
-                        value={toResourceRefsFromId('ticket', field.value)}
-                        onChange={(refs: ResourceRef[]) => field.onChange(refs[0]?.entityInstanceId || '')}
+                        value={field.value ? [toResourceId('ticket', field.value)] : []}
+                        onChange={(resourceIds: ResourceId[]) => field.onChange(resourceIds[0] ? getInstanceId(resourceIds[0]) : '')}
                         excludeIds={ticket?.id ? [ticket.id] : []}
                         placeholder="No parent ticket"
                         multi={false}

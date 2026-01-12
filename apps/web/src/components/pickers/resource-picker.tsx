@@ -16,10 +16,9 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { cn } from '@auxx/ui/lib/utils'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import { isCustomResource, type ResourcePickerItem } from '@auxx/lib/resources/client'
+import { isCustomResource, toResourceId, type ResourcePickerItem, type ResourceId } from '@auxx/lib/resources/client'
 import { useRelationship, useResource, useResourceProvider } from '~/components/resources'
 import { api } from '~/trpc/react'
-import type { ResourceRef } from '@auxx/types/resource'
 
 /**
  * Props for ResourcePickerItem display component
@@ -27,7 +26,7 @@ import type { ResourceRef } from '@auxx/types/resource'
 interface ResourceItemProps {
   item: ResourcePickerItem
   isSelected: boolean
-  onToggle: (ref: ResourceRef) => void
+  onToggle: (resourceId: ResourceId) => void
   showEntityType?: boolean
 }
 
@@ -40,10 +39,7 @@ function ResourceItem({ item, isSelected, onToggle, showEntityType }: ResourceIt
   const iconColor = resource && isCustomResource(resource) ? resource.color : undefined
 
   const handleSelect = () => {
-    onToggle({
-      entityDefinitionId: item.entityDefinitionId,
-      entityInstanceId: item.id,
-    })
+    onToggle(toResourceId(item.entityDefinitionId, item.id))
   }
 
   return (
@@ -84,11 +80,11 @@ function ResourceItem({ item, isSelected, onToggle, showEntityType }: ResourceIt
  * Props for the ResourcePicker component
  */
 export interface ResourcePickerProps {
-  /** Currently selected resource references */
-  value: ResourceRef[]
+  /** Currently selected ResourceIds */
+  value: ResourceId[]
 
   /** Called when selection changes */
-  onChange: (selected: ResourceRef[]) => void
+  onChange: (selected: ResourceId[]) => void
 
   /** Single entity type to search */
   entityDefinitionId?: string
@@ -100,7 +96,7 @@ export interface ResourcePickerProps {
   multi?: boolean
 
   /** Called after selection in single-select mode */
-  onSelectSingle?: (ref: ResourceRef) => void
+  onSelectSingle?: (resourceId: ResourceId) => void
 
   /** Callback when arrow key capture state changes */
   onCaptureChange?: (capturing: boolean) => void
@@ -129,7 +125,7 @@ export interface ResourcePickerProps {
 
 /**
  * ResourcePicker - A context-agnostic resource picker component.
- * Supports searching entities and selecting ResourceRef values.
+ * Supports searching entities and selecting ResourceId values.
  *
  * Features:
  * - Search across single entity type, multiple entity types, or all entities
@@ -162,8 +158,8 @@ export function ResourcePicker({
     return () => onCaptureChange?.(false)
   }, [onCaptureChange])
 
-  // Track initial selected refs (snapshot at mount) - prevents layout shifts
-  const [initialSelectedRefs, setInitialSelectedRefs] = useState<ResourceRef[]>(() => value)
+  // Track initial selected resourceIds (snapshot at mount) - prevents layout shifts
+  const [initialSelectedIds, setInitialSelectedIds] = useState<ResourceId[]>(() => value)
 
   // Determine search mode
   const isGlobalSearch = !entityDefinitionId && !entityDefinitionIds
@@ -204,43 +200,34 @@ export function ResourcePicker({
   )
 
   // Hydrate selected items
-  const { items: hydratedItems, isLoading: isHydrating } = useRelationship(initialSelectedRefs)
+  const { items: hydratedItems, isLoading: isHydrating } = useRelationship(initialSelectedIds)
 
   // Build map of hydrated items for quick lookup
   const hydratedMap = useMemo(() => {
     const map: Record<string, ResourcePickerItem> = {}
-    initialSelectedRefs.forEach((ref, idx) => {
+    initialSelectedIds.forEach((resourceId, idx) => {
       const item = hydratedItems[idx]
       if (item) {
-        const key = `${ref.entityDefinitionId}:${ref.entityInstanceId}`
-        map[key] = item
+        map[resourceId] = item
       }
     })
     return map
-  }, [initialSelectedRefs, hydratedItems])
+  }, [initialSelectedIds, hydratedItems])
 
-  // Check if a ref is currently selected
+  // Check if a resourceId is currently selected
   const isSelected = useCallback(
-    (ref: ResourceRef) => {
-      return value.some(
-        (v) =>
-          v.entityDefinitionId === ref.entityDefinitionId &&
-          v.entityInstanceId === ref.entityInstanceId
-      )
+    (resourceId: ResourceId) => {
+      return value.includes(resourceId)
     },
     [value]
   )
 
-  // Check if a ref was initially selected (for layout stability)
+  // Check if a resourceId was initially selected (for layout stability)
   const wasInitiallySelected = useCallback(
-    (ref: ResourceRef) => {
-      return initialSelectedRefs.some(
-        (v) =>
-          v.entityDefinitionId === ref.entityDefinitionId &&
-          v.entityInstanceId === ref.entityInstanceId
-      )
+    (resourceId: ResourceId) => {
+      return initialSelectedIds.includes(resourceId)
     },
-    [initialSelectedRefs]
+    [initialSelectedIds]
   )
 
   // Filter initially selected items by search term
@@ -248,9 +235,8 @@ export function ResourcePicker({
     const searchLower = search.toLowerCase()
     const items: ResourcePickerItem[] = []
 
-    for (const ref of initialSelectedRefs) {
-      const key = `${ref.entityDefinitionId}:${ref.entityInstanceId}`
-      const item = hydratedMap[key]
+    for (const resourceId of initialSelectedIds) {
+      const item = hydratedMap[resourceId]
       if (item) {
         // Apply search filter
         if (!search || item.displayName?.toLowerCase().includes(searchLower)) {
@@ -260,16 +246,14 @@ export function ResourcePicker({
     }
 
     return items
-  }, [initialSelectedRefs, hydratedMap, search])
+  }, [initialSelectedIds, hydratedMap, search])
 
   // Available items (from search, excluding initially selected)
   const availableItems = useMemo(() => {
     if (!searchResults?.items) return []
     return searchResults.items.filter((item) => {
-      return !wasInitiallySelected({
-        entityDefinitionId: item.entityDefinitionId,
-        entityInstanceId: item.id,
-      })
+      const resourceId = toResourceId(item.entityDefinitionId, item.id)
+      return !wasInitiallySelected(resourceId)
     })
   }, [searchResults, wasInitiallySelected])
 
@@ -277,43 +261,37 @@ export function ResourcePicker({
    * Toggle selection of a resource
    */
   const handleToggle = useCallback(
-    (ref: ResourceRef) => {
+    (resourceId: ResourceId) => {
       if (multi) {
         // Toggle in array
-        const exists = isSelected(ref)
-        let newValue: ResourceRef[]
+        const exists = isSelected(resourceId)
+        let newValue: ResourceId[]
 
         if (exists) {
-          newValue = value.filter(
-            (v) =>
-              !(
-                v.entityDefinitionId === ref.entityDefinitionId &&
-                v.entityInstanceId === ref.entityInstanceId
-              )
-          )
+          newValue = value.filter((v) => v !== resourceId)
         } else {
-          newValue = [...value, ref]
+          newValue = [...value, resourceId]
         }
 
         onChange(newValue)
       } else {
         // Single select - replace or deselect if same
-        const exists = isSelected(ref)
+        const exists = isSelected(resourceId)
 
         if (exists) {
           onChange([])
         } else {
-          onChange([ref])
-          onSelectSingle?.(ref)
+          onChange([resourceId])
+          onSelectSingle?.(resourceId)
         }
       }
     },
     [multi, value, onChange, isSelected, onSelectSingle]
   )
 
-  // Sync initial selected refs when value changes from parent
+  // Sync initial selected ids when value changes from parent
   useEffect(() => {
-    setInitialSelectedRefs(value)
+    setInitialSelectedIds(value)
   }, [value])
 
   // Get related resource for create label
@@ -347,18 +325,18 @@ export function ResourcePicker({
             {/* Selected Items Section */}
             {hasSelectedSection && (
               <CommandGroup aria-label="Selected Items">
-                {filteredSelectedItems.map((item) => (
-                  <ResourceItem
-                    key={`${item.entityDefinitionId}:${item.id}`}
-                    item={item}
-                    isSelected={isSelected({
-                      entityDefinitionId: item.entityDefinitionId,
-                      entityInstanceId: item.id,
-                    })}
-                    onToggle={handleToggle}
-                    showEntityType={showEntityType}
-                  />
-                ))}
+                {filteredSelectedItems.map((item) => {
+                  const resourceId = toResourceId(item.entityDefinitionId, item.id)
+                  return (
+                    <ResourceItem
+                      key={resourceId}
+                      item={item}
+                      isSelected={isSelected(resourceId)}
+                      onToggle={handleToggle}
+                      showEntityType={showEntityType}
+                    />
+                  )
+                })}
               </CommandGroup>
             )}
 
@@ -368,18 +346,18 @@ export function ResourcePicker({
             {/* Available Items Section */}
             {hasResultsSection && (
               <CommandGroup aria-label="Available Items">
-                {availableItems.map((item) => (
-                  <ResourceItem
-                    key={`${item.entityDefinitionId}:${item.id}`}
-                    item={item}
-                    isSelected={isSelected({
-                      entityDefinitionId: item.entityDefinitionId,
-                      entityInstanceId: item.id,
-                    })}
-                    onToggle={handleToggle}
-                    showEntityType={showEntityType}
-                  />
-                ))}
+                {availableItems.map((item) => {
+                  const resourceId = toResourceId(item.entityDefinitionId, item.id)
+                  return (
+                    <ResourceItem
+                      key={resourceId}
+                      item={item}
+                      isSelected={isSelected(resourceId)}
+                      onToggle={handleToggle}
+                      showEntityType={showEntityType}
+                    />
+                  )
+                })}
               </CommandGroup>
             )}
 

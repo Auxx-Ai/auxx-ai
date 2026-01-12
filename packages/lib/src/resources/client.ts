@@ -42,9 +42,19 @@ export type {
   SystemResource,
   CustomResource,
   DisplayFieldConfig,
-  ResourceId,
   CustomResourceId,
 } from './registry'
+
+// ResourceId utilities (branded string format: entityDefinitionId:entityInstanceId)
+export {
+  toResourceId,
+  parseResourceId,
+  isResourceId,
+  toResourceIds,
+  getInstanceId,
+  getDefinitionId,
+} from './resource-id'
+export type { ResourceId } from '@auxx/types/resource'
 
 // Field utility functions (client-safe)
 export {

@@ -2,19 +2,14 @@
 
 import { useEffect, useRef, useCallback } from 'react'
 import { useRecordStore, type RecordMeta } from '../store/record-store'
-import type { ResourceRef } from '@auxx/types'
+import { parseResourceId, type ResourceId } from '@auxx/lib/resources/client'
 
 /**
  * Options for useRecord hook.
- * Supports either a ref object or flat props for flexibility.
  */
 interface UseRecordOptions {
-  /** Resource reference object - alternative to flat props */
-  ref?: ResourceRef | null
-  /** The entity definition ID (system resource like 'contact' or custom entity UUID) */
-  entityDefinitionId?: string | null
-  /** The specific instance ID within that entity type */
-  entityInstanceId?: string | null
+  /** ResourceId (branded string format: entityDefinitionId:entityInstanceId) */
+  resourceId: ResourceId | null | undefined
   /** Disable fetching */
   enabled?: boolean
 }
@@ -35,17 +30,20 @@ interface UseRecordResult<T> {
  * Hook for components that need a record with fetch-on-demand.
  * Queues fetch via batching system if record not in cache.
  *
- * Tracks requested IDs to prevent infinite loops if fetch fails.
+ * @param resourceId - ResourceId in format "entityDefinitionId:entityInstanceId"
+ * @param enabled - Whether to enable fetching (default: true)
+ *
+ * @example
+ * const { record } = useRecord({ resourceId: toResourceId('contact', contactId) })
  */
 export function useRecord<T extends RecordMeta = RecordMeta>({
-  ref,
-  entityDefinitionId,
-  entityInstanceId,
+  resourceId,
   enabled = true,
 }: UseRecordOptions): UseRecordResult<T> {
-  // Support both ref object and flat props
-  const defId = ref?.entityDefinitionId ?? entityDefinitionId ?? ''
-  const instId = ref?.entityInstanceId ?? entityInstanceId
+  // Parse resourceId to get entityDefinitionId and entityInstanceId
+  const parsed = resourceId ? parseResourceId(resourceId) : null
+  const defId = parsed?.entityDefinitionId ?? ''
+  const instId = parsed?.entityInstanceId ?? ''
 
   // Subscribe to the record
   const record = useRecordStore(
@@ -58,7 +56,7 @@ export function useRecord<T extends RecordMeta = RecordMeta>({
   // Subscribe to loading state
   const isLoading = useRecordStore(
     useCallback(
-      (state) => state.loadingIds.get(defId)?.has(instId ?? '') ?? false,
+      (state) => state.loadingIds.get(defId)?.has(instId) ?? false,
       [defId, instId]
     )
   )
@@ -94,11 +92,13 @@ export function useRecord<T extends RecordMeta = RecordMeta>({
 /**
  * Check if a record is currently being loaded.
  */
-export function useIsRecordLoading(entityDefinitionId: string, entityInstanceId: string): boolean {
+export function useIsRecordLoading(resourceId: ResourceId): boolean {
+  const parsed = parseResourceId(resourceId)
   return useRecordStore(
     useCallback(
-      (state) => state.loadingIds.get(entityDefinitionId)?.has(entityInstanceId) ?? false,
-      [entityDefinitionId, entityInstanceId]
+      (state) =>
+        state.loadingIds.get(parsed.entityDefinitionId)?.has(parsed.entityInstanceId) ?? false,
+      [parsed.entityDefinitionId, parsed.entityInstanceId]
     )
   )
 }
@@ -106,11 +106,13 @@ export function useIsRecordLoading(entityDefinitionId: string, entityInstanceId:
 /**
  * Check if a record is pending fetch (queued but not started).
  */
-export function useIsRecordPending(entityDefinitionId: string, entityInstanceId: string): boolean {
+export function useIsRecordPending(resourceId: ResourceId): boolean {
+  const parsed = parseResourceId(resourceId)
   return useRecordStore(
     useCallback(
-      (state) => state.pendingFetchIds.get(entityDefinitionId)?.has(entityInstanceId) ?? false,
-      [entityDefinitionId, entityInstanceId]
+      (state) =>
+        state.pendingFetchIds.get(parsed.entityDefinitionId)?.has(parsed.entityInstanceId) ?? false,
+      [parsed.entityDefinitionId, parsed.entityInstanceId]
     )
   )
 }

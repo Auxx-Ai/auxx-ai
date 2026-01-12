@@ -23,7 +23,7 @@ import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { DrawerHeader } from '@auxx/ui/components/drawer'
 import { OverflowTabsList, Tabs, TabsContent } from '@auxx/ui/components/tabs'
 import { api } from '~/trpc/react'
-import { useRecord } from '~/components/resources'
+import { useRecord, toResourceId } from '~/components/resources'
 import { useQueryState } from 'nuqs'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import EntityFields from '../../fields/entity-fields'
@@ -92,8 +92,7 @@ export function ContactDrawer({
 
   // Try record cache first (populated by batch fetcher when list loads)
   const { record: contact, isLoading: isCacheLoading } = useRecord({
-    entityDefinitionId: 'contact',
-    entityInstanceId: contactId,
+    resourceId: contactId ? toResourceId('contact', contactId) : null,
     enabled: !!open && !!contactId,
   })
   // Fall back to API if not in cache (for fields not included in batch fetch)
@@ -304,7 +303,10 @@ function ContactDrawerContent({
                       collapsible={false}
                       icon={<HouseIcon className="size-4" />}>
                       {contact?.id && (
-                        <MemoEntityFields entityDefinitionId="contact" entityInstanceId={contact.id} />
+                        <MemoEntityFields
+                          entityDefinitionId="contact"
+                          entityInstanceId={contact.id}
+                        />
                       )}
                     </Section>
                   </ScrollArea>

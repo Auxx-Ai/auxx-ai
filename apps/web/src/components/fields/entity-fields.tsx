@@ -16,7 +16,7 @@ import { ModelTypes, type ModelType } from '@auxx/types/custom-field'
 import { useCustomField } from '~/components/custom-fields/hooks/use-custom-field'
 import { useConfirm } from '~/hooks/use-confirm'
 import { EntityFieldsContent } from './entity-fields-content'
-import { useResource, useRecord, useRecordHydration } from '~/components/resources'
+import { useResource, useRecord, useRecordHydration, toResourceId } from '~/components/resources'
 import type { ResourceField } from '@auxx/lib/resources/client'
 import { sortFieldsForDisplay, isSystemResourceId } from '@auxx/lib/resources/client'
 import {
@@ -102,8 +102,7 @@ function EntityFields({
 
   // Fetch record data (uses cache from list view, fetches if needed)
   const { record, isLoading: recordLoading } = useRecord({
-    entityDefinitionId,
-    entityInstanceId,
+    resourceId: entityInstanceId ? toResourceId(entityDefinitionId, entityInstanceId) : null,
     enabled: !!entityInstanceId && !!resource,
   })
 

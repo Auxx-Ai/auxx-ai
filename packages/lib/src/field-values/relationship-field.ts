@@ -1,14 +1,15 @@
 // packages/lib/src/field-values/relationship-field.ts
 
 import type { RelationshipFieldValue, RelationshipFieldValueInput, TypedFieldValue } from '@auxx/types/field-value'
-import type { ResourceRef } from '@auxx/types/resource'
+import type { ResourceId } from '@auxx/types/resource'
+import { toResourceId, getInstanceId } from '../resources/resource-id'
 
 /**
- * Extracted relationship data with ResourceRefs ready for useRelationship
+ * Extracted relationship data with ResourceIds ready for useRelationship
  */
 export interface RelationshipData {
-  /** ResourceRef[] ready for direct use with useRelationship */
-  references: ResourceRef[]
+  /** ResourceId[] ready for direct use with useRelationship */
+  resourceIds: ResourceId[]
   /** Unique entity definition IDs found in the value (for mixed-type relationships) */
   entityDefinitionIds: string[]
 }
@@ -41,21 +42,21 @@ export function isRelationshipFieldValueArray(v: unknown): v is RelationshipFiel
 // ============================================================================
 
 /**
- * Extract ResourceRefs and entityDefinitionIds from ANY relationship value format.
+ * Extract ResourceIds and entityDefinitionIds from ANY relationship value format.
  * Handles: objects, arrays, strings, null, undefined.
  *
- * @returns { references, entityDefinitionIds } - ready for useRelationship
+ * @returns { resourceIds, entityDefinitionIds } - ready for useRelationship
  *
  * @example
- * const { references } = extractRelationshipData(value)
- * const { items } = useRelationship(references)
+ * const { resourceIds } = extractRelationshipData(value)
+ * const { items } = useRelationship(resourceIds)
  */
 export function extractRelationshipData(value: unknown): RelationshipData {
   if (!value) {
-    return { references: [], entityDefinitionIds: [] }
+    return { resourceIds: [], entityDefinitionIds: [] }
   }
 
-  const references: ResourceRef[] = []
+  const resourceIds: ResourceId[] = []
   const entityDefinitionIdSet = new Set<string>()
 
   // Array of full objects or IDs
@@ -65,18 +66,15 @@ export function extractRelationshipData(value: unknown): RelationshipData {
         const rel = item as RelationshipFieldValue
         const entityDefId = rel.relatedEntityDefinitionId
         if (entityDefId && rel.relatedEntityId) {
-          references.push({
-            entityDefinitionId: entityDefId,
-            entityInstanceId: rel.relatedEntityId,
-          })
+          resourceIds.push(toResourceId(entityDefId, rel.relatedEntityId))
           entityDefinitionIdSet.add(entityDefId)
         }
       }
-      // Skip raw string IDs - we need entityDefinitionId to create valid ResourceRef
+      // Skip raw string IDs - we need entityDefinitionId to create valid ResourceId
     }
 
     return {
-      references,
+      resourceIds,
       entityDefinitionIds: Array.from(entityDefinitionIdSet),
     }
   }
@@ -87,19 +85,14 @@ export function extractRelationshipData(value: unknown): RelationshipData {
     const entityDefId = rel.relatedEntityDefinitionId
     if (entityDefId && rel.relatedEntityId) {
       return {
-        references: [
-          {
-            entityDefinitionId: entityDefId,
-            entityInstanceId: rel.relatedEntityId,
-          },
-        ],
+        resourceIds: [toResourceId(entityDefId, rel.relatedEntityId)],
         entityDefinitionIds: [entityDefId],
       }
     }
   }
 
-  // Raw ID string or invalid format - cannot create ResourceRef without entityDefinitionId
-  return { references: [], entityDefinitionIds: [] }
+  // Raw ID string or invalid format - cannot create ResourceId without entityDefinitionId
+  return { resourceIds: [], entityDefinitionIds: [] }
 }
 
 // ============================================================================
@@ -270,15 +263,15 @@ export function validateEntityDefinitionId(entityDefinitionId: string | null): b
 }
 
 // ============================================================================
-// RESOURCE REF EXTRACTORS - For useRelationship hook
+// RESOURCE ID EXTRACTORS - For useRelationship hook
 // ============================================================================
 
 /**
- * Extract ResourceRef[] from ANY relationship value format.
- * Convenience wrapper around extractRelationshipData(value).references
+ * Extract ResourceId[] from ANY relationship value format.
+ * Convenience wrapper around extractRelationshipData(value).resourceIds
  */
-export function extractRelationshipRefs(value: unknown): ResourceRef[] {
-  return extractRelationshipData(value).references
+export function extractRelationshipResourceIds(value: unknown): ResourceId[] {
+  return extractRelationshipData(value).resourceIds
 }
 
 // ============================================================================
@@ -299,37 +292,40 @@ export function isMultiRelationship(relationshipType?: RelationshipType | string
 }
 
 /**
- * Create a single ResourceRef from entityDefinitionId and entityInstanceId.
+ * Create a single ResourceId from entityDefinitionId and entityInstanceId.
  *
  * @example
- * const ref = toResourceRef('ticket', ticketId)
+ * const resourceId = toResourceIdFromParts('ticket', ticketId)
  */
-export function toResourceRef(entityDefinitionId: string, entityInstanceId: string): ResourceRef {
-  return { entityDefinitionId, entityInstanceId }
+export function toResourceIdFromParts(entityDefinitionId: string, entityInstanceId: string): ResourceId {
+  return toResourceId(entityDefinitionId, entityInstanceId)
 }
 
 /**
- * Create ResourceRef[] from entityDefinitionId and array of IDs.
+ * Create ResourceId[] from entityDefinitionId and array of IDs.
  *
  * @example
- * const refs = toResourceRefs('contact', ['id1', 'id2'])
+ * const resourceIds = toResourceIdsFromParts('contact', ['id1', 'id2'])
  */
-export function toResourceRefs(entityDefinitionId: string, ids: string[]): ResourceRef[] {
-  return ids.map((id) => ({ entityDefinitionId, entityInstanceId: id }))
+export function toResourceIdsFromParts(entityDefinitionId: string, ids: string[]): ResourceId[] {
+  return ids.map((id) => toResourceId(entityDefinitionId, id))
 }
 
 /**
- * Create ResourceRef[] from entityDefinitionId and optional single ID.
- * Returns empty array if id is falsy.
+ * Create ResourceId from entityDefinitionId and optional single ID.
+ * Returns null if id is falsy.
  *
  * @example
- * const refs = toResourceRefsFromId('ticket', selectedTicketId)
- * // selectedTicketId = 'abc' → [{ entityDefinitionId: 'ticket', entityInstanceId: 'abc' }]
- * // selectedTicketId = null → []
+ * const resourceId = toResourceIdFromId('ticket', selectedTicketId)
+ * // selectedTicketId = 'abc' → 'ticket:abc'
+ * // selectedTicketId = null → null
  */
-export function toResourceRefsFromId(
+export function toResourceIdFromId(
   entityDefinitionId: string,
   id: string | null | undefined
-): ResourceRef[] {
-  return id ? [{ entityDefinitionId, entityInstanceId: id }] : []
+): ResourceId | null {
+  return id ? toResourceId(entityDefinitionId, id) : null
 }
+
+// Re-export from resource-id for convenience
+export { toResourceId, parseResourceId, isResourceId, toResourceIds, getInstanceId, getDefinitionId } from '../resources/resource-id'

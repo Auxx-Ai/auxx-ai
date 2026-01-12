@@ -32,7 +32,7 @@ import { TextDateParser, DateLanguageModule } from '@auxx/lib/tasks/client'
 import type { TaskWithRelations, CreateTaskInput, UpdateTaskInput } from '@auxx/lib/tasks'
 import { SubmitOnEnter } from '~/components/global/comments/comment-composer'
 import { toastSuccess } from '@auxx/ui/components/toast'
-import type { ResourceRef } from '@auxx/types/resource'
+import { toResourceId, getInstanceId, getDefinitionId, type ResourceId } from '@auxx/lib/field-values/client'
 
 /**
  * Props for TaskDialog component
@@ -47,7 +47,7 @@ interface TaskDialogProps {
   /** Task to edit (required for edit mode) */
   task?: TaskWithRelations
   /** Default entity reference when creating from entity drawer */
-  defaultReferencedEntity?: ResourceRef
+  defaultReferencedEntity?: ResourceId
 }
 
 /**
@@ -78,7 +78,7 @@ export function TaskDialog({
   const [deadline, setDeadline] = useState<Date | undefined>(undefined)
   const [deadlineManuallySet, setDeadlineManuallySet] = useState(false)
   const [assignedUserIds, setAssignedUserIds] = useState<string[]>([])
-  const [linkedRecords, setLinkedRecords] = useState<ResourceRef[]>([])
+  const [linkedRecords, setLinkedRecords] = useState<ResourceId[]>([])
   const [createMore, setCreateMore] = useState(false)
 
   // Mutations
@@ -204,12 +204,11 @@ export function TaskDialog({
         setAssignedUserIds(
           (task.assignments?.map((a) => a.assignedTo?.id).filter(Boolean) as string[]) ?? []
         )
-        // Load existing linked records from task references
+        // Load existing linked records from task references as ResourceId[]
         setLinkedRecords(
-          task.references?.map((ref) => ({
-            entityDefinitionId: ref.entityDefinitionId,
-            entityInstanceId: ref.entityInstanceId,
-          })) ?? []
+          task.references?.map((ref) =>
+            toResourceId(ref.entityDefinitionId, ref.entityInstanceId)
+          ) ?? []
         )
       } else {
         // Create mode: start fresh or with default entity reference

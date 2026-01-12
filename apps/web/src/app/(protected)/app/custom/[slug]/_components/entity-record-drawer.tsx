@@ -15,12 +15,11 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Tooltip } from '~/components/global/tooltip'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import EntityFields from '~/components/fields/entity-fields'
-import { useResource } from '~/components/resources'
+import { useResource, useRecord, toResourceId } from '~/components/resources'
 import type { ResourceField } from '@auxx/lib/resources/client'
 import DrawerComments from '~/components/global/comments/drawer-comments'
 import { TimelineTab } from '~/components/timeline'
 import { createCustomEntityType } from '@auxx/lib/timeline/client'
-import { useRecord } from '~/components/resources'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
@@ -83,8 +82,9 @@ export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
   // Fetch entity record from cache (populated by batch fetcher when list loads)
   // Returns displayName, secondaryDisplayValue, createdAt, updatedAt, and all field values
   const { record: cachedRecord, isLoading: isRecordLoading } = useRecord({
-    entityDefinitionId,
-    entityInstanceId,
+    resourceId: entityDefinitionId && entityInstanceId
+      ? toResourceId(entityDefinitionId, entityInstanceId)
+      : null,
     enabled: !!open && !!entityInstanceId && !!entityDefinitionId,
   })
 

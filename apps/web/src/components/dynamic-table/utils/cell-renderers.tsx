@@ -14,7 +14,8 @@ import { useRelationship } from '~/components/resources'
 import {
   formatToRawValue,
   formatToDisplayValue,
-  extractRelationshipRefs,
+  extractRelationshipResourceIds,
+  getInstanceId,
   type NumberFieldOptions,
   type DateFieldOptions,
   type BooleanFieldOptions,
@@ -39,18 +40,19 @@ type SelectOption = { label: string; value: string }
  * - Custom entities: store UUID of EntityDefinition
  */
 function RelationshipCellContent({ value }: { value: unknown }) {
-  // Extract ResourceRefs from value using centralized utility
-  const refs = useMemo(() => extractRelationshipRefs(value), [value])
+  // Extract ResourceIds from value using centralized utility
+  const resourceIds = useMemo(() => extractRelationshipResourceIds(value), [value])
 
-  const { items: hydratedItems, isLoading } = useRelationship(refs)
+  const { items: hydratedItems, isLoading } = useRelationship(resourceIds)
 
   // Map items with per-item loading state
   // hydratedItems[i] can be: ResourcePickerItem (found), null (not found), undefined (loading)
-  const items = refs.map((ref, i) => {
+  const items = resourceIds.map((resourceId, i) => {
     const hydrated = hydratedItems[i]
+    const instanceId = getInstanceId(resourceId)
     return {
-      id: ref.entityInstanceId,
-      displayName: hydrated?.displayName ?? ref.entityInstanceId.slice(-6),
+      id: instanceId,
+      displayName: hydrated?.displayName ?? instanceId.slice(-6),
       isLoading: hydrated === undefined, // undefined = still loading
       isNotFound: hydrated === null, // null = not found
     }
@@ -59,7 +61,7 @@ function RelationshipCellContent({ value }: { value: unknown }) {
   return (
     <ItemsCellView
       items={items}
-      isLoading={isLoading && items.length === 0}
+      isLoading={isLoading && resourceIds.length === 0}
       renderItem={(item) =>
         item.isLoading ? (
           <Skeleton className="h-5 w-16 rounded" />

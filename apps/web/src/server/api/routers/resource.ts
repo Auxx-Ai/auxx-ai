@@ -19,12 +19,12 @@ import {
 } from '@auxx/lib/workflow-engine'
 import { type Database, schema } from '@auxx/database'
 import { eq, and } from 'drizzle-orm'
-import { resourceRefSchema } from '@auxx/types/resource'
+import { resourceIdSchema } from '@auxx/types/resource'
 
 /**
- * Validate resource ID - accepts system TableId or custom entity UUID
+ * Validate entity definition ID - accepts system TableId or custom entity UUID
  */
-const resourceIdSchema = z.string().refine(
+const entityDefinitionIdSchema = z.string().refine(
   (val: string) => {
     // System table IDs
     if (RESOURCE_TABLE_REGISTRY.some((r: { id: string }) => r.id === val)) return true
@@ -36,7 +36,7 @@ const resourceIdSchema = z.string().refine(
 )
 
 const getResourcesInputSchema = z.object({
-  entityDefinitionId: resourceIdSchema,
+  entityDefinitionId: entityDefinitionIdSchema,
   limit: z.number().min(1).max(100).default(50),
   cursor: z.string().nullish(),
   search: z.string().optional(),
@@ -51,7 +51,7 @@ const getResourcesInputSchema = z.object({
  */
 const globalSearchInputSchema = z.object({
   /** Optional - if provided, searches specific resource (system or custom entity) */
-  entityDefinitionId: resourceIdSchema.optional(),
+  entityDefinitionId: entityDefinitionIdSchema.optional(),
   /** Optional - resolve by apiSlug instead of entityDefinitionId */
   apiSlug: z.string().optional(),
   /** Optional search query - if empty, returns first N records */
@@ -65,7 +65,7 @@ const globalSearchInputSchema = z.object({
 })
 
 const getResourceByIdInputSchema = z.object({
-  entityDefinitionId: resourceIdSchema,
+  entityDefinitionId: entityDefinitionIdSchema,
   id: z.string(),
 })
 
@@ -124,7 +124,7 @@ export const resourceRouter = createTRPCRouter({
   getByIds: protectedProcedure
     .input(
       z.object({
-        items: z.array(resourceRefSchema).max(100),
+        items: z.array(resourceIdSchema).max(100),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -132,7 +132,7 @@ export const resourceRouter = createTRPCRouter({
 
       try {
         const service = new ResourcePickerService(organizationId, userId, ctx.db)
-        return await service.getResourcesByIds(input.items)
+        return await service.getResourcesByIds(input.items as import('@auxx/types/resource').ResourceId[])
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         throw new TRPCError({
@@ -223,7 +223,7 @@ export const resourceRouter = createTRPCRouter({
   invalidateCache: protectedProcedure
     .input(
       z.object({
-        entityDefinitionId: resourceIdSchema,
+        entityDefinitionId: entityDefinitionIdSchema,
         id: z.string().optional(),
       })
     )

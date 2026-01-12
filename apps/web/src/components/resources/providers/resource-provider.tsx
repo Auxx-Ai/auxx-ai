@@ -4,16 +4,10 @@
 
 import { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react'
 import { api } from '~/trpc/react'
-import {
-  getRelationshipStoreState,
-  useRelationshipStore,
-  getRecordStoreState,
-  buildRelationshipKey,
-} from '../store'
-import type { Resource, CustomResource } from '@auxx/lib/resources/client'
+import { getRelationshipStoreState, useRelationshipStore, getRecordStoreState } from '../store'
+import type { Resource, CustomResource, ResourceId } from '@auxx/lib/resources/client'
 import { isCustomResource } from '@auxx/lib/resources/client'
 import { useRecordBatchFetcher } from '../hooks/use-record-batch-fetcher'
-import type { ResourceRef } from '@auxx/types/resource'
 
 /**
  * Component that handles batch fetching of records.
@@ -36,7 +30,7 @@ interface ResourceContextValue {
   getResourceById: (id: string) => Resource | undefined
 
   /** Request hydration for relationship items (batch fetched on demand) */
-  requestRelationshipHydration: (refs: ResourceRef[]) => void
+  requestRelationshipHydration: (resourceIds: ResourceId[]) => void
   /** Invalidate specific relationship keys */
   invalidateRelationship: (keys: string[]) => void
 
@@ -57,7 +51,6 @@ const MAX_RELATIONSHIP_BATCH = 100
  * 2. Relationship Items - ResourcePickerItem objects (batch fetched on demand)
  */
 export function ResourceProvider({ children }: { children: React.ReactNode }) {
-
   // === PRELOADED: RESOURCES (with fields embedded) ===
   const resourcesQuery = api.resource.getAllResourceTypes.useQuery(undefined, {
     staleTime: 5 * 60 * 1000,
@@ -85,18 +78,17 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
   const getResourceById = useCallback((id: string) => resourceMap.get(id), [resourceMap])
 
   // === RELATIONSHIP ITEMS BATCHING ===
-  const [relationshipBatch, setRelationshipBatch] = useState<ResourceRef[]>([])
+  const [relationshipBatch, setRelationshipBatch] = useState<ResourceId[]>([])
   const relationshipPendingSize = useRelationshipStore((s) => s.pendingIds.size)
 
   useEffect(() => {
     if (relationshipPendingSize === 0 || relationshipBatch.length > 0) return
     const timeout = setTimeout(() => {
       const state = getRelationshipStoreState()
-      const refs = state.getItemsToFetch().slice(0, MAX_RELATIONSHIP_BATCH)
-      if (refs.length === 0) return
-      const keys = refs.map(buildRelationshipKey)
-      state.markLoading(keys)
-      setRelationshipBatch(refs)
+      const resourceIds = state.getItemsToFetch().slice(0, MAX_RELATIONSHIP_BATCH)
+      if (resourceIds.length === 0) return
+      state.markLoading(resourceIds)
+      setRelationshipBatch(resourceIds)
     }, BATCH_DELAY)
     return () => clearTimeout(timeout)
   }, [relationshipPendingSize, relationshipBatch.length])
@@ -109,22 +101,20 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!relationshipData || relationshipBatch.length === 0) return
     // Pass requested keys so missing items (deleted entities) get marked as not found
-    const requestedKeys = relationshipBatch.map(buildRelationshipKey)
-    getRelationshipStoreState().addHydratedItems(relationshipData, requestedKeys)
+    getRelationshipStoreState().addHydratedItems(relationshipData, relationshipBatch)
     setRelationshipBatch([])
   }, [relationshipData, relationshipBatch.length])
 
   useEffect(() => {
     if (!relationshipError || relationshipBatch.length === 0) return
     console.error('Failed to fetch relationships:', relationshipError)
-    const keys = relationshipBatch.map(buildRelationshipKey)
-    getRelationshipStoreState().markError(keys)
+    getRelationshipStoreState().markError(relationshipBatch)
     setRelationshipBatch([])
   }, [relationshipError, relationshipBatch])
 
   // === METHODS ===
-  const requestRelationshipHydration = useCallback((refs: ResourceRef[]) => {
-    getRelationshipStoreState().requestHydration(refs)
+  const requestRelationshipHydration = useCallback((resourceIds: ResourceId[]) => {
+    getRelationshipStoreState().requestHydration(resourceIds)
   }, [])
 
   const invalidateRelationship = useCallback((keys: string[]) => {

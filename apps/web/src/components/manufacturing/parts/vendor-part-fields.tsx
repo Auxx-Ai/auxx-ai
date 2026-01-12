@@ -5,8 +5,7 @@ import { VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-edi
 import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
 import { BaseType } from '~/components/workflow/types'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
-import { toResourceRefsFromId } from '@auxx/lib/field-values/client'
-import type { ResourceRef } from '@auxx/types/resource'
+import { toResourceId, getInstanceId, type ResourceId } from '@auxx/lib/field-values/client'
 
 /**
  * Default values for vendor part form fields
@@ -65,8 +64,8 @@ export function VendorPartFields({
           validationType="error">
           <MultiRelationInput
             entityDefinitionId="contact"
-            value={toResourceRefsFromId('contact', values.contactId)}
-            onChange={(refs: ResourceRef[]) => onChange('contactId', refs[0]?.entityInstanceId ?? '')}
+            value={values.contactId ? [toResourceId('contact', values.contactId)] : []}
+            onChange={(resourceIds: ResourceId[]) => onChange('contactId', resourceIds[0] ? getInstanceId(resourceIds[0]) : '')}
             placeholder="Select contact..."
             disabled={disabled || disableContactEdit}
             multi={false}

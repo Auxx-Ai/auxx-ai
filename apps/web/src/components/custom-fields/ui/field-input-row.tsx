@@ -3,9 +3,15 @@
 
 import { VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
-import { extractRelationshipData, isMultiRelationship } from '@auxx/lib/field-values/client'
+import {
+  extractRelationshipData,
+  isMultiRelationship,
+  toResourceId,
+  getInstanceId,
+  getDefinitionId,
+  type ResourceId,
+} from '@auxx/lib/field-values/client'
 import type { ResourceField } from '@auxx/lib/resources/client'
-import type { ResourceRef } from '@auxx/types/resource'
 
 /**
  * Props for FieldInputRow
@@ -44,12 +50,12 @@ export function FieldInputRow({
   const fieldType = field.fieldType ?? 'TEXT'
   const relationshipConfig = field.options?.relationship
 
-  // For RELATIONSHIP: pass ResourceRef[] directly to FieldInputAdapter
+  // For RELATIONSHIP: pass ResourceId[] directly to FieldInputAdapter
   // FieldInputAdapter will pass it through to MultiRelationInput (no double conversion)
   const normalizedValue =
-    fieldType === 'RELATIONSHIP' ? extractRelationshipData(value).references : value
+    fieldType === 'RELATIONSHIP' ? extractRelationshipData(value).resourceIds : value
 
-  // Get relatedEntityDefinitionId for wrapping ResourceRef[] back to RelationshipFieldValue on save
+  // Get relatedEntityDefinitionId for wrapping ResourceId[] back to RelationshipFieldValue on save
   const relatedEntityDefinitionId =
     relationshipConfig?.relatedEntityDefinitionId ?? relationshipConfig?.relatedModelType ?? null
 
@@ -58,15 +64,15 @@ export function FieldInputRow({
 
   /**
    * Handle value changes from FieldInputAdapter
-   * For relationships: convert ResourceRef[] back to RelationshipFieldValue[] for saving
+   * For relationships: convert ResourceId[] back to RelationshipFieldValue[] for saving
    */
   const handleChange = (newValue: unknown) => {
     if (fieldType === 'RELATIONSHIP' && relatedEntityDefinitionId) {
-      // Convert ResourceRef[] back to RelationshipFieldValue[] for saving
-      const refs = newValue as ResourceRef[]
-      const values = refs.map((ref) => ({
-        relatedEntityId: ref.entityInstanceId,
-        relatedEntityDefinitionId: ref.entityDefinitionId,
+      // Convert ResourceId[] back to RelationshipFieldValue[] for saving
+      const resourceIds = newValue as ResourceId[]
+      const values = resourceIds.map((resourceId) => ({
+        relatedEntityId: getInstanceId(resourceId),
+        relatedEntityDefinitionId: getDefinitionId(resourceId),
       }))
       onChange(field.id!, isMulti ? values : (values[0] ?? null))
     } else {

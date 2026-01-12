@@ -3,7 +3,7 @@
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { createTaskService, type TaskPriority } from '@auxx/lib/tasks'
-import { resourceRefSchema } from '@auxx/types/resource'
+import { resourceIdSchema } from '@auxx/types/resource'
 
 /**
  * Schema for relative date (days, weeks, months, years offset)
@@ -43,7 +43,7 @@ export const taskRouter = createTRPCRouter({
         deadline: absoluteDateSchema.optional(),
         priority: prioritySchema.optional(),
         assignedUserIds: z.array(z.string()).optional(),
-        referencedEntities: z.array(resourceRefSchema).optional(),
+        referencedEntities: z.array(resourceIdSchema).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -92,7 +92,7 @@ export const taskRouter = createTRPCRouter({
         archivedAt: z.string().datetime().optional().nullable(),
         // Relations
         assignedUserIds: z.array(z.string()).optional(),
-        referencedEntities: z.array(resourceRefSchema).optional(),
+        referencedEntities: z.array(resourceIdSchema).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {

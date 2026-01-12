@@ -6,7 +6,7 @@ import { FieldType } from '@auxx/database/enums'
 import type { FieldOptions } from '@auxx/lib/field-values/client'
 import { isMultiRelationship } from '@auxx/lib/field-values/client'
 import type { SelectOption } from '@auxx/types/custom-field'
-import type { ResourceRef } from '@auxx/types/resource'
+import type { ResourceId } from '@auxx/types/resource'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
 import { SelectFieldInput, getSelectConfig } from './select-input-field'
 import {
@@ -104,7 +104,7 @@ export function FieldInputAdapter({
   switch (fieldType) {
     // ─────────────────────────────────────────────────────────────────
     // RELATIONSHIP - uses MultiRelationInput directly
-    // Value: ResourceRef[] (array of resource references)
+    // Value: ResourceId[] (array of resource identifiers)
     // ─────────────────────────────────────────────────────────────────
     case FieldType.RELATIONSHIP: {
       const relationship = fieldOptions?.relationship
@@ -123,13 +123,13 @@ export function FieldInputAdapter({
       // Derive multi from relationship type using helper
       const multi = isMultiRelationship(relationship.relationshipType)
 
-      // Value is already ResourceRef[] from caller - just pass through
-      const refs = (value as ResourceRef[]) || []
+      // Value is already ResourceId[] from caller - just pass through
+      const resourceIds = (value as ResourceId[]) || []
 
       return (
         <MultiRelationInput
           entityDefinitionId={entityDefinitionId}
-          value={refs}
+          value={resourceIds}
           onChange={onChange}
           multi={multi}
           placeholder={placeholder}

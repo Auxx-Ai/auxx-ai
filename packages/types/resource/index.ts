@@ -1,14 +1,11 @@
 // packages/types/resource/index.ts
 
 /**
- * Reference to a specific entity instance.
- * Used throughout the codebase to identify a record by both its type and ID.
+ * Branded string type for resource identification.
+ * Format: `${entityDefinitionId}:${entityInstanceId}`
+ *
+ * Example: "contact:abc123" or "cm1abc123xyz:inst456"
  */
-export interface ResourceRef {
-  /** The entity definition ID (system resource like 'contact' or custom entity UUID) */
-  entityDefinitionId: string
-  /** The specific instance ID within that entity type */
-  entityInstanceId: string
-}
+export type ResourceId = string & { readonly __brand: 'ResourceId' }
 
-export { resourceRefSchema } from './schema'
+export { resourceIdSchema } from './schema'

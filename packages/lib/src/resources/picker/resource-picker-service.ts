@@ -21,7 +21,8 @@ import type {
   GlobalSearchParams,
   GlobalSearchResult,
 } from './types'
-import type { ResourceRef } from '@auxx/types/resource'
+import type { ResourceId } from '@auxx/types/resource'
+import { parseResourceId } from '../resource-id'
 
 const logger = createScopedLogger('resource-picker-service')
 
@@ -587,15 +588,16 @@ export class ResourcePickerService {
    * Get multiple resources by IDs (batch)
    * Works with both system resources (TableId) and custom entities (entity_slug)
    *
-   * @param refs - Array of ResourceRef to fetch
+   * @param resourceIds - Array of ResourceId (format: entityDefinitionId:entityInstanceId)
    * @returns Record keyed by entityInstanceId
    */
-  async getResourcesByIds(refs: ResourceRef[]): Promise<Record<string, ResourcePickerItem>> {
+  async getResourcesByIds(resourceIds: ResourceId[]): Promise<Record<string, ResourcePickerItem>> {
     const result: Record<string, ResourcePickerItem> = {}
 
     // Group by entityDefinitionId for efficient batching
     const grouped = new Map<string, string[]>()
-    for (const { entityDefinitionId, entityInstanceId } of refs) {
+    for (const resourceId of resourceIds) {
+      const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
       if (!grouped.has(entityDefinitionId)) grouped.set(entityDefinitionId, [])
       grouped.get(entityDefinitionId)!.push(entityInstanceId)
     }

@@ -8,7 +8,7 @@ import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
 import { ResourcePicker, type ResourcePickerProps } from './resource-picker'
-import type { ResourceRef } from '@auxx/types/resource'
+import type { ResourceId } from '@auxx/types/resource'
 
 /**
  * Props for ResourcePickerPopover component
@@ -88,8 +88,8 @@ export function ResourcePickerPopover({
   /**
    * Handle single select - close popover after selection
    */
-  const handleSelectSingle = (ref: ResourceRef) => {
-    onSelectSingle?.(ref)
+  const handleSelectSingle = (resourceId: ResourceId) => {
+    onSelectSingle?.(resourceId)
     handleOpenChange(false)
   }
 

@@ -26,8 +26,8 @@ export {
 
 // Store utilities (for advanced use cases)
 export {
-  buildRelationshipKey,
-  parseRelationshipKey,
+  toResourceId,
+  parseResourceId,
   getRelationshipStoreState,
   // Record store utilities
   useRecordStore,
@@ -37,4 +37,5 @@ export {
   EMPTY_FILTERS,
   EMPTY_SORTING,
   type RecordMeta,
+  type ResourceId,
 } from './store'

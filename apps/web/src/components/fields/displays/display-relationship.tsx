@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import { usePropertyContext } from '../property-provider'
 import { useRelationship } from '~/components/resources'
-import { extractRelationshipRefs } from '@auxx/lib/field-values/client'
+import { extractRelationshipResourceIds, getInstanceId } from '@auxx/lib/field-values/client'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import { Skeleton } from '@auxx/ui/components/skeleton'
@@ -25,24 +25,25 @@ interface RelationshipItem extends ItemsListItem {
 export function DisplayRelationship() {
   const { value } = usePropertyContext()
 
-  // Extract ResourceRefs using centralized utility
-  const refs = useMemo(() => extractRelationshipRefs(value), [value])
+  // Extract ResourceIds using centralized utility
+  const resourceIds = useMemo(() => extractRelationshipResourceIds(value), [value])
 
   // Hydrate items via global store
-  const { items, isLoading } = useRelationship(refs)
+  const { items, isLoading } = useRelationship(resourceIds)
 
   // Build relationship items for ItemsListView
   const relationshipItems = useMemo<RelationshipItem[]>(() => {
-    return refs.map((ref, idx) => {
+    return resourceIds.map((resourceId, idx) => {
       const entity = items[idx]
+      const instanceId = getInstanceId(resourceId)
       return {
-        id: ref.entityInstanceId,
-        displayName: entity?.displayName ?? `${ref.entityInstanceId.slice(0, 8)}...`,
+        id: instanceId,
+        displayName: entity?.displayName ?? `${instanceId.slice(0, 8)}...`,
         avatarUrl: entity?.avatarUrl,
         isLoaded: !!entity,
       }
     })
-  }, [refs, items])
+  }, [resourceIds, items])
 
   // Build display names for copy value
   const copyText = relationshipItems.map((item) => item.displayName).join(', ')
@@ -51,8 +52,8 @@ export function DisplayRelationship() {
   if (isLoading && items.every((i) => i === undefined)) {
     return (
       <DisplayWrapper copyValue={null}>
-        {refs.map((ref) => (
-          <Skeleton key={ref.entityInstanceId} className="h-5 w-20 rounded-full" />
+        {resourceIds.map((resourceId) => (
+          <Skeleton key={resourceId} className="h-5 w-20 rounded-full" />
         ))}
       </DisplayWrapper>
     )

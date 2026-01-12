@@ -2,7 +2,7 @@
 
 import type { TaskEntity, TaskAssignmentEntity, TaskReferenceEntity } from '@auxx/database'
 import type { Deadline } from '@auxx/types/task'
-import type { ResourceRef } from '@auxx/types/resource'
+import type { ResourceId } from '@auxx/types/resource'
 
 /**
  * Priority levels for tasks
@@ -14,9 +14,9 @@ export type TaskPriority = 'low' | 'medium' | 'high'
 
 /**
  * Entity reference for linking tasks to entity instances.
- * @deprecated Use ResourceRef from @auxx/types/resource instead
+ * @deprecated Use ResourceId from @auxx/types/resource instead
  */
-export type EntityReference = ResourceRef
+export type EntityReference = ResourceId
 
 /**
  * Input for creating a new task

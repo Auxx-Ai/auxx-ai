@@ -51,18 +51,29 @@ export type { FieldValueRow } from './types'
 // Relationship utilities
 export {
   extractRelationshipData,
-  extractRelationshipRefs,
+  extractRelationshipResourceIds,
   normalizeRelationshipValue,
   validateRelationshipValue,
   validateEntityDefinitionId,
   convertRawToRelationshipInput,
   isMultiRelationship,
-  toResourceRef,
-  toResourceRefs,
-  toResourceRefsFromId,
+  toResourceIdFromParts,
+  toResourceIdsFromParts,
+  toResourceIdFromId,
   type RelationshipData,
   type RelationshipType,
 } from './relationship-field'
+
+// Re-export ResourceId utilities from resources
+export {
+  toResourceId,
+  parseResourceId,
+  isResourceId,
+  toResourceIds,
+  getInstanceId,
+  getDefinitionId,
+} from './relationship-field'
+export type { ResourceId } from '@auxx/types/resource'
 
 /**
  * Infer TypedFieldValue from a raw FieldValue row by checking which column is populated.

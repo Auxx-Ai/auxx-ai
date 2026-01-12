@@ -3,10 +3,9 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { usePropertyContext } from '../property-provider'
 import { useFieldNavigationOptional } from '../field-navigation-context'
-import { useResourceProvider, buildRelationshipKey, getRelationshipStoreState } from '~/components/resources'
+import { useResourceProvider, toResourceId, getRelationshipStoreState } from '~/components/resources'
 import { useResourceIdFromField } from '../hooks/use-resource-id-from-field'
-import { extractRelationshipData } from '@auxx/lib/field-values/client'
-import type { ResourceRef } from '@auxx/types/resource'
+import { extractRelationshipResourceIds, getInstanceId, type ResourceId } from '@auxx/lib/field-values/client'
 import { api } from '~/trpc/react'
 import { isCustomResource } from '@auxx/lib/resources/client'
 import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
@@ -63,35 +62,34 @@ export function RelationshipInputField() {
   // Only custom resources support inline create (system resources have dedicated flows)
   const canInlineCreate = relatedResource && isCustomResource(relatedResource)
 
-  // Convert field value to ResourceRef[] for ResourcePicker
-  // extractRelationshipData now returns references directly
-  const currentRefs = useMemo<ResourceRef[]>(() => {
+  // Convert field value to ResourceId[] for ResourcePicker
+  const currentResourceIds = useMemo<ResourceId[]>(() => {
     if (!resourceRef) return []
-    return extractRelationshipData(value).references
+    return extractRelationshipResourceIds(value)
   }, [value, resourceRef])
 
   // Track current selection in local state for save-on-close pattern
-  const [localRefs, setLocalRefs] = useState<ResourceRef[]>(currentRefs)
+  const [localResourceIds, setLocalResourceIds] = useState<ResourceId[]>(currentResourceIds)
 
   // Ref to track current selection for save-on-close
-  const localRefsRef = useRef<ResourceRef[]>(localRefs)
+  const localResourceIdsRef = useRef<ResourceId[]>(localResourceIds)
 
   // Keep ref in sync with state
   useEffect(() => {
-    localRefsRef.current = localRefs
-  }, [localRefs])
+    localResourceIdsRef.current = localResourceIds
+  }, [localResourceIds])
 
   // Reset selection state when value prop changes from parent
   useEffect(() => {
-    setLocalRefs(currentRefs)
-    localRefsRef.current = currentRefs
-  }, [currentRefs])
+    setLocalResourceIds(currentResourceIds)
+    localResourceIdsRef.current = currentResourceIds
+  }, [currentResourceIds])
 
   // Register save handler for popover close - fire-and-forget
   useEffect(() => {
     onBeforeClose.current = () => {
-      const currentIds = localRefsRef.current.map((ref) => ref.entityInstanceId)
-      const originalIds = extractRelationshipData(value).references.map((r) => r.entityInstanceId)
+      const currentIds = localResourceIdsRef.current.map(getInstanceId)
+      const originalIds = extractRelationshipResourceIds(value).map(getInstanceId)
 
       // Only save if selection changed
       const hasChanged =
@@ -115,8 +113,8 @@ export function RelationshipInputField() {
   /**
    * Handle selection change from ResourcePicker
    */
-  const handleChange = useCallback((selected: ResourceRef[]) => {
-    setLocalRefs(selected)
+  const handleChange = useCallback((selected: ResourceId[]) => {
+    setLocalResourceIds(selected)
   }, [])
 
   /**
@@ -159,7 +157,7 @@ export function RelationshipInputField() {
 
         if (newItem) {
           // Add to relationship store for immediate hydration
-          const key = buildRelationshipKey(resourceRef.entityDefinitionId, instanceId)
+          const key = toResourceId(resourceRef.entityDefinitionId, instanceId)
           getRelationshipStoreState().addHydratedItems({ [key]: newItem })
         }
       } catch (error) {
@@ -167,17 +165,14 @@ export function RelationshipInputField() {
         console.warn('Failed to fetch newly created item:', error)
       }
 
-      // Create the new ref
-      const newRef: ResourceRef = {
-        entityDefinitionId: resourceRef.entityDefinitionId,
-        entityInstanceId: instanceId,
-      }
+      // Create the new ResourceId
+      const newResourceId = toResourceId(resourceRef.entityDefinitionId, instanceId)
 
       // Select the new item
       if (isSingleSelect) {
-        setLocalRefs([newRef])
+        setLocalResourceIds([newResourceId])
       } else {
-        setLocalRefs((prev) => [...prev, newRef])
+        setLocalResourceIds((prev) => [...prev, newResourceId])
       }
 
       // Close dialog
@@ -193,7 +188,7 @@ export function RelationshipInputField() {
   return (
     <div className="">
       <ResourcePicker
-        value={localRefs}
+        value={localResourceIds}
         onChange={handleChange}
         entityDefinitionId={resourceRef.entityDefinitionId}
         multi={!isSingleSelect}

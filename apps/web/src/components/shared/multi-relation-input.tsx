@@ -12,7 +12,7 @@ import { Badge } from '@auxx/ui/components/badge'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { useRelationship } from '~/components/resources'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
-import type { ResourceRef } from '@auxx/types/resource'
+import { toResourceId, getInstanceId, type ResourceId } from '@auxx/lib/resources/client'
 
 /**
  * Props for MultiRelationInput
@@ -25,11 +25,11 @@ export interface MultiRelationInputProps {
    */
   entityDefinitionId?: string | string[]
 
-  /** Currently selected resource references */
-  value: ResourceRef[]
+  /** Currently selected ResourceIds */
+  value: ResourceId[]
 
   /** Callback when selection changes */
-  onChange: (refs: ResourceRef[]) => void
+  onChange: (resourceIds: ResourceId[]) => void
 
   /** Whether the input is disabled */
   disabled?: boolean
@@ -76,7 +76,7 @@ export function MultiRelationInput({
     return Array.isArray(entityDefinitionId) ? entityDefinitionId[0] : entityDefinitionId
   }, [entityDefinitionId])
 
-  // Get hydrated items for selected refs from the store
+  // Get hydrated items for selected ResourceIds from the store
   const { items: selectedItems, isLoading: isLoadingSelected } = useRelationship(value)
 
   // Search for items when popover is open
@@ -104,17 +104,14 @@ export function MultiRelationInput({
 
   /**
    * Handle selection change from MultiSelectPicker
-   * Convert string IDs back to ResourceRef[]
+   * Convert string IDs back to ResourceId[]
    */
   const handleSelectionChange = useCallback(
     (ids: string[]) => {
       if (!tableId) return
 
-      const refs: ResourceRef[] = ids.map((id) => ({
-        entityDefinitionId: tableId,
-        entityInstanceId: id,
-      }))
-      onChange(refs)
+      const resourceIds = ids.map((id) => toResourceId(tableId, id))
+      onChange(resourceIds)
     },
     [tableId, onChange]
   )
@@ -138,8 +135,8 @@ export function MultiRelationInput({
     [onChange]
   )
 
-  // Convert value to string[] for MultiSelectPicker
-  const selectedIds = useMemo(() => value.map((ref) => ref.entityInstanceId), [value])
+  // Convert value to string[] for MultiSelectPicker (extract instance IDs)
+  const selectedIds = useMemo(() => value.map(getInstanceId), [value])
 
   const hasValue = value.length > 0
 
@@ -173,7 +170,7 @@ export function MultiRelationInput({
         {displayItems.map((item, i) => (
           <Badge key={item?.id ?? i} variant="outline" className="text-xs">
             <div className="truncate">
-              {item?.displayName ?? value[i]?.entityInstanceId.slice(-6) ?? '?'}
+              {item?.displayName ?? getInstanceId(value[i]).slice(-6) ?? '?'}
             </div>
           </Badge>
         ))}

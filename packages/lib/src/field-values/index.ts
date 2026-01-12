@@ -41,7 +41,7 @@ export {
 // Relationship utilities
 export {
   extractRelationshipData,
-  extractRelationshipRefs,
+  extractRelationshipResourceIds,
   normalizeRelationshipValue,
   validateRelationshipValue,
   validateEntityDefinitionId,
@@ -49,12 +49,19 @@ export {
   isRelationshipFieldValueArray,
   convertRawToRelationshipInput,
   isMultiRelationship,
-  toResourceRef,
-  toResourceRefs,
-  toResourceRefsFromId,
+  toResourceId,
+  parseResourceId,
+  isResourceId,
+  toResourceIds,
+  getInstanceId,
+  getDefinitionId,
+  toResourceIdFromParts,
+  toResourceIdsFromParts,
+  toResourceIdFromId,
   type RelationshipData,
   type RelationshipType,
 } from './relationship-field'
+export type { ResourceId } from '@auxx/types/resource'
 
 // Relationship sync (bidirectional integrity)
 export {

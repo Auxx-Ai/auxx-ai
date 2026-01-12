@@ -4,11 +4,11 @@ import { useEffect, useState, useRef, useMemo } from 'react'
 import { api } from '~/trpc/react'
 import { useRecordStore, getRecordStoreState } from '../store/record-store'
 import { hydrateMultipleRecords } from '~/components/resources/store/hydrate-field-values'
-import type { Resource } from '@auxx/lib/resources/client'
-import type { ResourceRef } from '@auxx/types/resource'
+import type { Resource, ResourceId } from '@auxx/lib/resources/client'
+import { toResourceId } from '@auxx/lib/resources/client'
 
 const BATCH_DELAY = 50
-const EMPTY_ITEMS: ResourceRef[] = []
+const EMPTY_ITEMS: ResourceId[] = []
 
 interface UseRecordBatchFetcherOptions {
   /** Function to get Resource by ID (from ResourceProvider context) */
@@ -67,12 +67,9 @@ export function useRecordBatchFetcher({ getResourceById }: UseRecordBatchFetcher
   }, [pendingFetchIds, currentBatch])
 
   // Stable query input - memoize to prevent creating new arrays
-  const queryItems = useMemo<ResourceRef[]>(() => {
+  const queryItems = useMemo<ResourceId[]>(() => {
     if (!currentBatch || currentBatch.ids.length === 0) return EMPTY_ITEMS
-    return currentBatch.ids.map((id) => ({
-      entityDefinitionId: currentBatch.resourceType,
-      entityInstanceId: id,
-    }))
+    return currentBatch.ids.map((id) => toResourceId(currentBatch.resourceType, id))
   }, [currentBatch])
 
   // Fetch current batch using existing resource.getByIds endpoint

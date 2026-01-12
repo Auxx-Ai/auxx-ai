@@ -14,7 +14,8 @@ import type {
 } from './types'
 import { pickDefined, hasDefinedProps } from '../utils/pick-defined'
 import type { Deadline, RelativeDate } from '@auxx/types/task'
-import type { ResourceRef } from '@auxx/types/resource'
+import type { ResourceId } from '@auxx/types/resource'
+import { parseResourceId } from '../field-values/relationship-field'
 
 /**
  * Convert a relative or absolute deadline to a concrete Date
@@ -142,13 +143,16 @@ export class TaskService {
       // Create references if provided
       if (referencedEntities && referencedEntities.length > 0) {
         await tx.insert(schema.TaskReference).values(
-          referencedEntities.map((ref) => ({
-            organizationId,
-            taskId: task.id,
-            referencedEntityInstanceId: ref.entityInstanceId,
-            referencedEntityDefinitionId: ref.entityDefinitionId,
-            createdById: userId,
-          }))
+          referencedEntities.map((resourceId) => {
+            const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+            return {
+              organizationId,
+              taskId: task.id,
+              referencedEntityInstanceId: entityInstanceId,
+              referencedEntityDefinitionId: entityDefinitionId,
+              createdById: userId,
+            }
+          })
         )
       }
 
@@ -346,13 +350,16 @@ export class TaskService {
     taskId: string,
     organizationId: string,
     userId: string,
-    referencedEntities: ResourceRef[]
+    referencedEntities: ResourceId[]
   ): Promise<void> {
     const currentRefs = await tx.query.TaskReference.findMany({
       where: (r, { eq, and, isNull }) => and(eq(r.taskId, taskId), isNull(r.deletedAt)),
     })
     const currentRefIds = new Set(currentRefs.map((r) => r.referencedEntityInstanceId))
-    const newRefIds = new Set(referencedEntities.map((e) => e.entityInstanceId))
+
+    // Parse ResourceId[] to get instance IDs for comparison
+    const parsedEntities = referencedEntities.map((resourceId) => parseResourceId(resourceId))
+    const newRefIds = new Set(parsedEntities.map((e) => e.entityInstanceId))
 
     // Soft-delete removed references
     const toRemove = currentRefs.filter((r) => !newRefIds.has(r.referencedEntityInstanceId))
@@ -368,15 +375,15 @@ export class TaskService {
         )
     }
 
-    // Add new references
-    const toAdd = referencedEntities.filter((e) => !currentRefIds.has(e.entityInstanceId))
+    // Add new references (filter by entity instance ID not in current)
+    const toAdd = parsedEntities.filter((e) => !currentRefIds.has(e.entityInstanceId))
     if (toAdd.length > 0) {
       await tx.insert(schema.TaskReference).values(
-        toAdd.map((ref) => ({
+        toAdd.map((parsed) => ({
           organizationId,
           taskId,
-          referencedEntityInstanceId: ref.entityInstanceId,
-          referencedEntityDefinitionId: ref.entityDefinitionId,
+          referencedEntityInstanceId: parsed.entityInstanceId,
+          referencedEntityDefinitionId: parsed.entityDefinitionId,
           createdById: userId,
         }))
       )
