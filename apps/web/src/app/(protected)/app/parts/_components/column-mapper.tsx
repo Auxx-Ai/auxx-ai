@@ -22,6 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Select,
   SelectContent,
@@ -649,17 +650,18 @@ export function CSVColumnMapper({
           </Tabs>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsOpen(false)} disabled={isProcessing}>
-              Cancel
+            <Button variant="outline" size="sm" onClick={() => setIsOpen(false)} disabled={isProcessing}>
+              Cancel <Kbd shortcut="esc" variant="outline" size="sm" />
             </Button>
 
             {activeTab === 'preview' && (
               <Button
+                size="sm"
                 onClick={processImport}
                 disabled={isProcessing || validationErrors.length > 0}
                 loading={isProcessing}
                 loadingText="Processing...">
-                Import Data
+                Import Data <KbdSubmit variant="default" size="sm" />
               </Button>
             )}
           </DialogFooter>

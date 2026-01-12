@@ -16,6 +16,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@auxx/ui/components/dialog'
+import { useDialogSubmit } from '@auxx/ui/hooks'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   InputGroup,
   InputGroupInput,
@@ -187,70 +189,113 @@ export function AppConnectionStatus({
               <Button size="sm">Connect {connectionLabel}</Button>
             </DialogTrigger>
             <DialogContent size="sm" position="tc">
-              <DialogHeader>
-                <DialogTitle>Connect {connectionLabel}</DialogTitle>
-                <DialogDescription>
-                  Enter your API key to connect this {connectionType} connection.
-                </DialogDescription>
-              </DialogHeader>
-              <FieldGroup>
-                <Field>
-                  <FieldLabel htmlFor="secret">API Key</FieldLabel>
-                  <InputGroup>
-                    <InputGroupInput
-                      id="secret"
-                      type={showSecret ? 'text' : 'password'}
-                      placeholder="Enter your API key"
-                      value={secret}
-                      autoComplete="off"
-                      onChange={(e) => setSecret(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !saveSecret.isPending) {
-                          handleSaveSecret()
-                        }
-                      }}
-                    />
-                    <InputGroupAddon align="inline-end">
-                      <InputGroupButton
-                        aria-label={showSecret ? 'Hide API key' : 'Show API key'}
-                        title={showSecret ? 'Hide API key' : 'Show API key'}
-                        size="icon-xs"
-                        onClick={() => setShowSecret(!showSecret)}>
-                        {showSecret ? <EyeOff /> : <Eye />}
-                      </InputGroupButton>
-                    </InputGroupAddon>
-                  </InputGroup>
-                  <FieldDescription>
-                    Your API key will be encrypted and stored securely. It will be used to
-                    authenticate requests to {connectionLabel}.
-                  </FieldDescription>
-                </Field>
-              </FieldGroup>
-
-              <DialogFooter>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setDialogOpen(false)
-                    setSecret('')
-                  }}
-                  disabled={saveSecret.isPending}>
-                  Cancel
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSaveSecret}
-                  loading={saveSecret.isPending}
-                  loadingText="Saving...">
-                  Save Connection
-                </Button>
-              </DialogFooter>
+              <SecretConnectionDialogContent
+                connectionLabel={connectionLabel}
+                connectionType={connectionType}
+                secret={secret}
+                setSecret={setSecret}
+                showSecret={showSecret}
+                setShowSecret={setShowSecret}
+                saveSecret={saveSecret}
+                handleSaveSecret={handleSaveSecret}
+                onClose={() => {
+                  setDialogOpen(false)
+                  setSecret('')
+                }}
+              />
             </DialogContent>
           </Dialog>
         )}
       </div>
+    </>
+  )
+}
+
+/** Inner content props for SecretConnectionDialog */
+interface SecretConnectionDialogContentProps {
+  connectionLabel: string
+  connectionType: 'user' | 'organization'
+  secret: string
+  setSecret: (value: string) => void
+  showSecret: boolean
+  setShowSecret: (value: boolean) => void
+  saveSecret: ReturnType<typeof api.apps.saveSecretConnection.useMutation>
+  handleSaveSecret: () => void
+  onClose: () => void
+}
+
+/** Inner content component - must be inside DialogContent for useDialogSubmit to work */
+function SecretConnectionDialogContent({
+  connectionLabel,
+  connectionType,
+  secret,
+  setSecret,
+  showSecret,
+  setShowSecret,
+  saveSecret,
+  handleSaveSecret,
+  onClose,
+}: SecretConnectionDialogContentProps) {
+  // Register Meta+Enter submit handler
+  useDialogSubmit({
+    onSubmit: handleSaveSecret,
+    disabled: saveSecret.isPending || !secret.trim(),
+  })
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Connect {connectionLabel}</DialogTitle>
+        <DialogDescription>
+          Enter your API key to connect this {connectionType} connection.
+        </DialogDescription>
+      </DialogHeader>
+      <FieldGroup>
+        <Field>
+          <FieldLabel htmlFor="secret">API Key</FieldLabel>
+          <InputGroup>
+            <InputGroupInput
+              id="secret"
+              type={showSecret ? 'text' : 'password'}
+              placeholder="Enter your API key"
+              value={secret}
+              autoComplete="off"
+              onChange={(e) => setSecret(e.target.value)}
+            />
+            <InputGroupAddon align="inline-end">
+              <InputGroupButton
+                aria-label={showSecret ? 'Hide API key' : 'Show API key'}
+                title={showSecret ? 'Hide API key' : 'Show API key'}
+                size="icon-xs"
+                onClick={() => setShowSecret(!showSecret)}>
+                {showSecret ? <EyeOff /> : <Eye />}
+              </InputGroupButton>
+            </InputGroupAddon>
+          </InputGroup>
+          <FieldDescription>
+            Your API key will be encrypted and stored securely. It will be used to
+            authenticate requests to {connectionLabel}.
+          </FieldDescription>
+        </Field>
+      </FieldGroup>
+
+      <DialogFooter>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onClose}
+          disabled={saveSecret.isPending}>
+          Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleSaveSecret}
+          loading={saveSecret.isPending}
+          loadingText="Saving...">
+          Save Connection <KbdSubmit variant="outline" size="sm" />
+        </Button>
+      </DialogFooter>
     </>
   )
 }

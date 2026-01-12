@@ -12,6 +12,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@auxx/ui/components/dialog'
+import { useDialogSubmit } from '@auxx/ui/hooks'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Label } from '@auxx/ui/components/label'
 import { RadioGroup } from '@auxx/ui/components/radio-group'
 import { AuthType, type Authorization } from '../types'
@@ -76,6 +78,9 @@ export function AuthDialog({ authorization, nodeId, onChange }: AuthDialogProps)
     onChange(formData)
     setOpen(false)
   }
+
+  // Register Meta+Enter submit handler
+  useDialogSubmit({ onSubmit: handleSave, disabled: false })
 
   const getAuthButtonText = () => {
     switch (authorization.type) {
@@ -224,10 +229,10 @@ export function AuthDialog({ authorization, nodeId, onChange }: AuthDialogProps)
 
         <DialogFooter>
           <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
-            Cancel
+            Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
           </Button>
           <Button variant="outline" size="sm" onClick={handleSave}>
-            Save
+            Save <KbdSubmit variant="outline" size="sm" />
           </Button>
         </DialogFooter>
       </DialogContent>

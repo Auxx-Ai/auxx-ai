@@ -13,6 +13,8 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@auxx/ui/components/dialog'
+import { useDialogSubmit } from '@auxx/ui/hooks'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { FileText, Filter, Sliders, Trash2 } from 'lucide-react'
@@ -197,6 +199,16 @@ export function MailViewDialog({ isOpen, onClose, mailViewId }: MailViewDialogPr
     }
   }
 
+  // Compute disabled state for submit
+  const isSubmitDisabled =
+    isLoadingMailView || createMailView.isPending || updateMailView.isPending
+
+  // Register Meta+Enter submit handler
+  useDialogSubmit({
+    onSubmit: methods.handleSubmit(onSubmit),
+    disabled: isSubmitDisabled,
+  })
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && guardedClose()}>
       <DialogContent size="xl" variant="default" position="tc" {...guardProps}>
@@ -256,7 +268,7 @@ export function MailViewDialog({ isOpen, onClose, mailViewId }: MailViewDialogPr
                 </Button>
               )}
               <Button size="sm" variant="ghost" type="button" onClick={guardedClose}>
-                Cancel
+                Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
               </Button>
               <Button
                 type="submit"
@@ -264,7 +276,7 @@ export function MailViewDialog({ isOpen, onClose, mailViewId }: MailViewDialogPr
                 variant="outline"
                 loadingText="Saving..."
                 loading={isLoadingMailView || createMailView.isPending || updateMailView.isPending}>
-                {mailViewId ? 'Update View' : 'Create View'}
+                {mailViewId ? 'Update View' : 'Create View'} <KbdSubmit variant="outline" size="sm" />
               </Button>
             </DialogFooter>
           </form>

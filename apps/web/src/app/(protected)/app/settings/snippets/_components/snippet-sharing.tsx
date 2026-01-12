@@ -13,6 +13,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
+import { useDialogSubmit } from '@auxx/ui/hooks'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Select,
   SelectContent,
@@ -159,6 +161,16 @@ export function SnippetSharing({
     }
     onSave(sharingType, shares)
   }
+
+  // Compute disabled state for submit
+  const isSubmitDisabled =
+    (sharingType === SnippetSharingTypeEnum.GROUPS ||
+      sharingType === SnippetSharingTypeEnum.MEMBERS) &&
+    selectedItems.length === 0
+
+  // Register Meta+Enter submit handler
+  useDialogSubmit({ onSubmit: handleSave, disabled: isSubmitDisabled })
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[80vh]" size="md" position="tc">
@@ -366,18 +378,14 @@ export function SnippetSharing({
 
         <DialogFooter>
           <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
-            Cancel
+            Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
           </Button>
           <Button
             onClick={handleSave}
             variant="outline"
             size="sm"
-            disabled={
-              (sharingType === SnippetSharingTypeEnum.GROUPS ||
-                sharingType === SnippetSharingTypeEnum.MEMBERS) &&
-              selectedItems.length === 0
-            }>
-            Save Sharing Settings
+            disabled={isSubmitDisabled}>
+            Save Sharing Settings <KbdSubmit variant="outline" size="sm" />
           </Button>
         </DialogFooter>
       </DialogContent>

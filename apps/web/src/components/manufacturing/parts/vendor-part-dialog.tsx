@@ -10,6 +10,8 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@auxx/ui/components/dialog'
+import { useDialogSubmit } from '@auxx/ui/hooks'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
@@ -157,6 +159,9 @@ export function VendorPartDialog({
     }
   }
 
+  // Register Meta+Enter submit handler
+  useDialogSubmit({ onSubmit: handleSubmit, disabled: isPending })
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]" position="tc">
@@ -208,7 +213,7 @@ export function VendorPartDialog({
             size="sm"
             onClick={() => onOpenChange(false)}
             disabled={isPending}>
-            Cancel
+            Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
           </Button>
           <Button
             onClick={handleSubmit}
@@ -216,7 +221,7 @@ export function VendorPartDialog({
             size="sm"
             loading={isPending}
             loadingText={isEditMode ? 'Updating...' : 'Adding...'}>
-            {isEditMode ? 'Update Supplier' : 'Add Supplier'}
+            {isEditMode ? 'Update Supplier' : 'Add Supplier'} <KbdSubmit variant="outline" size="sm" />
           </Button>
         </DialogFooter>
       </DialogContent>

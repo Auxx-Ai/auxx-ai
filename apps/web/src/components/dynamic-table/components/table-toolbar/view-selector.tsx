@@ -51,6 +51,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
+import { useDialogSubmit } from '@auxx/ui/hooks'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Label } from '@auxx/ui/components/label'
 import { RadioGroup, RadioGroupItemCard } from '@auxx/ui/components/radio-group'
 import { Combobox } from '@auxx/ui/components/combobox'
@@ -311,6 +313,20 @@ export function ViewSelector({
   const isDefaultView = activeView?.isDefault || false
   const canSave = Boolean(activeView && hasUnsavedChanges && !isSaving)
   const showUnsavedBadge = Boolean(activeView && hasUnsavedChanges && !isSaving)
+
+  // Register Meta+Enter for Create View dialog
+  useDialogSubmit({
+    onSubmit: handleCreateView,
+    disabled:
+      createView.isPending ||
+      (viewType === 'kanban' && !selectedFieldId && !newFieldName.trim()),
+  })
+
+  // Register Meta+Enter for Rename View dialog
+  useDialogSubmit({
+    onSubmit: handleRenameView,
+    disabled: !newViewName.trim() || updateView.isPending,
+  })
 
   const handleSave = async () => {
     if (!activeView || !onSave) {
@@ -604,7 +620,7 @@ export function ViewSelector({
 
           <DialogFooter>
             <Button size="sm" variant="ghost" onClick={() => handleCreateDialogChange(false)}>
-              Cancel
+              Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
             </Button>
             <Button
               onClick={handleCreateView}
@@ -616,7 +632,7 @@ export function ViewSelector({
                 createView.isPending ||
                 (viewType === 'kanban' && !selectedFieldId && !newFieldName.trim())
               }>
-              Create View
+              Create View <KbdSubmit variant="outline" size="sm" />
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -647,14 +663,14 @@ export function ViewSelector({
 
           <DialogFooter>
             <Button size="sm" variant="ghost" onClick={() => setShowRenameDialog(false)}>
-              Cancel
+              Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
             </Button>
             <Button
               size="sm"
               variant="outline"
               onClick={handleRenameView}
               disabled={!newViewName.trim() || updateView.isPending}>
-              Rename View
+              Rename View <KbdSubmit variant="outline" size="sm" />
             </Button>
           </DialogFooter>
         </DialogContent>

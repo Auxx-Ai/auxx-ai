@@ -10,6 +10,8 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@auxx/ui/components/dialog'
+import { useDialogSubmit } from '@auxx/ui/hooks'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import { Badge } from '@auxx/ui/components/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
@@ -134,6 +136,9 @@ export function ToolsSelectionDialog({
     }
   }
 
+  // Register Meta+Enter submit handler
+  useDialogSubmit({ onSubmit: handleSave, disabled: false })
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
@@ -238,10 +243,10 @@ export function ToolsSelectionDialog({
 
         <DialogFooter>
           <Button variant="ghost" size="sm" onClick={onClose}>
-            Cancel
+            Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
           </Button>
           <Button variant="outline" size="sm" onClick={handleSave}>
-            Save
+            Save <KbdSubmit variant="outline" size="sm" />
           </Button>
         </DialogFooter>
       </DialogContent>

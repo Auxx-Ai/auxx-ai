@@ -10,6 +10,8 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@auxx/ui/components/dialog'
+import { useDialogSubmit } from '@auxx/ui/hooks'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
 import { FieldInputRow } from './field-input-row'
@@ -287,7 +289,7 @@ export function EntityInstanceDialog({
               variant="ghost"
               onClick={guardedClose}
               disabled={isPending}>
-              Cancel
+              Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
             </Button>
             <Button
               size="sm"
@@ -296,7 +298,7 @@ export function EntityInstanceDialog({
               loading={isPending}
               loadingText={isEditing ? 'Saving...' : 'Creating...'}
               disabled={editableFields.length === 0}>
-              {isEditing ? 'Save Changes' : `Create ${resourceLabel}`}
+              {isEditing ? 'Save Changes' : `Create ${resourceLabel}`} <KbdSubmit variant="outline" size="sm" />
             </Button>
           </DialogFooter>
         </DialogContent>

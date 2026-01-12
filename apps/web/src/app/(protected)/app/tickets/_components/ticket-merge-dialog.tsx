@@ -12,6 +12,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@auxx/ui/components/dialog'
+import { useDialogSubmit } from '@auxx/ui/hooks'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { api } from '~/trpc/react'
@@ -45,17 +47,45 @@ export function TicketMergeDialog({
   trigger,
 }: TicketMergeDialogProps) {
   const [isOpen, setIsOpen] = useState(false)
-  const [ticketsToMergeIds, setTicketsToMergeIds] = useState<string[]>([])
-  const router = useRouter()
 
   // Use controlled or uncontrolled open state
   const dialogOpen = open ?? isOpen
   const setDialogOpen = onOpenChange ?? setIsOpen
 
+  return (
+    <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
+      <DialogContent size="sm">
+        <TicketMergeDialogContent
+          primaryTicketId={primaryTicketId}
+          onClose={() => setDialogOpen(false)}
+          onMergeComplete={onMergeComplete}
+        />
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** Inner content props */
+interface TicketMergeDialogContentProps {
+  primaryTicketId: string
+  onClose: () => void
+  onMergeComplete?: () => void
+}
+
+/** Inner content component - must be inside DialogContent for useDialogSubmit to work */
+function TicketMergeDialogContent({
+  primaryTicketId,
+  onClose,
+  onMergeComplete,
+}: TicketMergeDialogContentProps) {
+  const [ticketsToMergeIds, setTicketsToMergeIds] = useState<string[]>([])
+  const router = useRouter()
+
   const { mutate: mergeTickets, isPending } = api.ticket.mergeTickets.useMutation({
     onSuccess: () => {
       toastSuccess({ description: 'Tickets have been successfully merged' })
-      setDialogOpen(false)
+      onClose()
       setTicketsToMergeIds([])
       router.refresh()
       onMergeComplete?.()
@@ -79,46 +109,50 @@ export function TicketMergeDialog({
     mergeTickets({ primaryTicketId, ticketsToMergeIds })
   }
 
+  // Register Meta+Enter submit handler
+  useDialogSubmit({
+    onSubmit: handleMerge,
+    disabled: ticketsToMergeIds.length === 0 || isPending,
+  })
+
   return (
-    <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-      {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
-      <DialogContent size="sm">
-        <DialogHeader className="mb-4">
-          <DialogTitle>Merge Tickets</DialogTitle>
-          <DialogDescription>
-            Select tickets to merge into the current ticket. The merged tickets will become child
-            tickets.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <DialogHeader className="mb-4">
+        <DialogTitle>Merge Tickets</DialogTitle>
+        <DialogDescription>
+          Select tickets to merge into the current ticket. The merged tickets will become child
+          tickets.
+        </DialogDescription>
+      </DialogHeader>
 
-        <div className="grid gap-4">
-          <div className="grid gap-2">
-            <label className="text-sm font-medium">Tickets to Merge</label>
-            <MultiRelationInput
-              resourceId="ticket"
-              value={ticketsToMergeIds}
-              onChange={setTicketsToMergeIds}
-              excludeIds={[primaryTicketId]}
-              placeholder="Search tickets to merge..."
-              multi={true}
-            />
-          </div>
+      <div className="grid gap-4">
+        <div className="grid gap-2">
+          <label className="text-sm font-medium">Tickets to Merge</label>
+          <MultiRelationInput
+            resourceId="ticket"
+            value={ticketsToMergeIds}
+            onChange={setTicketsToMergeIds}
+            excludeIds={[primaryTicketId]}
+            placeholder="Search tickets to merge..."
+            multi={true}
+          />
         </div>
+      </div>
 
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => setDialogOpen(false)}>
-            Cancel
-          </Button>
-          <Button
-            variant="outline"
-            onClick={handleMerge}
-            disabled={ticketsToMergeIds.length === 0}
-            loading={isPending}
-            loadingText="Merging...">
-            Merge Tickets
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      <DialogFooter>
+        <Button variant="ghost" size="sm" onClick={onClose}>
+          Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleMerge}
+          disabled={ticketsToMergeIds.length === 0}
+          loading={isPending}
+          loadingText="Merging...">
+          Merge Tickets <KbdSubmit variant="outline" size="sm" />
+        </Button>
+      </DialogFooter>
+    </>
   )
 }

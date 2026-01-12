@@ -21,6 +21,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
+import { useDialogSubmit } from '@auxx/ui/hooks'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Form,
   FormControl,
@@ -180,6 +182,16 @@ export function CreateOrganizationDialog({ open, onOpenChange }: CreateOrganizat
     })
   }
 
+  // Register Meta+Enter submit handler
+  const { formProps } = useDialogSubmit({
+    onSubmit: form.handleSubmit(onSubmit),
+    disabled:
+      !form.formState.isValid ||
+      isCheckingAvailability ||
+      handleAvailable === false ||
+      createOrganization.isPending,
+  })
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
@@ -191,7 +203,7 @@ export function CreateOrganizationDialog({ open, onOpenChange }: CreateOrganizat
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form {...formProps} className="space-y-4">
             {/* Organization Name */}
             <FormField
               control={form.control}
@@ -276,7 +288,7 @@ export function CreateOrganizationDialog({ open, onOpenChange }: CreateOrganizat
                 size="sm"
                 type="button"
                 disabled={createOrganization.isPending}>
-                Cancel
+                Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
               </Button>
               <Button
                 type="submit"
@@ -290,7 +302,7 @@ export function CreateOrganizationDialog({ open, onOpenChange }: CreateOrganizat
                 }
                 loading={createOrganization.isPending}
                 loadingText="Creating...">
-                Create
+                Create <KbdSubmit variant="outline" size="sm" />
               </Button>
             </DialogFooter>
           </form>

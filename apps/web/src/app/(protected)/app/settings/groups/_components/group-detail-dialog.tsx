@@ -12,6 +12,8 @@ import { toast } from 'sonner'
 import { Form, FormControl, FormField, FormItem, FormMessage } from '@auxx/ui/components/form'
 import { EmojiPicker } from '~/components/pickers/emoji-picker'
 import { DialogFooter } from '@auxx/ui/components/dialog'
+import { useDialogSubmit } from '@auxx/ui/hooks'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { cn } from '@auxx/ui/lib/utils'
 
 const groupFormSchema = z.object({
@@ -93,6 +95,12 @@ export function GroupDetailDialog({ mode, groupId, onSuccess, onCancel }: GroupD
 
   const isLoading = isLoadingGroup || createMutation.isPending || updateMutation.isPending
 
+  // Register Meta+Enter submit handler
+  useDialogSubmit({
+    onSubmit: form.handleSubmit(onSubmit),
+    disabled: isLoading,
+  })
+
   return (
     <div>
       <Form {...form}>
@@ -165,7 +173,7 @@ export function GroupDetailDialog({ mode, groupId, onSuccess, onCancel }: GroupD
               variant="ghost"
               onClick={() => onCancel?.()}
               disabled={isLoading}>
-              Cancel
+              Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
             </Button>
             <Button
               variant="outline"
@@ -173,7 +181,7 @@ export function GroupDetailDialog({ mode, groupId, onSuccess, onCancel }: GroupD
               type="submit"
               loading={isLoading}
               loadingText="Saving...">
-              {currentMode === 'create' ? 'Create Group' : 'Update Group'}
+              {currentMode === 'create' ? 'Create Group' : 'Update Group'} <KbdSubmit variant="outline" size="sm" />
             </Button>
           </DialogFooter>
         </form>

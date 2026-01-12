@@ -15,6 +15,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@auxx/ui/components/dialog'
+import { useDialogSubmit } from '@auxx/ui/hooks'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
@@ -102,76 +103,133 @@ export function ChangePassword() {
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px] w-11/12">
-        <DialogHeader>
-          <DialogTitle>{hasPassword ? 'Change Password' : 'Add Password'}</DialogTitle>
-          <DialogDescription>
-            {hasPassword
-              ? 'Change your password'
-              : 'Add a password to your account for additional sign-in options'}
-          </DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-4">
-          {hasPassword && (
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="current-password">Current Password</Label>
-              <Input
-                type="password"
-                id="current-password"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                autoComplete="current-password"
-                placeholder="Password"
-              />
-            </div>
-          )}
-          <div className="flex flex-col gap-2">
-            <Input
-              type="password"
-              id="new-password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              autoComplete="new-password"
-              placeholder="New Password"
-            />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Input
-              type="password"
-              id="confirm-password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              autoComplete="new-password"
-              placeholder="Confirm Password"
-            />
-          </div>
-          <PasswordStrengthIndicator password={newPassword} confirmPassword={confirmPassword} />
-
-          {hasPassword && (
-            <div className="flex gap-2 items-center">
-              <Checkbox
-                onCheckedChange={(checked) =>
-                  checked ? setSignOutDevices(true) : setSignOutDevices(false)
-                }
-              />
-              <p className="text-sm">Sign out from other devices</p>
-            </div>
-          )}
-        </div>
-        <DialogFooter>
-          <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
-            Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            loading={loading}
-            loadingText="Saving..."
-            onClick={handlePasswordSubmit}>
-            {hasPassword ? 'Change Password' : 'Add Password'}
-            <KbdSubmit variant="outline" size="sm" />
-          </Button>
-        </DialogFooter>
+        <ChangePasswordDialogContent
+          hasPassword={hasPassword}
+          currentPassword={currentPassword}
+          setCurrentPassword={setCurrentPassword}
+          newPassword={newPassword}
+          setNewPassword={setNewPassword}
+          confirmPassword={confirmPassword}
+          setConfirmPassword={setConfirmPassword}
+          signOutDevices={signOutDevices}
+          setSignOutDevices={setSignOutDevices}
+          loading={loading}
+          handlePasswordSubmit={handlePasswordSubmit}
+          onClose={() => setOpen(false)}
+        />
       </DialogContent>
     </Dialog>
+  )
+}
+
+/** Inner content props for ChangePasswordDialog */
+interface ChangePasswordDialogContentProps {
+  hasPassword: boolean
+  currentPassword: string
+  setCurrentPassword: (value: string) => void
+  newPassword: string
+  setNewPassword: (value: string) => void
+  confirmPassword: string
+  setConfirmPassword: (value: string) => void
+  signOutDevices: boolean
+  setSignOutDevices: (value: boolean) => void
+  loading: boolean
+  handlePasswordSubmit: () => Promise<void>
+  onClose: () => void
+}
+
+/** Inner content component - must be inside DialogContent for useDialogSubmit to work */
+function ChangePasswordDialogContent({
+  hasPassword,
+  currentPassword,
+  setCurrentPassword,
+  newPassword,
+  setNewPassword,
+  confirmPassword,
+  setConfirmPassword,
+  signOutDevices,
+  setSignOutDevices,
+  loading,
+  handlePasswordSubmit,
+  onClose,
+}: ChangePasswordDialogContentProps) {
+  // Register Meta+Enter submit handler
+  useDialogSubmit({
+    onSubmit: handlePasswordSubmit,
+    disabled: loading,
+  })
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>{hasPassword ? 'Change Password' : 'Add Password'}</DialogTitle>
+        <DialogDescription>
+          {hasPassword
+            ? 'Change your password'
+            : 'Add a password to your account for additional sign-in options'}
+        </DialogDescription>
+      </DialogHeader>
+      <div className="grid gap-4">
+        {hasPassword && (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="current-password">Current Password</Label>
+            <Input
+              type="password"
+              id="current-password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              autoComplete="current-password"
+              placeholder="Password"
+            />
+          </div>
+        )}
+        <div className="flex flex-col gap-2">
+          <Input
+            type="password"
+            id="new-password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            autoComplete="new-password"
+            placeholder="New Password"
+          />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Input
+            type="password"
+            id="confirm-password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            autoComplete="new-password"
+            placeholder="Confirm Password"
+          />
+        </div>
+        <PasswordStrengthIndicator password={newPassword} confirmPassword={confirmPassword} />
+
+        {hasPassword && (
+          <div className="flex gap-2 items-center">
+            <Checkbox
+              onCheckedChange={(checked) =>
+                checked ? setSignOutDevices(true) : setSignOutDevices(false)
+              }
+            />
+            <p className="text-sm">Sign out from other devices</p>
+          </div>
+        )}
+      </div>
+      <DialogFooter>
+        <Button variant="ghost" size="sm" onClick={onClose}>
+          Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          loading={loading}
+          loadingText="Saving..."
+          onClick={handlePasswordSubmit}>
+          {hasPassword ? 'Change Password' : 'Add Password'}
+          <KbdSubmit variant="outline" size="sm" />
+        </Button>
+      </DialogFooter>
+    </>
   )
 }

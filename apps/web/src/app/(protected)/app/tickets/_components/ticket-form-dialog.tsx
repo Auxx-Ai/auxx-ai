@@ -13,6 +13,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
+import { useDialogSubmit } from '@auxx/ui/hooks'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Form,
   FormControl,
@@ -329,6 +331,12 @@ export default function TicketFormDialog({
     ? 'Update the ticket details below.'
     : 'Fill out the form below to create a new support ticket.'
 
+  // Register Meta+Enter submit handler
+  useDialogSubmit({
+    onSubmit: form.handleSubmit(onSubmit),
+    disabled: isPending,
+  })
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-screen max-w-3xl overflow-y-scroll">
@@ -556,7 +564,7 @@ export default function TicketFormDialog({
 
         <DialogFooter>
           <Button type="button" size="sm" variant="ghost" onClick={() => onOpenChange(false)}>
-            Cancel
+            Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
           </Button>
           <Button
             type="submit"
@@ -565,7 +573,7 @@ export default function TicketFormDialog({
             variant="outline"
             loading={isPending}
             loadingText={isEditing ? 'Updating...' : 'Creating...'}>
-            {isEditing ? 'Update Ticket' : 'Create Ticket'}
+            {isEditing ? 'Update Ticket' : 'Create Ticket'} <KbdSubmit variant="outline" size="sm" />
           </Button>
         </DialogFooter>
       </DialogContent>

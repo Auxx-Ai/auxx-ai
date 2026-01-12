@@ -15,6 +15,8 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@auxx/ui/components/dialog'
+import { useDialogSubmit } from '@auxx/ui/hooks'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Input } from '@auxx/ui/components/input'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { Switch } from '@auxx/ui/components/switch'
@@ -535,6 +537,12 @@ export function CustomFieldDialog({
   // Watch isUnique to hide default value when unique is checked
   const isUnique = form.watch('isUnique')
 
+  // Register Meta+Enter submit handler
+  const { formProps } = useDialogSubmit({
+    onSubmit: form.handleSubmit(handleSubmit),
+    disabled: isPending,
+  })
+
   /** Render type-aware default value input */
   const renderDefaultValueInput = () => {
     // Hide default value in edit mode or for unique fields
@@ -653,7 +661,7 @@ export function CustomFieldDialog({
             </DialogDescription>
           </DialogHeader>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(handleSubmit)}>
+            <form {...formProps}>
               <FieldGroup className="gap-4">
                 {/* Field Type Selector - Only shown in create mode */}
                 {!isEditing && (
@@ -802,7 +810,7 @@ export function CustomFieldDialog({
                   variant="ghost"
                   onClick={guardedClose}
                   disabled={isPending}>
-                  Cancel
+                  Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
                 </Button>
                 <Button
                   size="sm"
@@ -810,7 +818,7 @@ export function CustomFieldDialog({
                   variant="outline"
                   loading={isPending}
                   loadingText={isEditing ? 'Saving...' : 'Creating...'}>
-                  {isEditing ? 'Save Changes' : 'Create Field'}
+                  {isEditing ? 'Save Changes' : 'Create Field'} <KbdSubmit variant="outline" size="sm" />
                 </Button>
               </DialogFooter>
             </form>

@@ -16,6 +16,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
+import { useDialogSubmit } from '@auxx/ui/hooks'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Form,
   FormControl,
@@ -61,6 +63,32 @@ export function MassPriorityDialog({
   ticketIds,
   onSuccess,
 }: MassPriorityDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent size="sm" position="tc">
+        <MassPriorityDialogContent
+          ticketIds={ticketIds}
+          onSuccess={onSuccess}
+          onClose={() => onOpenChange(false)}
+        />
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** Inner content props */
+interface MassPriorityDialogContentProps {
+  ticketIds: string[]
+  onSuccess: () => void
+  onClose: () => void
+}
+
+/** Inner content component - must be inside DialogContent for useDialogSubmit to work */
+function MassPriorityDialogContent({
+  ticketIds,
+  onSuccess,
+  onClose,
+}: MassPriorityDialogContentProps) {
   const { onBulkUpdated } = useRecordInvalidation()
 
   const form = useForm<MassPriorityFormValues>({
@@ -74,7 +102,7 @@ export function MassPriorityDialog({
       onBulkUpdated('ticket', ticketIds)
       form.reset()
       onSuccess()
-      onOpenChange(false)
+      onClose()
     },
     onError: (error) => {
       toastError({ description: `Error: ${error.message}` })
@@ -90,71 +118,75 @@ export function MassPriorityDialog({
   const selectedPriority = form.watch('priority')
   const disableSubmit = disableActions || !selectedPriority
 
+  // Register Meta+Enter submit handler
+  const { formProps } = useDialogSubmit({
+    onSubmit: form.handleSubmit(onSubmit),
+    disabled: disableSubmit,
+  })
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="sm" position="tc">
-        <DialogHeader>
-          <DialogTitle>Update Ticket Priority</DialogTitle>
-          <DialogDescription>
-            Change the priority for {ticketIds.length} selected ticket(s).
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <DialogHeader>
+        <DialogTitle>Update Ticket Priority</DialogTitle>
+        <DialogDescription>
+          Change the priority for {ticketIds.length} selected ticket(s).
+        </DialogDescription>
+      </DialogHeader>
 
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)}>
-            <FormField
-              control={form.control}
-              name="priority"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Select Priority</FormLabel>
-                  <Select
-                    onValueChange={field.onChange}
-                    defaultValue={field.value}
-                    disabled={disableActions}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a new priority" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {ticketPriorityOptions.map((priorityOption) => (
-                        <SelectItem key={priorityOption} value={priorityOption}>
-                          {priorityOption}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormDescription>
-                    Updating the priority helps keep your queue organized.
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+      <Form {...form}>
+        <form {...formProps}>
+          <FormField
+            control={form.control}
+            name="priority"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Select Priority</FormLabel>
+                <Select
+                  onValueChange={field.onChange}
+                  defaultValue={field.value}
+                  disabled={disableActions}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a new priority" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {ticketPriorityOptions.map((priorityOption) => (
+                      <SelectItem key={priorityOption} value={priorityOption}>
+                        {priorityOption}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormDescription>
+                  Updating the priority helps keep your queue organized.
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
 
-            <DialogFooter>
-              <Button
-                variant="ghost"
-                size="sm"
-                type="button"
-                onClick={() => onOpenChange(false)}
-                disabled={disableActions}>
-                Cancel
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                type="submit"
-                disabled={disableSubmit}
-                loading={disableActions}
-                loadingText="Updating...">
-                Update Priority
-              </Button>
-            </DialogFooter>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              size="sm"
+              type="button"
+              onClick={onClose}
+              disabled={disableActions}>
+              Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              type="submit"
+              disabled={disableSubmit}
+              loading={disableActions}
+              loadingText="Updating...">
+              Update Priority <KbdSubmit variant="outline" size="sm" />
+            </Button>
+          </DialogFooter>
+        </form>
+      </Form>
+    </>
   )
 }

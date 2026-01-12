@@ -10,6 +10,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@auxx/ui/components/dialog'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
 import { FieldInputRow } from './field-input-row'
@@ -254,14 +255,15 @@ export function BulkUpdateEntityInstanceDialog({
 
           <DialogFooter>
             <Button type="button" size="sm" variant="ghost" onClick={guardedClose}>
-              Cancel
+              Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
             </Button>
             <Button
               size="sm"
               variant="outline"
               onClick={handleSubmit}
               disabled={editableFields.length === 0 || modifiedFields.size === 0}>
-              Update {instanceCount} {instanceCount === 1 ? resourceLabel : resourcePlural}
+              Update {instanceCount} {instanceCount === 1 ? resourceLabel : resourcePlural}{' '}
+              <KbdSubmit variant="outline" size="sm" />
             </Button>
           </DialogFooter>
         </DialogContent>

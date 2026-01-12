@@ -11,6 +11,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
+import { useDialogSubmit } from '@auxx/ui/hooks'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import { api } from '~/trpc/react'
 import { toast } from 'sonner'
@@ -39,6 +41,32 @@ export function MassAssignDialog({
   ticketIds,
   onSuccess,
 }: MassAssignDialogProps) {
+  const handleDialogClose = (isOpen: boolean) => {
+    onOpenChange(isOpen)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleDialogClose}>
+      <DialogContent size="sm" position="tc">
+        <MassAssignDialogContent
+          ticketIds={ticketIds}
+          onSuccess={onSuccess}
+          onClose={() => onOpenChange(false)}
+        />
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** Inner content props */
+interface MassAssignDialogContentProps {
+  ticketIds: string[]
+  onSuccess: () => void
+  onClose: () => void
+}
+
+/** Inner content component - must be inside DialogContent for useDialogSubmit to work */
+function MassAssignDialogContent({ ticketIds, onSuccess, onClose }: MassAssignDialogContentProps) {
   const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>([])
   const { onBulkUpdated } = useRecordInvalidation()
 
@@ -47,7 +75,6 @@ export function MassAssignDialog({
     undefined,
     {
       refetchOnWindowFocus: false,
-      enabled: open, // Only fetch when dialog is open
     }
   )
 
@@ -56,8 +83,8 @@ export function MassAssignDialog({
       toastSuccess({ title: `Successfully assigned ${ticketIds.length} ticket(s)` })
       onBulkUpdated('ticket', ticketIds)
       onSuccess()
-      onOpenChange(false)
-      setSelectedAgentIds([]) // Reset selection on success
+      onClose()
+      setSelectedAgentIds([])
     },
     onError: (error) => {
       toastError({ description: `Error: ${error.message}` })
@@ -83,86 +110,82 @@ export function MassAssignDialog({
     setSelectedAgentIds(selectedAgentIds.filter((id) => id !== agentId))
   }
 
-  const handleDialogClose = (open: boolean) => {
-    if (!open) {
-      // Reset state when dialog closes
-      setSelectedAgentIds([])
-    }
-    onOpenChange(open)
-  }
+  // Register Meta+Enter submit handler
+  useDialogSubmit({
+    onSubmit: handleSubmit,
+    disabled: updateAssignmentMutation.isPending || selectedAgentIds.length === 0,
+  })
 
   return (
-    <Dialog open={open} onOpenChange={handleDialogClose}>
-      <DialogContent size="sm" position="tc">
-        <DialogHeader>
-          <DialogTitle>Assign Tickets</DialogTitle>
-          <DialogDescription>
-            Assign {ticketIds.length} selected ticket(s) to agents.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <DialogHeader>
+        <DialogTitle>Assign Tickets</DialogTitle>
+        <DialogDescription>
+          Assign {ticketIds.length} selected ticket(s) to agents.
+        </DialogDescription>
+      </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="space-y-1 flex flex-col">
-            <label className="text-sm font-medium">Select Agents</label>
-            <Select
-              disabled={agentsLoading || updateAssignmentMutation.isPending}
-              onValueChange={handleAgentSelect}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select an agent" />
-              </SelectTrigger>
-              <SelectContent>
-                {agents?.map((agent) => (
-                  <SelectItem
-                    key={agent.id}
-                    value={agent.id}
-                    disabled={selectedAgentIds.includes(agent.id)}>
-                    {agent.name || agent.email}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {selectedAgentIds.length > 0 && (
-            <div className="space-y-1 flex flex-col">
-              <label className="text-sm font-medium">Selected Agents</label>
-              <div className="flex flex-wrap gap-2">
-                {selectedAgentIds.map((agentId) => {
-                  const agent = agents?.find((a) => a.id === agentId)
-                  return (
-                    <Badge key={agentId} variant="secondary" className="flex items-center gap-1">
-                      {agent ? agent.name || agent.email : agentId}
-                      <X
-                        className="h-3 w-3 cursor-pointer"
-                        onClick={() => handleRemoveAgent(agentId)}
-                      />
-                    </Badge>
-                  )
-                })}
-              </div>
-            </div>
-          )}
+      <div className="space-y-4">
+        <div className="space-y-1 flex flex-col">
+          <label className="text-sm font-medium">Select Agents</label>
+          <Select
+            disabled={agentsLoading || updateAssignmentMutation.isPending}
+            onValueChange={handleAgentSelect}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select an agent" />
+            </SelectTrigger>
+            <SelectContent>
+              {agents?.map((agent) => (
+                <SelectItem
+                  key={agent.id}
+                  value={agent.id}
+                  disabled={selectedAgentIds.includes(agent.id)}>
+                  {agent.name || agent.email}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
-        <DialogFooter>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => handleDialogClose(false)}
-            disabled={updateAssignmentMutation.isPending}>
-            Cancel
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleSubmit}
-            disabled={updateAssignmentMutation.isPending || selectedAgentIds.length === 0}
-            loading={updateAssignmentMutation.isPending}
-            loadingText="Assigning...">
-            Assign Tickets
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        {selectedAgentIds.length > 0 && (
+          <div className="space-y-1 flex flex-col">
+            <label className="text-sm font-medium">Selected Agents</label>
+            <div className="flex flex-wrap gap-2">
+              {selectedAgentIds.map((agentId) => {
+                const agent = agents?.find((a) => a.id === agentId)
+                return (
+                  <Badge key={agentId} variant="secondary" className="flex items-center gap-1">
+                    {agent ? agent.name || agent.email : agentId}
+                    <X
+                      className="h-3 w-3 cursor-pointer"
+                      onClick={() => handleRemoveAgent(agentId)}
+                    />
+                  </Badge>
+                )
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <DialogFooter>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onClose}
+          disabled={updateAssignmentMutation.isPending}>
+          Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleSubmit}
+          disabled={updateAssignmentMutation.isPending || selectedAgentIds.length === 0}
+          loading={updateAssignmentMutation.isPending}
+          loadingText="Assigning...">
+          Assign Tickets <KbdSubmit variant="outline" size="sm" />
+        </Button>
+      </DialogFooter>
+    </>
   )
 }

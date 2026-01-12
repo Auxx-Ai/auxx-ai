@@ -10,6 +10,8 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@auxx/ui/components/dialog'
+import { useDialogSubmit } from '@auxx/ui/hooks'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Field,
   FieldLabel,
@@ -325,6 +327,15 @@ export function EntityDefinitionDialog({
     slug.trim().length > 0 &&
     (isEditing || slugExists === false)
 
+  // Register Meta+Enter submit handler
+  useDialogSubmit({
+    onSubmit: () => {
+      const fakeEvent = { preventDefault: () => {} } as React.FormEvent
+      handleSubmit(fakeEvent)
+    },
+    disabled: !isValid || isPending,
+  })
+
   // Handle form submission
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -576,7 +587,7 @@ export function EntityDefinitionDialog({
               variant="ghost"
               onClick={guardedClose}
               disabled={isPending}>
-              Cancel
+              Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
             </Button>
             <Button
               variant="outline"
@@ -585,7 +596,7 @@ export function EntityDefinitionDialog({
               loading={isPending}
               loadingText="Saving..."
               disabled={!isValid || isPending}>
-              {isEditing ? 'Update Entity' : 'Create Entity'}
+              {isEditing ? 'Update Entity' : 'Create Entity'} <KbdSubmit variant="outline" size="sm" />
             </Button>
           </DialogFooter>
         </form>

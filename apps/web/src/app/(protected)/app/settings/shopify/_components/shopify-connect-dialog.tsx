@@ -14,6 +14,8 @@ import {
   DialogFooter,
   DialogClose,
 } from '@auxx/ui/components/dialog'
+import { useDialogSubmit } from '@auxx/ui/hooks'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
 import {
@@ -74,6 +76,12 @@ export function ShopifyConnectDialog({
   const form = useForm<ShopDomainSchema>({
     resolver: standardSchemaResolver(shopDomainSchema),
     defaultValues: { shopDomain: '' },
+  })
+
+  // Register Meta+Enter submit handler
+  useDialogSubmit({
+    onSubmit: form.handleSubmit(onSubmit),
+    disabled: isConnecting,
   })
 
   const onSubmit = (values: ShopDomainSchema) => {
@@ -139,19 +147,18 @@ export function ShopifyConnectDialog({
         </Form>
 
         <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="ghost" type="button">
-              Cancel
-            </Button>
-          </DialogClose>
+          <Button variant="ghost" size="sm" type="button" onClick={() => handleOpenChange(false)}>
+            Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+          </Button>
           <Button
             type="submit"
+            size="sm"
             variant="outline"
             disabled={isConnecting}
             onClick={form.handleSubmit(onSubmit)}
             loading={isConnecting}
             loadingText="Connecting...">
-            Connect Shopify Store
+            Connect Shopify Store <KbdSubmit variant="outline" size="sm" />
           </Button>
         </DialogFooter>
       </DialogContent>

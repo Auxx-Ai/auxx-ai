@@ -9,6 +9,8 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@auxx/ui/components/dialog'
+import { useDialogSubmit } from '@auxx/ui/hooks'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Form, FormControl, FormField, FormItem, FormMessage } from '@auxx/ui/components/form'
 import { Input } from '@auxx/ui/components/input'
 import { Button } from '@auxx/ui/components/button'
@@ -60,6 +62,12 @@ export function ArticleRenameDialog({
       setIsLoading(false)
     }
   }
+
+  // Register Meta+Enter submit handler
+  useDialogSubmit({
+    onSubmit: form.handleSubmit(handleSubmit),
+    disabled: isLoading,
+  })
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -150,12 +158,13 @@ export function ArticleRenameDialog({
               <Button
                 type="button"
                 variant="outline"
+                size="sm"
                 onClick={() => onOpenChange(false)}
                 disabled={isLoading}>
-                Cancel
+                Cancel <Kbd shortcut="esc" variant="outline" size="sm" />
               </Button>
-              <Button type="submit" disabled={isLoading}>
-                {isLoading ? 'Saving...' : 'Save Changes'}
+              <Button type="submit" size="sm" disabled={isLoading} loading={isLoading} loadingText="Saving...">
+                Save Changes <KbdSubmit variant="default" size="sm" />
               </Button>
             </DialogFooter>
           </form>

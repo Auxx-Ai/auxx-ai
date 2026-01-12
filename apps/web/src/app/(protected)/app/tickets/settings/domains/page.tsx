@@ -28,6 +28,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
+import { useDialogSubmit } from '@auxx/ui/hooks'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
@@ -54,6 +56,26 @@ interface AddDomainDialogProps {
 
 /** Dialog for adding a new domain */
 function AddDomainDialog({ open, onOpenChange, onDomainRegistered }: AddDomainDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent size="md" position="tc">
+        <AddDomainDialogContent
+          onDomainRegistered={onDomainRegistered}
+          onClose={() => onOpenChange(false)}
+        />
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** Inner content props for AddDomainDialog */
+interface AddDomainDialogContentProps {
+  onDomainRegistered: () => void
+  onClose: () => void
+}
+
+/** Inner content component - must be inside DialogContent for useDialogSubmit to work */
+function AddDomainDialogContent({ onDomainRegistered, onClose }: AddDomainDialogContentProps) {
   const [subdomain, setSubdomain] = useState('')
   const [routingPrefix, setRoutingPrefix] = useState('ticket')
   const [isCheckingSubdomain, setIsCheckingSubdomain] = useState(false)
@@ -68,7 +90,7 @@ function AddDomainDialog({ open, onOpenChange, onDomainRegistered }: AddDomainDi
   const registerDomain = api.mailDomain.registerProviderDomain.useMutation({
     onSuccess: () => {
       onDomainRegistered()
-      onOpenChange(false)
+      onClose()
       setSubdomain('')
       setRoutingPrefix('ticket')
     },
@@ -116,117 +138,121 @@ function AddDomainDialog({ open, onOpenChange, onDomainRegistered }: AddDomainDi
     })
   }
 
+  // Register Meta+Enter submit handler
+  useDialogSubmit({
+    onSubmit: handleRegister,
+    disabled: subdomain.length < 3 || (subdomainData && !subdomainData.isAvailable) || registerDomain.isPending,
+  })
+
   /** Format example email address */
   const formatExampleEmail = (domain: string, prefix: string = routingPrefix) => {
     return `${prefix}123@${domain}`
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="md" position="tc">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">Add Email Domain</DialogTitle>
-          <DialogDescription>
-            Get a subdomain on {providerInfo?.providerDomain || 'our domain'} with no DNS setup
-            required
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2">Add Email Domain</DialogTitle>
+        <DialogDescription>
+          Get a subdomain on {providerInfo?.providerDomain || 'our domain'} with no DNS setup
+          required
+        </DialogDescription>
+      </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="subdomain">Choose Your Subdomain</Label>
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <Input
-                  id="subdomain"
-                  placeholder="your-company"
-                  value={subdomain}
-                  onChange={(e) => setSubdomain(e.target.value)}
-                />
-                {subdomain.length >= 3 && (
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                    {isCheckingSubdomain ? (
-                      <RefreshCw className="size-4 animate-spin text-muted-foreground" />
-                    ) : subdomainData?.isAvailable ? (
-                      <CheckCircle2 className="size-4 text-green-500" />
-                    ) : (
-                      <XCircle className="size-4 text-red-500" />
-                    )}
-                  </div>
-                )}
-              </div>
-              <span className="whitespace-nowrap text-sm text-muted-foreground">
-                .{providerInfo?.providerDomain || 'our-domain.com'}
-              </span>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              This will be your custom subdomain for receiving ticket emails
-            </p>
-
-            {subdomain.length >= 3 && subdomainData && !subdomainData.isAvailable && (
-              <div className="mt-2 space-y-2">
-                <p className="text-sm font-medium text-red-500">
-                  This subdomain is already taken. Try one of these instead:
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {subdomainData.suggestions.map((suggestion) => (
-                    <Button
-                      key={suggestion}
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setSubdomain(suggestion)}>
-                      {suggestion}
-                    </Button>
-                  ))}
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="subdomain">Choose Your Subdomain</Label>
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Input
+                id="subdomain"
+                placeholder="your-company"
+                value={subdomain}
+                onChange={(e) => setSubdomain(e.target.value)}
+              />
+              {subdomain.length >= 3 && (
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  {isCheckingSubdomain ? (
+                    <RefreshCw className="size-4 animate-spin text-muted-foreground" />
+                  ) : subdomainData?.isAvailable ? (
+                    <CheckCircle2 className="size-4 text-green-500" />
+                  ) : (
+                    <XCircle className="size-4 text-red-500" />
+                  )}
                 </div>
-              </div>
-            )}
-          </div>
-
-          <Separator />
-
-          <div className="space-y-2">
-            <Label htmlFor="routing-prefix">Email Prefix</Label>
-            <Input
-              id="routing-prefix"
-              placeholder="ticket"
-              value={routingPrefix}
-              onChange={(e) => setRoutingPrefix(e.target.value)}
-            />
-            <p className="text-sm text-muted-foreground">
-              Prefix for ticket emails. Example:{' '}
-              {formatExampleEmail(
-                `${subdomain || 'your-company'}.${providerInfo?.providerDomain || 'our-domain.com'}`
               )}
-            </p>
+            </div>
+            <span className="whitespace-nowrap text-sm text-muted-foreground">
+              .{providerInfo?.providerDomain || 'our-domain.com'}
+            </span>
           </div>
+          <p className="text-sm text-muted-foreground">
+            This will be your custom subdomain for receiving ticket emails
+          </p>
 
-          <Alert variant="blue">
-            <Mail className="size-4" />
-            <AlertTitle>Ready immediately</AlertTitle>
-            <AlertDescription>
-              No DNS setup required. Your email address will be ready to use as soon as you
-              register.
-            </AlertDescription>
-          </Alert>
+          {subdomain.length >= 3 && subdomainData && !subdomainData.isAvailable && (
+            <div className="mt-2 space-y-2">
+              <p className="text-sm font-medium text-red-500">
+                This subdomain is already taken. Try one of these instead:
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {subdomainData.suggestions.map((suggestion) => (
+                  <Button
+                    key={suggestion}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSubdomain(suggestion)}>
+                    {suggestion}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
-        <DialogFooter>
-          <Button size="sm" variant="ghost" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleRegister}
-            loading={registerDomain.isPending}
-            loadingText="Registering..."
-            disabled={subdomain.length < 3 || (subdomainData && !subdomainData.isAvailable)}>
-            Register Subdomain
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <Separator />
+
+        <div className="space-y-2">
+          <Label htmlFor="routing-prefix">Email Prefix</Label>
+          <Input
+            id="routing-prefix"
+            placeholder="ticket"
+            value={routingPrefix}
+            onChange={(e) => setRoutingPrefix(e.target.value)}
+          />
+          <p className="text-sm text-muted-foreground">
+            Prefix for ticket emails. Example:{' '}
+            {formatExampleEmail(
+              `${subdomain || 'your-company'}.${providerInfo?.providerDomain || 'our-domain.com'}`
+            )}
+          </p>
+        </div>
+
+        <Alert variant="blue">
+          <Mail className="size-4" />
+          <AlertTitle>Ready immediately</AlertTitle>
+          <AlertDescription>
+            No DNS setup required. Your email address will be ready to use as soon as you
+            register.
+          </AlertDescription>
+        </Alert>
+      </div>
+
+      <DialogFooter>
+        <Button size="sm" variant="ghost" onClick={onClose}>
+          Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleRegister}
+          loading={registerDomain.isPending}
+          loadingText="Registering..."
+          disabled={subdomain.length < 3 || (subdomainData && !subdomainData.isAvailable)}>
+          Register Subdomain <KbdSubmit variant="outline" size="sm" />
+        </Button>
+      </DialogFooter>
+    </>
   )
 }
 

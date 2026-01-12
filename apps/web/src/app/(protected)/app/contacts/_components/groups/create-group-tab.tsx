@@ -3,6 +3,8 @@ import { useState } from 'react'
 import { useContactMutations } from '../use-contact-mutations'
 import { Button } from '@auxx/ui/components/button'
 import { DialogFooter } from '@auxx/ui/components/dialog'
+import { useDialogSubmit } from '@auxx/ui/hooks'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
 import { Info } from 'lucide-react'
@@ -46,6 +48,12 @@ export default function CreateGroupTab({
     })
   }
 
+  // Register Meta+Enter submit handler
+  useDialogSubmit({
+    onSubmit: handleCreateGroup,
+    disabled: !newGroupName.trim() || mutations.createGroup.isPending,
+  })
+
   return (
     <>
       <div className="space-y-4">
@@ -84,16 +92,17 @@ export default function CreateGroupTab({
       </div>
 
       <DialogFooter>
-        <Button variant="ghost" onClick={() => onOpenChange(false)}>
-          Cancel
+        <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+          Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
         </Button>
         <Button
           onClick={handleCreateGroup}
           variant="outline"
+          size="sm"
           disabled={!newGroupName.trim() || mutations.createGroup.isPending}
           loading={mutations.createGroup.isPending}
           loadingText="Creating...">
-          Create Group
+          Create Group <KbdSubmit variant="outline" size="sm" />
         </Button>
       </DialogFooter>
     </>

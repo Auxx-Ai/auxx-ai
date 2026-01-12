@@ -11,6 +11,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
+import { useDialogSubmit } from '@auxx/ui/hooks'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { Label } from '@auxx/ui/components/label'
@@ -40,6 +42,38 @@ export function SegmentEditorDialog({
   onSave,
   isPending = false,
 }: SegmentEditorDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <SegmentEditorDialogContent
+          segment={segment}
+          open={open}
+          onSave={onSave}
+          isPending={isPending}
+          onClose={() => onOpenChange(false)}
+        />
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** Inner content props */
+interface SegmentEditorDialogContentProps {
+  segment: SegmentEditorDialogProps['segment']
+  open: boolean
+  onSave: (content: string) => Promise<void>
+  isPending: boolean
+  onClose: () => void
+}
+
+/** Inner content component - must be inside DialogContent for useDialogSubmit to work */
+function SegmentEditorDialogContent({
+  segment,
+  open,
+  onSave,
+  isPending,
+  onClose,
+}: SegmentEditorDialogContentProps) {
   const [content, setContent] = useState(segment.content)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -83,7 +117,7 @@ export function SegmentEditorDialog({
     }
 
     if (trimmedContent === segment.content) {
-      onOpenChange(false)
+      onClose()
       return
     }
 
@@ -100,96 +134,82 @@ export function SegmentEditorDialog({
    */
   const handleCancel = () => {
     setContent(segment.content)
-    onOpenChange(false)
+    onClose()
   }
 
-  /**
-   * Handle keyboard shortcuts
-   */
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    // Save on Cmd/Ctrl + Enter
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      e.preventDefault()
-      handleSave()
-    }
-    // Cancel on Escape
-    if (e.key === 'Escape') {
-      e.preventDefault()
-      handleCancel()
-    }
-  }
+  // Register Meta+Enter submit handler
+  useDialogSubmit({
+    onSubmit: handleSave,
+    disabled: !content.trim() || content.trim() === segment.content || isPending || isSaving,
+  })
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl" onKeyDown={handleKeyDown}>
-        <DialogHeader>
-          <DialogTitle>Edit Segment {segment.position}</DialogTitle>
-          <DialogDescription>
-            Modify the content of this segment. Changes will trigger re-indexing.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <DialogHeader>
+        <DialogTitle>Edit Segment {segment.position}</DialogTitle>
+        <DialogDescription>
+          Modify the content of this segment. Changes will trigger re-indexing.
+        </DialogDescription>
+      </DialogHeader>
 
-        <div className="space-y-2">
-          {/* Position and Token Info */}
-          <div className="flex items-center gap-4">
-            <Badge variant="outline">Position {segment.position}</Badge>
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-muted-foreground">Tokens:</span>
-              <span className="font-medium">{estimatedTokenCount}</span>
-              {tokenCountChange.change !== 0 && (
-                <span
-                  className={tokenCountChange.change > 0 ? 'text-orange-600' : 'text-green-600'}>
-                  ({tokenCountChange.change > 0 ? '+' : ''}
-                  {tokenCountChange.change}, {tokenCountChange.percentChange.toFixed(1)}%)
-                </span>
-              )}
-            </div>
+      <div className="space-y-2">
+        {/* Position and Token Info */}
+        <div className="flex items-center gap-4">
+          <Badge variant="outline">Position {segment.position}</Badge>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-muted-foreground">Tokens:</span>
+            <span className="font-medium">{estimatedTokenCount}</span>
+            {tokenCountChange.change !== 0 && (
+              <span
+                className={tokenCountChange.change > 0 ? 'text-orange-600' : 'text-green-600'}>
+                ({tokenCountChange.change > 0 ? '+' : ''}
+                {tokenCountChange.change}, {tokenCountChange.percentChange.toFixed(1)}%)
+              </span>
+            )}
           </div>
-
-          {/* Content Editor */}
-          <div className="space-y-2">
-            <Label htmlFor="content">Content</Label>
-            <Textarea
-              id="content"
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              placeholder="Enter segment content..."
-              className="min-h-[300px] font-mono text-sm"
-              disabled={isPending || isSaving}
-            />
-            <p className="text-xs text-muted-foreground">
-              {content.length} characters • Press Cmd+Enter to save
-            </p>
-          </div>
-
-          {/* Warning for significant changes */}
-          {Math.abs(tokenCountChange.percentChange) > 50 && (
-            <div className="rounded-md bg-yellow-50 dark:bg-yellow-900/10 p-3">
-              <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                Warning: Significant token count change detected (
-                {tokenCountChange.percentChange > 0 ? '+' : ''}
-                {tokenCountChange.percentChange.toFixed(1)}%). This may affect search results and
-                embeddings.
-              </p>
-            </div>
-          )}
         </div>
 
-        <DialogFooter>
-          <Button size="sm" variant="ghost" onClick={handleCancel} disabled={isPending || isSaving}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSave}
-            size="sm"
-            variant="outline"
-            loading={isPending || isSaving}
-            loadingText="Saving..."
-            disabled={!content.trim() || content.trim() === segment.content}>
-            Save Changes
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        {/* Content Editor */}
+        <div className="space-y-2">
+          <Label htmlFor="content">Content</Label>
+          <Textarea
+            id="content"
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            placeholder="Enter segment content..."
+            className="min-h-[300px] font-mono text-sm"
+            disabled={isPending || isSaving}
+          />
+          <p className="text-xs text-muted-foreground">{content.length} characters</p>
+        </div>
+
+        {/* Warning for significant changes */}
+        {Math.abs(tokenCountChange.percentChange) > 50 && (
+          <div className="rounded-md bg-yellow-50 dark:bg-yellow-900/10 p-3">
+            <p className="text-sm text-yellow-800 dark:text-yellow-200">
+              Warning: Significant token count change detected (
+              {tokenCountChange.percentChange > 0 ? '+' : ''}
+              {tokenCountChange.percentChange.toFixed(1)}%). This may affect search results and
+              embeddings.
+            </p>
+          </div>
+        )}
+      </div>
+
+      <DialogFooter>
+        <Button size="sm" variant="ghost" onClick={handleCancel} disabled={isPending || isSaving}>
+          Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+        </Button>
+        <Button
+          onClick={handleSave}
+          size="sm"
+          variant="outline"
+          loading={isPending || isSaving}
+          loadingText="Saving..."
+          disabled={!content.trim() || content.trim() === segment.content}>
+          Save Changes <KbdSubmit variant="outline" size="sm" />
+        </Button>
+      </DialogFooter>
+    </>
   )
 }

@@ -13,6 +13,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
+import { useDialogSubmit } from '@auxx/ui/hooks'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
 import { api } from '~/trpc/react'
@@ -34,6 +36,35 @@ export function DuplicateWorkflowDialog({
   workflowId,
   workflowName,
 }: DuplicateWorkflowDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DuplicateWorkflowDialogContent
+          workflowId={workflowId}
+          workflowName={workflowName}
+          open={open}
+          onClose={() => onOpenChange(false)}
+        />
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** Inner content props */
+interface DuplicateWorkflowDialogContentProps {
+  workflowId: string
+  workflowName: string
+  open: boolean
+  onClose: () => void
+}
+
+/** Inner content component - must be inside DialogContent for useDialogSubmit to work */
+function DuplicateWorkflowDialogContent({
+  workflowId,
+  workflowName,
+  open,
+  onClose,
+}: DuplicateWorkflowDialogContentProps) {
   const router = useRouter()
   const [name, setName] = useState('')
 
@@ -47,7 +78,7 @@ export function DuplicateWorkflowDialog({
   const duplicateWorkflow = api.workflow.duplicate.useMutation({
     onSuccess: (newWorkflow) => {
       toastSuccess({ description: 'Workflow duplicated' })
-      onOpenChange(false)
+      onClose()
       router.push(`/app/workflows/${newWorkflow.id}`)
     },
     onError: (error) => {
@@ -61,47 +92,42 @@ export function DuplicateWorkflowDialog({
     duplicateWorkflow.mutate({ id: workflowId, name: name.trim() })
   }
 
-  /** Handle Enter key to submit */
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && name.trim()) {
-      e.preventDefault()
-      handleDuplicate()
-    }
-  }
+  // Register Meta+Enter submit handler
+  useDialogSubmit({
+    onSubmit: handleDuplicate,
+    disabled: !name.trim() || duplicateWorkflow.isPending,
+  })
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Duplicate Workflow</DialogTitle>
-          <DialogDescription>Create a copy of this workflow with a new name.</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-2">
-          <Label htmlFor="name">Name</Label>
-          <Input
-            id="name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Enter workflow name"
-            autoFocus
-          />
-        </div>
-        <DialogFooter>
-          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleDuplicate}
-            loading={duplicateWorkflow.isPending}
-            loadingText="Duplicating..."
-            disabled={!name.trim() || duplicateWorkflow.isPending}>
-            Duplicate
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <>
+      <DialogHeader>
+        <DialogTitle>Duplicate Workflow</DialogTitle>
+        <DialogDescription>Create a copy of this workflow with a new name.</DialogDescription>
+      </DialogHeader>
+      <div className="space-y-2">
+        <Label htmlFor="name">Name</Label>
+        <Input
+          id="name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Enter workflow name"
+          autoFocus
+        />
+      </div>
+      <DialogFooter>
+        <Button variant="ghost" size="sm" onClick={onClose}>
+          Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleDuplicate}
+          loading={duplicateWorkflow.isPending}
+          loadingText="Duplicating..."
+          disabled={!name.trim() || duplicateWorkflow.isPending}>
+          Duplicate <KbdSubmit variant="outline" size="sm" />
+        </Button>
+      </DialogFooter>
+    </>
   )
 }

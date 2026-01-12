@@ -16,6 +16,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@auxx/ui/components/dialog'
+import { useDialogSubmit } from '@auxx/ui/hooks'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Form,
   FormControl,
@@ -63,6 +65,35 @@ interface CreateDatasetDialogProps {
 export function CreateDatasetDialog({ trigger, onSuccess }: CreateDatasetDialogProps) {
   const [open, setOpen] = useState(false)
 
+  const handleOpenChange = (newOpen: boolean) => {
+    setOpen(newOpen)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
+        {trigger || (
+          <Button size="sm">
+            <Plus />
+            Create Dataset
+          </Button>
+        )}
+      </DialogTrigger>
+      <DialogContent position="tc" size="sm">
+        <CreateDatasetDialogContent onSuccess={onSuccess} onClose={() => setOpen(false)} />
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** Inner content props */
+interface CreateDatasetDialogContentProps {
+  onSuccess?: (dataset: any) => void
+  onClose: () => void
+}
+
+/** Inner content component - must be inside DialogContent for useDialogSubmit to work */
+function CreateDatasetDialogContent({ onSuccess, onClose }: CreateDatasetDialogContentProps) {
   const form = useForm<CreateDatasetForm>({
     resolver: standardSchemaResolver(createDatasetSchema),
     defaultValues: {
@@ -85,7 +116,7 @@ export function CreateDatasetDialog({ trigger, onSuccess }: CreateDatasetDialogP
     onSuccess: (dataset) => {
       // Reset form and close dialog
       form.reset()
-      setOpen(false)
+      onClose()
 
       // Invalidate datasets list to refresh UI
       utils.dataset.list.invalidate()
@@ -160,148 +191,137 @@ export function CreateDatasetDialog({ trigger, onSuccess }: CreateDatasetDialogP
     })
   }
 
-  const handleOpenChange = (newOpen: boolean) => {
-    setOpen(newOpen)
-    if (!newOpen) {
-      form.reset()
-    }
-  }
+  // Register Meta+Enter submit handler
+  const { formProps } = useDialogSubmit({
+    onSubmit: form.handleSubmit(onSubmit),
+    disabled: createDataset.isPending,
+  })
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        {trigger || (
-          <Button size="sm">
-            <Plus />
-            Create Dataset
-          </Button>
-        )}
-      </DialogTrigger>
-      <DialogContent position="tc" size="sm">
-        <DialogHeader>
-          <DialogTitle>Create New Dataset</DialogTitle>
-          <DialogDescription>
-            Create a new dataset to organize and manage your documents.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <DialogHeader>
+        <DialogTitle>Create New Dataset</DialogTitle>
+        <DialogDescription>
+          Create a new dataset to organize and manage your documents.
+        </DialogDescription>
+      </DialogHeader>
 
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Dataset Name *</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Enter dataset name..." {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+      <Form {...form}>
+        <form {...formProps} className="space-y-4">
+          <FormField
+            control={form.control}
+            name="name"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Dataset Name *</FormLabel>
+                <FormControl>
+                  <Input placeholder="Enter dataset name..." {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
 
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Description</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder="Describe what this dataset will contain..."
-                      className="resize-none"
-                      rows={3}
-                      {...field}
+          <FormField
+            control={form.control}
+            name="description"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Description</FormLabel>
+                <FormControl>
+                  <Textarea
+                    placeholder="Describe what this dataset will contain..."
+                    className="resize-none"
+                    rows={3}
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <VarEditorField className="p-0 [&_[data-slot=field-row-label]]:w-30">
+            <VarEditorFieldRow
+              title="Model"
+              description="Select a text embedding model from your configured providers">
+              <FormField
+                control={form.control}
+                name="embeddingModel"
+                render={({ field }) => (
+                  <FormItem className="flex-1 space-y-0! mb-0">
+                    <AiModelPicker
+                      data={unifiedModelData.data}
+                      value={field.value ?? null}
+                      onChange={handleModelChange}
+                      modelTypes={[ModelType.TEXT_EMBEDDING]}
+                      showUnconfigured={false}
+                      placeholder="Select embedding model..."
+                      triggerVariant="transparent"
+                      triggerClassName="w-full justify-between h-6"
+                      isUpdating={unifiedModelData.isLoading}
                     />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </VarEditorFieldRow>
 
-            <VarEditorField className="p-0 [&_[data-slot=field-row-label]]:w-30">
+            {/* Dimension selector - only show if model supports configurable dimensions */}
+            {hasConfigurableDimensions && (
               <VarEditorFieldRow
-                title="Model"
-                description="Select a text embedding model from your configured providers">
+                title="Dimensions"
+                description={
+                  dimensionRule?.help ||
+                  'Smaller dimensions use less storage but may reduce accuracy.'
+                }>
                 <FormField
                   control={form.control}
-                  name="embeddingModel"
+                  name="vectorDimension"
                   render={({ field }) => (
-                    <FormItem className="flex-1 space-y-0! mb-0">
-                      <AiModelPicker
-                        data={unifiedModelData.data}
-                        value={field.value ?? null}
-                        onChange={handleModelChange}
-                        modelTypes={[ModelType.TEXT_EMBEDDING]}
-                        showUnconfigured={false}
-                        placeholder="Select embedding model..."
-                        triggerVariant="transparent"
-                        triggerClassName="w-full justify-between h-6"
-                        isUpdating={unifiedModelData.isLoading}
-                      />
+                    <FormItem className="flex-1 mb-0 space-y-0!">
+                      <Select
+                        value={field.value?.toString() ?? defaultDimension.toString()}
+                        onValueChange={(v) => field.onChange(parseInt(v))}>
+                        <SelectTrigger className="w-full" size="sm" variant="transparent">
+                          <SelectValue placeholder="Select dimension" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableDimensions.map((dim) => (
+                            <SelectItem key={dim} value={dim.toString()}>
+                              {dim} dimensions {dim === defaultDimension && '(default)'}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
               </VarEditorFieldRow>
+            )}
+          </VarEditorField>
 
-              {/* Dimension selector - only show if model supports configurable dimensions */}
-              {hasConfigurableDimensions && (
-                <VarEditorFieldRow
-                  title="Dimensions"
-                  description={
-                    dimensionRule?.help ||
-                    'Smaller dimensions use less storage but may reduce accuracy.'
-                  }>
-                  <FormField
-                    control={form.control}
-                    name="vectorDimension"
-                    render={({ field }) => (
-                      <FormItem className="flex-1 mb-0 space-y-0!">
-                        <Select
-                          value={field.value?.toString() ?? defaultDimension.toString()}
-                          onValueChange={(v) => field.onChange(parseInt(v))}>
-                          <SelectTrigger className="w-full" size="sm" variant="transparent">
-                            <SelectValue placeholder="Select dimension" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {availableDimensions.map((dim) => (
-                              <SelectItem key={dim} value={dim.toString()}>
-                                {dim} dimensions {dim === defaultDimension && '(default)'}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </VarEditorFieldRow>
-              )}
-            </VarEditorField>
-
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setOpen(false)}
-                disabled={createDataset.isPending}>
-                Cancel
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                type="submit"
-                loading={createDataset.isPending}
-                loadingText="Creating...">
-                Create Dataset
-              </Button>
-            </DialogFooter>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onClose}
+              disabled={createDataset.isPending}>
+              Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              type="submit"
+              loading={createDataset.isPending}
+              loadingText="Creating...">
+              Create Dataset <KbdSubmit variant="outline" size="sm" />
+            </Button>
+          </DialogFooter>
+        </form>
+      </Form>
+    </>
   )
 }

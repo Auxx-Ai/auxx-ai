@@ -10,6 +10,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
+import { useDialogSubmit } from '@auxx/ui/hooks'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
@@ -148,6 +150,12 @@ export default function CustomerMergeDialog({
 
   // Check if a customer is the locked mergeWithId
   const isLocked = (id: string) => id === mergeWithId
+
+  // Register Meta+Enter submit handler
+  useDialogSubmit({
+    onSubmit: handleMerge,
+    disabled: !canMerge || mutations.mergeContacts.isPending,
+  })
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -294,7 +302,7 @@ export default function CustomerMergeDialog({
             variant="ghost"
             onClick={() => onOpenChange(false)}
             disabled={mutations.mergeContacts.isPending}>
-            Cancel
+            Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
           </Button>
           <Button
             onClick={handleMerge}
@@ -303,7 +311,7 @@ export default function CustomerMergeDialog({
             disabled={!canMerge || mutations.mergeContacts.isPending}
             loading={mutations.mergeContacts.isPending}
             loadingText="Merging...">
-            Merge Customers
+            Merge Customers <KbdSubmit variant="outline" size="sm" />
           </Button>
         </DialogFooter>
       </DialogContent>

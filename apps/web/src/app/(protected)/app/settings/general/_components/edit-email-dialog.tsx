@@ -16,6 +16,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
+import { useDialogSubmit } from '@auxx/ui/hooks'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Form,
   FormControl,
@@ -82,6 +84,12 @@ export function EditEmailDialog({
       newEmail: '',
     },
     mode: 'onTouched',
+  })
+
+  // Register Meta+Enter submit handler
+  useDialogSubmit({
+    onSubmit: form.handleSubmit(onSubmit),
+    disabled: !form.formState.isValid || isSubmitting,
   })
 
   /**
@@ -229,7 +237,7 @@ export function EditEmailDialog({
                   size="sm"
                   onClick={() => handleOpenChange(false)}
                   disabled={isSubmitting}>
-                  Cancel
+                  Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
                 </Button>
                 <Button
                   type="submit"
@@ -238,7 +246,7 @@ export function EditEmailDialog({
                   loading={isSubmitting}
                   loadingText="Sending verification..."
                   disabled={!form.formState.isValid || isSubmitting}>
-                  Send Verification
+                  Send Verification <KbdSubmit variant="outline" size="sm" />
                 </Button>
               </DialogFooter>
             </form>

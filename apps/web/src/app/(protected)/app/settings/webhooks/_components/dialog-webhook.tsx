@@ -8,6 +8,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
+import { useDialogSubmit } from '@auxx/ui/hooks'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
 import {
@@ -84,6 +86,13 @@ export function DialogWebhook({ open, onClose, webhook, onSuccess }: DialogWebho
   const handleTestWebhook = async () => {
     await testWebhook.mutateAsync({ url: currentUrl })
   }
+
+  // Register Meta+Enter submit handler
+  const { formProps } = useDialogSubmit({
+    onSubmit: form.handleSubmit(onSubmit),
+    disabled: create.isPending || update.isPending,
+  })
+
   return (
     <Dialog open={open} onOpenChange={(open) => !open && onClose()}>
       <DialogContent size="sm" position="tc">
@@ -91,7 +100,7 @@ export function DialogWebhook({ open, onClose, webhook, onSuccess }: DialogWebho
           <DialogTitle>{webhook ? 'Edit Webhook' : 'Create Webhook'}</DialogTitle>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="">
+          <form {...formProps} className="">
             <div className="space-y-4">
               <div className="space-y-2 mt-3">
                 <FormField
@@ -176,7 +185,7 @@ export function DialogWebhook({ open, onClose, webhook, onSuccess }: DialogWebho
                 onClick={onClose}
                 type="button"
                 disabled={create.isPending || update.isPending}>
-                Cancel
+                Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
               </Button>
               <Button
                 type="submit"
@@ -184,7 +193,7 @@ export function DialogWebhook({ open, onClose, webhook, onSuccess }: DialogWebho
                 variant="outline"
                 loading={create.isPending || update.isPending}
                 loadingText="Saving...">
-                {webhook ? 'Update' : 'Create'}
+                {webhook ? 'Update' : 'Create'} <KbdSubmit variant="outline" size="sm" />
               </Button>
             </DialogFooter>
           </form>
