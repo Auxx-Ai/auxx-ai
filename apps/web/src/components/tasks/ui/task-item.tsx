@@ -3,7 +3,6 @@
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
-import { Badge } from '@auxx/ui/components/badge'
 import { TaskCheckbox } from './task-checkbox'
 import { useTaskCompletion } from '../hooks/use-task-completion'
 import {
@@ -12,6 +11,9 @@ import {
 } from '../hooks/use-task-effective-state'
 import { formatTaskDeadline } from '../utils/group-tasks-by-period'
 import type { TaskWithRelations } from '@auxx/lib/tasks'
+import { ResourceBadge, resourceBadgeVariants } from '~/components/resources/ui/resource-badge'
+import { Badge } from '@auxx/ui/components/badge'
+import { Separator } from '@auxx/ui/components/separator'
 
 /**
  * Props for TaskItem component
@@ -45,6 +47,9 @@ export function TaskItem({ task, onClick, showEntityReferences = false }: TaskIt
     toggleCompletion(task.id, !checked)
   }
 
+  const hasReferences = showEntityReferences && task.references && task.references.length > 0
+  const hasAssignments = task.assignments && task.assignments.length > 0
+
   return (
     <div
       className={cn(
@@ -76,46 +81,44 @@ export function TaskItem({ task, onClick, showEntityReferences = false }: TaskIt
               )}>
               {task.title}
             </div>
+            <div className="flex flex-wrap gap-2 mt-1">
+              {/* Entity References (shown in global mode) */}
+              {hasReferences && (
+                <div className="flex items-center gap-1 flex-wrap">
+                  {task.references.slice(0, 3).map((resourceId) => (
+                    <ResourceBadge
+                      key={resourceId}
+                      resourceId={resourceId}
+                      showIcon={true}
+                      variant="default"
+                    />
+                  ))}
+                  {task.references.length > 3 && (
+                    <div className={cn(resourceBadgeVariants({ variant: 'default' }), 'text-xs')}>
+                      +{task.references.length - 3} more
+                    </div>
+                  )}
+                </div>
+              )}
 
-            {/* Entity References (shown in global mode) */}
-            {showEntityReferences && task.references && task.references.length > 0 && (
-              <div className="flex items-center gap-1 mt-1 flex-wrap">
-                {task.references.slice(0, 3).map((ref) => (
-                  <Badge
-                    key={ref.id}
-                    variant="outline"
-                    size="sm"
-                    className="text-xs"
-                    style={{
-                      borderColor: ref.entityDefinition?.color ?? undefined,
-                      color: ref.entityDefinition?.color ?? undefined,
-                    }}>
-                    {ref.entityDefinition?.name}: {ref.entityInstance?.displayName || 'Unnamed'}
-                  </Badge>
-                ))}
-                {task.references.length > 3 && (
-                  <Badge variant="outline" size="sm" className="text-xs">
-                    +{task.references.length - 3} more
-                  </Badge>
-                )}
-              </div>
-            )}
-
-            {/* Assignees (shown when there are assignees) */}
-            {task.assignments && task.assignments.length > 0 && (
-              <div className="flex items-center gap-1 mt-1">
-                {task.assignments.slice(0, 2).map((assignment) => (
-                  <Badge key={assignment.id} variant="secondary" size="sm">
-                    {assignment.assignedTo?.name || assignment.assignedTo?.email}
-                  </Badge>
-                ))}
-                {task.assignments.length > 2 && (
-                  <Badge variant="secondary" size="sm">
-                    +{task.assignments.length - 2}
-                  </Badge>
-                )}
-              </div>
-            )}
+              {/* Assignees (shown when there are assignees) */}
+              {hasAssignments && (
+                <div className="flex items-center gap-1">
+                  {hasReferences && <Separator orientation="vertical" className="h-4" />}
+                  <span className="text-xs text-muted-foreground">Assigned:</span>
+                  {task.assignments.slice(0, 2).map((assignment) => (
+                    <Badge key={assignment.id} variant="pill" size="sm">
+                      {assignment.assignedTo?.name || assignment.assignedTo?.email}
+                    </Badge>
+                  ))}
+                  {task.assignments.length > 2 && (
+                    <Badge variant="pill" size="sm">
+                      +{task.assignments.length - 2}
+                    </Badge>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Deadline */}

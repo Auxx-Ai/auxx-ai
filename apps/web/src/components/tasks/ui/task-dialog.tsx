@@ -32,7 +32,7 @@ import { TextDateParser, DateLanguageModule } from '@auxx/lib/tasks/client'
 import type { TaskWithRelations, CreateTaskInput, UpdateTaskInput } from '@auxx/lib/tasks'
 import { SubmitOnEnter } from '~/components/global/comments/comment-composer'
 import { toastSuccess } from '@auxx/ui/components/toast'
-import { toResourceId, getInstanceId, getDefinitionId, type ResourceId } from '@auxx/lib/field-values/client'
+import { getInstanceId, getDefinitionId, type ResourceId } from '@auxx/lib/field-values/client'
 
 /**
  * Props for TaskDialog component
@@ -204,12 +204,8 @@ export function TaskDialog({
         setAssignedUserIds(
           (task.assignments?.map((a) => a.assignedTo?.id).filter(Boolean) as string[]) ?? []
         )
-        // Load existing linked records from task references as ResourceId[]
-        setLinkedRecords(
-          task.references?.map((ref) =>
-            toResourceId(ref.referencedEntityDefinitionId, ref.referencedEntityInstanceId)
-          ) ?? []
-        )
+        // Load existing linked records from task references (already ResourceId[])
+        setLinkedRecords(task.references ?? [])
       } else {
         // Create mode: start fresh or with default entity reference
         editor?.commands.clearContent()

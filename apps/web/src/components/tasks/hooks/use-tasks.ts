@@ -7,15 +7,14 @@ import { api } from '~/trpc/react'
 import { useTaskStore } from '../stores/task-store'
 import type { TaskWithRelations, TaskPriority } from '@auxx/lib/tasks'
 import type { TaskSortConfig } from '@auxx/lib/tasks/client'
+import type { ResourceId } from '@auxx/lib/resources/client'
 
 /**
  * Options for useTasks hook
  */
 interface UseTasksOptions {
-  /** Filter to tasks linked to this entity instance (omit for global view) */
-  entityInstanceId?: string
-  /** Filter by entity definition */
-  entityDefinitionId?: string
+  /** Filter to tasks linked to this resource (omit for global view) */
+  resourceId?: ResourceId
   /** Filter by assignee IDs */
   assigneeIds?: string[]
   /** Filter by priority levels */
@@ -59,12 +58,11 @@ const DEFAULT_SORT: TaskSortConfig = { field: 'deadline', direction: 'asc' }
 
 /**
  * Hook to fetch and cache a list of tasks.
- * Supports filtering by entity, custom conditions, and sorting.
- * Omit entityInstanceId for global task view.
+ * Supports filtering by resource, custom conditions, and sorting.
+ * Omit resourceId for global task view.
  */
 export function useTasks({
-  entityInstanceId,
-  entityDefinitionId,
+  resourceId,
   assigneeIds,
   priority,
   search,
@@ -80,8 +78,7 @@ export function useTasks({
   // Build query input
   const queryInput = useMemo(
     () => ({
-      entityInstanceId,
-      entityDefinitionId,
+      resourceId,
       assigneeIds,
       priority,
       search,
@@ -89,16 +86,7 @@ export function useTasks({
       includeArchived,
       limit,
     }),
-    [
-      entityInstanceId,
-      entityDefinitionId,
-      assigneeIds,
-      priority,
-      search,
-      includeCompleted,
-      includeArchived,
-      limit,
-    ]
+    [resourceId, assigneeIds, priority, search, includeCompleted, includeArchived, limit]
   )
 
   // Fetch tasks using query (not infinite for now - keeping it simple)

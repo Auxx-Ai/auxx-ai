@@ -23,7 +23,7 @@ export function CreateTaskButton({ variant = 'default' }: CreateTaskButtonProps)
         <Plus />
         Create Task
       </Button>
-      <TaskDialog open={open} onOpenChange={setOpen} mode="create" />
+      {open && <TaskDialog open={open} onOpenChange={setOpen} mode="create" />}
     </>
   )
 }

@@ -80,8 +80,7 @@ export interface TaskFilterOptions {
   assigneeIds?: string[]
   createdById?: string
   priority?: TaskPriority[]
-  entityInstanceId?: string
-  entityDefinitionId?: string
+  resourceId?: ResourceId
   search?: string
   includeCompleted?: boolean
   includeArchived?: boolean
@@ -112,7 +111,7 @@ export interface GroupedTasksResponse {
  */
 export interface TaskWithRelations extends TaskEntity {
   assignments: TaskAssignmentWithUser[]
-  references: TaskReferenceWithEntity[]
+  references: ResourceId[]
 }
 
 /**

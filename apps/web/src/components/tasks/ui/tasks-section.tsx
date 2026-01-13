@@ -7,7 +7,7 @@ import { ListTodo, Plus } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
-import { toResourceId } from '@auxx/lib/field-values/client'
+import type { ResourceId } from '@auxx/lib/resources/client'
 import { TasksList } from './tasks-list'
 import { TaskDialog } from './task-dialog'
 
@@ -15,17 +15,15 @@ import { TaskDialog } from './task-dialog'
  * Props for TasksSection component
  */
 interface TasksSectionProps {
-  /** Entity instance ID (for filtering tasks linked to this entity) */
-  entityInstanceId: string
-  /** Entity definition ID (for creating new task references) */
-  entityDefinitionId: string
+  /** Resource ID in format "entityDefinitionId:entityInstanceId" */
+  resourceId: ResourceId
 }
 
 /**
  * TasksSection renders the tasks section within an entity drawer.
  * Displays a list of tasks linked to the entity with ability to create new tasks.
  */
-export function TasksSection({ entityInstanceId, entityDefinitionId }: TasksSectionProps) {
+export function TasksSection({ resourceId }: TasksSectionProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
 
   return (
@@ -44,8 +42,7 @@ export function TasksSection({ entityInstanceId, entityDefinitionId }: TasksSect
           }>
           <TasksList
             viewMode="entity"
-            entityInstanceId={entityInstanceId}
-            entityDefinitionId={entityDefinitionId}
+            resourceId={resourceId}
             onCreateClick={() => setDialogOpen(true)}
           />
         </Section>
@@ -55,7 +52,7 @@ export function TasksSection({ entityInstanceId, entityDefinitionId }: TasksSect
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         mode="create"
-        defaultReferencedEntity={toResourceId(entityDefinitionId, entityInstanceId)}
+        defaultReferencedEntity={resourceId}
       />
     </>
   )

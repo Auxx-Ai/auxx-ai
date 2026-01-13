@@ -15,7 +15,7 @@ import type {
 import { pickDefined, hasDefinedProps } from '../utils/pick-defined'
 import type { Deadline, RelativeDate } from '@auxx/types/task'
 import type { ResourceId } from '@auxx/types/resource'
-import { parseResourceId } from '../field-values/relationship-field'
+import { parseResourceId, toResourceId } from '../field-values/relationship-field'
 
 /**
  * Convert a relative or absolute deadline to a concrete Date
@@ -182,15 +182,24 @@ export class TaskService {
       },
     })
 
-    // Get references
-    const references = await this.db.query.TaskReference.findMany({
+    // Get references - load only IDs
+    const referenceRows = await this.db.query.TaskReference.findMany({
       where: (r, { eq, and, isNull }) => and(eq(r.taskId, taskId), isNull(r.deletedAt)),
+      columns: {
+        referencedEntityDefinitionId: true,
+        referencedEntityInstanceId: true,
+      },
     })
+
+    // Convert to ResourceId[]
+    const references = referenceRows.map((ref) =>
+      toResourceId(ref.referencedEntityDefinitionId, ref.referencedEntityInstanceId)
+    )
 
     return {
       ...task,
       assignments: assignments as any,
-      references: references as any,
+      references,
     }
   }
 
@@ -418,7 +427,7 @@ export class TaskService {
       assigneeIds,
       createdById,
       priority,
-      entityInstanceId,
+      resourceId,
       search,
       includeCompleted = false,
       includeArchived = false,
@@ -490,13 +499,15 @@ export class TaskService {
     }
 
     // Filter by entity reference if needed
-    if (entityInstanceId) {
+    if (resourceId) {
+      const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
       const taskIds = filteredTasks.map((t) => t.id)
       const references = await this.db.query.TaskReference.findMany({
         where: (r, { and, inArray, eq, isNull }) =>
           and(
             inArray(r.taskId, taskIds),
             eq(r.referencedEntityInstanceId, entityInstanceId),
+            eq(r.referencedEntityDefinitionId, entityDefinitionId),
             isNull(r.deletedAt)
           ),
       })
@@ -516,14 +527,24 @@ export class TaskService {
           },
         })
 
-        const references = await this.db.query.TaskReference.findMany({
+        // Load only IDs
+        const referenceRows = await this.db.query.TaskReference.findMany({
           where: (r, { eq, and, isNull }) => and(eq(r.taskId, task.id), isNull(r.deletedAt)),
+          columns: {
+            referencedEntityDefinitionId: true,
+            referencedEntityInstanceId: true,
+          },
         })
+
+        // Convert to ResourceId[]
+        const references = referenceRows.map((ref) =>
+          toResourceId(ref.referencedEntityDefinitionId, ref.referencedEntityInstanceId)
+        )
 
         return {
           ...task,
           assignments: assignments as any,
-          references: references as any,
+          references,
         }
       })
     )
@@ -618,14 +639,24 @@ export class TaskService {
             },
           })
 
-          const references = await this.db.query.TaskReference.findMany({
+          // Load only IDs
+          const referenceRows = await this.db.query.TaskReference.findMany({
             where: (r, { eq, and, isNull }) => and(eq(r.taskId, task.id), isNull(r.deletedAt)),
+            columns: {
+              referencedEntityDefinitionId: true,
+              referencedEntityInstanceId: true,
+            },
           })
+
+          // Convert to ResourceId[]
+          const references = referenceRows.map((ref) =>
+            toResourceId(ref.referencedEntityDefinitionId, ref.referencedEntityInstanceId)
+          )
 
           return {
             ...task,
             assignments: assignments as any,
-            references: references as any,
+            references,
           }
         })
       )

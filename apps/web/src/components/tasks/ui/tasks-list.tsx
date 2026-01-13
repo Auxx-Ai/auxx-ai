@@ -16,6 +16,7 @@ import type { TaskWithRelations } from '@auxx/lib/tasks'
 import type { TaskSortConfig } from '@auxx/lib/tasks/client'
 import type { TaskViewMode } from '@auxx/types/task'
 import type { Condition } from '~/components/conditions'
+import type { ResourceId } from '@auxx/lib/resources/client'
 import { cn } from '@auxx/ui/lib/utils'
 
 /**
@@ -24,10 +25,8 @@ import { cn } from '@auxx/ui/lib/utils'
 interface TasksListProps {
   /** View mode - 'entity' for drawer, 'global' for full page */
   viewMode?: TaskViewMode
-  /** Filter tasks to those linked to this entity (required for 'entity' mode) */
-  entityInstanceId?: string
-  /** Entity definition for creating new task references */
-  entityDefinitionId?: string
+  /** Filter tasks to those linked to this resource (required for 'entity' mode) */
+  resourceId?: ResourceId
   /** Filter conditions from TaskFilterBar */
   filters?: Condition[]
   /** Sort configuration */
@@ -53,8 +52,7 @@ const DEFAULT_SORT: TaskSortConfig = { field: 'deadline', direction: 'asc' }
  */
 export function TasksList({
   viewMode = 'entity',
-  entityInstanceId,
-  entityDefinitionId,
+  resourceId,
   filters,
   sort = DEFAULT_SORT,
   includeCompleted = true,
@@ -65,10 +63,9 @@ export function TasksList({
   // Convert Condition[] to individual filter props
   const filterProps = useMemo(() => convertConditionsToFilterProps(filters ?? []), [filters])
 
-  // Fetch tasks with optional entity filter
+  // Fetch tasks with optional resource filter
   const { tasks, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage } = useTasks({
-    entityInstanceId: viewMode === 'entity' ? entityInstanceId : undefined,
-    entityDefinitionId: viewMode === 'entity' ? entityDefinitionId : undefined,
+    resourceId: viewMode === 'entity' ? resourceId : undefined,
     assigneeIds: filterProps.assigneeIds,
     priority: filterProps.priority,
     search: filterProps.search,

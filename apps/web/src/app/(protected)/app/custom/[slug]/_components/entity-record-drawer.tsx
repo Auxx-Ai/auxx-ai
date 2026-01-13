@@ -237,12 +237,7 @@ export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
                 </TabsContent>
 
                 <TabsContent value="tasks" className="w-full">
-                  {entityInstanceId && entityDefinitionId && (
-                    <MemoTasksSection
-                      entityInstanceId={entityInstanceId}
-                      entityDefinitionId={entityDefinitionId}
-                    />
-                  )}
+                  {resourceId && <MemoTasksSection resourceId={resourceId} />}
                 </TabsContent>
 
                 <TabsContent value="timeline" className="w-full">
