@@ -1,6 +1,6 @@
 // apps/web/src/components/fields/displays/display-checkbox.tsx
 import { Check, X } from 'lucide-react'
-import { usePropertyContext } from '../property-provider'
+import { useFieldContext } from './display-field'
 import DisplayWrapper from './display-wrapper'
 import type { BooleanFieldOptions } from '@auxx/lib/field-values/client'
 
@@ -11,7 +11,7 @@ import type { BooleanFieldOptions } from '@auxx/lib/field-values/client'
  * which the converter can't do (it returns strings only).
  */
 export function DisplayCheckbox() {
-  const { value, field } = usePropertyContext()
+  const { value, field } = useFieldContext()
   // Read display options from field.options (flat structure)
   const opts = field.options as BooleanFieldOptions | undefined
   const checkboxStyle = opts?.checkboxStyle ?? 'icon-text'

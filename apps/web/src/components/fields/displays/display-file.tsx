@@ -1,6 +1,6 @@
 // apps/web/src/components/fields/displays/display-file.tsx
 import { useMemo } from 'react'
-import { usePropertyContext } from '../property-provider'
+import { useFieldContext } from './display-field'
 import DisplayWrapper from './display-wrapper'
 import { api } from '~/trpc/react'
 import { Badge } from '@auxx/ui/components/badge'
@@ -18,7 +18,7 @@ interface FileItem extends ItemsListItem {
  * Renders file attachments in read-only mode
  */
 export function DisplayFile() {
-  const { value } = usePropertyContext()
+  const { value } = useFieldContext()
 
   // value structure: { attachmentIds: string[] | string }
   const attachmentIds = Array.isArray(value?.attachmentIds)

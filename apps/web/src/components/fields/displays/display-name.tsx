@@ -1,12 +1,12 @@
 import DisplayWrapper from './display-wrapper'
-import { usePropertyContext } from '../property-provider'
+import { useFieldContext } from './display-field'
 
 /**
  * DisplayName component
  * Renders compound firstName + lastName field
  */
 export function DisplayName() {
-  const { value } = usePropertyContext()
+  const { value } = useFieldContext()
 
   // Handle empty name
   if (!value || (typeof value === 'object' && !value.firstName && !value.lastName)) {

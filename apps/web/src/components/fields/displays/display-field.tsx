@@ -15,13 +15,26 @@ import { DisplayFile } from './display-file'
 import { DisplayName } from './display-name'
 import { DisplayRelationship } from './display-relationship'
 import { usePropertyContext } from '../property-provider'
+import { useDisplayOnlyContext } from '../display-only-provider'
 import { FieldType } from '@auxx/database/enums'
+
+/**
+ * Helper hook that tries PropertyContext first (editable fields),
+ * then falls back to DisplayOnlyContext (read-only display).
+ */
+export function useFieldContext() {
+  try {
+    return usePropertyContext()
+  } catch {
+    return useDisplayOnlyContext()
+  }
+}
 /**
  * DisplayField component
  * Renders the correct display component for a contact field type
  */
 export function DisplayField() {
-  const { field } = usePropertyContext()
+  const { field } = useFieldContext()
   switch (field.fieldType) {
     case FieldType.DATE:
     case FieldType.DATETIME:

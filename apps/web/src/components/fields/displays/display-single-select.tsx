@@ -1,6 +1,6 @@
 // apps/web/src/components/fields/displays/display-single-select.tsx
 import DisplayWrapper from './display-wrapper'
-import { usePropertyContext } from '../property-provider'
+import { useFieldContext } from './display-field'
 import { TagsView, resolveTagLabels } from '~/components/ui/tags-view'
 
 /**
@@ -8,7 +8,7 @@ import { TagsView, resolveTagLabels } from '~/components/ui/tags-view'
  * Renders a single select value using TagsView
  */
 export function DisplaySingleSelect() {
-  const { value, field } = usePropertyContext()
+  const { value, field } = useFieldContext()
   const options = field?.options?.options || []
   const tags = resolveTagLabels(value, options)
   const copyText = tags.join(', ')

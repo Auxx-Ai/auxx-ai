@@ -1,6 +1,6 @@
 // apps/web/src/components/fields/displays/display-number.tsx
 import DisplayWrapper from './display-wrapper'
-import { usePropertyContext } from '../property-provider'
+import { useFieldContext } from './display-field'
 import { converters, type NumberFieldOptions } from '@auxx/lib/field-values/client'
 
 /**
@@ -8,7 +8,7 @@ import { converters, type NumberFieldOptions } from '@auxx/lib/field-values/clie
  * Renders a number value using the numberConverter with options from field.options
  */
 export function DisplayNumber() {
-  const { value, field } = usePropertyContext()
+  const { value, field } = useFieldContext()
   const opts = field.options as NumberFieldOptions | undefined
 
   if (value === null || value === undefined) {

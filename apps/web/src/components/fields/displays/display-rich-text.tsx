@@ -1,13 +1,13 @@
 import DOMPurify from 'dompurify'
 import DisplayWrapper from './display-wrapper'
-import { usePropertyContext } from '../property-provider'
+import { useFieldContext } from './display-field'
 
 /**
  * DisplayRichText component
  * Renders a rich text value
  */
 export function DisplayRichText() {
-  const { value } = usePropertyContext()
+  const { value } = useFieldContext()
   const richText = typeof value === 'string' ? value : ''
   return (
     <DisplayWrapper copyValue={richText || null}>

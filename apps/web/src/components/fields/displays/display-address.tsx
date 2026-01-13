@@ -1,4 +1,4 @@
-import { usePropertyContext } from '../property-provider'
+import { useFieldContext } from './display-field'
 import DisplayWrapper from './display-wrapper'
 
 /**
@@ -6,7 +6,7 @@ import DisplayWrapper from './display-wrapper'
  * Renders a simple address string
  */
 export function DisplayAddress() {
-  const { value } = usePropertyContext()
+  const { value } = useFieldContext()
   const copyText = value == null ? '' : String(value)
   return (
     <DisplayWrapper copyValue={copyText || null}>
@@ -21,7 +21,7 @@ export function DisplayAddress() {
  * Supports both old field names (street, postalCode) and new ones (street1, zipCode)
  */
 export function DisplayAddressStruct() {
-  const { value } = usePropertyContext()
+  const { value } = useFieldContext()
   let address: Record<string, string> = {}
   if (typeof value === 'string') {
     try {

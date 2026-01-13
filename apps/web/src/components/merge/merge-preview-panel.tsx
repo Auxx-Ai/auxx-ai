@@ -6,7 +6,13 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Badge } from '@auxx/ui/components/badge'
 import { type ResourceId } from '@auxx/lib/resources/client'
 import { useRecords, useResource } from '~/components/resources'
-import { isMultiValueFieldType } from '@auxx/lib/field-values/client'
+import { isMultiValueFieldType, formatToRawValue } from '@auxx/lib/field-values/client'
+import { FieldDisplay } from '~/components/fields/field-display'
+import type { FieldType } from '@auxx/database/types'
+import {
+  useCustomFieldValueStore,
+  buildFieldValueKey,
+} from '~/components/resources/store/custom-field-value-store'
 
 interface MergePreviewPanelProps {
   /** Target ResourceId */
@@ -38,6 +44,9 @@ export function MergePreviewPanel({
   const { records, isLoading: recordsLoading } = useRecords({ resourceIds: allIds })
   const { resource } = useResource(entityDefinitionId ?? '')
 
+  // Get all field values from store
+  const storeValues = useCustomFieldValueStore((s) => s.values)
+
   const isLoading = externalLoading || recordsLoading
 
   // Compute merged preview
@@ -52,43 +61,52 @@ export function MergePreviewPanel({
     for (const field of resource.fields) {
       if (!field.id || field.isSystem) continue
 
-      const isMulti = isMultiValueFieldType(field.fieldType ?? 'TEXT')
-      const targetValue = targetRecord.fieldValues?.[field.id]
+      const fieldType = (field.fieldType ?? 'TEXT') as FieldType
+      const isMulti = isMultiValueFieldType(fieldType)
+
+      // Get target value from store
+      const targetStoreKey = buildFieldValueKey(targetResourceId, field.id)
+      const targetStoreValue = storeValues[targetStoreKey]
+      const targetRawValue = formatToRawValue(targetStoreValue, fieldType)
 
       if (isMulti) {
         // Multi-value: collect all values from all records
         const allValues = new Set<string>()
-        for (const record of records) {
-          const val = record?.fieldValues?.[field.id]
-          if (Array.isArray(val)) {
-            val.forEach((v) => allValues.add(String(v)))
-          } else if (val) {
-            allValues.add(String(val))
+        for (const resourceId of allIds) {
+          const storeKey = buildFieldValueKey(resourceId, field.id)
+          const storeValue = storeValues[storeKey]
+          const rawVal = formatToRawValue(storeValue, fieldType)
+          if (Array.isArray(rawVal)) {
+            rawVal.forEach((v) => allValues.add(String(v)))
+          } else if (rawVal) {
+            allValues.add(String(rawVal))
           }
         }
         const mergedArray = Array.from(allValues)
         merged[field.id] = {
           label: field.label,
           value: mergedArray,
-          merged: mergedArray.length > (Array.isArray(targetValue) ? targetValue.length : 0),
+          merged:
+            mergedArray.length > (Array.isArray(targetRawValue) ? targetRawValue.length : 0),
         }
       } else {
         // Single-value: target wins, show indicator if sources differ
-        const hasConflict = sourceResourceIds.some((_, idx) => {
-          const sourceRecord = records[idx + 1]
-          const sourceValue = sourceRecord?.fieldValues?.[field.id]
-          return sourceValue !== undefined && sourceValue !== targetValue
+        const hasConflict = sourceResourceIds.some((sourceResourceId) => {
+          const sourceStoreKey = buildFieldValueKey(sourceResourceId, field.id)
+          const sourceStoreValue = storeValues[sourceStoreKey]
+          const sourceRawValue = formatToRawValue(sourceStoreValue, fieldType)
+          return sourceRawValue !== undefined && sourceRawValue !== targetRawValue
         })
         merged[field.id] = {
           label: field.label,
-          value: targetValue,
+          value: targetRawValue,
           merged: hasConflict,
         }
       }
     }
 
     return { displayName: targetRecord.displayName, fields: merged }
-  }, [resource, records, sourceResourceIds])
+  }, [resource, records, sourceResourceIds, targetResourceId, allIds, storeValues])
 
   return (
     <div className="flex flex-col h-full flex-1 border rounded-2xl bg-muted">
@@ -115,31 +133,26 @@ export function MergePreviewPanel({
 
             {/* Merged fields */}
             <div className="space-y-2">
-              {Object.entries(mergedPreview.fields).map(([fieldId, { label, value, merged }]) => (
-                <div key={fieldId} className="flex items-start gap-2">
-                  <span className="text-xs text-muted-foreground w-24 shrink-0 pt-0.5">
-                    {label}
-                  </span>
-                  <div className="flex-1 text-sm">
-                    {Array.isArray(value) ? (
-                      <div className="flex flex-wrap gap-1">
-                        {value.map((v, i) => (
-                          <Badge key={i} variant="secondary" className="text-xs">
-                            {v}
-                          </Badge>
-                        ))}
-                      </div>
-                    ) : (
-                      <span>{String(value ?? '—')}</span>
-                    )}
-                    {merged && (
-                      <Badge variant="outline" className="ml-1 text-xs text-info">
-                        merged
-                      </Badge>
-                    )}
+              {Object.entries(mergedPreview.fields).map(([fieldId, { label, value, merged }]) => {
+                const field = resource?.fields.find((f) => f.id === fieldId)
+                if (!field) return null
+
+                return (
+                  <div key={fieldId} className="flex items-start gap-2">
+                    <span className="text-xs text-muted-foreground w-24 shrink-0 pt-0.5">
+                      {label}
+                    </span>
+                    <div className="flex-1 text-sm">
+                      <FieldDisplay field={field} value={value} />
+                      {merged && (
+                        <Badge variant="outline" className="ml-1 text-xs text-info">
+                          merged
+                        </Badge>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         ) : (

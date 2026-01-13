@@ -1,6 +1,6 @@
 // apps/web/src/components/fields/displays/display-phone.tsx
 
-import { usePropertyContext } from '../property-provider'
+import { useFieldContext } from './display-field'
 import DisplayWrapper from './display-wrapper'
 import { Badge } from '@auxx/ui/components/badge'
 import { FieldOptionButton } from './field-option-button'
@@ -12,7 +12,7 @@ import { formatToDisplayValue } from '@auxx/lib/field-values/client'
  * Renders a formatted phone number with configurable format
  */
 export function DisplayPhone() {
-  const { value, field } = usePropertyContext()
+  const { value, field } = useFieldContext()
   const rawValue = typeof value === 'string' ? value : value ? String(value) : ''
   const options = field.options
   // Use converter for display formatting

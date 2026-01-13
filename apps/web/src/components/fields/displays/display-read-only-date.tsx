@@ -1,5 +1,5 @@
 import DisplayWrapper from './display-wrapper'
-import { usePropertyContext } from '../property-provider'
+import { useFieldContext } from './display-field'
 import { format } from 'date-fns'
 
 /**
@@ -7,7 +7,7 @@ import { format } from 'date-fns'
  * Renders formatted date value for read-only fields like createdAt/updatedAt
  */
 export function DisplayReadOnlyDate() {
-  const { value } = usePropertyContext()
+  const { value } = useFieldContext()
 
   // Handle empty or invalid dates
   if (!value || value === '') {

@@ -4,7 +4,7 @@
 import { ExternalLink } from 'lucide-react'
 import { useMemo } from 'react'
 import DisplayWrapper from './display-wrapper'
-import { usePropertyContext } from '../property-provider'
+import { useFieldContext } from './display-field'
 import { FieldOptionButton } from './field-option-button'
 import { Badge } from '@auxx/ui/components/badge'
 
@@ -49,7 +49,7 @@ function formatUrlForDisplay(url: string): string {
  * Renders a URL value with action buttons to open and copy the link
  */
 export function DisplayUrl() {
-  const { value } = usePropertyContext()
+  const { value } = useFieldContext()
 
   const normalizedValue = useMemo(() => {
     if (typeof value !== 'string') return null

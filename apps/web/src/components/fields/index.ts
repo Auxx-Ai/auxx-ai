@@ -22,7 +22,9 @@ export { useFieldPopoverHandlers } from './use-field-popover-handlers'
 export { getInputComponentForFieldType } from './inputs/get-input-component'
 
 // Display components
-export { DisplayField } from './displays/display-field'
+export { DisplayField, useFieldContext } from './displays/display-field'
+export { FieldDisplay } from './field-display'
+export { DisplayOnlyProvider, useDisplayOnlyContext } from './display-only-provider'
 
 // Dynamic options registry and hooks
 export { DYNAMIC_OPTIONS_REGISTRY, getDynamicOptionsEntry, type DynamicOption } from './registries/dynamic-options-registry'

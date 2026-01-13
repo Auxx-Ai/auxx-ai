@@ -5,8 +5,21 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { MouseEvent, ReactNode } from 'react'
 import { Check, Copy } from 'lucide-react'
 import { usePropertyContext } from '../property-provider'
+import { useDisplayOnlyContext } from '../display-only-provider'
 import { FieldOptionButton } from './field-option-button'
 import { cn } from '@auxx/ui/lib/utils'
+
+/**
+ * Helper hook that tries PropertyContext first (editable fields),
+ * then falls back to DisplayOnlyContext (read-only display).
+ */
+function useFieldContext() {
+  try {
+    return usePropertyContext()
+  } catch {
+    return useDisplayOnlyContext()
+  }
+}
 
 /**
  * DisplayWrapperProps interface
@@ -32,7 +45,7 @@ function DisplayWrapper({
   copyValue,
   ...props
 }: DisplayWrapperProps) {
-  const { value } = usePropertyContext()
+  const { value } = useFieldContext()
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {

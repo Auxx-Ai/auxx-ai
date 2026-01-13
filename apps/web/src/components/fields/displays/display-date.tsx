@@ -3,6 +3,7 @@
 
 import { X } from 'lucide-react'
 import { usePropertyContext } from '../property-provider'
+import { useFieldContext } from './display-field'
 import DisplayWrapper from './display-wrapper'
 import { FieldOptionButton } from './field-option-button'
 import { FieldType } from '@auxx/database/enums'
@@ -14,7 +15,10 @@ import { converters, type DateFieldOptions } from '@auxx/lib/field-values/client
  * Works for FieldType.DATE, FieldType.DATETIME, and FieldType.TIME
  */
 export function DisplayDate() {
-  const { value, field, commitValue } = usePropertyContext()
+  const context = useFieldContext()
+  const { value, field } = context
+  // commitValue only exists in PropertyContext, not DisplayOnlyContext
+  const commitValue = 'commitValue' in context ? context.commitValue : undefined
   // Read display options from field.options (flat structure)
   const opts = field.options as DateFieldOptions | undefined
 
@@ -34,10 +38,10 @@ export function DisplayDate() {
   const formatted = converters.DATE.toDisplayValue(typedValue, displayOpts) as string
 
   /** Clears the date value */
-  const handleClear = () => commitValue(null)
+  const handleClear = () => commitValue?.(null)
 
-  /** Clear button - only shown if field is not readonly */
-  const clearButton = !field.readOnly ? (
+  /** Clear button - only shown if field is not readonly and commitValue is available */
+  const clearButton = !field.readOnly && commitValue ? (
     <FieldOptionButton key="clear" label="Clear" onClick={handleClear}>
       <X className="size-2.5" />
     </FieldOptionButton>

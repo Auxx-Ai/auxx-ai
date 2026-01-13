@@ -1,7 +1,6 @@
 import DisplayWrapper from './display-wrapper'
-import { usePropertyContext } from '../property-provider'
+import { useFieldContext } from './display-field'
 import { Badge } from '@auxx/ui/components/badge'
-import Link from 'next/link'
 import { FieldOptionButton } from './field-option-button'
 import { Mail } from 'lucide-react'
 
@@ -10,7 +9,7 @@ import { Mail } from 'lucide-react'
  * Renders an email value
  */
 export function DisplayEmail() {
-  const { value } = usePropertyContext()
+  const { value } = useFieldContext()
   const email = typeof value === 'string' ? value : ''
 
   const buttons = [

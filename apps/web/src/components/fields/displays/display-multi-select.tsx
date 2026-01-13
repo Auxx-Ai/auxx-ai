@@ -1,6 +1,6 @@
 // apps/web/src/components/fields/displays/display-multi-select.tsx
 import DisplayWrapper from './display-wrapper'
-import { usePropertyContext } from '../property-provider'
+import { useFieldContext } from './display-field'
 import { TagsView, resolveTagLabels } from '~/components/ui/tags-view'
 
 /**
@@ -8,7 +8,7 @@ import { TagsView, resolveTagLabels } from '~/components/ui/tags-view'
  * Renders selected options as badges for multi select using TagsView
  */
 export function DisplayMultiSelect() {
-  const { value, field } = usePropertyContext()
+  const { value, field } = useFieldContext()
   const options = field?.options?.options || []
   const tags = resolveTagLabels(value, options)
   const copyText = tags.join(', ')

@@ -1,12 +1,12 @@
 import DisplayWrapper from './display-wrapper'
-import { usePropertyContext } from '../property-provider'
+import { useFieldContext } from './display-field'
 
 /**
  * DisplayText component
  * Renders plain text value
  */
 export function DisplayText() {
-  const { value, field } = usePropertyContext()
+  const { value, field } = useFieldContext()
 
   // Check if value exists but is empty string
   if (value === '') {

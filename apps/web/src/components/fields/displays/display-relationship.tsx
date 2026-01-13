@@ -1,7 +1,7 @@
 // apps/web/src/components/fields/displays/display-relationship.tsx
 
 import { useMemo } from 'react'
-import { usePropertyContext } from '../property-provider'
+import { useFieldContext } from './display-field'
 import { useRelationship } from '~/components/resources'
 import { extractRelationshipResourceIds } from '@auxx/lib/field-values/client'
 import DisplayWrapper from './display-wrapper'
@@ -20,7 +20,7 @@ interface RelationshipItem extends ItemsListItem {
  * Extracts relatedEntityDefinitionId from TypedFieldValue for hydration
  */
 export function DisplayRelationship() {
-  const { value } = usePropertyContext()
+  const { value } = useFieldContext()
 
   // Extract ResourceIds using centralized utility
   const resourceIds = useMemo(() => extractRelationshipResourceIds(value), [value])

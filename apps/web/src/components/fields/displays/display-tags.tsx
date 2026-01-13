@@ -1,5 +1,5 @@
 // apps/web/src/components/fields/displays/display-tags.tsx
-import { usePropertyContext } from '../property-provider'
+import { useFieldContext } from './display-field'
 import DisplayWrapper from './display-wrapper'
 import { TagsView, resolveTagLabels } from '~/components/ui/tags-view'
 
@@ -8,7 +8,7 @@ import { TagsView, resolveTagLabels } from '~/components/ui/tags-view'
  * Renders tags as small badges, looking up labels from field options
  */
 export function DisplayTags() {
-  const { value, field } = usePropertyContext()
+  const { value, field } = useFieldContext()
   const options = field?.options?.options || []
   const tags = resolveTagLabels(value, options)
   const copyText = tags.join(', ')

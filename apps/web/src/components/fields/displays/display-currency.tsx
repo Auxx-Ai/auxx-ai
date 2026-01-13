@@ -3,7 +3,7 @@
 
 import { useMemo } from 'react'
 import DisplayWrapper from './display-wrapper'
-import { usePropertyContext } from '../property-provider'
+import { useFieldContext } from './display-field'
 import { formatCurrency, type CurrencyDisplayOptions } from '@auxx/utils'
 
 /**
@@ -11,7 +11,7 @@ import { formatCurrency, type CurrencyDisplayOptions } from '@auxx/utils'
  * Renders a currency value with proper formatting based on field options
  */
 export function DisplayCurrency() {
-  const { value, field } = usePropertyContext()
+  const { value, field } = useFieldContext()
 
   const options: CurrencyDisplayOptions = useMemo(() => {
     return field.options?.currency || {
