@@ -37,8 +37,6 @@ import { Button } from '@auxx/ui/components/button'
  * Main Timeline Container Component
  */
 interface TimelineProps {
-  entityType: string
-  entityId: string
   events: TimelineItem[]
   onLoadMore?: () => void
   hasMore?: boolean

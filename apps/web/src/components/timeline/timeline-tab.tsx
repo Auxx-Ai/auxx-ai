@@ -5,17 +5,12 @@ import { api } from '~/trpc/react'
 import { Clock, History } from 'lucide-react'
 import { Timeline } from './timeline'
 import { EmptyState } from '~/components/global/empty-state'
-import { isCustomEntityType, type TimelineEntityType } from '@auxx/lib/timeline/client'
-
-/** Supported entity types for timeline - system types or custom entity types */
-type EntityType = TimelineEntityType | string
+import { getDefinitionId, isSystemModelType, type ResourceId } from '@auxx/types/resource'
 
 /** Props for TimelineTab component */
 interface TimelineTabProps {
-  /** Type of entity (contact, ticket, etc. or entity:definitionId) */
-  entityType: EntityType
-  /** ID of the entity */
-  entityId: string
+  /** ResourceId in format "entityDefinitionId:entityInstanceId" */
+  resourceId: ResourceId
   /** Optional limit for pagination */
   limit?: number
   /** Optional: disable event grouping */
@@ -101,8 +96,7 @@ const DEFAULT_CUSTOM_ENTITY_EMPTY_STATE = {
  * Shows timeline events for a specific entity with infinite scroll
  */
 export function TimelineTab({
-  entityType,
-  entityId,
+  resourceId,
   limit = 50,
   isGroupingDisabled = false,
   emptyTitle,
@@ -112,8 +106,7 @@ export function TimelineTab({
   const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
     api.timeline.getTimeline.useInfiniteQuery(
       {
-        entityType,
-        entityId,
+        resourceId,
         limit,
         isGroupingDisabled,
       },
@@ -139,7 +132,7 @@ export function TimelineTab({
   if (events.length === 0) {
     return (
       <TimelineEmpty
-        entityType={entityType}
+        resourceId={resourceId}
         customTitle={emptyTitle}
         customDescription={emptyDescription}
       />
@@ -148,8 +141,6 @@ export function TimelineTab({
 
   return (
     <Timeline
-      entityType={entityType}
-      entityId={entityId}
       events={events}
       onLoadMore={() => fetchNextPage()}
       hasMore={hasNextPage}
@@ -163,18 +154,21 @@ export function TimelineTab({
  * Empty state component
  */
 function TimelineEmpty({
-  entityType,
+  resourceId,
   customTitle,
   customDescription,
 }: {
-  entityType: string
+  resourceId: ResourceId
   customTitle?: string
   customDescription?: React.ReactNode
 }) {
+  // Get entityDefinitionId from resourceId
+  const entityDefinitionId = getDefinitionId(resourceId)
+
   // Get config - use custom if provided, else look up by type, else use default for custom entities
-  const config = isCustomEntityType(entityType)
-    ? DEFAULT_CUSTOM_ENTITY_EMPTY_STATE
-    : EMPTY_STATE_CONFIG[entityType] || DEFAULT_CUSTOM_ENTITY_EMPTY_STATE
+  const config = isSystemModelType(entityDefinitionId)
+    ? EMPTY_STATE_CONFIG[entityDefinitionId] || DEFAULT_CUSTOM_ENTITY_EMPTY_STATE
+    : DEFAULT_CUSTOM_ENTITY_EMPTY_STATE
 
   return (
     <EmptyState

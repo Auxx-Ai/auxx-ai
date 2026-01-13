@@ -61,11 +61,7 @@ export type {
   ResourceFieldRegistry,
   ResourceTableDefinition,
 } from './registry'
-export type {
-  ResourceDisplayConfig,
-  OrgScopingStrategy,
-  JoinScopingConfig,
-} from './registry'
+export type { ResourceDisplayConfig, OrgScopingStrategy, JoinScopingConfig } from './registry'
 
 // Resource types (system + custom)
 export {
@@ -73,8 +69,6 @@ export {
   isCustomResource,
   isSystemResourceId,
   isCustomResourceId,
-  getEntitySlug,
-  buildCustomResourceId,
 } from './registry'
 export type {
   Resource,

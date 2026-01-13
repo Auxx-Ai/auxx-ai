@@ -1,6 +1,7 @@
 // packages/lib/src/seed/entity-seeder.ts
 
 import { type Database, schema } from '@auxx/database'
+import { and, eq } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
 import { generateId } from '@auxx/utils/generateId'
 
@@ -41,6 +42,9 @@ interface SystemEntityDef {
   icon: string
   color: string
   fields: SystemFieldDef[]
+  primaryDisplayFieldAttribute?: string
+  secondaryDisplayFieldAttribute?: string
+  avatarFieldAttribute?: string
 }
 
 /**
@@ -65,14 +69,32 @@ function generateSortOrder(index: number): string {
  */
 const CONTACT_FIELDS: SystemFieldDef[] = [
   {
+    name: 'Full Name',
+    type: 'TEXT',
+    systemAttribute: 'full_name',
+    required: false,
+    isUnique: false,
+    isCreatable: false,
+    isUpdatable: false,
+    isComputed: true,
+    isSortable: true,
+    isFilterable: true,
+    options: {
+      computedFrom: ['first_name', 'last_name'],
+      computeFormat: '{first_name} {last_name}',
+    },
+    position: 0,
+  },
+  {
     name: 'Email',
     type: 'EMAIL',
     systemAttribute: 'primary_email',
     required: true,
     isUnique: true,
+    position: 1,
   },
-  { name: 'First Name', type: 'TEXT', systemAttribute: 'first_name' },
-  { name: 'Last Name', type: 'TEXT', systemAttribute: 'last_name' },
+  { name: 'First Name', type: 'TEXT', systemAttribute: 'first_name', position: 2 },
+  { name: 'Last Name', type: 'TEXT', systemAttribute: 'last_name', position: 3 },
   { name: 'Phone', type: 'PHONE_INTL', systemAttribute: 'phone' },
   {
     name: 'Status',
@@ -214,6 +236,8 @@ const SYSTEM_ENTITIES: SystemEntityDef[] = [
     icon: 'users',
     color: 'blue',
     fields: CONTACT_FIELDS,
+    primaryDisplayFieldAttribute: 'full_name',
+    secondaryDisplayFieldAttribute: 'primary_email',
   },
   {
     entityType: 'ticket',
@@ -223,6 +247,8 @@ const SYSTEM_ENTITIES: SystemEntityDef[] = [
     icon: 'tags',
     color: 'orange',
     fields: TICKET_FIELDS,
+    primaryDisplayFieldAttribute: 'ticket_title',
+    secondaryDisplayFieldAttribute: 'ticket_number',
   },
   {
     entityType: 'part',
@@ -232,6 +258,8 @@ const SYSTEM_ENTITIES: SystemEntityDef[] = [
     icon: 'boxes',
     color: 'green',
     fields: PART_FIELDS,
+    primaryDisplayFieldAttribute: 'part_title',
+    secondaryDisplayFieldAttribute: 'part_sku',
   },
 ]
 
@@ -315,6 +343,63 @@ export class EntitySeeder {
         organizationId: this.organizationId,
         entityDefinitionId: createdDef.id,
       })
+
+      // Step 3: Query created fields by systemAttribute to link as display fields
+      const fieldsToLink: {
+        primaryDisplayFieldId?: string
+        secondaryDisplayFieldId?: string
+        avatarFieldId?: string
+      } = {}
+
+      if (entityDef.primaryDisplayFieldAttribute) {
+        const primaryField = await tx.query.CustomField.findFirst({
+          where: and(
+            eq(schema.CustomField.entityDefinitionId, createdDef.id),
+            eq(schema.CustomField.systemAttribute, entityDef.primaryDisplayFieldAttribute)
+          ),
+        })
+        if (primaryField) {
+          fieldsToLink.primaryDisplayFieldId = primaryField.id
+        }
+      }
+
+      if (entityDef.secondaryDisplayFieldAttribute) {
+        const secondaryField = await tx.query.CustomField.findFirst({
+          where: and(
+            eq(schema.CustomField.entityDefinitionId, createdDef.id),
+            eq(schema.CustomField.systemAttribute, entityDef.secondaryDisplayFieldAttribute)
+          ),
+        })
+        if (secondaryField) {
+          fieldsToLink.secondaryDisplayFieldId = secondaryField.id
+        }
+      }
+
+      if (entityDef.avatarFieldAttribute) {
+        const avatarField = await tx.query.CustomField.findFirst({
+          where: and(
+            eq(schema.CustomField.entityDefinitionId, createdDef.id),
+            eq(schema.CustomField.systemAttribute, entityDef.avatarFieldAttribute)
+          ),
+        })
+        if (avatarField) {
+          fieldsToLink.avatarFieldId = avatarField.id
+        }
+      }
+
+      // Step 4: Update EntityDefinition with display field IDs
+      if (Object.keys(fieldsToLink).length > 0) {
+        await tx
+          .update(schema.EntityDefinition)
+          .set(fieldsToLink)
+          .where(eq(schema.EntityDefinition.id, createdDef.id))
+
+        logger.info(`Linked display fields for ${entityDef.entityType}`, {
+          organizationId: this.organizationId,
+          entityDefinitionId: createdDef.id,
+          ...fieldsToLink,
+        })
+      }
     })
   }
 }

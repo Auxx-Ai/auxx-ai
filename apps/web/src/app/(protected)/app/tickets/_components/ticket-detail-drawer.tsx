@@ -623,7 +623,7 @@ export function TicketDetailDrawer({ ticketId, open, onOpenChange }: TicketDetai
 
             {/* Timeline Tab */}
             <TabsContent value="timeline" className="flex-1 flex flex-col min-h-0">
-              <TimelineTab entityType="ticket" entityId={ticket.id} />
+              {resourceId && <TimelineTab resourceId={resourceId} />}
             </TabsContent>
 
             {/* Comments Tab */}

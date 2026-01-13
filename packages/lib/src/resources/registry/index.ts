@@ -190,14 +190,7 @@ export { ResourceRegistryService } from './resource-registry-service'
 
 // Re-export entity instance system fields
 export { ENTITY_INSTANCE_FIELDS, getEntityInstanceFields } from './entity-instance-fields'
-export {
-  isSystemResource,
-  isCustomResource,
-  isSystemResourceId,
-  isCustomResourceId,
-  getEntitySlug,
-  buildCustomResourceId,
-} from './types'
+export { isSystemResource, isCustomResource, isSystemResourceId, isCustomResourceId } from './types'
 export type {
   Resource,
   SystemResource,

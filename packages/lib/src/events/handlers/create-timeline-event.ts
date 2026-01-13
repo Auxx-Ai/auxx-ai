@@ -29,9 +29,9 @@ import {
   TimelineEntityType,
   TimelineActorType,
   EntityInstanceEventType,
-  createCustomEntityType,
 } from '../../timeline/event-types'
 import type { CreateTimelineEventInput } from '../../timeline/types'
+import { toResourceId } from '@auxx/types/resource'
 
 const logger = createScopedLogger('handler:create-timeline-event')
 
@@ -56,7 +56,7 @@ export const createTimelineEvent = async ({ data: event }: { data: AuxxEvent }) 
     logger.info('Timeline event created', {
       eventType: event.type,
       timelineEventType: timelineData.eventType,
-      entityId: timelineData.entityId,
+      resourceId: timelineData.resourceId,
     })
   } catch (error) {
     logger.error('Failed to create timeline event', {
@@ -83,10 +83,8 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput | null {
 
       return {
         eventType: ContactEventType.TICKET_CREATED,
-        entityType: TimelineEntityType.CONTACT,
-        entityId: data.contactId as string,
-        relatedEntityType: 'ticket',
-        relatedEntityId: data.ticketId,
+        resourceId: toResourceId('contact', data.contactId as string),
+        relatedResourceId: toResourceId('ticket', data.ticketId),
         actorType: TimelineActorType.USER,
         actorId: data.userId,
         eventData: {
@@ -106,10 +104,8 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput | null {
 
       return {
         eventType: ContactEventType.TICKET_STATUS_CHANGED,
-        entityType: TimelineEntityType.CONTACT,
-        entityId: data.contactId as string,
-        relatedEntityType: 'ticket',
-        relatedEntityId: data.ticketId,
+        resourceId: toResourceId('contact', data.contactId as string),
+        relatedResourceId: toResourceId('ticket', data.ticketId),
         actorType: TimelineActorType.USER,
         actorId: data.userId,
         eventData: {
@@ -137,10 +133,8 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput | null {
 
       return {
         eventType: ContactEventType.TICKET_UPDATED,
-        entityType: TimelineEntityType.CONTACT,
-        entityId: data.contactId as string,
-        relatedEntityType: 'ticket',
-        relatedEntityId: data.ticketId,
+        resourceId: toResourceId('contact', data.contactId as string),
+        relatedResourceId: toResourceId('ticket', data.ticketId),
         actorType: TimelineActorType.USER,
         actorId: data.userId,
         eventData: {
@@ -161,10 +155,8 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput | null {
 
       return {
         eventType: ContactEventType.EMAIL_RECEIVED,
-        entityType: TimelineEntityType.CONTACT,
-        entityId: data.contactId as string,
-        relatedEntityType: 'message',
-        relatedEntityId: data.messageId,
+        resourceId: toResourceId('contact', data.contactId as string),
+        relatedResourceId: toResourceId('message', data.messageId),
         actorType: TimelineActorType.SYSTEM,
         actorId: 'email-sync',
         eventData: {
@@ -184,10 +176,8 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput | null {
 
       return {
         eventType: ContactEventType.EMAIL_SENT,
-        entityType: TimelineEntityType.CONTACT,
-        entityId: data.contactId as string,
-        relatedEntityType: 'message',
-        relatedEntityId: data.messageId,
+        resourceId: toResourceId('contact', data.contactId as string),
+        relatedResourceId: toResourceId('message', data.messageId),
         actorType: 'userId' in data ? TimelineActorType.USER : TimelineActorType.SYSTEM,
         actorId: 'userId' in data ? (data.userId as string) : 'system',
         eventData: {
@@ -209,10 +199,8 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput | null {
 
       return {
         eventType: ContactEventType.CREATED,
-        entityType: TimelineEntityType.CONTACT,
-        entityId: data.contactId,
-        relatedEntityType: 'contact',
-        relatedEntityId: data.contactId,
+        resourceId: toResourceId('contact', data.contactId),
+        relatedResourceId: toResourceId('contact', data.contactId),
         actorType: data.userId ? TimelineActorType.USER : TimelineActorType.SYSTEM,
         actorId: data.userId || 'system',
         eventData: {
@@ -232,10 +220,8 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput | null {
 
       return {
         eventType: ContactEventType.UPDATED,
-        entityType: TimelineEntityType.CONTACT,
-        entityId: data.contactId,
-        relatedEntityType: 'contact',
-        relatedEntityId: data.contactId,
+        resourceId: toResourceId('contact', data.contactId),
+        relatedResourceId: toResourceId('contact', data.contactId),
         actorType: TimelineActorType.USER,
         actorId: data.userId,
         eventData: {
@@ -254,10 +240,8 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput | null {
 
       return {
         eventType: ContactEventType.MERGED,
-        entityType: TimelineEntityType.CONTACT,
-        entityId: data.contactId,
-        relatedEntityType: 'contact',
-        relatedEntityId: data.contactId,
+        resourceId: toResourceId('contact', data.contactId),
+        relatedResourceId: toResourceId('contact', data.contactId),
         actorType: TimelineActorType.USER,
         actorId: data.userId,
         eventData: {
@@ -274,10 +258,8 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput | null {
 
       return {
         eventType: ContactEventType.FIELD_UPDATED,
-        entityType: TimelineEntityType.CONTACT,
-        entityId: data.contactId,
-        relatedEntityType: 'custom_field',
-        relatedEntityId: data.fieldId,
+        resourceId: toResourceId('contact', data.contactId),
+        relatedResourceId: toResourceId('custom_field', data.fieldId),
         actorType: TimelineActorType.USER,
         actorId: data.userId,
         eventData: {
@@ -302,10 +284,8 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput | null {
 
       return {
         eventType: ContactEventType.GROUP_ADDED,
-        entityType: TimelineEntityType.CONTACT,
-        entityId: data.contactId,
-        relatedEntityType: 'customer_group',
-        relatedEntityId: data.groupId,
+        resourceId: toResourceId('contact', data.contactId),
+        relatedResourceId: toResourceId('customer_group', data.groupId),
         actorType: TimelineActorType.USER,
         actorId: data.userId,
         eventData: {
@@ -322,10 +302,8 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput | null {
 
       return {
         eventType: ContactEventType.GROUP_REMOVED,
-        entityType: TimelineEntityType.CONTACT,
-        entityId: data.contactId,
-        relatedEntityType: 'customer_group',
-        relatedEntityId: data.groupId,
+        resourceId: toResourceId('contact', data.contactId),
+        relatedResourceId: toResourceId('customer_group', data.groupId),
         actorType: TimelineActorType.USER,
         actorId: data.userId,
         eventData: {
@@ -345,10 +323,8 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput | null {
 
       return {
         eventType: ContactEventType.NOTE_ADDED,
-        entityType: TimelineEntityType.CONTACT,
-        entityId: data.entityId, // entityId IS the contactId
-        relatedEntityType: 'comment',
-        relatedEntityId: data.commentId,
+        resourceId: toResourceId('contact', data.entityId), // entityId IS the contactId
+        relatedResourceId: toResourceId('comment', data.commentId),
         actorType: TimelineActorType.USER,
         actorId: data.createdById,
         eventData: {
@@ -365,10 +341,8 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput | null {
 
       return {
         eventType: ContactEventType.NOTE_UPDATED,
-        entityType: TimelineEntityType.CONTACT,
-        entityId: data.entityId, // entityId IS the contactId
-        relatedEntityType: 'comment',
-        relatedEntityId: data.commentId,
+        resourceId: toResourceId('contact', data.entityId), // entityId IS the contactId
+        relatedResourceId: toResourceId('comment', data.commentId),
         actorType: TimelineActorType.USER,
         actorId: data.createdById,
         eventData: {
@@ -384,10 +358,8 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput | null {
 
       return {
         eventType: ContactEventType.NOTE_DELETED,
-        entityType: TimelineEntityType.CONTACT,
-        entityId: data.entityId, // entityId IS the contactId
-        relatedEntityType: 'comment',
-        relatedEntityId: data.commentId,
+        resourceId: toResourceId('contact', data.entityId), // entityId IS the contactId
+        relatedResourceId: toResourceId('comment', data.commentId),
         actorType: TimelineActorType.USER,
         actorId: data.createdById,
         eventData: {
@@ -402,10 +374,8 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput | null {
 
       return {
         eventType: ContactEventType.NOTE_ADDED, // Reuse NOTE_ADDED
-        entityType: TimelineEntityType.CONTACT,
-        entityId: data.entityId, // entityId IS the contactId
-        relatedEntityType: 'comment',
-        relatedEntityId: data.commentId,
+        resourceId: toResourceId('contact', data.entityId), // entityId IS the contactId
+        relatedResourceId: toResourceId('comment', data.commentId),
         actorType: TimelineActorType.USER,
         actorId: data.createdById,
         eventData: {
@@ -426,10 +396,8 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput | null {
 
       return {
         eventType: EntityInstanceEventType.CREATED,
-        entityType: createCustomEntityType(data.entityDefinitionId),
-        entityId: data.instanceId,
-        relatedEntityType: 'entity_instance',
-        relatedEntityId: data.instanceId,
+        resourceId: toResourceId(data.entityDefinitionId, data.instanceId),
+        relatedResourceId: toResourceId('entity_instance', data.instanceId),
         actorType: TimelineActorType.USER,
         actorId: data.userId,
         eventData: {
@@ -452,10 +420,8 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput | null {
 
       return {
         eventType,
-        entityType: createCustomEntityType(data.entityDefinitionId),
-        entityId: data.instanceId,
-        relatedEntityType: 'entity_instance',
-        relatedEntityId: data.instanceId,
+        resourceId: toResourceId(data.entityDefinitionId, data.instanceId),
+        relatedResourceId: toResourceId('entity_instance', data.instanceId),
         actorType: TimelineActorType.USER,
         actorId: data.userId,
         eventData: {
@@ -479,10 +445,8 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput | null {
 
       return {
         eventType,
-        entityType: createCustomEntityType(data.entityDefinitionId),
-        entityId: data.instanceId,
-        relatedEntityType: 'entity_instance',
-        relatedEntityId: data.instanceId,
+        resourceId: toResourceId(data.entityDefinitionId, data.instanceId),
+        relatedResourceId: toResourceId('entity_instance', data.instanceId),
         actorType: TimelineActorType.USER,
         actorId: data.userId,
         eventData: {

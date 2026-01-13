@@ -110,22 +110,3 @@ export function isCustomResourceId(id: string): id is CustomResourceId {
   // Not a system resource and has UUID format (minimum CUID2 length)
   return !isSystemResourceId(id) && id.length >= 20
 }
-
-/**
- * @deprecated Use resource.apiSlug instead.
- * Custom resource IDs are now UUID-based, not slug-based.
- * Get the apiSlug from the CustomResource object.
- */
-export function getEntitySlug(resourceId: CustomResourceId): string {
-  throw new Error('getEntitySlug is deprecated. Use resource.apiSlug instead.')
-}
-
-/**
- * @deprecated Custom resource IDs are now UUID-based, not slug-based.
- * Use the EntityDefinition UUID directly.
- */
-export function buildCustomResourceId(slug: string): CustomResourceId {
-  throw new Error(
-    'buildCustomResourceId is deprecated. Custom resource IDs are now UUID-based. Use the EntityDefinition ID directly.'
-  )
-}

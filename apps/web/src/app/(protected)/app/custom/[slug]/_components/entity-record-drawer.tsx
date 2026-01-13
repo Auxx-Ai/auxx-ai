@@ -20,7 +20,6 @@ import type { ResourceField } from '@auxx/lib/resources/client'
 import { parseResourceId, type ResourceId } from '@auxx/lib/field-values/client'
 import DrawerComments from '~/components/global/comments/drawer-comments'
 import { TimelineTab } from '~/components/timeline'
-import { createCustomEntityType } from '@auxx/lib/timeline/client'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
@@ -117,11 +116,6 @@ export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
         : null,
     [cachedRecord?.createdAt]
   )
-
-  // Create the entity type for timeline (entity:definitionId format)
-  const timelineEntityType = React.useMemo(() => {
-    return entityDefinitionId ? createCustomEntityType(entityDefinitionId) : null
-  }, [entityDefinitionId])
 
   if (!open || !resourceId) return null
 
@@ -242,10 +236,7 @@ export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
 
                 <TabsContent value="timeline" className="w-full">
                   <ScrollArea className="flex-1">
-                    <MemoTimelineTab
-                      entityType={timelineEntityType!}
-                      entityId={entityInstanceId!}
-                    />
+                    <MemoTimelineTab resourceId={resourceId!} />
                   </ScrollArea>
                 </TabsContent>
 

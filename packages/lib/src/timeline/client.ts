@@ -6,12 +6,7 @@ export {
   TimelineActorType,
   ContactEventType,
   EntityInstanceEventType,
-  ENTITY_TYPE_PREFIX,
   SYSTEM_ENTITY_TYPES,
-  isSystemEntityType,
-  isCustomEntityType,
-  getEntityDefinitionId,
-  createCustomEntityType,
   type TimelineEventType,
 } from './event-types'
 

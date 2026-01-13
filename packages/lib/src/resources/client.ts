@@ -34,8 +34,6 @@ export {
   isCustomResource,
   isSystemResourceId,
   isCustomResourceId,
-  getEntitySlug,
-  buildCustomResourceId,
 } from './registry'
 export type {
   Resource,

@@ -2,30 +2,17 @@
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { TRPCError } from '@trpc/server'
-import {
-  TimelineService,
-  isSystemEntityType,
-  isCustomEntityType,
-  getEntityDefinitionId,
-} from '@auxx/lib/timeline'
+import { TimelineService } from '@auxx/lib/timeline'
 import { and, eq } from 'drizzle-orm'
 import * as schema from '@auxx/database'
-
-/** Validate entityType is either a system type or custom entity type */
-const entityTypeSchema = z
-  .string()
-  .min(1)
-  .refine((val) => isSystemEntityType(val) || isCustomEntityType(val), {
-    message: 'entityType must be a valid system type or custom entity type (entity:id)',
-  })
+import { resourceIdSchema, parseResourceId, getDefinitionId, isSystemModelType } from '@auxx/types/resource'
 
 export const timelineRouter = createTRPCRouter({
   /** Get timeline for an entity */
   getTimeline: protectedProcedure
     .input(
       z.object({
-        entityType: entityTypeSchema,
-        entityId: z.string(),
+        resourceId: resourceIdSchema,
         cursor: z.string().optional(),
         limit: z.number().min(1).max(200).default(100),
         isGroupingDisabled: z.boolean().optional().default(false),
@@ -38,38 +25,45 @@ export const timelineRouter = createTRPCRouter({
         const { organizationId } = ctx.session
         const timelineService = new TimelineService(ctx.db)
 
-        // Permission check for custom entities
-        if (isCustomEntityType(input.entityType)) {
-          const entityDefinitionId = getEntityDefinitionId(input.entityType)
-          if (entityDefinitionId) {
-            // Verify the entity instance belongs to this organization
-            const instance = await ctx.db.query.EntityInstance.findFirst({
-              where: and(
-                eq(schema.EntityInstance.id, input.entityId),
-                eq(schema.EntityInstance.organizationId, organizationId)
-              ),
-              columns: { id: true, entityDefinitionId: true },
+        // Parse resourceId to get components for permission check
+        const entityDefinitionId = getDefinitionId(input.resourceId)
+
+        // Permission check for custom entities (non-system types)
+        if (!isSystemModelType(entityDefinitionId)) {
+          const { entityInstanceId } = parseResourceId(input.resourceId)
+
+          // Verify the entity instance belongs to this organization
+          const instance = await ctx.db.query.EntityInstance.findFirst({
+            where: and(
+              eq(schema.EntityInstance.id, entityInstanceId),
+              eq(schema.EntityInstance.organizationId, organizationId)
+            ),
+            columns: { id: true, entityDefinitionId: true },
+          })
+
+          if (!instance) {
+            throw new TRPCError({
+              code: 'NOT_FOUND',
+              message: 'Entity instance not found',
             })
+          }
 
-            if (!instance) {
-              throw new TRPCError({
-                code: 'NOT_FOUND',
-                message: 'Entity instance not found',
-              })
-            }
-
-            if (instance.entityDefinitionId !== entityDefinitionId) {
-              throw new TRPCError({
-                code: 'BAD_REQUEST',
-                message: 'Entity type mismatch',
-              })
-            }
+          if (instance.entityDefinitionId !== entityDefinitionId) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Entity type mismatch',
+            })
           }
         }
 
         return await timelineService.getTimeline({
           organizationId,
-          ...input,
+          resourceId: input.resourceId,
+          cursor: input.cursor,
+          limit: input.limit,
+          isGroupingDisabled: input.isGroupingDisabled,
+          actorFilter: input.actorFilter,
+          eventTypeFilter: input.eventTypeFilter,
         })
       } catch (error: any) {
         if (error instanceof TRPCError) throw error
@@ -84,8 +78,7 @@ export const timelineRouter = createTRPCRouter({
   getRelatedTimeline: protectedProcedure
     .input(
       z.object({
-        relatedEntityType: z.string(),
-        relatedEntityId: z.string(),
+        relatedResourceId: resourceIdSchema,
         limit: z.number().min(1).max(100).default(50),
       })
     )
@@ -96,8 +89,7 @@ export const timelineRouter = createTRPCRouter({
 
         return await timelineService.getRelatedTimeline(
           organizationId,
-          input.relatedEntityType,
-          input.relatedEntityId,
+          input.relatedResourceId,
           input.limit
         )
       } catch (error: any) {

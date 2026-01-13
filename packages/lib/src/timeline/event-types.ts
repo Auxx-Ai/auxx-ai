@@ -9,42 +9,8 @@ export enum TimelineEntityType {
   USER = 'user',
 }
 
-/** Prefix for custom entity types in timeline */
-export const ENTITY_TYPE_PREFIX = 'entity:'
-
 /** System entity type values */
 export const SYSTEM_ENTITY_TYPES = Object.values(TimelineEntityType)
-
-/**
- * Check if entityType is a system type (from enum)
- */
-export function isSystemEntityType(entityType: string): entityType is TimelineEntityType {
-  return SYSTEM_ENTITY_TYPES.includes(entityType as TimelineEntityType)
-}
-
-/**
- * Check if entityType is a custom entity (prefixed with 'entity:')
- */
-export function isCustomEntityType(entityType: string): boolean {
-  return entityType.startsWith(ENTITY_TYPE_PREFIX)
-}
-
-/**
- * Extract entityDefinitionId from custom entity type
- * @example getEntityDefinitionId('entity:clxyz123') => 'clxyz123'
- */
-export function getEntityDefinitionId(entityType: string): string | null {
-  if (!isCustomEntityType(entityType)) return null
-  return entityType.slice(ENTITY_TYPE_PREFIX.length)
-}
-
-/**
- * Create custom entity type from entityDefinitionId
- * @example createCustomEntityType('clxyz123') => 'entity:clxyz123'
- */
-export function createCustomEntityType(entityDefinitionId: string): string {
-  return `${ENTITY_TYPE_PREFIX}${entityDefinitionId}`
-}
 
 /** Actor types for timeline events */
 export enum TimelineActorType {

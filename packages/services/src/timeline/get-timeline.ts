@@ -5,6 +5,7 @@ import { eq, and, desc, inArray, lt, or } from 'drizzle-orm'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import type { TimelineEventEntity } from '@auxx/database/models'
+import { parseResourceId, toResourceId, type ResourceId } from '@auxx/types/resource'
 
 /**
  * Cursor for timeline pagination
@@ -19,8 +20,7 @@ export interface TimelineCursor {
  */
 export interface GetTimelineEventsInput {
   organizationId: string
-  entityType: string
-  entityId: string
+  resourceId: ResourceId
   cursor?: TimelineCursor
   limit?: number
   actorFilter?: string[]
@@ -28,10 +28,18 @@ export interface GetTimelineEventsInput {
 }
 
 /**
+ * Timeline event with resourceId attached
+ */
+export interface TimelineEventWithResourceId extends TimelineEventEntity {
+  resourceId: ResourceId
+  relatedResourceId?: ResourceId
+}
+
+/**
  * Output for getting timeline events
  */
 export interface GetTimelineEventsOutput {
-  events: TimelineEventEntity[]
+  events: TimelineEventWithResourceId[]
   hasMore: boolean
   nextCursor?: TimelineCursor
 }
@@ -45,13 +53,15 @@ export interface GetTimelineEventsOutput {
 export async function getTimelineEvents(input: GetTimelineEventsInput) {
   const {
     organizationId,
-    entityType,
-    entityId,
+    resourceId,
     cursor,
     limit = 100,
     actorFilter,
     eventTypeFilter,
   } = input
+
+  // Parse resourceId to get components
+  const { entityDefinitionId: entityType, entityInstanceId: entityId } = parseResourceId(resourceId)
 
   // Build where conditions
   const conditions = [
@@ -98,15 +108,15 @@ export async function getTimelineEvents(input: GetTimelineEventsInput) {
     return dbResult
   }
 
-  const events = dbResult.value
+  const rawEvents = dbResult.value
 
   // Determine next cursor and trim to requested limit
   let nextCursor: TimelineCursor | undefined
   let hasMore = false
 
-  if (events.length > limit) {
+  if (rawEvents.length > limit) {
     hasMore = true
-    const cursorEvent = events[limit]
+    const cursorEvent = rawEvents[limit]
     if (cursorEvent) {
       nextCursor = {
         startedAt: cursorEvent.startedAt,
@@ -114,11 +124,20 @@ export async function getTimelineEvents(input: GetTimelineEventsInput) {
       }
     }
     // Remove the extra event
-    events.pop()
+    rawEvents.pop()
   }
 
+  // Attach resourceId to each event
+  const eventsWithResourceId: TimelineEventWithResourceId[] = rawEvents.map((event) => ({
+    ...event,
+    resourceId: toResourceId(event.entityType, event.entityId),
+    ...(event.relatedEntityType && event.relatedEntityId
+      ? { relatedResourceId: toResourceId(event.relatedEntityType, event.relatedEntityId) }
+      : {}),
+  })) as TimelineEventWithResourceId[]
+
   return ok({
-    events: events as TimelineEventEntity[],
+    events: eventsWithResourceId,
     hasMore,
     nextCursor,
   })
