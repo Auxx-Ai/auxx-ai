@@ -43,10 +43,10 @@ import type { CustomResource } from '../../../resources/registry/types'
 import type { ResourceField } from '../../../resources/registry/field-types'
 /**
  * CRUD node data interface
- * Now supports both system resources (contact, ticket) and custom entities (UUID format)
+ * Supports both system resources (contact, ticket) and custom entities (UUID/CUID format)
  */
 interface CrudNodeData {
-  resourceType: string // Now accepts system ('contact', 'ticket') and custom (UUID) resources
+  resourceType: string // System: 'contact', 'ticket' | Custom: UUID/CUID like 'f08vj083a926klhzkr2tbfvy'
   mode: 'create' | 'update' | 'delete'
   resourceId?: string // For update/delete operations
   data: Record<string, any> // Field values
@@ -492,7 +492,7 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
         const ref = createResourceReference(resourceType, result.id, organizationId)
 
         // For custom entities, use setEntityVariables (same as triggers)
-        if (resourceType.startsWith('entity_')) {
+        if (isCustomResourceId(resourceType)) {
           // Build resourceData in the format setEntityVariables expects
           const entityData = {
             id: result.id,
@@ -503,9 +503,9 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
           }
 
           // This sets variables exactly like triggers do:
-          // - nodeId.entity_xxx (ResourceReference)
-          // - nodeId.entity_xxx.id
-          // - nodeId.entity_xxx.fieldName (for each field)
+          // - nodeId.{entityDefId} (ResourceReference) - e.g., nodeId.f08vj083a926klhzkr2tbfvy
+          // - nodeId.{entityDefId}.id
+          // - nodeId.{entityDefId}.fieldName (for each field)
           setEntityVariables(resourceType, entityData, contextManager, node.nodeId)
 
           // Also store under 'record' key for convenience
@@ -566,7 +566,7 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
   }
   /**
    * Execute CRUD operation based on resource type
-   * Supports both system resources (contact, ticket) and custom entities (entity_xxx)
+   * Supports both system resources (contact, ticket) and custom entities (UUID/CUID format)
    */
   private async executeCrudOperation(
     resourceType: string,
@@ -577,8 +577,8 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
   ): Promise<any> {
     const organizationId = (await contextManager.getVariable('sys.organizationId')) as string
 
-    // Check if this is a custom entity (entity_xxx format)
-    if (resourceType.startsWith('entity_')) {
+    // Check if this is a custom entity (UUID/CUID format)
+    if (isCustomResourceId(resourceType)) {
       const resourceService = this.getResourceService(organizationId, database)
       const resource = await resourceService.getById(resourceType)
 

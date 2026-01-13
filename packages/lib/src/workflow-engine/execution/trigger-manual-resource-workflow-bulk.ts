@@ -246,7 +246,7 @@ export async function triggerManualResourceWorkflowBulk(params: {
 
 /**
  * Batch fetch resources by IDs
- * Supports both system resources (contact, ticket, etc.) and custom entities (entity_xxx)
+ * Supports both system resources (contact, ticket, etc.) and custom entities (UUID/CUID format)
  *
  * For system resources: Uses single batch query with IN clause
  * For custom entities: Fetches individually (no batch query available yet)
@@ -260,7 +260,7 @@ async function fetchResourcesByIds(
 ): Promise<Map<string, any>> {
   const resourcesMap = new Map<string, any>()
 
-  // Handle custom entities (entity_xxx)
+  // Handle custom entities (UUID/CUID format)
   if (isCustomResourceId(resourceType)) {
     // Fetch each entity instance individually
     // TODO: Implement batch fetch for entity instances when available

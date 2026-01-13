@@ -1,7 +1,7 @@
 // apps/web/src/components/custom-fields/ui/entity-instance-dialog.tsx
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -100,9 +100,17 @@ export function EntityInstanceDialog({
     onConfirmedClose: handleConfirmedClose,
   })
 
-  // Initialize form values when dialog opens
+  // Track if dialog has been initialized to prevent re-initialization on dependency changes
+  const isInitialized = useRef(false)
+
+  // Initialize form values when dialog opens (but only once per open/close cycle)
   useEffect(() => {
     if (open) {
+      // Only initialize if not already initialized
+      // This prevents form reset when editableFields or other deps change during editing
+      if (isInitialized.current) return
+      isInitialized.current = true
+
       const initValues: Record<string, unknown> = {}
 
       if (editingInstanceId) {
@@ -135,6 +143,9 @@ export function EntityInstanceDialog({
       setInitial(initValues)
       setErrors({})
       setTouched(new Set())
+    } else {
+      // Reset initialization flag when dialog closes
+      isInitialized.current = false
     }
   }, [open, editingInstanceId, editableFields, presetValues, setInitial, getValue])
 

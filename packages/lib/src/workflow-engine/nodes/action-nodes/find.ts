@@ -27,7 +27,7 @@ import type { TableId } from '../../../resources/registry/field-registry'
 import { database, schema, type Database } from '@auxx/database'
 
 interface FindNodeData {
-  resourceType: string // Now supports both system resources and custom entities (UUID format)
+  resourceType: string // Supports both system resources and custom entities (UUID/CUID format)
   findMode: 'findOne' | 'findMany'
   conditions: GenericCondition[] // For backward compatibility
   conditionGroups: ConditionGroup[] // Primary grouping system

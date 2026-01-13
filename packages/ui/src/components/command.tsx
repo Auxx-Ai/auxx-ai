@@ -314,7 +314,9 @@ function CommandInput({
     onValueChange?.('')
   }, [onValueChange])
   return (
-    <div className="flex items-center border-b border-border/50 ps-3 pe-1" cmdk-input-wrapper="">
+    <div
+      className="flex items-center border-b border-border/50 dark:border-[#323842]/80 ps-3 pe-1"
+      cmdk-input-wrapper="">
       <Search className="mr-2 size-4 shrink-0 opacity-50" />
       <CommandPrimitive.Input
         className={cn(
@@ -374,7 +376,10 @@ function CommandSeparator({
   ...props
 }: React.ComponentProps<typeof CommandPrimitive.Separator>) {
   return (
-    <CommandPrimitive.Separator className={cn('-mx-1 h-px bg-border/50', className)} {...props} />
+    <CommandPrimitive.Separator
+      className={cn('-mx-1 h-px bg-border/50 dark:bg-[#323842]/80', className)}
+      {...props}
+    />
   )
 }
 //removed per https://github.com/pacocoursey/cmdk/issues/244: data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50
@@ -382,7 +387,7 @@ function CommandItem({ className, ...props }: React.ComponentProps<typeof Comman
   return (
     <CommandPrimitive.Item
       className={cn(
-        'relative flex min-h-7 cursor-default select-none items-center gap-2 rounded-full ps-2 pe-1 py-1 text-sm outline-hidden data-[selected=true]:ring-border-illustration  data-[selected=true]:ring-1 data-[selected=true]:bg-accent/50 data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
+        'relative flex min-h-7 cursor-default select-none items-center gap-2 rounded-full ps-2 pe-1 py-1 text-sm outline-hidden data-[selected=true]:ring-border-illustration  data-[selected=true]:ring-1 data-[selected=true]:bg-accent/50 dark:data-[selected=true]:bg-[#404754]/50  data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
         className
       )}
       {...props}

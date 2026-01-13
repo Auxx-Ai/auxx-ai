@@ -16,6 +16,7 @@ import { getCustomFields, checkUniqueValue } from '@auxx/services/custom-fields'
 import { publisher } from '../events/publisher'
 import { CommentService } from '../comments'
 import { invalidateSnapshots } from '../snapshot'
+import { toResourceId } from '../resources/resource-id'
 
 /**
  * Helper to unwrap neverthrow Result and throw on error
@@ -341,9 +342,8 @@ export class EntityInstanceService {
 
       if (valueArray.length > 0) {
         await fieldValueService.setValuesForEntity({
-          entityId: instance.id,
+          resourceId: toResourceId(entityDefinitionId, instance.id),
           values: valueArray,
-          modelType: 'entity',
         })
       }
     }
@@ -398,9 +398,8 @@ export class EntityInstanceService {
 
       if (valueArray.length > 0) {
         await fieldValueService.setValuesForEntity({
-          entityId: instanceId,
+          resourceId: toResourceId(instance.entityDefinitionId, instanceId),
           values: valueArray,
-          modelType: 'entity',
         })
       }
     }

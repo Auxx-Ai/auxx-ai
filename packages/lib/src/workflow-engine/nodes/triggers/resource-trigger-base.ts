@@ -169,7 +169,7 @@ export class ResourceTriggerBase extends BaseNodeProcessor {
       errors.push('Resource type is required in node data')
     } else {
       const resourceType = node.data.resourceType as string
-      // Custom entities (entity_xxx) skip static config validation
+      // Custom entities (UUID/CUID format) skip static config validation
       // They will be validated at runtime when we have database access
       if (!isCustomResourceId(resourceType) && !RESOURCE_CONFIGS[resourceType as TableId]) {
         errors.push(`Invalid resource type: "${resourceType}"`)

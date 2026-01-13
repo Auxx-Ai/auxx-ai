@@ -29,18 +29,18 @@ function VirtualTableCellInner<TData>({ cell, columnId, className }: VirtualTabl
   const ref = useRef<HTMLDivElement>(null)
 
   // DEBUG: Flash yellow on re-render to visualize which cells are updating
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
+  // useEffect(() => {
+  //   const el = ref.current
+  //   if (!el) return
 
-    el.style.backgroundColor = 'rgba(255, 200, 0, 0.5)'
-    el.style.transition = 'background-color 0.5s ease-out'
-    const timeout = setTimeout(() => {
-      el.style.backgroundColor = ''
-    }, 100)
+  //   el.style.backgroundColor = 'rgba(255, 200, 0, 0.5)'
+  //   el.style.transition = 'background-color 0.5s ease-out'
+  //   const timeout = setTimeout(() => {
+  //     el.style.backgroundColor = ''
+  //   }, 100)
 
-    return () => clearTimeout(timeout)
-  })
+  //   return () => clearTimeout(timeout)
+  // })
 
   return (
     <div ref={ref} data-col={columnId} className={cn('flex items-center h-full', className)}>
