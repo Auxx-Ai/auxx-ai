@@ -219,7 +219,8 @@ export class EntityInstanceService {
 
     // Soft delete associated comments (entityType is the entityDefinitionId for custom entities)
     const commentService = new CommentService(this.organizationId, this.userId, database)
-    await commentService.deleteCommentsByEntity(id, instance.entityDefinitionId)
+    const resourceId = toResourceId(instance.entityDefinitionId, id)
+    await commentService.deleteCommentsByResourceId(resourceId)
 
     const result = await deleteEntityInstance({
       id,

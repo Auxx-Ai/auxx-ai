@@ -1,5 +1,6 @@
 // lib/organization/organization-seeder.ts
 import { database as db, schema, type Database } from '@auxx/database'
+import { eq } from 'drizzle-orm'
 import { InboxService } from '../inboxes'
 import { SettingsInitializer } from '../settings/settings-initializer'
 import { createScopedLogger } from '@auxx/logger'
@@ -10,6 +11,7 @@ import { SubscriptionService } from '@auxx/billing'
 import { env } from '@auxx/config/server'
 import { WEBAPP_URL } from '@auxx/config/server'
 import { DEFAULT_QUOTA_LIMITS, ProviderQuotaType } from '../ai/providers/types'
+import { EntitySeeder } from './entity-seeder'
 
 const logger = createScopedLogger('organization-seeder')
 
@@ -105,6 +107,8 @@ export class OrganizationSeeder {
     try {
       // Initialize settings first as other components may depend on them
       await this.seedSettings(organizationId)
+      // Seed system entities first as other components may reference them
+      await this.seedEntities(organizationId)
       // Seed all other components in parallel for better performance
       await Promise.all([
         this.seedInboxes(organizationId),
@@ -258,6 +262,17 @@ export class OrganizationSeeder {
     await settingsInitializer.initializeOrganizationSettings(organizationId)
     logger.info('Successfully initialized settings for organization', { organizationId })
   }
+
+  /**
+   * Seed system entities (Contact, Ticket, Part) with their custom fields
+   * @param organizationId The organization ID
+   */
+  private async seedEntities(organizationId: string): Promise<void> {
+    logger.info('Seeding system entities for organization', { organizationId })
+    const entitySeeder = new EntitySeeder(this.db, organizationId)
+    await entitySeeder.seedSystemEntities()
+    logger.info('Successfully seeded system entities for organization', { organizationId })
+  }
   /**
    * Create default inboxes for a new organization
    * @param organizationId The organization ID
@@ -348,6 +363,8 @@ export class OrganizationSeeder {
       await settingsInitializer.updateOrganizationWithNewSettings(organizationId)
       // Check if organization has the required inboxes, create if missing
       await this.ensureDefaultInboxes(organizationId)
+      // Check if organization has system entities, create if missing
+      await this.ensureSystemEntities(organizationId)
       // Add other update functions as needed
       logger.info('Successfully updated existing organization', { organizationId })
     } catch (error) {
@@ -374,6 +391,28 @@ export class OrganizationSeeder {
         allowAllMembers: true,
       })
       logger.info('Created default inbox for existing organization', { organizationId })
+    }
+  }
+
+  /**
+   * Ensure an organization has the required system entities (Contact, Ticket, Part)
+   * @param organizationId The organization ID
+   */
+  private async ensureSystemEntities(organizationId: string): Promise<void> {
+    // Check if system entities already exist
+    const existingEntities = await this.db
+      .select({ entityType: schema.EntityDefinition.entityType })
+      .from(schema.EntityDefinition)
+      .where(eq(schema.EntityDefinition.organizationId, organizationId))
+
+    const entityTypes = existingEntities.map((e) => e.entityType)
+
+    // If no system entities exist, seed them all
+    if (!entityTypes.includes('contact') || !entityTypes.includes('ticket') || !entityTypes.includes('part')) {
+      logger.info('System entities missing, seeding for existing organization', { organizationId })
+      const entitySeeder = new EntitySeeder(this.db, organizationId)
+      await entitySeeder.seedSystemEntities()
+      logger.info('Successfully seeded system entities for existing organization', { organizationId })
     }
   }
 

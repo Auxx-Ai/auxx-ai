@@ -128,14 +128,6 @@ export type UpdateContactInput = {
 }
 
 /**
- * Input type for merge method
- */
-export type MergeContactsInput = {
-  primaryContactId: string
-  customerIdsToMerge: string[]
-}
-
-/**
  * ContactService orchestrates contact operations, handling business logic and events
  */
 export class ContactService {
@@ -608,46 +600,6 @@ export class ContactService {
       })
 
       return { count: deleted.length }
-    })
-  }
-
-  /**
-   * Merge multiple contacts into a primary contact.
-   */
-  async mergeContacts(input: MergeContactsInput): Promise<ContactListItem> {
-    const { primaryContactId, customerIdsToMerge } = input
-
-    if (customerIdsToMerge.includes(primaryContactId)) {
-      throw new Error('Cannot merge a contact with itself')
-    }
-
-    return await database.transaction(async (tx: Transaction) => {
-      const updated = await contactDb.mergeContacts(tx, {
-        organizationId: this.organizationId,
-        primaryContactId,
-        contactIdsToMerge: customerIdsToMerge,
-      })
-
-      logger.info('Successfully merged contacts', {
-        primaryContactId,
-        mergedContactIds: customerIdsToMerge,
-        organizationId: this.organizationId,
-      })
-
-      if (this.userId) {
-        await publisher.publishLater({
-          type: 'contact:merged',
-          data: {
-            contactId: primaryContactId,
-            organizationId: this.organizationId,
-            userId: this.userId,
-            mergedContactIds: customerIdsToMerge,
-            totalMerged: customerIdsToMerge.length,
-          },
-        } as ContactMergedEvent)
-      }
-
-      return updated as ContactListItem
     })
   }
 

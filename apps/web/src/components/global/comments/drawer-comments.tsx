@@ -7,14 +7,14 @@ import { EmptyState } from '~/components/global/empty-state'
 import { CommentList } from '~/components/global/comments/comment-list'
 import CommentComposer from '~/components/global/comments/comment-composer'
 import { api } from '~/trpc/react'
-import { isSystemEntityType, type CommentableEntityType } from '~/hooks/use-comments'
+import { isSystemEntityType } from '~/hooks/use-comments'
+import { parseResourceId, getDefinitionId, type ResourceId } from '@auxx/lib/field-values/client'
 
 /**
  * Props for the DrawerComments wrapper component.
  */
 interface DrawerCommentsProps {
-  entityId: string
-  entityType: CommentableEntityType
+  resourceId: ResourceId
   emptyTitle?: string
   emptyDescription?: string
   headerTitle?: string
@@ -29,28 +29,30 @@ interface DrawerCommentsProps {
  * Supports Contact, Ticket, Thread, and custom entity types.
  */
 const DrawerComments = ({
-  entityId,
-  entityType,
+  resourceId,
   emptyTitle,
   emptyDescription,
   headerTitle,
   composerPlaceholder,
   focusComposerTrigger,
 }: DrawerCommentsProps) => {
+  // Parse resourceId once for display logic
+  const entityDefinitionId = getDefinitionId(resourceId)
+
   // Smart default description based on entity type
   const defaultEmptyTitle = emptyTitle || 'No comments yet'
   const defaultEmptyDescription =
     emptyDescription ||
-    (isSystemEntityType(entityType)
-      ? `Start a conversation about this ${entityType.toLowerCase()}`
+    (isSystemEntityType(entityDefinitionId)
+      ? `Start a conversation about this ${entityDefinitionId.toLowerCase()}`
       : 'Start a conversation about this record')
   const defaultHeaderTitle = headerTitle || 'Comments'
   const defaultPlaceholder = composerPlaceholder || 'Add comment...'
 
   // Fetch comments using tRPC
-  const { data: commentsData, isLoading } = api.comment.getByEntity.useQuery(
-    { entityId, entityType },
-    { enabled: !!entityId }
+  const { data: commentsData, isLoading } = api.comment.getByResourceId.useQuery(
+    { resourceId },
+    { enabled: !!resourceId }
   )
 
   // Loading state
@@ -87,21 +89,16 @@ const DrawerComments = ({
         />
       ) : (
         <div className="flex-1 overflow-y-auto pt-0 p-4">
-          <CommentList
-            entityId={entityId}
-            entityType={entityType}
-            initialComments={commentsData.comments}
-          />
+          <CommentList resourceId={resourceId} initialComments={commentsData.comments} />
         </div>
       )}
 
       {/* Comment Composer - always visible at bottom */}
       <div className="px-4 pb-4 pt-2">
         <CommentComposer
-          entityId={entityId}
+          resourceId={resourceId}
           expanded
           expandHeight="100px"
-          entityType={entityType}
           focusTrigger={focusComposerTrigger}
           placeholder={defaultPlaceholder}
           onSubmitted={() => {

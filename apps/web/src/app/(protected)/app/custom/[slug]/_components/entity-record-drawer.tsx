@@ -251,8 +251,7 @@ export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
 
                 <TabsContent value="comments" className="w-full h-full mt-0">
                   <MemoDrawerComments
-                    entityId={entityInstanceId!}
-                    entityType={entityDefinitionId!}
+                    resourceId={resourceId!}
                     focusComposerTrigger={focusComposerTrigger}
                   />
                 </TabsContent>

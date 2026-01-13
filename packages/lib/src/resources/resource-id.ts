@@ -11,3 +11,5 @@ export {
   isSystemModelType,
   getModelType,
 } from '@auxx/types/resource'
+
+export type { ResourceId } from '@auxx/types/resource'

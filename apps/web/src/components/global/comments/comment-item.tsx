@@ -16,13 +16,12 @@ import { Badge } from '@auxx/ui/components/badge'
 import { AttachmentDisplay } from '~/components/files/utils/attachment-display'
 
 import { cn } from '@auxx/ui/lib/utils'
-import type { CommentableEntityType } from '~/hooks/use-comments'
+import type { ResourceId } from '@auxx/lib/field-values/client'
 
 interface CommentItemProps {
   comment?: CommentType
   commentId?: string
-  entityId?: string
-  entityType?: CommentableEntityType
+  resourceId?: ResourceId
   isReply?: boolean
   disableReplies?: boolean
   isFirstInGroup?: boolean // Show avatar and name
@@ -47,8 +46,7 @@ export const CommentSkeleton = () => (
 export function CommentItem({
   comment: initialComment,
   commentId,
-  entityId,
-  entityType,
+  resourceId,
   isReply = false,
   disableReplies = false,
   isFirstInGroup = true,
@@ -73,7 +71,7 @@ export function CommentItem({
     deletingCommentId,
     pinningCommentId,
     addingEmojiToCommentId,
-  } = useComments({ commentId, entityId, entityType })
+  } = useComments({ commentId, resourceId })
 
   // Use either the provided comment or the fetched single comment
   // const comment = initialComment || singleComment
@@ -172,8 +170,7 @@ export function CommentItem({
             {isEditing && (
               <div className="mb-4 w-[400px]">
                 <CommentComposer
-                  entityId={entityId!}
-                  entityType={entityType!}
+                  resourceId={resourceId!}
                   commentId={comment.id}
                   initialContent={comment.content}
                   initialAttachments={comment.attachments || []}
@@ -321,8 +318,7 @@ export function CommentItem({
       {isReplying && !disableReplies && (
         <div className="ms-8 mt-2 mb-2 max-w-[400px]">
           <CommentComposer
-            entityId={entityId!}
-            entityType={entityType!}
+            resourceId={resourceId!}
             parentId={comment.id}
             placeholder="Write a reply..."
             onSubmitted={() => setReplyingToId(null)}
@@ -339,8 +335,7 @@ export function CommentItem({
             <CommentItem
               key={reply.id}
               comment={reply}
-              entityId={entityId}
-              entityType={entityType}
+              resourceId={resourceId}
               isReply={true}
               disableReplies={true} // Disallow nested replies
             />

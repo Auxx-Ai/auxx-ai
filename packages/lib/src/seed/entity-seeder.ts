@@ -22,6 +22,9 @@ interface SystemFieldDef {
   isFilterable?: boolean
   options?: {
     options?: Array<{ id: string; label: string; value: string; color?: string }>
+    // For computed fields
+    computedFrom?: string[] // Array of systemAttributes this field is computed from
+    computeFormat?: string // Template string, e.g., "{first_name} {last_name}"
     [key: string]: unknown
   }
   position?: number
@@ -45,6 +48,16 @@ interface SystemEntityDef {
  */
 function optId(): string {
   return generateId('opt')
+}
+
+/**
+ * Generate sort order string (a0, a1, a2, ...)
+ */
+function generateSortOrder(index: number): string {
+  const alphabet = 'abcdefghijklmnopqrstuvwxyz'
+  const base = Math.floor(index / 26)
+  const remainder = index % 26
+  return base > 0 ? `${alphabet[base - 1]}${alphabet[remainder]}` : `${alphabet[remainder]}0`
 }
 
 /**
@@ -198,7 +211,7 @@ const SYSTEM_ENTITIES: SystemEntityDef[] = [
     apiSlug: 'contacts',
     singular: 'Contact',
     plural: 'Contacts',
-    icon: 'User',
+    icon: 'users',
     color: 'blue',
     fields: CONTACT_FIELDS,
   },
@@ -207,7 +220,7 @@ const SYSTEM_ENTITIES: SystemEntityDef[] = [
     apiSlug: 'tickets',
     singular: 'Ticket',
     plural: 'Tickets',
-    icon: 'Ticket',
+    icon: 'tags',
     color: 'orange',
     fields: TICKET_FIELDS,
   },
@@ -216,7 +229,7 @@ const SYSTEM_ENTITIES: SystemEntityDef[] = [
     apiSlug: 'parts',
     singular: 'Part',
     plural: 'Parts',
-    icon: 'Package',
+    icon: 'boxes',
     color: 'green',
     fields: PART_FIELDS,
   },
@@ -248,6 +261,8 @@ export class EntitySeeder {
    * Seed a single system entity and its fields
    */
   private async seedEntity(entityDef: SystemEntityDef): Promise<void> {
+    const now = new Date()
+
     await this.db.transaction(async (tx) => {
       // Create EntityDefinition
       const [createdDef] = await tx
@@ -260,6 +275,7 @@ export class EntitySeeder {
           plural: entityDef.plural,
           icon: entityDef.icon,
           color: entityDef.color,
+          updatedAt: now.toISOString(),
         })
         .returning()
 
@@ -276,18 +292,21 @@ export class EntitySeeder {
       const fieldValues = entityDef.fields.map((field, index) => ({
         organizationId: this.organizationId,
         entityDefinitionId: createdDef.id,
+        modelType: 'entity', // System entities use 'entity' modelType
         name: field.name,
         type: field.type,
         systemAttribute: field.systemAttribute,
         required: field.required ?? false,
         isUnique: field.isUnique ?? false,
+        isCustom: false, // System fields are not custom
         isCreatable: field.isCreatable ?? true,
         isUpdatable: field.isUpdatable ?? true,
         isComputed: field.isComputed ?? false,
         isSortable: field.isSortable ?? true,
         isFilterable: field.isFilterable ?? true,
         options: field.options ?? null,
-        position: field.position ?? index,
+        sortOrder: generateSortOrder(field.position ?? index),
+        updatedAt: now,
       }))
 
       await tx.insert(schema.CustomField).values(fieldValues)

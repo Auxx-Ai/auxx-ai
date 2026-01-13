@@ -22,8 +22,8 @@ import {
 } from '@auxx/ui/components/main-page'
 import EntityFields from '~/components/fields/entity-fields'
 import { toResourceId } from '~/components/resources'
-import CustomerMergeDialog from './customer-merge-dialog'
 import CustomerSpamDialog from './customer-spam-dialog'
+// import { toast } from '@auxx/ui/components/toast'
 import CustomerOrdersTab from './customer-orders-tab'
 import CustomerTicketsTab from './customer-tickets-tab'
 import { TimelineTab } from '~/components/timeline'
@@ -142,7 +142,6 @@ export function ContactDetail({ id }: { id: string }) {
 
   // State for dialogs
   const [isSpamDialogOpen, setIsSpamDialogOpen] = useState(false)
-  const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false)
   const [isGroupDialogOpen, setIsGroupDialogOpen] = useState(false)
 
   // Query customer data
@@ -183,7 +182,10 @@ export function ContactDetail({ id }: { id: string }) {
               isMerged={isMerged}
               isSpam={isSpam}
               onGroupsClick={() => setIsGroupDialogOpen(true)}
-              onMergeClick={() => setIsMergeDialogOpen(true)}
+              onMergeClick={
+                () => {}
+                // toast({ title: 'Merge feature coming soon', description: 'This feature is currently being redesigned.' })
+              }
               onSpamClick={() => setIsSpamDialogOpen(true)}
             />
           </div>
@@ -251,13 +253,6 @@ export function ContactDetail({ id }: { id: string }) {
         open={isSpamDialogOpen}
         onOpenChange={setIsSpamDialogOpen}
         onConfirm={handleMarkAsSpam}
-      />
-
-      <CustomerMergeDialog
-        open={isMergeDialogOpen}
-        onOpenChange={setIsMergeDialogOpen}
-        mergeWithId={id}
-        onSuccess={() => refetch()}
       />
 
       <GroupManagementDialog

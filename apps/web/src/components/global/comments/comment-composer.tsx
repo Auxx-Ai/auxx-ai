@@ -26,7 +26,6 @@ import {
 import { api } from '~/trpc/react'
 import {
   type UseCommentsOptions,
-  type CommentableEntityType,
   useComments,
   type CommentAttachmentInfo,
 } from '~/hooks/use-comments'
@@ -35,6 +34,7 @@ import { FileSelectPicker } from '~/components/pickers/file-select-picker'
 import { CommentFile } from './comment-file'
 import { useDropzone } from 'react-dropzone'
 import { ENTITY_TYPES } from '@auxx/lib/files/types'
+import type { ResourceId } from '@auxx/lib/field-values/client'
 
 import { EmojiPicker } from '~/components/pickers/emoji-picker'
 import { MentionNode } from '~/components/editor/extensions/mention-node'
@@ -53,8 +53,7 @@ interface FileAttachment {
  * Props for the CommentComposer tiptap wrapper component.
  */
 interface CommentComposerProps {
-  entityId: string
-  entityType: CommentableEntityType
+  resourceId: ResourceId
   parentId?: string
   onSubmitted?: () => void
   onCancel?: () => void
@@ -65,7 +64,6 @@ interface CommentComposerProps {
   autoFocus?: boolean
   expanded?: boolean
   expandHeight?: string
-  // initialComments?: any[]
   /** Incrementing value that will trigger the editor to focus when it changes. */
   focusTrigger?: number
 }
@@ -168,14 +166,12 @@ export const SubmitOnEnter = Extension.create<SubmitOnEnterOptions>({
  * CommentComposer renders the shared rich text composer used in drawers.
  */
 const CommentComposer = ({
-  entityId,
-  entityType,
+  resourceId,
   parentId,
   commentId,
   onSubmitted,
   onCancel,
   placeholder = 'Add internal comment',
-  // initialComments,
   initialContent = '',
   initialAttachments = [],
   expanded = false,
@@ -206,9 +202,7 @@ const CommentComposer = ({
   // Refs (none needed currently)
   // Set up useComments hook
   const commentOptions: UseCommentsOptions = {
-    entityId,
-    entityType,
-    // initialComments: initialComments,
+    resourceId,
   }
 
   const {

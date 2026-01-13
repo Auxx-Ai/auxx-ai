@@ -24,7 +24,7 @@ export {
 } from './contact-mutations'
 
 // Bulk operations
-export { bulkUpdate, bulkUpdateToSpam, bulkDeleteContacts, mergeContacts } from './contact-bulk'
+export { bulkUpdate, bulkUpdateToSpam, bulkDeleteContacts } from './contact-bulk'
 
 // Customer group operations
 export {
@@ -48,7 +48,6 @@ export type {
   InsertContactInput,
   InsertCustomerSourceInput,
   UpdateContactInput,
-  MergeContactsInput,
 } from './types'
 
 // Errors

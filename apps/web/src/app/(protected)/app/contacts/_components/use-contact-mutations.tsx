@@ -115,22 +115,6 @@ export function useContactMutations(options?: UseContactMutationsOptions) {
     },
   })
 
-  // Merge contacts mutation
-  const mergeContacts = api.contact.mergeCustomers.useMutation({
-    onSuccess: () => {
-      onRecordCreated('contact') // Invalidate lists since contacts were merged
-      utils.contact.getAll.invalidate()
-      options?.onSuccess?.()
-    },
-    onError: (error) => {
-      toastError({
-        title: 'Error merging contacts',
-        description: error.message,
-      })
-      options?.onError?.(error)
-    },
-  })
-
   // Add contacts to group mutation
   const addToGroup = api.contact.addToGroup.useMutation({
     onSuccess: (_, { contactIds }) => {
@@ -203,7 +187,6 @@ export function useContactMutations(options?: UseContactMutationsOptions) {
     bulkDeleteContacts,
     createContact,
     updateContact,
-    mergeContacts,
 
     // Group mutations
     addToGroup,
@@ -219,7 +202,6 @@ export function useContactMutations(options?: UseContactMutationsOptions) {
       bulkDeleteContacts.isPending ||
       createContact.isPending ||
       updateContact.isPending ||
-      mergeContacts.isPending ||
       addToGroup.isPending ||
       removeFromGroup.isPending ||
       createGroup.isPending ||

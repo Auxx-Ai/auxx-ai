@@ -78,11 +78,3 @@ export interface UpdateContactInput extends ContactContext {
   tags?: string[]
   status?: CustomerStatus
 }
-
-/**
- * Input for merging contacts
- */
-export interface MergeContactsInput extends ContactContext {
-  primaryContactId: string
-  contactIdsToMerge: string[]
-}

@@ -68,7 +68,7 @@ function buildCrudConfig(resourceType: TableId): ResourceCrudConfig {
  * not through CRUD operations. See thread-fields.ts for action field details.
  */
 export const CRUD_RESOURCE_CONFIGS: Record<TableId, ResourceCrudConfig> = {
-  contact: buildCrudConfig('contact'),
+  // contact: buildCrudConfig('contact'),
   ticket: buildCrudConfig('ticket'),
   thread: buildCrudConfig('thread'), // Action-based: update only (no create/delete)
   // user: buildCrudConfig('user'),

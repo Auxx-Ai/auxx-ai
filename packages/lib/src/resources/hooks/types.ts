@@ -1,0 +1,54 @@
+// packages/lib/src/resources/hooks/types.ts
+
+import type { EntityDefinitionEntity } from '@auxx/database/schema/entity-definition'
+import type { CustomFieldEntity } from '@auxx/database/schema/custom-field'
+import type { EntityInstanceEntity } from '@auxx/database/schema/entity-instance'
+
+/**
+ * Context provided to system hooks during entity operations
+ */
+export interface SystemHookContext {
+  /** Operation being performed */
+  operation: 'create' | 'update'
+
+  /** Entity definition being operated on */
+  entityDef: EntityDefinitionEntity
+
+  /** Field being set */
+  field: CustomFieldEntity
+
+  /** All field values being set in this operation */
+  values: Record<string, unknown>
+
+  /** Existing entity instance (only present for update operations) */
+  existingInstance?: EntityInstanceEntity
+
+  /** Organization ID for the operation */
+  organizationId: string
+}
+
+/**
+ * System hook function that runs before entity create/update operations.
+ * Hooks can:
+ * - Validate field values
+ * - Normalize/transform values
+ * - Throw errors to prevent the operation
+ * - Modify values object to set additional fields
+ *
+ * @param context - Hook execution context
+ * @returns Modified values object (can be same as input or new object)
+ * @throws Error to prevent the operation
+ */
+export type SystemHook = (context: SystemHookContext) => Promise<Record<string, unknown>>
+
+/**
+ * Registry of system hooks for a specific entity type.
+ * Maps systemAttribute names to arrays of hook functions.
+ *
+ * Example:
+ * {
+ *   'primary_email': [validateEmailFormat, normalizeEmail, checkEmailUniqueness],
+ *   'contact_status': [validateStatusTransition, handleMergedStatus]
+ * }
+ */
+export type SystemHookRegistry = Record<string, SystemHook[]>

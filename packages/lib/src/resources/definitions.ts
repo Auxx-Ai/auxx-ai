@@ -1,6 +1,12 @@
 // packages/lib/src/workflow-engine/resources/definitions.ts
 import { RESOURCE_TABLE_MAP, type TableId } from './registry/field-registry'
-import { createContactVariables, createTicketVariables, createThreadVariables, createMessageVariables, createDatasetVariables } from './variable-generators'
+import {
+  createContactVariables,
+  createTicketVariables,
+  createThreadVariables,
+  createMessageVariables,
+  createDatasetVariables,
+} from './variable-generators'
 
 /**
  * Configuration for a resource type (contact, ticket, etc.)
@@ -54,12 +60,12 @@ export const RESOURCE_OPERATIONS: Record<string, ResourceOperation> = {
  * Other resources use the generic createResourceVariables function.
  */
 export const RESOURCE_CONFIGS: Partial<Record<TableId, ResourceConfig>> = {
-  contact: {
-    type: 'contact',
-    label: RESOURCE_TABLE_MAP.contact.label,
-    icon: RESOURCE_TABLE_MAP.contact.icon,
-    variableGenerator: createContactVariables,
-  },
+  // contact: {
+  //   type: 'contact',
+  //   label: RESOURCE_TABLE_MAP.contact.label,
+  //   icon: RESOURCE_TABLE_MAP.contact.icon,
+  //   variableGenerator: createContactVariables,
+  // },
   ticket: {
     type: 'ticket',
     label: RESOURCE_TABLE_MAP.ticket.label,

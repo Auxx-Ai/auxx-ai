@@ -4,11 +4,10 @@ import { useMemo, useState, useCallback, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { type VisibilityState } from '@tanstack/react-table'
 import { Button } from '@auxx/ui/components/button'
-import { Plus, Ban, UserPlus, Users, Trash2, Play } from 'lucide-react'
+import { Plus, Ban, Users, Trash2, Play } from 'lucide-react'
 import NewCustomerForm from './_components/new-customer-form'
 import { useContactMutations } from './_components/use-contact-mutations'
 import { useConfirm } from '~/hooks/use-confirm'
-import CustomerMergeDialog from './_components/customer-merge-dialog'
 import GroupManagementDialog from './_components/groups/group-management-dialog'
 import { ContactDrawer } from '~/components/contacts/drawer/contact-drawer'
 import { parseAsBoolean, parseAsString, useQueryState } from 'nuqs'
@@ -134,7 +133,6 @@ export default function CustomerListPage() {
     },
     [setSelectedContactId]
   )
-  const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false)
   const [isGroupDialogOpen, setIsGroupDialogOpen] = useState(false)
   const [isWorkflowDialogOpen, setIsWorkflowDialogOpen] = useState(false)
   // Use confirm dialogs
@@ -322,10 +320,6 @@ export default function CustomerListPage() {
         setSelectedCustomerIds([id])
         setIsGroupDialogOpen(true)
       },
-      onMerge: (id: string) => {
-        setSelectedCustomerIds([id])
-        setIsMergeDialogOpen(true)
-      },
       onMarkAsSpam: handleMarkAsSpam,
       onDelete: handleDeleteContact,
     }),
@@ -345,13 +339,6 @@ export default function CustomerListPage() {
         icon: Users,
         variant: 'outline' as const,
         action: () => setIsGroupDialogOpen(true),
-      },
-      {
-        label: 'Merge',
-        icon: UserPlus,
-        variant: 'outline' as const,
-        action: () => setIsMergeDialogOpen(true),
-        disabled: (rows: Contact[]) => rows.length < 2,
       },
       {
         label: 'Mark as spam',
@@ -477,17 +464,6 @@ export default function CustomerListPage() {
               open={isNewCustomerOpen}
               onOpenChange={setIsNewCustomerOpen}
               onSuccess={() => {
-                refetch()
-              }}
-            />
-
-            {/* Merge Dialog */}
-            <CustomerMergeDialog
-              open={isMergeDialogOpen}
-              onOpenChange={setIsMergeDialogOpen}
-              customerIds={selectedCustomerIds}
-              onSuccess={() => {
-                resetSelection()
                 refetch()
               }}
             />

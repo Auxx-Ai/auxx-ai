@@ -13,27 +13,34 @@ import { PART_FIELDS } from './resources/part-fields'
 import { ModelTypeValues, ModelTypeMeta, type ModelType } from '@auxx/database/enums'
 
 /**
+ * Resource types to exclude from the registry
+ * - 'entity' is handled via EntityDefinition
+ * - 'contact' is excluded from table registry
+ */
+const EXCLUDED_RESOURCE_TYPES = ['entity', 'contact'] as const
+
+/**
  * Resource Table Registry - Metadata about resource tables themselves
- * Derived from ModelTypeMeta for consistency (excludes 'entity' which is handled via EntityDefinition)
+ * Derived from ModelTypeMeta for consistency (excludes types in EXCLUDED_RESOURCE_TYPES)
  *
  * This is the single source of truth for table-level metadata (labels, icons, plurals, colors, apiSlugs, etc.)
  */
-export const RESOURCE_TABLE_REGISTRY = ModelTypeValues.filter((id) => id !== 'entity').map(
-  (id) => ({
-    id,
-    label: ModelTypeMeta[id].label,
-    plural: ModelTypeMeta[id].plural,
-    icon: ModelTypeMeta[id].icon,
-    color: ModelTypeMeta[id].color,
-    apiSlug: ModelTypeMeta[id].apiSlug,
-    dbName: ModelTypeMeta[id].dbTable,
-  })
-)
+export const RESOURCE_TABLE_REGISTRY = ModelTypeValues.filter(
+  (id) => !EXCLUDED_RESOURCE_TYPES.includes(id as any)
+).map((id) => ({
+  id,
+  label: ModelTypeMeta[id].label,
+  plural: ModelTypeMeta[id].plural,
+  icon: ModelTypeMeta[id].icon,
+  color: ModelTypeMeta[id].color,
+  apiSlug: ModelTypeMeta[id].apiSlug,
+  dbName: ModelTypeMeta[id].dbTable,
+}))
 
 /**
- * TableId - valid system table identifiers (excludes 'entity')
+ * TableId - valid system table identifiers (excludes types in EXCLUDED_RESOURCE_TYPES)
  */
-export type TableId = Exclude<ModelType, 'entity'>
+export type TableId = Exclude<ModelType, 'entity' | 'contact'>
 
 /**
  * Helper map for O(1) lookup by table ID
@@ -79,7 +86,7 @@ export function isValidTableId(value: string): value is TableId {
  */
 export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   ticket: TICKET_FIELDS,
-  contact: CONTACT_FIELDS,
+  // contact: CONTACT_FIELDS,
   user: USER_FIELDS,
   inbox: INBOX_FIELDS,
   participant: PARTICIPANT_FIELDS,

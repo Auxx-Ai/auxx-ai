@@ -13,7 +13,6 @@ import {
   Calendar,
   Users,
   PanelRight,
-  Merge,
   ShieldAlert,
   Trash2,
 } from 'lucide-react'
@@ -56,7 +55,6 @@ export type Contact = {
 export interface ContactColumnActions {
   onViewDetails: (id: string) => void
   onManageGroups: (id: string) => void
-  onMerge: (id: string) => void
   onMarkAsSpam: (id: string) => void
   onDelete: (id: string) => void
 }
@@ -87,10 +85,6 @@ export function createContactColumns(actions: ContactColumnActions): ExtendedCol
             <DropdownMenuItem onClick={() => actions.onManageGroups(row.original.id)}>
               <Users />
               Manage Groups
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => actions.onMerge(row.original.id)}>
-              <Merge />
-              Merge With Another
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem

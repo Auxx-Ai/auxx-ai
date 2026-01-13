@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { api } from '~/trpc/react'
 import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 import { formatCommentContent } from '~/lib/sanitize'
+import { parseResourceId, getDefinitionId, type ResourceId } from '@auxx/lib/field-values/client'
 
 // System entity types
 export const SYSTEM_ENTITY_TYPES = ['Ticket', 'Thread', 'Contact'] as const
@@ -14,9 +15,11 @@ export type CommentableEntityType = string
 
 /**
  * Check if entityType is a system type or a custom entity definition ID
+ * Handles both lowercase ('ticket', 'contact', 'thread') and capital case
  */
 export function isSystemEntityType(entityType: string): entityType is SystemEntityType {
-  return SYSTEM_ENTITY_TYPES.includes(entityType as SystemEntityType)
+  const normalized = entityType.toLowerCase()
+  return normalized === 'ticket' || normalized === 'thread' || normalized === 'contact'
 }
 
 export type ReactionType = 'like' | 'emoji'
@@ -31,9 +34,8 @@ interface FileAttachment {
 }
 
 export interface UseCommentsOptions {
-  // Entity identifier options
-  entityId?: string
-  entityType?: CommentableEntityType
+  // Entity identifier (ResourceId format: "entityType:entityId")
+  resourceId?: ResourceId
 
   // Single comment option
   commentId?: string
@@ -114,8 +116,7 @@ export type Comment = {
 }
 
 export function useComments({
-  entityId,
-  entityType,
+  resourceId,
   commentId,
   comment: initialComment,
   initialComments,
@@ -132,11 +133,11 @@ export function useComments({
     data: fetchedCommentsData,
     isLoading: isFetchingComments,
     refetch: refetchComments,
-  } = api.comment.getByEntity.useQuery(
-    { entityId: entityId!, entityType: entityType! },
+  } = api.comment.getByResourceId.useQuery(
+    { resourceId: resourceId! },
     {
-      // Only run this query if we have an entityId and entityType and no commentId
-      enabled: !!(entityId && entityType && !commentId && !initialComment && !initialComments),
+      // Only run this query if we have a resourceId and no commentId
+      enabled: !!(resourceId && !commentId && !initialComment && !initialComments),
       refetchOnWindowFocus: false,
     }
   )
@@ -278,9 +279,9 @@ export function useComments({
 
   // Action handlers
   const handleCreateComment = async (content: string, fileAttachments?: FileAttachment[]) => {
-    if (!content.trim() || !entityId || !entityType) return
+    if (!content.trim() || !resourceId) return
 
-    await createComment.mutateAsync({ content, entityId, entityType, fileAttachments })
+    await createComment.mutateAsync({ content, resourceId, fileAttachments })
   }
 
   const handleCreateReply = async (
@@ -288,9 +289,9 @@ export function useComments({
     parentId: string,
     fileAttachments?: FileAttachment[]
   ) => {
-    if (!content.trim() || !entityId || !entityType) return
+    if (!content.trim() || !resourceId) return
 
-    await createReply.mutateAsync({ content, entityId, entityType, parentId, fileAttachments })
+    await createReply.mutateAsync({ content, resourceId, parentId, fileAttachments })
   }
 
   const handleUpdateComment = async (

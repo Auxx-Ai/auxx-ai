@@ -60,7 +60,7 @@ function buildFindConfig(resourceType: TableId): ResourceFindConfig {
  * Built from the unified resource field registry
  */
 export const FIND_RESOURCE_CONFIGS: Record<TableId, ResourceFindConfig> = {
-  contact: buildFindConfig('contact'),
+  // contact: buildFindConfig('contact'),
   ticket: buildFindConfig('ticket'),
   user: buildFindConfig('user'),
   inbox: buildFindConfig('inbox'),

@@ -34,7 +34,7 @@ import { Input } from '@auxx/ui/components/input'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { Calendar } from '@auxx/ui/components/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { CalendarIcon } from 'lucide-react'
+import { CalendarIcon, ChevronDown } from 'lucide-react'
 import { format } from 'date-fns'
 import { MissingItemForm } from './missing-item-form'
 import { ShippingIssueForm } from './shipping-issue-form'
@@ -43,11 +43,13 @@ import { ReturnForm } from './return-form'
 import { ProductIssueForm } from './product-issue-form'
 import { api } from '~/trpc/react'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import CustomerSelect from '~/components/global/select-customer'
+import { ResourcePickerPopover } from '~/components/pickers/resource-picker-popover'
+import { useRecord } from '~/components/resources'
 import { TicketPriorityColors, TicketTypeIcons } from '~/components/tickets/shared'
 import { TicketType, TicketPriority } from '@auxx/database/enums'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
 import { toResourceId, getInstanceId, type ResourceId } from '@auxx/lib/field-values/client'
+import { cn } from '@auxx/ui/lib/utils'
 
 /** Base form schema for ticket creation/editing */
 const baseFormSchema = z.object({
@@ -222,6 +224,21 @@ export default function TicketFormDialog({
   if (watchType !== currentType) {
     setCurrentType(watchType)
   }
+
+  // Watch for changes to contactId and fetch contact details
+  const watchContactId = form.watch('contactId')
+  const { record: selectedContact, isLoading: isLoadingContact } = useRecord({
+    resourceId: watchContactId ? toResourceId('contact', watchContactId) : null,
+    enabled: !!watchContactId,
+  })
+
+  // Format contact display name
+  const contactDisplayName = selectedContact
+    ? (selectedContact as any).name ||
+      `${(selectedContact as any).firstName || ''} ${(selectedContact as any).lastName || ''}`.trim() ||
+      (selectedContact as any).email ||
+      'Unknown'
+    : null
 
   // Form submission handler
   const onSubmit = async (data: z.infer<typeof baseFormSchema> & any) => {
@@ -402,13 +419,40 @@ export default function TicketFormDialog({
             />
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              <CustomerSelect
+              <FormField
+                control={form.control}
                 name="contactId"
-                label="Customer"
-                placeholder="Search for a customer..."
-                description="Select the customer who needs support"
-                defaultValue={contactId || ticket?.contactId || null}
-                required
+                render={({ field }) => (
+                  <FormItem className="flex flex-col">
+                    <FormLabel>
+                      Customer
+                      <span className="ml-1 text-destructive">*</span>
+                    </FormLabel>
+                    <FormControl>
+                      <ResourcePickerPopover
+                        entityDefinitionId="contact"
+                        value={field.value ? [toResourceId('contact', field.value)] : []}
+                        onChange={(resourceIds: ResourceId[]) =>
+                          field.onChange(resourceIds[0] ? getInstanceId(resourceIds[0]) : '')
+                        }
+                        multi={false}
+                        placeholder="Search for a customer..."
+                        emptyLabel="Select customer">
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          loading={isLoadingContact}
+                          className="w-full justify-between border-input focus-visible:ring-1 focus-visible:ring-blue-500 bg-background px-3 font-normal">
+                          <span className={cn(!field.value && 'text-muted-foreground', 'truncate')}>
+                            {contactDisplayName || (field.value ? 'Loading...' : 'Select customer')}
+                          </span>
+                          <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </ResourcePickerPopover>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
 
               <FormField
@@ -515,7 +559,9 @@ export default function TicketFormDialog({
                       <MultiRelationInput
                         entityDefinitionId="ticket"
                         value={field.value ? [toResourceId('ticket', field.value)] : []}
-                        onChange={(resourceIds: ResourceId[]) => field.onChange(resourceIds[0] ? getInstanceId(resourceIds[0]) : '')}
+                        onChange={(resourceIds: ResourceId[]) =>
+                          field.onChange(resourceIds[0] ? getInstanceId(resourceIds[0]) : '')
+                        }
                         excludeIds={ticket?.id ? [ticket.id] : []}
                         placeholder="No parent ticket"
                         multi={false}
@@ -567,7 +613,8 @@ export default function TicketFormDialog({
             variant="outline"
             loading={isPending}
             loadingText={isEditing ? 'Updating...' : 'Creating...'}>
-            {isEditing ? 'Update Ticket' : 'Create Ticket'} <KbdSubmit variant="outline" size="sm" />
+            {isEditing ? 'Update Ticket' : 'Create Ticket'}{' '}
+            <KbdSubmit variant="outline" size="sm" />
           </Button>
         </DialogFooter>
       </DialogContent>

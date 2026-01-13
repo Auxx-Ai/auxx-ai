@@ -184,9 +184,12 @@ export function TicketDetailDrawer({ ticketId, open, onOpenChange }: TicketDetai
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [confirm, ConfirmDialog] = useConfirm()
 
+  // Create resourceId for use throughout component
+  const resourceId = ticketId ? toResourceId('ticket', ticketId) : null
+
   // Cache-first: instant if opened from table
   const { record: ticket, isLoading } = useRecord<Ticket>({
-    resourceId: ticketId ? toResourceId('ticket', ticketId) : null,
+    resourceId: resourceId,
     enabled: !!open && !!ticketId,
   })
 
@@ -626,8 +629,7 @@ export function TicketDetailDrawer({ ticketId, open, onOpenChange }: TicketDetai
             {/* Comments Tab */}
             <TabsContent value="comments" className="flex-1 flex flex-col h-full">
               <DrawerComments
-                entityId={ticket.id}
-                entityType="Ticket"
+                resourceId={resourceId!}
                 emptyTitle="No internal notes yet"
                 emptyDescription="Add internal notes to collaborate with your team on this ticket"
                 headerTitle="Internal Notes"

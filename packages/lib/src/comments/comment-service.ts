@@ -18,6 +18,7 @@ import type {
   CommentDeletedEvent,
   CommentRepliedEvent,
 } from '../events/types'
+import { parseResourceId, type ResourceId } from '../resources/resource-id'
 
 // System entity types (hardcoded)
 export const SYSTEM_ENTITY_TYPES = ['Ticket', 'Thread', 'Contact'] as const
@@ -28,9 +29,23 @@ export type CommentableEntityType = SystemEntityType | string
 
 /**
  * Check if entityType is a system type or a custom entity definition ID
+ * Handles both lowercase ('ticket', 'contact', 'thread') and capital case
  */
 export function isSystemEntityType(entityType: string): entityType is SystemEntityType {
-  return SYSTEM_ENTITY_TYPES.includes(entityType as SystemEntityType)
+  const normalized = entityType.toLowerCase()
+  return normalized === 'ticket' || normalized === 'thread' || normalized === 'contact'
+}
+
+/**
+ * Normalize entity type to capitalized format for permission checks
+ * Permission service expects 'Contact', 'Ticket', 'Thread' but resource IDs use lowercase
+ */
+function normalizeEntityTypeForPermissions(entityType: string): SystemEntityType {
+  const normalized = entityType.toLowerCase()
+  if (normalized === 'contact') return 'Contact'
+  if (normalized === 'ticket') return 'Ticket'
+  if (normalized === 'thread') return 'Thread'
+  return entityType as SystemEntityType
 }
 // Define reaction types
 export type ReactionType = 'like' | 'emoji'
@@ -57,8 +72,7 @@ export interface CommentWithAttachments extends Comment {
 // Define interface for creating a comment
 export interface CreateCommentInput {
   content: string
-  entityId: string
-  entityType: CommentableEntityType
+  resourceId: ResourceId
   createdById: string
   organizationId?: string
   parentId?: string | null
@@ -121,17 +135,24 @@ export class CommentService {
     try {
       data.organizationId = this.organizationId
 
+      // Parse resourceId to get components
+      const { entityDefinitionId, entityInstanceId } = parseResourceId(data.resourceId)
+      const entityId = entityInstanceId
+      const entityType = entityDefinitionId
+
       // Verify entity access based on type
-      if (isSystemEntityType(data.entityType)) {
+      if (isSystemEntityType(entityType)) {
         // System entity (Ticket, Thread, Contact)
+        // Normalize to capitalized format for permission checks
+        const normalizedType = normalizeEntityTypeForPermissions(entityType)
         await this.permissionService.verifyAccess(
-          this.permissionService.canAccessEntity(data.entityId, data.entityType),
-          `You don't have access to this ${data.entityType.toLowerCase()}`
+          this.permissionService.canAccessEntity(entityId, normalizedType),
+          `You don't have access to this ${entityType.toLowerCase()}`
         )
       } else {
         // Custom entity - entityType IS the entityDefinitionId
         await this.permissionService.verifyAccess(
-          this.permissionService.canAccessEntityInstance(data.entityId, data.entityType),
+          this.permissionService.canAccessEntityInstance(entityId, entityType),
           `You don't have access to this entity`
         )
       }
@@ -142,8 +163,6 @@ export class CommentService {
       }
       const {
         content,
-        entityId,
-        entityType,
         createdById,
         organizationId,
         parentId,
@@ -154,9 +173,10 @@ export class CommentService {
       // Determine FK values - only set for system entity types
       let threadIdToSet: string | null = null
       let ticketIdToSet: string | null = null
-      if (entityType === 'Thread') {
+      const normalizedEntityType = entityType.toLowerCase()
+      if (normalizedEntityType === 'thread') {
         threadIdToSet = entityId
-      } else if (entityType === 'Ticket') {
+      } else if (normalizedEntityType === 'ticket') {
         ticketIdToSet = entityId
       }
       // For Contact and custom entities, no FK needed
@@ -229,15 +249,16 @@ export class CommentService {
       // Publish timeline event
       // Determine contactId based on entity type
       let contactId: string | undefined
-      if (data.entityType === 'Ticket') {
+      const normalizedType = entityType.toLowerCase()
+      if (normalizedType === 'ticket') {
         const ticket = await this.db.query.Ticket.findFirst({
-          where: eq(schema.Ticket.id, data.entityId),
+          where: eq(schema.Ticket.id, entityId),
           columns: { contactId: true },
         })
         contactId = ticket?.contactId || undefined
-      } else if (data.entityType === 'Contact') {
-        contactId = data.entityId
-      } else if (!isSystemEntityType(data.entityType)) {
+      } else if (normalizedType === 'contact') {
+        contactId = entityId
+      } else if (!isSystemEntityType(entityType)) {
         // Custom entity - no contact association for now
         contactId = undefined
       }
@@ -364,13 +385,14 @@ export class CommentService {
 
       let contactId: string | undefined
       if (comment) {
-        if (comment.entityType === 'Ticket') {
+        const normalizedType = comment.entityType.toLowerCase()
+        if (normalizedType === 'ticket') {
           const ticket = await this.db.query.Ticket.findFirst({
             where: eq(schema.Ticket.id, comment.entityId),
             columns: { contactId: true },
           })
           contactId = ticket?.contactId || undefined
-        } else if (comment.entityType === 'Contact') {
+        } else if (normalizedType === 'contact') {
           contactId = comment.entityId
         }
 
@@ -400,8 +422,13 @@ export class CommentService {
    * Used when deleting parent entities like Contact, EntityInstance, etc.
    * Note: Ticket/Thread comments are handled via FK cascade in the database
    */
-  async deleteCommentsByEntity(entityId: string, entityType: CommentableEntityType): Promise<void> {
+  async deleteCommentsByResourceId(resourceId: ResourceId): Promise<void> {
     try {
+      // Parse resourceId to get components
+      const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+      const entityId = entityInstanceId
+      const entityType = entityDefinitionId
+
       await this.db
         .delete(schema.Comment)
         .where(
@@ -414,7 +441,7 @@ export class CommentService {
 
       logger.info('Deleted comments for entity', { entityId, entityType })
     } catch (error) {
-      logger.error('Error deleting comments by entity', { error, entityId, entityType })
+      logger.error('Error deleting comments by entity', { error, resourceId })
       throw error
     }
   }
@@ -443,13 +470,14 @@ export class CommentService {
       // Publish event after deletion
       if (comment) {
         let contactId: string | undefined
-        if (comment.entityType === 'Ticket') {
+        const normalizedType = comment.entityType.toLowerCase()
+        if (normalizedType === 'ticket') {
           const ticket = await this.db.query.Ticket.findFirst({
             where: eq(schema.Ticket.id, comment.entityId),
             columns: { contactId: true },
           })
           contactId = ticket?.contactId || undefined
-        } else if (comment.entityType === 'Contact') {
+        } else if (normalizedType === 'contact') {
           contactId = comment.entityId
         }
 
@@ -474,9 +502,8 @@ export class CommentService {
   /**
    * Get comments by entity with optimized reactions
    */
-  async getCommentsByEntity(
-    entityId: string,
-    entityType: CommentableEntityType,
+  async getCommentsByResourceId(
+    resourceId: ResourceId,
     options: {
       includeReplies?: boolean
       page?: number
@@ -484,10 +511,17 @@ export class CommentService {
     } = {}
   ): Promise<Comment[]> {
     try {
+      // Parse resourceId to get components
+      const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+      const entityId = entityInstanceId
+      const entityType = entityDefinitionId
+
       // Verify entity access based on type
       if (isSystemEntityType(entityType)) {
+        // Normalize to capitalized format for permission checks
+        const normalizedType = normalizeEntityTypeForPermissions(entityType)
         await this.permissionService.verifyAccess(
-          this.permissionService.canAccessEntity(entityId, entityType),
+          this.permissionService.canAccessEntity(entityId, normalizedType),
           `You don't have access to this ${entityType.toLowerCase()}`
         )
       } else {
@@ -577,7 +611,7 @@ export class CommentService {
       })
       return processedComments
     } catch (error) {
-      logger.error('Error getting comments by entity', { error, entityId, entityType })
+      logger.error('Error getting comments by entity', { error, resourceId })
       throw error
     }
   }
@@ -630,8 +664,10 @@ export class CommentService {
       }
       // Check access to the entity this comment belongs to based on type
       if (isSystemEntityType(comment.entityType)) {
+        // Normalize to capitalized format for permission checks
+        const normalizedType = normalizeEntityTypeForPermissions(comment.entityType)
         await this.permissionService.verifyAccess(
-          this.permissionService.canAccessEntity(comment.entityId, comment.entityType),
+          this.permissionService.canAccessEntity(comment.entityId, normalizedType),
           `You don't have access to this comment`
         )
       } else {
@@ -722,8 +758,10 @@ export class CommentService {
       }
       // Verify entity access based on type
       if (isSystemEntityType(comment.entityType)) {
+        // Normalize to capitalized format for permission checks
+        const normalizedType = normalizeEntityTypeForPermissions(comment.entityType)
         await this.permissionService.verifyAccess(
-          this.permissionService.canAccessEntity(comment.entityId, comment.entityType),
+          this.permissionService.canAccessEntity(comment.entityId, normalizedType),
           `You don't have access to this comment`
         )
       } else {
@@ -789,8 +827,10 @@ export class CommentService {
       }
       // Verify entity access based on type
       if (isSystemEntityType(comment.entityType)) {
+        // Normalize to capitalized format for permission checks
+        const normalizedType = normalizeEntityTypeForPermissions(comment.entityType)
         await this.permissionService.verifyAccess(
-          this.permissionService.canAccessEntity(comment.entityId, comment.entityType),
+          this.permissionService.canAccessEntity(comment.entityId, normalizedType),
           `You don't have access to this comment`
         )
       } else {
@@ -999,8 +1039,10 @@ export class CommentService {
       }
       // Check access to the entity this comment belongs to based on type
       if (isSystemEntityType(comment.entityType)) {
+        // Normalize to capitalized format for permission checks
+        const normalizedType = normalizeEntityTypeForPermissions(comment.entityType)
         await this.permissionService.verifyAccess(
-          this.permissionService.canAccessEntity(comment.entityId, comment.entityType),
+          this.permissionService.canAccessEntity(comment.entityId, normalizedType),
           `You don't have access to this comment`
         )
       } else {

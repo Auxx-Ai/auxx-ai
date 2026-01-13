@@ -5,30 +5,6 @@ import { TRPCError } from '@trpc/server'
 import { ContactService } from '@auxx/lib/contacts'
 
 export const contactRouter = createTRPCRouter({
-  // Search contacts with a simple query
-  search: protectedProcedure
-    .input(
-      z.object({
-        limit: z.number().min(1).max(100).default(50),
-        cursor: z.string().optional(),
-        search: z.string().optional(),
-      })
-    )
-    .query(async ({ ctx, input }) => {
-      try {
-        const { organizationId } = ctx.session
-        const contactService = new ContactService(organizationId, ctx.session.user.id)
-
-        return await contactService.searchContacts({
-          limit: input.limit,
-          cursor: input.cursor,
-          search: input.search,
-        })
-      } catch (error: any) {
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message })
-      }
-    }),
-
   // Get all contacts with filtering
   getAll: protectedProcedure
     .input(
@@ -93,20 +69,6 @@ export const contactRouter = createTRPCRouter({
       throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message })
     }
   }),
-
-  // Get contacts by their IDs
-  getCustomersByIds: protectedProcedure
-    .input(z.object({ ids: z.array(z.string()) }))
-    .query(async ({ ctx, input }) => {
-      try {
-        const { organizationId, userId } = ctx.session
-        const contactService = new ContactService(organizationId, userId)
-
-        return await contactService.getContactsByIds(input.ids)
-      } catch (error: any) {
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message })
-      }
-    }),
 
   // Create a new contact
   create: protectedProcedure
@@ -227,29 +189,6 @@ export const contactRouter = createTRPCRouter({
 
         return await contactService.bulkDeleteContacts(input.ids)
       } catch (error: any) {
-        if (error.message.includes('not found')) {
-          throw new TRPCError({ code: 'NOT_FOUND', message: error.message })
-        }
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message })
-      }
-    }),
-
-  // Merge contacts
-  mergeCustomers: protectedProcedure
-    .input(z.object({ primaryContactId: z.string(), customerIdsToMerge: z.array(z.string()) }))
-    .mutation(async ({ ctx, input }) => {
-      try {
-        const { organizationId, userId } = ctx.session
-        const contactService = new ContactService(organizationId, userId)
-
-        return await contactService.mergeContacts({
-          primaryContactId: input.primaryContactId,
-          customerIdsToMerge: input.customerIdsToMerge,
-        })
-      } catch (error: any) {
-        if (error.message.includes('Cannot merge')) {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: error.message })
-        }
         if (error.message.includes('not found')) {
           throw new TRPCError({ code: 'NOT_FOUND', message: error.message })
         }

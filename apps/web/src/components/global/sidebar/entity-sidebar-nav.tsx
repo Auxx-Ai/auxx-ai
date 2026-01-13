@@ -71,10 +71,12 @@ export function EntitySidebarNav() {
   )
 
   // Filter to only dynamic entities (no entityType or standardType)
-  const dynamicEntities = definitions?.filter(
-    (def) => def.entityType === null && def.standardType === null
-  )
+  // const dynamicEntities = definitions?.filter(
+  //   (def) => def.entityType === null && def.standardType === null
+  // )
+  const dynamicEntities = definitions
 
+  // console.log('Dynamic Entities:', dynamicEntities)
   /** Open dialog in edit mode */
   function handleEditEntity(entity: EntityDefinition) {
     setEditingEntity(entity)

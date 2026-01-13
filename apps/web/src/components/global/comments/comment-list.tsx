@@ -2,13 +2,13 @@
 // apps/web/src/components/global/comments/comment-list.tsx
 import React from 'react'
 import { CommentItem, CommentSkeleton } from './comment-item'
-import { useComments, type CommentableEntityType, type Comment } from '~/hooks/use-comments'
+import { useComments, type Comment } from '~/hooks/use-comments'
 import { getGroupPosition, groupConsecutiveComments } from '@auxx/utils'
+import type { ResourceId } from '@auxx/lib/field-values/client'
 
 interface CommentListProps {
   // Required props
-  entityId: string
-  entityType: CommentableEntityType
+  resourceId: ResourceId
 
   // Optional props
   initialComments?: any[]
@@ -17,14 +17,13 @@ interface CommentListProps {
 }
 
 export function CommentList({
-  entityId,
-  entityType,
+  resourceId,
   initialComments,
   onCommentAdded,
   className,
 }: CommentListProps) {
   // Use the hook directly
-  const { comments, isFetchingComments } = useComments({ entityId, entityType, onCommentAdded })
+  const { comments, isFetchingComments } = useComments({ resourceId, onCommentAdded })
 
   if (isFetchingComments) {
     return (
@@ -54,8 +53,7 @@ export function CommentList({
               <CommentItem
                 key={comment.id}
                 comment={comment as Comment}
-                entityId={entityId}
-                entityType={entityType}
+                resourceId={resourceId}
                 isReply={false}
                 disableReplies={false}
                 isFirstInGroup={idx === 0}

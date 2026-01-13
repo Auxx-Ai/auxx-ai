@@ -98,7 +98,7 @@ export const RESOURCE_DISPLAY_CONFIG: Record<TableId, ResourceDisplayConfig> = {
   },
 
   contact: {
-    identifierField: 'email',
+    identifierField: 'id',
     displayNameField: (row) =>
       row.name || `${row.firstName || ''} ${row.lastName || ''}`.trim() || row.email,
     secondaryInfoField: 'email',

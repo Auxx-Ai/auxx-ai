@@ -90,9 +90,15 @@ export function ContactDrawer({
     setFocusComposerTrigger((prev) => prev + 1)
   }, [activeTab, setActiveTab])
 
+  // Create resourceId for use throughout component
+  const resourceId = React.useMemo(
+    () => (contactId ? toResourceId('contact', contactId) : null),
+    [contactId]
+  )
+
   // Try record cache first (populated by batch fetcher when list loads)
   const { record: contact, isLoading: isCacheLoading } = useRecord({
-    resourceId: contactId ? toResourceId('contact', contactId) : null,
+    resourceId: resourceId,
     enabled: !!open && !!contactId,
   })
   // Fall back to API if not in cache (for fields not included in batch fetch)
@@ -201,7 +207,7 @@ function ContactDrawerContent({
   onClose,
 }: ContactDrawerContentProps) {
   const router = useRouter()
-
+  const resourceId = contactId ? toResourceId('contact', contactId) : undefined
   return (
     <>
       <DrawerHeader
@@ -302,11 +308,7 @@ function ContactDrawerContent({
                       initialOpen
                       collapsible={false}
                       icon={<HouseIcon className="size-4" />}>
-                      {contact?.id && (
-                        <MemoEntityFields
-                          resourceId={toResourceId('contact', contact.id)}
-                        />
-                      )}
+                      {resourceId && <MemoEntityFields resourceId={resourceId} />}
                     </Section>
                   </ScrollArea>
                 </TabsContent>
@@ -328,8 +330,7 @@ function ContactDrawerContent({
                 <TabsContent value="comments" className="w-full h-full mt-0">
                   <ScrollArea className="flex-1">
                     <MemoDrawerComments
-                      entityId={contactId}
-                      entityType="Contact"
+                      resourceId={resourceId!}
                       focusComposerTrigger={focusComposerTrigger}
                     />
                   </ScrollArea>

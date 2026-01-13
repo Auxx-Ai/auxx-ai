@@ -4,7 +4,7 @@ import { database, schema, type Transaction } from '@auxx/database'
 import { eq, and, inArray } from 'drizzle-orm'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import type { ContactContext, MergeContactsInput } from './types'
+import type { ContactContext } from './types'
 
 /**
  * Generic bulk update for contacts.
@@ -122,88 +122,4 @@ export async function bulkDeleteContacts(
     .returning({ id: schema.Contact.id })
 
   return deleted
-}
-
-/**
- * Merge contacts - transfer all data to primary contact
- */
-export async function mergeContacts(tx: Transaction, input: MergeContactsInput) {
-  const { organizationId, primaryContactId, contactIdsToMerge } = input
-
-  const [primary] = await tx
-    .select()
-    .from(schema.Contact)
-    .where(
-      and(eq(schema.Contact.id, primaryContactId), eq(schema.Contact.organizationId, organizationId))
-    )
-    .limit(1)
-
-  if (!primary) {
-    throw new Error(`Primary contact ${primaryContactId} not found`)
-  }
-
-  const toMerge = await tx
-    .select()
-    .from(schema.Contact)
-    .where(
-      and(
-        inArray(schema.Contact.id, contactIdsToMerge),
-        eq(schema.Contact.organizationId, organizationId)
-      )
-    )
-
-  if (toMerge.length !== contactIdsToMerge.length) {
-    throw new Error('One or more contacts to merge were not found')
-  }
-
-  const allEmails = new Set(primary.emails || [])
-  let allTags = [...(primary.tags || [])]
-
-  for (const contact of toMerge) {
-    contact.emails?.forEach((e: string) => allEmails.add(e))
-    if (contact.tags) allTags = [...allTags, ...contact.tags]
-
-    await tx
-      .update(schema.CustomerSource)
-      .set({ contactId: primaryContactId, updatedAt: new Date() })
-      .where(eq(schema.CustomerSource.contactId, contact.id))
-
-    await tx
-      .update(schema.shopify_customers)
-      .set({ contactId: primaryContactId, updatedAt: new Date() })
-      .where(eq(schema.shopify_customers.contactId, contact.id))
-
-    await tx
-      .update(schema.Ticket)
-      .set({ contactId: primaryContactId, updatedAt: new Date() })
-      .where(eq(schema.Ticket.contactId, contact.id))
-
-    await tx
-      .update(schema.CustomerGroupMember)
-      .set({ contactId: primaryContactId, updatedAt: new Date() })
-      .where(eq(schema.CustomerGroupMember.contactId, contact.id))
-
-    await tx
-      .update(schema.Contact)
-      .set({
-        status: 'MERGED',
-        notes: contact.notes
-          ? `${contact.notes}\n\nMerged into contact ${primaryContactId}`
-          : `Merged into contact ${primaryContactId}`,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.Contact.id, contact.id))
-  }
-
-  const [updated] = await tx
-    .update(schema.Contact)
-    .set({
-      emails: Array.from(allEmails),
-      tags: [...new Set(allTags)],
-      updatedAt: new Date(),
-    })
-    .where(eq(schema.Contact.id, primaryContactId))
-    .returning()
-
-  return updated
 }
