@@ -5,7 +5,7 @@ import { useMemo, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import type { VisibilityState } from '@tanstack/react-table'
 import { Button } from '@auxx/ui/components/button'
-import { Plus, Trash2, Archive, Database, FileText, SquarePen, BookPlus, Play } from 'lucide-react'
+import { Plus, Trash2, Archive, Database, FileText, SquarePen, BookPlus, Play, Combine } from 'lucide-react'
 import { useEntityInstanceOperations } from '~/hooks/use-entity-instance-operations'
 import {
   DynamicView,
@@ -39,6 +39,7 @@ import { EntityRecordDrawer } from './entity-record-drawer'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
+import { MergeDialog } from '~/components/merge'
 import { useCustomFieldValueSyncer } from '~/components/resources/hooks/use-custom-field-value-syncer'
 import { useCombinedFilters } from '~/components/dynamic-table/hooks/use-combined-filters'
 import { useActiveViewConfig } from '~/components/dynamic-table/stores/view-store'
@@ -159,6 +160,9 @@ export function EntityRecordsContent() {
 
   // Workflow dialog state
   const [isWorkflowDialogOpen, setIsWorkflowDialogOpen] = useState(false)
+
+  // Merge dialog state
+  const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false)
 
   // ══════════════════════════════════════════════════════════════════════════
   // VIEW STORE INTEGRATION
@@ -457,6 +461,15 @@ export function EntityRecordsContent() {
         },
       },
       {
+        label: 'Merge',
+        icon: Combine,
+        variant: 'outline' as const,
+        action: (rows: EntityRow[]) => {
+          setSelectedRowIds(new Set(rows.map((r) => r.id)))
+          setIsMergeDialogOpen(true)
+        },
+      },
+      {
         label: 'Edit',
         icon: SquarePen,
         variant: 'outline' as const,
@@ -705,6 +718,21 @@ export function EntityRecordsContent() {
           entitySlug={slug}
           resourceIds={Array.from(selectedRowIds)}
           onSuccess={() => {
+            setSelectedRowIds(new Set())
+            refresh()
+          }}
+        />
+      )}
+
+      {/* Merge Dialog */}
+      {isMergeDialogOpen && entityDefinitionId && (
+        <MergeDialog
+          open={isMergeDialogOpen}
+          onOpenChange={setIsMergeDialogOpen}
+          baseResourceIds={Array.from(selectedRowIds).map((id) =>
+            toResourceId(entityDefinitionId, id)
+          )}
+          onMergeComplete={() => {
             setSelectedRowIds(new Set())
             refresh()
           }}

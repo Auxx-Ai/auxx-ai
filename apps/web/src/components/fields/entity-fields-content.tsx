@@ -44,6 +44,12 @@ export interface EntityFieldsContentProps {
   ConfirmDeleteDialog: React.FC
   /** ResourceId in format "entityDefinitionId:entityInstanceId" */
   resourceId: ResourceId
+  /** Whether fields can be edited (default: true) */
+  canEdit?: boolean
+  /** Whether all fields are read-only (default: false) */
+  readOnly?: boolean
+  /** Whether to show field titles/labels (default: true) */
+  showTitle?: boolean
 }
 
 /**
@@ -72,6 +78,9 @@ export function EntityFieldsContent({
   unregisterProviderClose,
   ConfirmDeleteDialog,
   resourceId,
+  canEdit = true,
+  readOnly = false,
+  showTitle = true,
 }: EntityFieldsContentProps) {
   // Parse resourceId to get entityDefinitionId
   const { entityDefinitionId } = parseResourceId(resourceId)
@@ -164,24 +173,26 @@ export function EntityFieldsContent({
         )}>
         <div className="flex rounded-md gap-0 p-3 pe-2 self-stretch flex-col">
           {/* Edit mode header */}
-          <div
-            className={cn(
-              'absolute -top-4 -right-3 z-80 rounded-full transition-opacity duration-200 ring ring-border bg-background flex items-center justify-center size-7 shadow-md backdrop-blur-sm',
-              isEditMode ? 'opacity-100' : 'opacity-0 group-hover/entity-card:opacity-100'
-            )}>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={() => setIsEditMode(!isEditMode)}
+          {canEdit && (
+            <div
               className={cn(
-                'cursor-pointer',
-                isEditMode
-                  ? 'bg-bad-200 hover:bg-bad-200 text-bad-700 hover:text-bad-800'
-                  : 'text-muted-foreground hover:text-foreground'
+                'absolute -top-4 -right-3 z-80 rounded-full transition-opacity duration-200 ring ring-border bg-background flex items-center justify-center size-7 shadow-md backdrop-blur-sm',
+                isEditMode ? 'opacity-100' : 'opacity-0 group-hover/entity-card:opacity-100'
               )}>
-              {isEditMode ? <X /> : <Pencil />}
-            </Button>
-          </div>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={() => setIsEditMode(!isEditMode)}
+                className={cn(
+                  'cursor-pointer',
+                  isEditMode
+                    ? 'bg-bad-200 hover:bg-bad-200 text-bad-700 hover:text-bad-800'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}>
+                {isEditMode ? <X /> : <Pencil />}
+              </Button>
+            </div>
+          )}
 
           <DndContext
             sensors={sensors}
@@ -209,7 +220,7 @@ export function EntityFieldsContent({
                       // Ensure field has required properties for PropertyRow
                       id: field.id || fieldKey,
                       name: field.label,
-                      readOnly: isReadOnly,
+                      readOnly: isReadOnly || readOnly,
                     }}
                     loading={isLoading}
                     isEditMode={isEditMode}
@@ -223,14 +234,16 @@ export function EntityFieldsContent({
                     registerOpen={registerRowOpen}
                     unregisterOpen={unregisterRowOpen}
                     resourceId={resourceId}
+                    readOnly={readOnly}
+                    showTitle={showTitle}
                   />
                 )
               })}
             </SortableContext>
           </DndContext>
 
-          {/* Add Field row - only show in edit mode */}
-          {isEditMode && <AddFieldRow onClick={handleAddField} />}
+          {/* Add Field row - only show in edit mode and when editable */}
+          {isEditMode && canEdit && <AddFieldRow onClick={handleAddField} />}
         </div>
       </div>
     </>

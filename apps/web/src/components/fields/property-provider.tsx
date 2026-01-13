@@ -45,6 +45,10 @@ interface PropertyContextValue {
   isSaving: boolean
   isOutsideClick: RefObject<boolean>
   providerId: string
+  /** Whether all fields are read-only (default: false) */
+  readOnly: boolean
+  /** Whether to show field titles/labels (default: true) */
+  showTitle: boolean
 
   // ─── Core Actions ───
   /**
@@ -111,6 +115,10 @@ interface PropertyProviderProps {
   unregisterClose?: (providerId: string) => void
   /** ResourceId in format "entityDefinitionId:entityInstanceId" (required for saving) */
   resourceId: ResourceId
+  /** Whether all fields are read-only (default: false) */
+  readOnly?: boolean
+  /** Whether to show field titles/labels (default: true) */
+  showTitle?: boolean
   children: ReactNode
 }
 
@@ -190,6 +198,8 @@ export function PropertyProvider({
   registerClose,
   unregisterClose,
   resourceId,
+  readOnly = false,
+  showTitle = true,
   children,
 }: PropertyProviderProps) {
   // Parse resourceId to get components
@@ -424,6 +434,8 @@ export function PropertyProvider({
     resourceId,
     value: currentValue,
     serverValue,
+    readOnly,
+    showTitle,
     isLoading: loading,
     isDirty,
     isOpen,

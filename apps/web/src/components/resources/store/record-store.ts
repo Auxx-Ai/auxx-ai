@@ -15,13 +15,18 @@ const BATCH_DELAY = 50 // ms to wait before processing batch
 const MAX_BATCH_SIZE = 100 // max records per batch request
 
 /**
- * Lightweight record metadata - field values stored separately in customFieldValueStore
+ * Record metadata from ResourcePickerItem
+ * Contains full resource data including display fields and database row
  */
 export interface RecordMeta {
   id: string
-  createdAt: string
-  updatedAt: string
-  /** For contacts: status, email, etc. For entities: entityDefinitionId */
+  resourceId?: string
+  displayName?: string
+  secondaryInfo?: string
+  avatarUrl?: string
+  createdAt: string | Date
+  updatedAt: string | Date
+  /** Additional database fields from the specific resource table */
   [key: string]: unknown
 }
 

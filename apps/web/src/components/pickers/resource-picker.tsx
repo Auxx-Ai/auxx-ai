@@ -127,6 +127,9 @@ export interface ResourcePickerProps {
 
   /** Additional className */
   className?: string
+
+  /** ResourceIds to exclude from results (filtered client-side) */
+  excludeIds?: ResourceId[]
 }
 
 /**
@@ -154,6 +157,7 @@ export function ResourcePicker({
   onCreate,
   createLabel = 'Create new',
   className,
+  excludeIds = [],
 }: ResourcePickerProps) {
   const [search, setSearch] = useState('')
   const { getResourceById } = useResourceProvider()
@@ -254,13 +258,13 @@ export function ResourcePicker({
     return items
   }, [initialSelectedIds, hydratedMap, search])
 
-  // Available items (from search, excluding initially selected)
+  // Available items (from search, excluding initially selected and excluded IDs)
   const availableItems = useMemo(() => {
     if (!searchResults?.items) return []
     return searchResults.items.filter((item) => {
-      return !wasInitiallySelected(item.resourceId)
+      return !wasInitiallySelected(item.resourceId) && !excludeIds.includes(item.resourceId)
     })
-  }, [searchResults, wasInitiallySelected])
+  }, [searchResults, wasInitiallySelected, excludeIds])
 
   /**
    * Toggle selection of a resource

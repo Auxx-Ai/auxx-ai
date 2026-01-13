@@ -34,6 +34,12 @@ interface EntityFieldsProps {
   onMutationSuccess?: () => void
   /** Additional className for the outer container */
   className?: string
+  /** Whether fields can be edited (default: true) */
+  canEdit?: boolean
+  /** Whether all fields are read-only (default: false) */
+  readOnly?: boolean
+  /** Whether to show field titles/labels (default: true) */
+  showTitle?: boolean
 }
 
 /**
@@ -43,7 +49,14 @@ interface EntityFieldsProps {
  * MIGRATED: Fields are now sourced from Resource.fields (system + custom combined)
  * with proper isSystem, showInPanel, and systemSortOrder properties.
  */
-function EntityFields({ resourceId, onMutationSuccess, className }: EntityFieldsProps) {
+function EntityFields({
+  resourceId,
+  onMutationSuccess,
+  className,
+  canEdit = true,
+  readOnly = false,
+  showTitle = true,
+}: EntityFieldsProps) {
   // Parse resourceId to get components
   const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
 
@@ -253,6 +266,9 @@ function EntityFields({ resourceId, onMutationSuccess, className }: EntityFields
         unregisterProviderClose={unregisterProviderClose}
         ConfirmDeleteDialog={ConfirmDeleteDialog}
         resourceId={resourceId}
+        canEdit={canEdit}
+        readOnly={readOnly}
+        showTitle={showTitle}
       />
     </FieldNavigationProvider>
   )

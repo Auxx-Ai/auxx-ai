@@ -38,6 +38,10 @@ interface SortablePropertyRowProps {
   unregisterOpen?: (providerId: string) => void
   /** ResourceId in format "entityDefinitionId:entityInstanceId" */
   resourceId: ResourceId
+  /** Whether all fields are read-only (default: false) */
+  readOnly?: boolean
+  /** Whether to show field titles/labels (default: true) */
+  showTitle?: boolean
 }
 
 /**
@@ -62,6 +66,8 @@ export function SortablePropertyRow({
   registerOpen,
   unregisterOpen,
   resourceId,
+  readOnly = false,
+  showTitle = true,
 }: SortablePropertyRowProps) {
   const nav = useFieldNavigationOptional()
   const openFnRef = useRef<(() => void) | null>(null)
@@ -174,7 +180,9 @@ export function SortablePropertyRow({
         field={field}
         value={value}
         loading={loading}
-        resourceId={resourceId}>
+        resourceId={resourceId}
+        readOnly={readOnly}
+        showTitle={showTitle}>
         <PropertyRowWithNavigation
           openFnRef={openFnRef}
           onFocus={() => nav?.setFocusedRow(providerId)}
