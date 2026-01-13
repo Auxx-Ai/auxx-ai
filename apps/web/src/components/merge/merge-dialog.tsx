@@ -1,7 +1,7 @@
 // apps/web/src/components/merge/merge-dialog.tsx
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -71,37 +71,33 @@ export function MergeDialog({
   )
   const { records, isLoading: recordsLoading } = useRecords({ resourceIds: allResourceIds })
 
-  // TODO: Replace with actual api.entityInstance.merge when ready
-  // Placeholder merge mutation
-  const [isPending, setIsPending] = useState(false)
-  const handleMergePlaceholder = async () => {
-    setIsPending(true)
-    try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+  // Reset state when dialog closes
+  useEffect(() => {
+    if (!open && baseResourceIds.length > 0) {
+      // Reset to initial values when dialog closes
+      const resetTarget = initialTargetId ?? baseResourceIds[0]!
+      setTargetResourceId(resetTarget)
+      setSourceResourceIds(baseResourceIds.filter((id) => id !== resetTarget))
+    }
+  }, [open, baseResourceIds, initialTargetId])
 
-      // Placeholder response
-      const result = {
-        mergedResourceId: targetResourceId,
-        mergedCount: sourceResourceIds.length + 1,
-        archivedIds: sourceResourceIds,
-      }
-
-      // Invalidate queries
+  // Merge mutation
+  const mergeMutation = api.entityInstance.merge.useMutation({
+    onSuccess: (result) => {
+      // Invalidate queries to refresh data
       utils.entityInstance.list.invalidate()
 
       // Call success callback
       onMergeComplete?.(result.mergedResourceId)
       onOpenChange(false)
-    } catch (error) {
+    },
+    onError: (error) => {
       toastError({
         title: 'Failed to merge',
-        description: error instanceof Error ? error.message : 'Unknown error',
+        description: error.message,
       })
-    } finally {
-      setIsPending(false)
-    }
-  }
+    },
+  })
 
   /** Add source items via ResourcePicker */
   const handleAddSources = useCallback(
@@ -135,8 +131,12 @@ export function MergeDialog({
 
   /** Execute merge */
   const handleMerge = () => {
-    if (sourceResourceIds.length === 0) return
-    handleMergePlaceholder()
+    if (sourceResourceIds.length === 0 || !targetResourceId) return
+
+    mergeMutation.mutate({
+      targetResourceId,
+      sourceResourceIds,
+    })
   }
 
   const resourceLabel = resource?.label ?? 'Record'
@@ -156,7 +156,7 @@ export function MergeDialog({
         {/* Main content: 3-column layout */}
         <div className="flex items-stretch gap-0 min-h-[200px]">
           {/* Double-width box containing sources + target */}
-          <div className="flex-[2] flex border p-1 rounded-[20px] overflow-hidden">
+          <div className="flex-[2] flex">
             {/* Source panel */}
             <MergeSourcePanel
               entityDefinitionId={entityDefinitionId}
@@ -200,14 +200,14 @@ export function MergeDialog({
             variant="ghost"
             size="sm"
             onClick={() => onOpenChange(false)}
-            disabled={isPending}>
+            disabled={mergeMutation.isPending}>
             Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
           </Button>
           <Button
             variant="default"
             size="sm"
             onClick={handleMerge}
-            loading={isPending}
+            loading={mergeMutation.isPending}
             loadingText="Merging..."
             disabled={!canMerge}>
             Merge {sourceResourceIds.length + 1} Items

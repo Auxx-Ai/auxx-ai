@@ -81,6 +81,7 @@ export function MergeTargetPanel({
                 canEdit={false}
                 showTitle={false}
                 readOnly
+                excludeFields={['createdAt', 'updatedAt']}
               />
             </div>
           </div>

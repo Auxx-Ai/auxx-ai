@@ -40,6 +40,8 @@ interface EntityFieldsProps {
   readOnly?: boolean
   /** Whether to show field titles/labels (default: true) */
   showTitle?: boolean
+  /** Array of field keys to exclude from display (e.g., ['createdAt', 'updatedAt']) */
+  excludeFields?: string[]
 }
 
 /**
@@ -56,6 +58,7 @@ function EntityFields({
   canEdit = true,
   readOnly = false,
   showTitle = true,
+  excludeFields,
 }: EntityFieldsProps) {
   // Parse resourceId to get components
   const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
@@ -125,6 +128,15 @@ function EntityFields({
   // This avoids the infinite loop caused by useEffect + setState
   const sortedFields = optimisticOrder ?? enrichedFields
 
+  // Apply field exclusion filter
+  const filteredFields = useMemo(() => {
+    if (!excludeFields || excludeFields.length === 0) {
+      return sortedFields
+    }
+
+    return sortedFields.filter((field) => !excludeFields.includes(field.key))
+  }, [sortedFields, excludeFields])
+
   // Note: Field value mutations are handled internally by PropertyProvider via storeConfig
 
   // ─────────────────────────────────────────────────────────────────
@@ -165,8 +177,8 @@ function EntityFields({
     const { active, over } = event
     if (!over || active.id === over.id) return
 
-    // Only allow reordering of custom fields
-    const customFields = sortedFields.filter((f) => !f.isSystem)
+    // Only allow reordering of custom fields from FILTERED list
+    const customFields = filteredFields.filter((f) => !f.isSystem)
     const oldIndex = customFields.findIndex((item) => item.key === active.id)
     const newIndex = customFields.findIndex((item) => item.key === over.id)
 
@@ -175,7 +187,7 @@ function EntityFields({
     const newOrder = getSmartSortPositions(customFields, oldIndex, newIndex)
 
     // Set optimistic order for immediate UI feedback
-    const systemFields = sortedFields.filter((f) => f.isSystem)
+    const systemFields = filteredFields.filter((f) => f.isSystem)
     const reorderedCustom = arrayMove(customFields, oldIndex, newIndex)
     setOptimisticOrder([...systemFields, ...reorderedCustom])
 
@@ -255,7 +267,7 @@ function EntityFields({
         isPending={isPending}
         sensors={sensors}
         handleDragEnd={handleDragEnd}
-        fields={sortedFields}
+        fields={filteredFields}
         isLoading={isLoading}
         isSortable={isSortable}
         handleDeleteField={handleDeleteField}

@@ -18,7 +18,7 @@ import {
   type EntityQueryContext,
 } from '@auxx/lib/workflow-engine'
 import { type Database, schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, isNull } from 'drizzle-orm'
 import { resourceIdSchema } from '@auxx/types/resource'
 
 /**
@@ -132,7 +132,9 @@ export const resourceRouter = createTRPCRouter({
 
       try {
         const service = new ResourcePickerService(organizationId, userId, ctx.db)
-        return await service.getResourcesByIds(input.items as import('@auxx/types/resource').ResourceId[])
+        return await service.getResourcesByIds(
+          input.items as import('@auxx/types/resource').ResourceId[]
+        )
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         throw new TRPCError({
@@ -419,6 +421,7 @@ async function queryEntityInstanceIds(params: {
       and(
         eq(schema.EntityInstance.entityDefinitionId, entityDefinitionId),
         eq(schema.EntityInstance.organizationId, organizationId),
+        isNull(schema.EntityInstance.archivedAt),
         whereClause
       )
     )

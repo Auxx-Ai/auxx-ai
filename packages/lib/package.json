@@ -82,6 +82,8 @@
     "./realtime/client": "./src/realtime/client/index.ts",
     "./resources": "./src/resources/index.ts",
     "./resources/client": "./src/resources/client.ts",
+    "./resources/merge": "./src/resources/merge/index.ts",
+    "./resources/merge/client": "./src/resources/merge/client.ts",
     "./rules": "./src/rules/index.ts",
     "./shopify": "./src/shopify/index.ts",
     "./signatures": "./src/signatures/index.ts",

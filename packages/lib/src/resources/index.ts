@@ -112,3 +112,7 @@ export type {
   ResourceHandler,
   FieldChange,
 } from './crud'
+
+// Merge service (server-side)
+export { EntityMergeService } from './merge'
+export type { MergeEntitiesInput, MergeEntitiesResult } from './merge'

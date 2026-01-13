@@ -1,5 +1,4 @@
 // packages/lib/src/field-values/client.ts
-'use client'
 
 /**
  * Client-side utilities for working with TypedFieldValue.

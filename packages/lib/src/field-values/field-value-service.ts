@@ -666,6 +666,15 @@ export class FieldValueService {
   async setValuesForEntity(params: SetValuesForEntityInput): Promise<SetValuesResult[]> {
     const { resourceId, values, publishEvents = true, skipInverseSync = false } = params
 
+    // Debug TAGS input
+    const tagsValues = values.filter((v) => v.fieldId.includes('bkk5r20ztjzkzkppc2umb3fp'))
+    if (tagsValues.length > 0) {
+      console.log('🔄 setValuesForEntity received TAGS:', {
+        resourceId,
+        tagsValues,
+      })
+    }
+
     // Parse ResourceId to get both parts and derive modelType
     const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
     const modelType = getModelType(entityDefinitionId)
@@ -746,6 +755,16 @@ export class FieldValueService {
       // Now set each value (will use cached field definitions and relationship validations)
       for (const v of customs) {
         try {
+          // Debug TAGS field processing
+          if (v.fieldId.includes('bkk5r20ztjzkzkppc2umb3fp')) {
+            console.log('🔧 Processing TAGS field:', {
+              fieldId: v.fieldId,
+              value: v.value,
+              valueType: typeof v.value,
+              isArray: Array.isArray(v.value),
+            })
+          }
+
           const result = await this.setValueWithBuiltIn({
             resourceId,
             fieldId: v.fieldId,
@@ -753,6 +772,16 @@ export class FieldValueService {
             publishEvents,
             skipInverseSync,
           })
+
+          // Debug TAGS result
+          if (v.fieldId.includes('bkk5r20ztjzkzkppc2umb3fp')) {
+            console.log('✨ TAGS field result:', {
+              fieldId: v.fieldId,
+              state: result.state,
+              valueCount: result.values.length,
+            })
+          }
+
           results.push({ fieldId: v.fieldId, ...result })
         } catch (error) {
           // Log but continue with other fields
@@ -1371,6 +1400,15 @@ export class FieldValueService {
     fieldType: string,
     field: FieldWithDefinition
   ): Promise<TypedFieldValueInput | TypedFieldValueInput[] | null> {
+    // Debug TAGS conversion
+    if (fieldType === 'TAGS') {
+      console.log('🔀 validateAndConvertValue for TAGS:', {
+        fieldType,
+        value,
+        isArray: Array.isArray(value),
+      })
+    }
+
     // Handle null/undefined
     if (value === null || value === undefined) {
       return null
@@ -1386,6 +1424,15 @@ export class FieldValueService {
           converted.push(single)
         }
       }
+
+      if (fieldType === 'TAGS') {
+        console.log('🔀 Converted TAGS array:', {
+          originalCount: value.length,
+          convertedCount: converted.length,
+          converted,
+        })
+      }
+
       return converted.length > 0 ? converted : null
     }
 
@@ -1679,6 +1726,17 @@ export class FieldValueService {
     const { entityInstanceId } = parseResourceId(resourceId)
     const values = Array.isArray(value) ? value : [value]
 
+    // Debug logging for TAGS
+    if (fieldType === 'TAGS') {
+      console.log('💾 setMultiValue called for TAGS:', {
+        resourceId,
+        fieldId,
+        fieldType,
+        valueCount: values.length,
+        values,
+      })
+    }
+
     // DELETE all existing
     const deleteResult = await deleteFieldValues({
       entityId: entityInstanceId,
@@ -1707,9 +1765,21 @@ export class FieldValueService {
       throw new Error(insertedResult.error.message)
     }
 
-    return insertedResult.value.map((row) =>
+    const result = insertedResult.value.map((row) =>
       this.rowToTypedValue(row as unknown as FieldValueRow, fieldType)
     )
+
+    // Debug logging for TAGS
+    if (fieldType === 'TAGS') {
+      console.log('✅ Inserted TAGS values:', {
+        resourceId,
+        fieldId,
+        count: result.length,
+        values: result,
+      })
+    }
+
+    return result
   }
 
   /**

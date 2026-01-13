@@ -66,3 +66,7 @@ export {
   sortFieldsForDisplay,
   getDisplayFields,
 } from './registry'
+
+// Merge utilities (client-safe)
+export { mergeFieldValue } from './merge/client'
+export type { MergeFieldInput, MergeFieldResult } from './merge/client'
