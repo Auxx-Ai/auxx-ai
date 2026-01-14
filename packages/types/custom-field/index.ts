@@ -279,6 +279,8 @@ export interface RelationshipOptions {
   inverseDescription?: string
   /** Icon for the inverse field */
   inverseIcon?: string
+  /** System attribute for the inverse field (e.g., 'tickets' for Contact.tickets) */
+  inverseSystemAttribute?: string
 }
 
 /** Zod schema for RelationshipOptions input validation */

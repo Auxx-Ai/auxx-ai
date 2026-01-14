@@ -11,7 +11,6 @@ import { useTestInputStore } from '../store/test-input-store'
 import { useReadOnly } from './use-read-only'
 import { toastError } from '@auxx/ui/components/toast'
 import {
-  type WorkflowTriggerType,
   type ResourceTriggerOperation,
   RESOURCE_OPERATION_TO_TRIGGER_TYPE,
   WorkflowTriggerType as TriggerType,
@@ -117,7 +116,8 @@ export const useWorkflowSave = () => {
 
         // Use the linker to map resource operations to trigger types
         if (operation && nodeEntityDefId) {
-          const mappedTriggerType = RESOURCE_OPERATION_TO_TRIGGER_TYPE[operation as ResourceTriggerOperation]
+          const mappedTriggerType =
+            RESOURCE_OPERATION_TO_TRIGGER_TYPE[operation as ResourceTriggerOperation]
           if (mappedTriggerType) {
             triggerType = mappedTriggerType
             entityDefinitionId = nodeEntityDefId
@@ -248,9 +248,16 @@ export const useWorkflowSave = () => {
     }
 
     // For icon, graph, envVars, access settings - always consider as changed
-    if (changes.icon || changes.graph || changes.envVars ||
-        changes.webEnabled !== undefined || changes.apiEnabled !== undefined ||
-        changes.accessMode || changes.config || changes.rateLimit) {
+    if (
+      changes.icon ||
+      changes.graph ||
+      changes.envVars ||
+      changes.webEnabled !== undefined ||
+      changes.apiEnabled !== undefined ||
+      changes.accessMode ||
+      changes.config ||
+      changes.rateLimit
+    ) {
       hasActualChanges = true
     }
 
@@ -294,8 +301,12 @@ export const useWorkflowSave = () => {
   )
 
   const saveShareSettings = useCallback(
-    (updates: Pick<PendingChanges, 'webEnabled' | 'apiEnabled' | 'accessMode' | 'config' | 'rateLimit'>) =>
-      queueSave(updates),
+    (
+      updates: Pick<
+        PendingChanges,
+        'webEnabled' | 'apiEnabled' | 'accessMode' | 'config' | 'rateLimit'
+      >
+    ) => queueSave(updates),
     [queueSave]
   )
 

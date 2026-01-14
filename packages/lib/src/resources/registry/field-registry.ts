@@ -40,7 +40,7 @@ export const RESOURCE_TABLE_REGISTRY = ModelTypeValues.filter(
 /**
  * TableId - valid system table identifiers (excludes types in EXCLUDED_RESOURCE_TYPES)
  */
-export type TableId = Exclude<ModelType, 'entity' | 'contact'>
+export type TableId = Exclude<ModelType, 'entity'>
 
 /**
  * Helper map for O(1) lookup by table ID

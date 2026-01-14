@@ -1,6 +1,6 @@
 // packages/services/src/custom-fields/create-field.ts
 
-import { database, schema } from '@auxx/database'
+import { database, schema, type Database, type Transaction } from '@auxx/database'
 import { eq, and, desc, isNull } from 'drizzle-orm'
 import { ok, err } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
@@ -46,6 +46,8 @@ export interface CreateCustomFieldInput {
   relationship?: RelationshipOptions
   /** Whether this field must contain unique values within its scope */
   isUnique?: boolean
+  /** System attribute identifier (e.g., 'full_name', 'primary_email') */
+  systemAttribute?: string
 }
 
 /**
@@ -55,7 +57,8 @@ export interface CreateCustomFieldInput {
 async function getLastFieldSortOrder(
   organizationId: string,
   modelType: string,
-  entityDefinitionId?: string | null
+  entityDefinitionId?: string | null,
+  db: Database | Transaction = database
 ) {
   const conditions = [
     eq(schema.CustomField.organizationId, organizationId),
@@ -68,7 +71,7 @@ async function getLastFieldSortOrder(
     conditions.push(isNull(schema.CustomField.entityDefinitionId))
   }
 
-  return database
+  return db
     .select({ sortOrder: schema.CustomField.sortOrder })
     .from(schema.CustomField)
     .where(and(...conditions))
@@ -81,9 +84,10 @@ async function getLastFieldSortOrder(
  * For RELATIONSHIP type, automatically creates the inverse field
  *
  * @param input - Field data
+ * @param tx - Optional transaction context (defaults to global database)
  * @returns Result with created field (or primary field for relationships)
  */
-export async function createCustomField(input: CreateCustomFieldInput) {
+export async function createCustomField(input: CreateCustomFieldInput, tx?: Transaction) {
   const {
     organizationId,
     name,
@@ -99,7 +103,11 @@ export async function createCustomField(input: CreateCustomFieldInput) {
     entityDefinitionId,
     relationship,
     isUnique = false,
+    systemAttribute,
   } = input
+
+  // Use provided transaction or default to global database
+  const db = tx ?? database
 
   // modelType is already lowercase and matches DB format directly
   const dbModelType = modelType
@@ -117,15 +125,19 @@ export async function createCustomField(input: CreateCustomFieldInput) {
 
   // Handle RELATIONSHIP type specially
   if (type === FieldTypeEnum.RELATIONSHIP) {
-    return createRelationshipFieldWithInverse({
-      organizationId,
-      name,
-      description,
-      icon,
-      modelType,
-      entityDefinitionId,
-      relationship,
-    })
+    return createRelationshipFieldWithInverse(
+      {
+        organizationId,
+        name,
+        description,
+        icon,
+        modelType,
+        entityDefinitionId,
+        relationship,
+        systemAttribute,
+      },
+      db
+    )
   }
 
   // Build field options for non-relationship types
@@ -167,9 +179,9 @@ export async function createCustomField(input: CreateCustomFieldInput) {
     Object.assign(fieldOptions, mergeDisplayOptions(type, options, {}))
   }
 
-  // Get last field's sortOrder
+  // Get last field's sortOrder using provided db context
   const lastFieldResult = await fromDatabase(
-    getLastFieldSortOrder(organizationId, dbModelType, entityDefinitionId),
+    getLastFieldSortOrder(organizationId, dbModelType, entityDefinitionId, db),
     'get-last-field-sort-order'
   )
 
@@ -180,9 +192,9 @@ export async function createCustomField(input: CreateCustomFieldInput) {
   const lastSortOrder = lastFieldResult.value[0]?.sortOrder ?? null
   const newSortOrder = generateKeyBetween(lastSortOrder, null)
 
-  // Insert field
+  // Insert field using provided db context
   const insertResult = await fromDatabase(
-    database
+    db
       .insert(schema.CustomField)
       .values({
         name,
@@ -196,6 +208,7 @@ export async function createCustomField(input: CreateCustomFieldInput) {
         modelType: dbModelType as any,
         entityDefinitionId: entityDefinitionId || null,
         isUnique,
+        systemAttribute,
         updatedAt: new Date(),
       })
       .returning(),
@@ -212,15 +225,19 @@ export async function createCustomField(input: CreateCustomFieldInput) {
 /**
  * Internal function to create a relationship field with its inverse
  */
-async function createRelationshipFieldWithInverse(input: {
-  organizationId: string
-  name: string
-  description?: string
-  icon?: string
-  modelType: ModelType
-  entityDefinitionId?: string | null
-  relationship?: RelationshipOptions
-}) {
+async function createRelationshipFieldWithInverse(
+  input: {
+    organizationId: string
+    name: string
+    description?: string
+    icon?: string
+    modelType: ModelType
+    entityDefinitionId?: string | null
+    relationship?: RelationshipOptions
+    systemAttribute?: string
+  },
+  db: Database | Transaction = database
+) {
   const {
     organizationId,
     name,
@@ -229,7 +246,10 @@ async function createRelationshipFieldWithInverse(input: {
     modelType,
     entityDefinitionId,
     relationship,
+    systemAttribute,
   } = input
+
+  console.log('Creating relationship field:', input)
 
   // Validate relationship options are provided
   if (!relationship) {
@@ -245,10 +265,11 @@ async function createRelationshipFieldWithInverse(input: {
     inverseName,
     inverseDescription,
     inverseIcon,
+    inverseSystemAttribute,
   } = relationship
 
-  // relatedResourceId is the unified ID - either a system ModelType or a custom entity UUID
-  // Both are stored in relatedEntityDefinitionId for simplicity
+  // relatedResourceId should be an EntityDefinition.id (UUID)
+  // Everything has an entityDefinitionId now (system and custom entities)
   const relatedEntityDefinitionId = relatedResourceId
 
   if (!relatedEntityDefinitionId) {
@@ -258,123 +279,136 @@ async function createRelationshipFieldWithInverse(input: {
     })
   }
 
-  // Determine if this is a system resource or custom entity
-  const isSystemModelType = (ModelTypeValues as readonly string[]).includes(relatedEntityDefinitionId)
-
   // modelType is already lowercase and matches DB format directly
   const dbModelType = modelType
   const inverseCardinality = getInverseCardinality(relationshipType)
 
-  // Determine inverse field's modelType and entityDefinitionId
-  // For system resources: modelType = the related system type (e.g., 'contact')
-  // For custom entities: modelType = 'entity', entityDefinitionId = UUID
-  const inverseModelType = isSystemModelType ? relatedEntityDefinitionId : 'entity'
-  const inverseEntityDefinitionId = isSystemModelType ? null : relatedEntityDefinitionId
+  // Define the operation that creates both relationship fields
+  const performOperation = async (tx: Transaction) => {
+    // Query the related EntityDefinition to get its modelType
+    const relatedDef = await tx.query.EntityDefinition.findFirst({
+      where: eq(schema.EntityDefinition.id, relatedEntityDefinitionId),
+    })
 
-  // Execute in transaction
+    if (!relatedDef) {
+      throw new Error(
+        `Related EntityDefinition not found for ID: ${relatedEntityDefinitionId}`
+      )
+    }
+
+    // Inverse field uses the related entity's modelType and entityDefinitionId
+    const inverseModelType = relatedDef.entityType
+    const inverseEntityDefinitionId = relatedEntityDefinitionId
+
+    // Get sortOrder for both sides using tx
+    const [primarySortResult, inverseSortResult] = await Promise.all([
+      getLastFieldSortOrder(organizationId, dbModelType, entityDefinitionId, tx),
+      getLastFieldSortOrder(organizationId, inverseModelType, inverseEntityDefinitionId, tx),
+    ])
+
+    const primarySortOrder = generateKeyBetween(primarySortResult[0]?.sortOrder ?? null, null)
+    const inverseSortOrder = generateKeyBetween(inverseSortResult[0]?.sortOrder ?? null, null)
+
+    // Create primary field using tx
+    const primaryFieldResult = await tx
+      .insert(schema.CustomField)
+      .values({
+        name,
+        type: 'RELATIONSHIP',
+        description,
+        modelType: dbModelType as any,
+        entityDefinitionId: entityDefinitionId || null,
+        organizationId,
+        sortOrder: primarySortOrder,
+        systemAttribute,
+        updatedAt: new Date(),
+        options: {
+          icon,
+          isCustom: true,
+          relationship: {
+            relatedEntityDefinitionId,
+            inverseFieldId: null,
+            relationshipType,
+            isInverse: false,
+          } as RelationshipConfig,
+        },
+      })
+      .returning()
+
+    const primaryField = primaryFieldResult[0]
+    if (!primaryField) {
+      throw new Error('Failed to create primary relationship field')
+    }
+
+    // Create inverse field using tx
+    // Inverse field's relatedEntityDefinitionId points back to the primary's entityDefinitionId
+    const inverseRelatedEntityDefinitionId = entityDefinitionId!
+
+    const inverseFieldResult = await tx
+      .insert(schema.CustomField)
+      .values({
+        name: inverseName,
+        type: 'RELATIONSHIP',
+        description: inverseDescription,
+        modelType: inverseModelType as any,
+        entityDefinitionId: inverseEntityDefinitionId,
+        organizationId,
+        sortOrder: inverseSortOrder,
+        systemAttribute: inverseSystemAttribute,
+        updatedAt: new Date(),
+        options: {
+          icon: inverseIcon,
+          isCustom: true,
+          relationship: {
+            relatedEntityDefinitionId: inverseRelatedEntityDefinitionId,
+            inverseFieldId: primaryField.id,
+            relationshipType: inverseCardinality,
+            isInverse: true,
+          } as RelationshipConfig,
+        },
+      })
+      .returning()
+
+    const inverseField = inverseFieldResult[0]
+    if (!inverseField) {
+      throw new Error('Failed to create inverse relationship field')
+    }
+
+    // Update primary field with inverseFieldId using tx
+    const primaryOptions = primaryField.options as { relationship: RelationshipConfig }
+    const updatedPrimaryFieldResult = await tx
+      .update(schema.CustomField)
+      .set({
+        options: {
+          ...primaryOptions,
+          relationship: {
+            ...primaryOptions.relationship,
+            inverseFieldId: inverseField.id,
+          },
+        },
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.CustomField.id, primaryField.id))
+      .returning()
+
+    const updatedPrimaryField = updatedPrimaryFieldResult[0]
+    if (!updatedPrimaryField) {
+      throw new Error('Failed to update primary relationship field')
+    }
+
+    return {
+      primaryField: updatedPrimaryField as CustomFieldEntity,
+      inverseField: inverseField as CustomFieldEntity,
+    }
+  }
+
+  // Execute with or without transaction wrapper
+  // If db is the global database, create a new transaction
+  // If db is already a transaction context (passed from seeder), use it directly
   const result = await fromDatabase(
-    database.transaction(async (tx) => {
-      // Get sortOrder for both sides
-      const [primarySortResult, inverseSortResult] = await Promise.all([
-        getLastFieldSortOrder(organizationId, dbModelType, entityDefinitionId),
-        getLastFieldSortOrder(organizationId, inverseModelType, inverseEntityDefinitionId),
-      ])
-
-      const primarySortOrder = generateKeyBetween(primarySortResult[0]?.sortOrder ?? null, null)
-      const inverseSortOrder = generateKeyBetween(inverseSortResult[0]?.sortOrder ?? null, null)
-
-      // 1. Create primary field (without inverseFieldId yet)
-      const primaryFieldResult = await tx
-        .insert(schema.CustomField)
-        .values({
-          name,
-          type: 'RELATIONSHIP',
-          description,
-          modelType: dbModelType as any,
-          entityDefinitionId: entityDefinitionId || null,
-          organizationId,
-          sortOrder: primarySortOrder,
-          updatedAt: new Date(),
-          options: {
-            icon,
-            isCustom: true,
-            relationship: {
-              relatedEntityDefinitionId,
-              inverseFieldId: null,
-              relationshipType,
-              isInverse: false,
-            } as RelationshipConfig,
-          },
-        })
-        .returning()
-
-      const primaryField = primaryFieldResult[0]
-      if (!primaryField) {
-        throw new Error('Failed to create primary relationship field')
-      }
-
-      // 2. Create inverse field
-      // For the inverse field, relatedEntityDefinitionId points back to the source:
-      // - If source is system resource: use modelType (e.g., 'contact')
-      // - If source is custom entity: use entityDefinitionId (UUID)
-      const inverseRelatedEntityDefinitionId =
-        modelType === ModelTypes.ENTITY ? entityDefinitionId! : dbModelType
-      const inverseFieldResult = await tx
-        .insert(schema.CustomField)
-        .values({
-          name: inverseName,
-          type: 'RELATIONSHIP',
-          description: inverseDescription,
-          modelType: inverseModelType as any,
-          entityDefinitionId: inverseEntityDefinitionId,
-          organizationId,
-          sortOrder: inverseSortOrder,
-          updatedAt: new Date(),
-          options: {
-            icon: inverseIcon,
-            isCustom: true,
-            relationship: {
-              relatedEntityDefinitionId: inverseRelatedEntityDefinitionId,
-              inverseFieldId: primaryField.id,
-              relationshipType: inverseCardinality,
-              isInverse: true,
-            } as RelationshipConfig,
-          },
-        })
-        .returning()
-
-      const inverseField = inverseFieldResult[0]
-      if (!inverseField) {
-        throw new Error('Failed to create inverse relationship field')
-      }
-
-      // 3. Update primary field with inverseFieldId
-      const primaryOptions = primaryField.options as { relationship: RelationshipConfig }
-      const updatedPrimaryFieldResult = await tx
-        .update(schema.CustomField)
-        .set({
-          options: {
-            ...primaryOptions,
-            relationship: {
-              ...primaryOptions.relationship,
-              inverseFieldId: inverseField.id,
-            },
-          },
-          updatedAt: new Date(),
-        })
-        .where(eq(schema.CustomField.id, primaryField.id))
-        .returning()
-
-      const updatedPrimaryField = updatedPrimaryFieldResult[0]
-      if (!updatedPrimaryField) {
-        throw new Error('Failed to update primary relationship field')
-      }
-
-      return {
-        primaryField: updatedPrimaryField as CustomFieldEntity,
-        inverseField: inverseField as CustomFieldEntity,
-      }
-    }),
+    db === database
+      ? database.transaction(performOperation) // Create new transaction
+      : performOperation(db), // Use existing transaction
     'create-relationship-field'
   )
 

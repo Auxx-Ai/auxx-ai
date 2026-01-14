@@ -64,6 +64,7 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
         isUnique: schema.CustomField.isUnique,
         modelType: schema.CustomField.modelType,
         entityDefinitionId: schema.CustomField.entityDefinitionId,
+        systemAttribute: schema.CustomField.systemAttribute,
       })
       .from(schema.CustomField)
       .where(
@@ -175,6 +176,10 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
   if (isUnique !== undefined) {
     updateData.isUnique = isUnique
   }
+
+  // CRITICAL: Ensure systemAttribute is never updated
+  // System attribute designation is immutable once set
+  delete updateData.systemAttribute
 
   // Update field
   const updateResult = await fromDatabase(

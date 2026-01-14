@@ -208,6 +208,22 @@ export interface ResourceField {
   /** Relationship configuration for RELATION type fields */
   relationship?: RelationshipConfig
 
+  /**
+   * Relationship field configuration for EntitySeeder
+   * Used to create relationship field pairs (primary + inverse) during seeding.
+   * Only needed for system relationship fields that need to be seeded.
+   */
+  relationshipConfig?: {
+    /** Target entity type (e.g., 'contact', 'user', 'ticket') */
+    relatedEntityType: string
+    /** Relationship type ('belongs_to', 'has_many', 'has_one') */
+    relationshipType: 'belongs_to' | 'has_many' | 'has_one'
+    /** Display name for the inverse field (e.g., 'Tickets', 'Assigned Tickets') */
+    inverseName: string
+    /** System attribute for the inverse field (e.g., 'contact_tickets', 'user_assigned_tickets') */
+    inverseSystemAttribute: string
+  }
+
   // Default value configuration
   /**
    * Default value to use when resource type changes.
@@ -288,6 +304,22 @@ export interface ResourceField {
    * Default: true. Set to false for relationship reverse-fields, internal fields, etc.
    */
   showInPanel?: boolean
+
+  /**
+   * System attribute identifier
+   * - If set: System field (cannot delete/edit, special rendering)
+   * - If null/undefined: Custom field (can delete/edit, generic rendering)
+   *
+   * Examples: 'primary_email', 'first_name', 'ticket_number'
+   *
+   * This is used by:
+   * - EntitySeeder to create CustomField records
+   * - Frontend to determine if field is editable
+   * - Validation hooks to apply special behavior
+   *
+   * NOTE: isSystem can be derived: isSystem = !!systemAttribute
+   */
+  systemAttribute?: string
 }
 
 /**

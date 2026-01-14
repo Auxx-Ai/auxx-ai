@@ -3,268 +3,129 @@
 import { type Database, schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
-import { generateId } from '@auxx/utils/generateId'
+import { RESOURCE_TABLE_MAP } from '../resources/registry'
+import { CONTACT_FIELDS } from '../resources/registry/resources/contact-fields'
+import { TICKET_FIELDS } from '../resources/registry/resources/ticket-fields'
+import { PART_FIELDS } from '../resources/registry/resources/part-fields'
+import type { ResourceField } from '../resources/registry/field-types'
+import { FieldType } from '@auxx/database/enums'
+import { createCustomField } from '@auxx/services/custom-fields'
+import type { CreateCustomFieldInput } from '@auxx/services/custom-fields'
+import { ModelTypes, type ModelType } from '@auxx/services/custom-fields'
 
 const logger = createScopedLogger('entity-seeder')
 
 /**
- * System field definition for seeding
+ * System entity definitions from registry
+ * Maps entity type to field definitions
  */
-interface SystemFieldDef {
-  name: string
-  type: string
-  systemAttribute: string
-  required?: boolean
-  isUnique?: boolean
-  isCreatable?: boolean
-  isUpdatable?: boolean
-  isComputed?: boolean
-  isSortable?: boolean
-  isFilterable?: boolean
-  options?: {
-    options?: Array<{ id: string; label: string; value: string; color?: string }>
-    // For computed fields
-    computedFrom?: string[] // Array of systemAttributes this field is computed from
-    computeFormat?: string // Template string, e.g., "{first_name} {last_name}"
-    [key: string]: unknown
-  }
-  position?: number
-}
-
-/**
- * System entity definition for seeding
- */
-interface SystemEntityDef {
-  entityType: string
-  apiSlug: string
-  singular: string
-  plural: string
-  icon: string
-  color: string
-  fields: SystemFieldDef[]
-  primaryDisplayFieldAttribute?: string
-  secondaryDisplayFieldAttribute?: string
-  avatarFieldAttribute?: string
-}
-
-/**
- * Generate a stable option ID
- */
-function optId(): string {
-  return generateId('opt')
-}
-
-/**
- * Generate sort order string (a0, a1, a2, ...)
- */
-function generateSortOrder(index: number): string {
-  const alphabet = 'abcdefghijklmnopqrstuvwxyz'
-  const base = Math.floor(index / 26)
-  const remainder = index % 26
-  return base > 0 ? `${alphabet[base - 1]}${alphabet[remainder]}` : `${alphabet[remainder]}0`
-}
-
-/**
- * Contact system fields
- */
-const CONTACT_FIELDS: SystemFieldDef[] = [
-  {
-    name: 'Full Name',
-    type: 'TEXT',
-    systemAttribute: 'full_name',
-    required: false,
-    isUnique: false,
-    isCreatable: false,
-    isUpdatable: false,
-    isComputed: true,
-    isSortable: true,
-    isFilterable: true,
-    options: {
-      computedFrom: ['first_name', 'last_name'],
-      computeFormat: '{first_name} {last_name}',
-    },
-    position: 0,
-  },
-  {
-    name: 'Email',
-    type: 'EMAIL',
-    systemAttribute: 'primary_email',
-    required: true,
-    isUnique: true,
-    position: 1,
-  },
-  { name: 'First Name', type: 'TEXT', systemAttribute: 'first_name', position: 2 },
-  { name: 'Last Name', type: 'TEXT', systemAttribute: 'last_name', position: 3 },
-  { name: 'Phone', type: 'PHONE_INTL', systemAttribute: 'phone' },
-  {
-    name: 'Status',
-    type: 'SINGLE_SELECT',
-    systemAttribute: 'contact_status',
-    options: {
-      options: [
-        { id: optId(), label: 'Active', value: 'ACTIVE', color: 'green' },
-        { id: optId(), label: 'Inactive', value: 'INACTIVE', color: 'gray' },
-        { id: optId(), label: 'Spam', value: 'SPAM', color: 'red' },
-      ],
-    },
-  },
-  { name: 'Tags', type: 'TAGS', systemAttribute: 'contact_tags' },
-  { name: 'Notes', type: 'RICH_TEXT', systemAttribute: 'contact_notes' },
-]
-
-/**
- * Ticket system fields
- */
-const TICKET_FIELDS: SystemFieldDef[] = [
-  {
-    name: 'Number',
-    type: 'NUMBER',
-    systemAttribute: 'ticket_number',
-    isUnique: true,
-    isCreatable: false,
-    isUpdatable: false,
-    isComputed: true,
-  },
-  { name: 'Title', type: 'TEXT', systemAttribute: 'ticket_title', required: true },
-  { name: 'Description', type: 'RICH_TEXT', systemAttribute: 'ticket_description' },
-  {
-    name: 'Type',
-    type: 'SINGLE_SELECT',
-    systemAttribute: 'ticket_type',
-    isUpdatable: false,
-    options: {
-      options: [
-        { id: optId(), label: 'Question', value: 'QUESTION', color: 'blue' },
-        { id: optId(), label: 'Problem', value: 'PROBLEM', color: 'red' },
-        { id: optId(), label: 'Feature Request', value: 'FEATURE_REQUEST', color: 'purple' },
-        { id: optId(), label: 'Refund', value: 'REFUND', color: 'orange' },
-        { id: optId(), label: 'Other', value: 'OTHER', color: 'gray' },
-      ],
-    },
-  },
-  {
-    name: 'Priority',
-    type: 'SINGLE_SELECT',
-    systemAttribute: 'ticket_priority',
-    options: {
-      options: [
-        { id: optId(), label: 'Low', value: 'LOW', color: 'gray' },
-        { id: optId(), label: 'Medium', value: 'MEDIUM', color: 'yellow' },
-        { id: optId(), label: 'High', value: 'HIGH', color: 'orange' },
-        { id: optId(), label: 'Urgent', value: 'URGENT', color: 'red' },
-      ],
-    },
-  },
-  {
-    name: 'Status',
-    type: 'SINGLE_SELECT',
-    systemAttribute: 'ticket_status',
-    options: {
-      options: [
-        { id: optId(), label: 'Open', value: 'OPEN', color: 'blue' },
-        { id: optId(), label: 'In Progress', value: 'IN_PROGRESS', color: 'yellow' },
-        { id: optId(), label: 'Waiting', value: 'WAITING', color: 'orange' },
-        { id: optId(), label: 'Resolved', value: 'RESOLVED', color: 'green' },
-        { id: optId(), label: 'Closed', value: 'CLOSED', color: 'gray' },
-      ],
-    },
-  },
-  {
-    name: 'Contact',
-    type: 'RELATIONSHIP',
-    systemAttribute: 'ticket_contact',
-    isUpdatable: false,
-    options: { targetEntityType: 'contact', cardinality: 'many-to-one' },
-  },
-  {
-    name: 'Assignee',
-    type: 'RELATIONSHIP',
-    systemAttribute: 'ticket_assignee',
-    options: { targetEntityType: 'user', cardinality: 'many-to-one' },
-  },
-  { name: 'Due Date', type: 'DATETIME', systemAttribute: 'ticket_due_date' },
-  {
-    name: 'Created At',
-    type: 'DATETIME',
-    systemAttribute: 'created_at',
-    isCreatable: false,
-    isUpdatable: false,
-    isComputed: true,
-  },
-  {
-    name: 'Updated At',
-    type: 'DATETIME',
-    systemAttribute: 'updated_at',
-    isCreatable: false,
-    isUpdatable: false,
-    isComputed: true,
-  },
-]
-
-/**
- * Part system fields
- */
-const PART_FIELDS: SystemFieldDef[] = [
-  { name: 'Title', type: 'TEXT', systemAttribute: 'part_title', required: true },
-  { name: 'SKU', type: 'TEXT', systemAttribute: 'part_sku', isUnique: true },
-  { name: 'Description', type: 'RICH_TEXT', systemAttribute: 'part_description' },
-  {
-    name: 'Category',
-    type: 'SINGLE_SELECT',
-    systemAttribute: 'part_category',
-    options: {
-      options: [
-        { id: optId(), label: 'Electronics', value: 'ELECTRONICS', color: 'blue' },
-        { id: optId(), label: 'Mechanical', value: 'MECHANICAL', color: 'gray' },
-        { id: optId(), label: 'Consumable', value: 'CONSUMABLE', color: 'green' },
-        { id: optId(), label: 'Accessory', value: 'ACCESSORY', color: 'purple' },
-      ],
-    },
-  },
-  { name: 'Cost', type: 'CURRENCY', systemAttribute: 'part_cost' },
-]
-
-/**
- * System entity definitions
- */
-const SYSTEM_ENTITIES: SystemEntityDef[] = [
-  {
-    entityType: 'contact',
-    apiSlug: 'contacts',
-    singular: 'Contact',
-    plural: 'Contacts',
-    icon: 'users',
-    color: 'blue',
+const SYSTEM_ENTITY_REGISTRY = {
+  contact: {
+    meta: RESOURCE_TABLE_MAP['contact'],
     fields: CONTACT_FIELDS,
-    primaryDisplayFieldAttribute: 'full_name',
-    secondaryDisplayFieldAttribute: 'primary_email',
+    primaryDisplayField: 'full_name',
+    secondaryDisplayField: 'primary_email',
   },
-  {
-    entityType: 'ticket',
-    apiSlug: 'tickets',
-    singular: 'Ticket',
-    plural: 'Tickets',
-    icon: 'tags',
-    color: 'orange',
+  ticket: {
+    meta: RESOURCE_TABLE_MAP['ticket'],
     fields: TICKET_FIELDS,
-    primaryDisplayFieldAttribute: 'ticket_title',
-    secondaryDisplayFieldAttribute: 'ticket_number',
+    primaryDisplayField: 'ticket_title',
+    secondaryDisplayField: 'ticket_number',
   },
-  {
-    entityType: 'part',
-    apiSlug: 'parts',
-    singular: 'Part',
-    plural: 'Parts',
-    icon: 'boxes',
-    color: 'green',
+  part: {
+    meta: RESOURCE_TABLE_MAP['part'],
     fields: PART_FIELDS,
-    primaryDisplayFieldAttribute: 'part_title',
-    secondaryDisplayFieldAttribute: 'part_sku',
+    primaryDisplayField: 'part_title',
+    secondaryDisplayField: 'part_sku',
   },
-]
+} as const
 
 /**
- * EntitySeeder seeds system EntityDefinitions and CustomFields for a new organization.
+ * Fields that are EntityInstance columns, not CustomFields
+ * These should NOT be seeded as CustomFields
+ */
+const ENTITY_INSTANCE_FIELDS = ['id', 'created_at', 'updated_at'] as const
+
+/**
+ * Transform ResourceField to CreateCustomFieldInput for service layer
+ * Handles regular fields - relationship fields handled separately
+ */
+function transformToCustomFieldInput(
+  field: ResourceField,
+  organizationId: string,
+  modelType: ModelType,
+  entityDefinitionId?: string
+): CreateCustomFieldInput | null {
+  // Skip EntityInstance fields
+  if (
+    !field.systemAttribute ||
+    ENTITY_INSTANCE_FIELDS.includes(field.systemAttribute as any)
+  ) {
+    return null
+  }
+
+  // Skip relationships - handled separately
+  if (field.fieldType === FieldType.RELATIONSHIP) {
+    return null
+  }
+
+  return {
+    organizationId,
+    modelType,
+    entityDefinitionId: entityDefinitionId || null,
+    name: field.label,
+    type: field.fieldType!,
+    description: field.description,
+    required: field.capabilities?.required ?? false,
+    isUnique: field.capabilities?.isUnique ?? false,
+    isCustom: false, // System fields
+    options: field.options ?? undefined,
+    icon: field.icon,
+    systemAttribute: field.systemAttribute,
+  }
+}
+
+/**
+ * Transform relationship ResourceField to CreateCustomFieldInput
+ * Note: This creates a partial input - the actual relatedResourceId lookup
+ * happens during seeding when we have transaction context
+ */
+function transformRelationshipToInput(
+  field: ResourceField,
+  organizationId: string,
+  modelType: ModelType,
+  entityDefinitionId?: string,
+  relatedEntityDefinitionId?: string
+): CreateCustomFieldInput | null {
+  if (!field.relationshipConfig) {
+    return null
+  }
+
+  return {
+    organizationId,
+    modelType,
+    entityDefinitionId: entityDefinitionId || null,
+    name: field.label,
+    type: FieldType.RELATIONSHIP,
+    description: field.description,
+    required: field.capabilities?.required ?? false,
+    isCustom: false,
+    icon: field.icon,
+    systemAttribute: field.systemAttribute,
+    relationship: {
+      relatedResourceId: relatedEntityDefinitionId || field.relationshipConfig.relatedEntityType,
+      relationshipType: field.relationshipConfig.relationshipType,
+      inverseName: field.relationshipConfig.inverseName,
+      inverseDescription: `Inverse of ${field.label}`,
+      inverseIcon: '',
+      inverseSystemAttribute: field.relationshipConfig.inverseSystemAttribute,
+    },
+  }
+}
+
+/**
+ * EntitySeeder seeds system EntityDefinitions and CustomFields
+ * Uses registry as the single source of truth
  */
 export class EntitySeeder {
   constructor(
@@ -273,89 +134,151 @@ export class EntitySeeder {
   ) {}
 
   /**
-   * Seed all system entities (Contact, Ticket, Part) for the organization
+   * Seed all system entities (Contact, Ticket, Part)
+   * Transforms from registry instead of hardcoded data
    */
   async seedSystemEntities(): Promise<void> {
     logger.info('Seeding system entities', { organizationId: this.organizationId })
 
-    for (const entityDef of SYSTEM_ENTITIES) {
-      await this.seedEntity(entityDef)
+    for (const [entityType, config] of Object.entries(SYSTEM_ENTITY_REGISTRY)) {
+      await this.seedEntity(entityType as keyof typeof SYSTEM_ENTITY_REGISTRY, config)
     }
 
     logger.info('Successfully seeded system entities', { organizationId: this.organizationId })
   }
 
   /**
-   * Seed a single system entity and its fields
+   * Seed a single system entity from registry
    */
-  private async seedEntity(entityDef: SystemEntityDef): Promise<void> {
+  private async seedEntity(
+    entityType: keyof typeof SYSTEM_ENTITY_REGISTRY,
+    config: (typeof SYSTEM_ENTITY_REGISTRY)[keyof typeof SYSTEM_ENTITY_REGISTRY]
+  ): Promise<void> {
     const now = new Date()
 
+    // Wrap everything in a transaction for atomicity
     await this.db.transaction(async (tx) => {
       // Create EntityDefinition
       const [createdDef] = await tx
         .insert(schema.EntityDefinition)
         .values({
           organizationId: this.organizationId,
-          entityType: entityDef.entityType,
-          apiSlug: entityDef.apiSlug,
-          singular: entityDef.singular,
-          plural: entityDef.plural,
-          icon: entityDef.icon,
-          color: entityDef.color,
+          entityType,
+          apiSlug: config.meta.apiSlug,
+          singular: config.meta.label,
+          plural: config.meta.plural,
+          icon: config.meta.icon,
+          color: config.meta.color,
           updatedAt: now.toISOString(),
         })
         .returning()
 
       if (!createdDef) {
-        throw new Error(`Failed to create EntityDefinition for ${entityDef.entityType}`)
+        throw new Error(`Failed to create EntityDefinition for ${entityType}`)
       }
 
-      logger.info(`Created EntityDefinition: ${entityDef.entityType}`, {
+      logger.info(`Created EntityDefinition: ${entityType}`, {
         organizationId: this.organizationId,
         entityDefinitionId: createdDef.id,
       })
 
-      // Create CustomFields
-      const fieldValues = entityDef.fields.map((field, index) => ({
-        organizationId: this.organizationId,
-        entityDefinitionId: createdDef.id,
-        modelType: 'entity', // System entities use 'entity' modelType
-        name: field.name,
-        type: field.type,
-        systemAttribute: field.systemAttribute,
-        required: field.required ?? false,
-        isUnique: field.isUnique ?? false,
-        isCustom: false, // System fields are not custom
-        isCreatable: field.isCreatable ?? true,
-        isUpdatable: field.isUpdatable ?? true,
-        isComputed: field.isComputed ?? false,
-        isSortable: field.isSortable ?? true,
-        isFilterable: field.isFilterable ?? true,
-        options: field.options ?? null,
-        sortOrder: generateSortOrder(field.position ?? index),
-        updatedAt: now,
-      }))
+      // Determine modelType for field creation
+      // For system entities, modelType = entityType (e.g., 'contact', 'ticket')
+      const modelType = entityType as ModelType
 
-      await tx.insert(schema.CustomField).values(fieldValues)
+      // Separate regular fields from relationship fields
+      const allFields = Object.values(config.fields)
+      const regularFields = allFields.filter((f) => f.fieldType !== FieldType.RELATIONSHIP)
+      const relationshipFields = allFields.filter((f) => f.fieldType === FieldType.RELATIONSHIP)
 
-      logger.info(`Created ${fieldValues.length} CustomFields for ${entityDef.entityType}`, {
-        organizationId: this.organizationId,
-        entityDefinitionId: createdDef.id,
-      })
+      // Create regular fields using createCustomField
+      // CRITICAL: Pass tx context to createCustomField for atomicity
+      for (const field of regularFields) {
+        const input = transformToCustomFieldInput(
+          field,
+          this.organizationId,
+          modelType,
+          createdDef.id
+        )
 
-      // Step 3: Query created fields by systemAttribute to link as display fields
+        if (!input) continue
+
+        const result = await createCustomField(input, tx)
+
+        if (result.isErr()) {
+          logger.error(`Failed to create field ${field.label}`, {
+            error: result.error,
+            entityType,
+          })
+          throw new Error(`Failed to create field ${field.label}: ${result.error.message}`)
+        }
+
+        logger.debug(`Created field: ${field.label}`)
+      }
+
+      logger.info(`Created ${regularFields.length} regular fields for ${entityType}`)
+
+      // Create relationship fields using createCustomField
+      // This automatically creates BOTH primary and inverse fields
+      // CRITICAL: Pass tx context to createCustomField for atomicity
+      for (const field of relationshipFields) {
+        if (!field.relationshipConfig) {
+          logger.warn(`Skipping relationship field without config: ${field.label}`)
+          continue
+        }
+
+        // Look up the related entity's EntityDefinition ID
+        const relatedEntityType = field.relationshipConfig.relatedEntityType
+        const relatedEntityDef = await tx.query.EntityDefinition.findFirst({
+          where: eq(schema.EntityDefinition.entityType, relatedEntityType),
+        })
+
+        if (!relatedEntityDef) {
+          logger.warn(
+            `Skipping relationship field ${field.label}: related entity ${relatedEntityType} not found`
+          )
+          continue
+        }
+
+        const input = transformRelationshipToInput(
+          field,
+          this.organizationId,
+          modelType,
+          createdDef.id,
+          relatedEntityDef.id
+        )
+
+        if (!input) {
+          logger.warn(`Skipping relationship field without config: ${field.label}`)
+          continue
+        }
+
+        const result = await createCustomField(input, tx)
+
+        if (result.isErr()) {
+          logger.error(`Failed to create relationship field ${field.label}`, {
+            error: result.error,
+            entityType,
+          })
+          throw new Error(`Failed to create relationship field ${field.label}: ${result.error.message}`)
+        }
+
+        logger.debug(`Created relationship field pair: ${field.label}`)
+      }
+
+      logger.info(`Created ${relationshipFields.length} relationship field pairs for ${entityType}`)
+
+      // Link display fields (keep existing logic)
       const fieldsToLink: {
         primaryDisplayFieldId?: string
         secondaryDisplayFieldId?: string
-        avatarFieldId?: string
       } = {}
 
-      if (entityDef.primaryDisplayFieldAttribute) {
+      if (config.primaryDisplayField) {
         const primaryField = await tx.query.CustomField.findFirst({
           where: and(
             eq(schema.CustomField.entityDefinitionId, createdDef.id),
-            eq(schema.CustomField.systemAttribute, entityDef.primaryDisplayFieldAttribute)
+            eq(schema.CustomField.systemAttribute, config.primaryDisplayField)
           ),
         })
         if (primaryField) {
@@ -363,11 +286,11 @@ export class EntitySeeder {
         }
       }
 
-      if (entityDef.secondaryDisplayFieldAttribute) {
+      if (config.secondaryDisplayField) {
         const secondaryField = await tx.query.CustomField.findFirst({
           where: and(
             eq(schema.CustomField.entityDefinitionId, createdDef.id),
-            eq(schema.CustomField.systemAttribute, entityDef.secondaryDisplayFieldAttribute)
+            eq(schema.CustomField.systemAttribute, config.secondaryDisplayField)
           ),
         })
         if (secondaryField) {
@@ -375,31 +298,19 @@ export class EntitySeeder {
         }
       }
 
-      if (entityDef.avatarFieldAttribute) {
-        const avatarField = await tx.query.CustomField.findFirst({
-          where: and(
-            eq(schema.CustomField.entityDefinitionId, createdDef.id),
-            eq(schema.CustomField.systemAttribute, entityDef.avatarFieldAttribute)
-          ),
-        })
-        if (avatarField) {
-          fieldsToLink.avatarFieldId = avatarField.id
-        }
-      }
-
-      // Step 4: Update EntityDefinition with display field IDs
+      // Update EntityDefinition with display field IDs
       if (Object.keys(fieldsToLink).length > 0) {
         await tx
           .update(schema.EntityDefinition)
           .set(fieldsToLink)
           .where(eq(schema.EntityDefinition.id, createdDef.id))
 
-        logger.info(`Linked display fields for ${entityDef.entityType}`, {
+        logger.info(`Linked display fields for ${entityType}`, {
           organizationId: this.organizationId,
           entityDefinitionId: createdDef.id,
           ...fieldsToLink,
         })
       }
-    })
+    }) // End transaction
   }
 }
