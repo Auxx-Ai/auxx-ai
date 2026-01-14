@@ -9,7 +9,7 @@ export {
 
 // Hooks
 export {
-  useAllResources,
+  useResources,
   useResource,
   useRelationship,
   useResourceFields,

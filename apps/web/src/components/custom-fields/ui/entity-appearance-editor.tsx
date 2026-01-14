@@ -1,7 +1,6 @@
 // apps/web/src/components/custom-fields/ui/entity-appearance-editor.tsx
 'use client'
 
-import { api } from '~/trpc/react'
 import {
   Select,
   SelectContent,
@@ -13,36 +12,37 @@ import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/inpu
 import { useEntityDefinitionMutations } from '~/components/resources/hooks'
 import { Palette, Check } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@auxx/ui/components/avatar'
+import type { Resource } from '@auxx/lib/resources/client'
 
 /** Props for EntityAppearanceEditor */
 interface EntityAppearanceEditorProps {
-  entityDefinitionId: string
-  icon: string | null
-  color: string | null
-  singular: string
-  plural: string
-  primaryDisplayFieldId: string | null
-  secondaryDisplayFieldId: string | null
-  avatarFieldId: string | null
+  /** Resource (system or custom) */
+  resource: Resource
+  /** Disable editing (for system resources) */
+  disabled?: boolean
+  /** Callback after successful update */
   onUpdate?: () => void
 }
 
 /** Editor for entity appearance settings (display fields) */
 export function EntityAppearanceEditor({
-  entityDefinitionId,
-  icon,
-  color,
-  singular,
-  plural,
-  primaryDisplayFieldId,
-  secondaryDisplayFieldId,
-  avatarFieldId,
+  resource,
+  disabled = false,
   onUpdate,
 }: EntityAppearanceEditorProps) {
-  // Fetch custom fields for this entity
-  const { data: customFields } = api.customField.getByEntityDefinition.useQuery({
-    entityDefinitionId,
-  })
+  // Extract values from resource
+  const { entityDefinitionId, label: singular } = resource
+
+  // Get display field IDs based on resource type
+  const primaryDisplayFieldId =
+    resource.type === 'custom' ? resource.display.primaryDisplayField?.id ?? null : null
+  const secondaryDisplayFieldId =
+    resource.type === 'custom' ? resource.display.secondaryDisplayField?.id ?? null : null
+  const avatarFieldId = resource.type === 'custom' ? resource.display.avatarField?.id ?? null : null
+
+  // Use resource.fields instead of separate query (includes both system and custom)
+  // For display field selection, only show custom fields
+  const customFields = resource.fields.filter((f) => !f.isSystem)
 
   // Update mutation
   const { updateEntity } = useEntityDefinitionMutations()
@@ -52,6 +52,7 @@ export function EntityAppearanceEditor({
     field: 'primaryDisplayFieldId' | 'secondaryDisplayFieldId' | 'avatarFieldId',
     value: string | null
   ) => {
+    if (disabled) return
     updateEntity.mutate(
       { id: entityDefinitionId, data: { [field]: value } },
       { onSuccess: () => onUpdate?.() }
@@ -69,6 +70,12 @@ export function EntityAppearanceEditor({
         Appearance
       </h3>
 
+      {disabled && (
+        <div className="text-xs text-muted-foreground italic mb-4">
+          System entities cannot be customized. Display fields are predefined.
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-6">
         {/* Left column: Select fields */}
         <div>
@@ -77,6 +84,7 @@ export function EntityAppearanceEditor({
               title="Display Field"
               description="Shown as the main name in pickers">
               <Select
+                disabled={disabled}
                 value={primaryDisplayFieldId ?? 'none'}
                 onValueChange={(v) =>
                   handleChange('primaryDisplayFieldId', v === 'none' ? null : v)
@@ -104,6 +112,7 @@ export function EntityAppearanceEditor({
               title="Subtitle Field"
               description="Optional subtitle below the name">
               <Select
+                disabled={disabled}
                 value={secondaryDisplayFieldId ?? 'none'}
                 onValueChange={(v) =>
                   handleChange('secondaryDisplayFieldId', v === 'none' ? null : v)
@@ -123,6 +132,7 @@ export function EntityAppearanceEditor({
             </VarEditorFieldRow>
             <VarEditorFieldRow title="Avatar Field" description="Image field for avatar">
               <Select
+                disabled={disabled}
                 value={avatarFieldId ?? 'none'}
                 onValueChange={(v) => handleChange('avatarFieldId', v === 'none' ? null : v)}>
                 <SelectTrigger variant="transparent" size="sm">

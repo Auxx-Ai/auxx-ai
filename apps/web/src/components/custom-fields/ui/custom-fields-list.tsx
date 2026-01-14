@@ -1,7 +1,7 @@
 // apps/web/src/components/custom-fields/ui/custom-fields-list.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import {
   DndContext,
   closestCenter,
@@ -12,59 +12,49 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core'
 import {
-  arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
-import { getSmartSortPositions } from '@auxx/utils'
+import { generateKeyBetween } from '@auxx/utils'
 
 import { TableBody, TableHead, TableHeader, TableRow } from '@auxx/ui/components/table'
 import { Rows3, Plus } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
-import { useCustomField } from '~/components/custom-fields/hooks/use-custom-field'
+import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
 import { EmptyState } from '~/components/global/empty-state'
 import { CustomFieldRow } from '~/components/custom-fields/ui/field-list'
 import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
 import { useConfirm } from '~/hooks/use-confirm'
+import type { Resource } from '@auxx/lib/resources/client'
 
 /** Props for CustomFieldsList component */
 interface CustomFieldsListProps {
-  /** Entity definition ID - system resource (e.g. 'contact') or custom entity UUID */
-  entityDefinitionId: string | undefined
-  /** Resource ID for the current entity (used by relationship field editor) */
-  currentResourceId?: string
+  /** Resource (system or custom) */
+  resource: Resource
 }
 
 /**
  * FieldList component for displaying a list of custom fields used inside app/settings
  */
-export function CustomFieldsList({
-  entityDefinitionId,
-  currentResourceId,
-}: CustomFieldsListProps) {
+export function CustomFieldsList({ resource }: CustomFieldsListProps) {
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingField, setEditingField] = useState<any | null>(null)
 
   // Confirm dialog for delete
   const [confirmDelete, ConfirmDeleteDialog] = useConfirm()
-  // Use sortedFields for local drag order, fallback to API fields
-  const { create, update, fields, isLoading, isPending, destroy } = useCustomField({
-    entityDefinitionId,
-  })
-  const [sortedFields, setSortedFields] = useState<any[]>([])
 
-  // Keep sortedFields in sync with API fields unless user is dragging
-  useEffect(() => {
-    if (fields && fields.length > 0) {
-      const sorted = [...fields]
-        .filter((f: any) => f.active !== false)
-        .sort((a: any, b: any) => (a.sortOrder ?? '').localeCompare(b.sortOrder ?? ''))
-      setSortedFields(sorted)
-    }
-  }, [fields])
+  // Get mutations only (fields come from resource)
+  const { create, update, isPending, destroy } = useCustomFieldMutations({
+    entityDefinitionId: resource.entityDefinitionId,
+  })
+
+  // Use resource.fields directly (includes both system and custom fields)
+  const sortedFields = [...resource.fields].sort((a, b) =>
+    (a.sortOrder ?? '').localeCompare(b.sortOrder ?? '')
+  )
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 3 } }),
@@ -80,7 +70,7 @@ export function CustomFieldsList({
       // Create new field - modelType is derived from entityDefinitionId on server
       await create.mutateAsync({
         ...fieldData,
-        entityDefinitionId,
+        entityDefinitionId: resource.entityDefinitionId,
       })
     }
     setEditingField(null)
@@ -114,22 +104,28 @@ export function CustomFieldsList({
   }
 
   /** Handle drag end for reordering */
-  async function handleDragEnd(event: DragEndEvent) {
+  function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
-    if (over && active.id !== over.id) {
-      let newOrder: { id: string; sortOrder: string }[] = []
-      setSortedFields((items) => {
-        const oldIndex = items.findIndex((item) => item.id === active.id)
-        const newIndex = items.findIndex((item) => item.id === over.id)
-        const newItems = arrayMove(items, oldIndex, newIndex)
-        // Only update affected range using smart sort
-        newOrder = getSmartSortPositions(items, oldIndex, newIndex)
-        return newItems
-      })
+    if (!over || active.id === over.id) return
 
-      // Update each affected field's sortOrder using generic update mutation
-      await Promise.all(newOrder.map(({ id, sortOrder }) => update.mutateAsync({ id, sortOrder })))
-    }
+    const oldIndex = sortedFields.findIndex((item) => item.id === active.id)
+    const newIndex = sortedFields.findIndex((item) => item.id === over.id)
+
+    // Calculate new sortOrder using fractional indexing
+    // Only the dragged field needs updating
+    const prevField = newIndex > 0 ? sortedFields[newIndex - 1] : null
+    const nextField = newIndex < sortedFields.length - 1 ? sortedFields[newIndex + 1] : null
+
+    const newSortOrder = generateKeyBetween(
+      prevField?.sortOrder ?? null,
+      nextField?.sortOrder ?? null
+    )
+
+    // Fire optimistic mutation (UI updates immediately via optimistic update hook)
+    update.mutate({
+      id: active.id as string,
+      sortOrder: newSortOrder,
+    })
   }
 
   return (
@@ -145,19 +141,11 @@ export function CustomFieldsList({
           editingField={editingField}
           onSave={handleSave}
           isPending={isPending}
-          currentResourceId={currentResourceId}
+          currentResourceId={resource.id}
         />
       )}
 
-      {isLoading ? (
-        <EmptyState
-          icon={Rows3}
-          iconClassName="animate-spin"
-          title="Loading custom fields..."
-          description={<div className="max-w-sm">Hold on while we are loading...</div>}
-          button={<div className="h-7"></div>}
-        />
-      ) : sortedFields && sortedFields.length === 0 ? (
+      {sortedFields.length === 0 ? (
         <EmptyState
           icon={Rows3}
           title="No custom fields added"
@@ -187,8 +175,14 @@ export function CustomFieldsList({
                 <TableHead>Name</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Description</TableHead>
-                <TableHead className="text-right">
-                  <Button onClick={handleAddNew} disabled={isPending} variant="outline" size="sm">
+                <TableHead className="w-[90px]"></TableHead>
+                <TableHead className="text-right w-[30px] relative">
+                  <Button
+                    onClick={handleAddNew}
+                    disabled={isPending}
+                    variant="outline"
+                    size="sm"
+                    className="absolute right-0 top-1/2 -translate-y-1/2 right-2">
                     <Plus />
                     <span className="text-foreground">Add</span>
                   </Button>

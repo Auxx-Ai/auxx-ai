@@ -23,7 +23,7 @@ import {
 } from '@auxx/ui/components/empty'
 import { MoreVertical, Columns, Rows3, Import } from 'lucide-react'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import { useAllResources } from '~/components/resources'
+import { useResources } from '~/components/resources'
 import { formatRelativeTime } from '@auxx/utils/date'
 
 /** Returns base path for a given target table */
@@ -67,7 +67,7 @@ export function ImportHistoryList({ onDeleteJob }: ImportHistoryListProps) {
   const router = useRouter()
 
   // Get all resources for resolving target table to display info
-  const { getResourceById, isLoading: isLoadingResources } = useAllResources()
+  const { getResourceById, isLoading: isLoadingResources } = useResources()
 
   const { data: jobs, isLoading: isLoadingJobs } = api.dataImport.listJobs.useQuery({
     search: searchQuery || undefined,

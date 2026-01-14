@@ -3,7 +3,7 @@
 import type { TextClassifierNodeData } from './types'
 
 // Re-export variable utilities from shared location
-export { extractVariablesFromText } from '../../../utils/variable-utils'
+// export { extractVariablesFromText } from '../../../utils/variable-utils'
 
 /**
  * Generate a unique category ID

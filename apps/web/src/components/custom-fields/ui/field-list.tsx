@@ -7,7 +7,7 @@ import { TableCell, TableRow } from '@auxx/ui/components/table'
 import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
 import type { FieldType } from '@auxx/database/types'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import { GripVertical, MoreHorizontal, FilePen, Trash2 } from 'lucide-react'
+import { GripVertical, MoreHorizontal, FilePen, Trash2, Copy, Settings } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,13 +15,16 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { Button } from '@auxx/ui/components/button'
+import { Badge } from '@auxx/ui/components/badge'
 import { cn } from '@auxx/ui/lib/utils'
+import type { ResourceField } from '@auxx/lib/resources/client'
+import { useCopy } from '@auxx/ui/hooks/use-copy'
 
 /** Props for CustomFieldRow component */
 interface CustomFieldRowProps {
-  field: any
+  field: ResourceField
   onDelete: (id: string, fieldName?: string) => Promise<void>
-  onEdit: (field: any) => void
+  onEdit: (field: ResourceField) => void
   isPending: boolean
 }
 
@@ -46,9 +49,12 @@ export function CustomFieldRow({
     opacity: isDragging ? 0.8 : 1,
   }
 
+  // Copy hook for field ID
+  const { copy } = useCopy({ toastMessage: 'Field ID copied to clipboard' })
+
   // Get field type info for display
-  const fieldTypeOption = fieldTypeOptions[field.type as FieldType]
-  const fieldTypeLabel = fieldTypeOption?.label ?? field.type
+  const fieldTypeOption = fieldTypeOptions[field.fieldType as FieldType]
+  const fieldTypeLabel = fieldTypeOption?.label ?? field.fieldType
   const iconId = fieldTypeOption?.iconId ?? 'circle'
 
   return (
@@ -75,7 +81,6 @@ export function CustomFieldRow({
         <div className="flex flex-row items-center gap-2 text-sm">
           <EntityIcon iconId={iconId} variant="default" size="default" />
           <div className="text-foreground/50">{fieldTypeLabel}</div>
-          {field.isCustom && <div className="text-xs text-muted-foreground">Custom Field</div>}
         </div>
       </TableCell>
       <TableCell className="max-w-[300px] text-foreground/50 text-sm py-1">
@@ -87,7 +92,15 @@ export function CustomFieldRow({
           <span>—</span>
         )}
       </TableCell>
-      <TableCell className="text-right py-1">
+      <TableCell className="py-1">
+        {field.isSystem && (
+          <Badge variant="secondary" className="gap-1">
+            <Settings className="size-3" />
+            System
+          </Badge>
+        )}
+      </TableCell>
+      <TableCell className="text-right py-1 w-[30px]">
         <div className="flex justify-end gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -97,17 +110,29 @@ export function CustomFieldRow({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onEdit(field)} disabled={isPending}>
-                <FilePen />
-                Edit
+              <DropdownMenuItem onClick={() => copy(field.id)}>
+                <Copy />
+                Copy Id
               </DropdownMenuItem>
-              <DropdownMenuItem
-                variant="destructive"
-                disabled={isPending}
-                onClick={() => onDelete(field.id, field.name)}>
-                <Trash2 />
-                Delete
+              <DropdownMenuItem onClick={() => copy(field.name)}>
+                <Copy />
+                Copy Name
               </DropdownMenuItem>
+              {field.capabilities.configurable && (
+                <>
+                  <DropdownMenuItem onClick={() => onEdit(field)} disabled={isPending}>
+                    <FilePen />
+                    Edit
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    variant="destructive"
+                    disabled={isPending}
+                    onClick={() => onDelete(field.id, field.name)}>
+                    <Trash2 />
+                    Delete
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

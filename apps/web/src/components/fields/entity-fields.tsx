@@ -12,7 +12,7 @@ import {
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { getSmartSortPositions } from '@auxx/utils'
 import { FieldNavigationProvider } from './field-navigation-context'
-import { useCustomField } from '~/components/custom-fields/hooks/use-custom-field'
+import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
 import { useConfirm } from '~/hooks/use-confirm'
 import { EntityFieldsContent } from './entity-fields-content'
 import { useResource, useRecord, useRecordHydration } from '~/components/resources'
@@ -74,10 +74,9 @@ function EntityFields({
   // Optimistic reorder state - only used during drag operations
   const [optimisticOrder, setOptimisticOrder] = useState<ResourceField[] | null>(null)
 
-  // Use custom field hook for creating/updating/deleting fields (skip fetching - fields come from resource)
-  const { create, update, isPending, destroy } = useCustomField({
+  // Use custom field mutations hook for creating/updating/deleting fields (fields come from resource)
+  const { create, update, isPending, destroy } = useCustomFieldMutations({
     entityDefinitionId,
-    skipFetch: true,
   })
 
   // Confirm dialog for delete

@@ -43,7 +43,7 @@ import {
 } from '~/components/resources/store/custom-field-value-store'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { getModelType } from '@auxx/lib/resources/client'
-import { useCustomField } from '~/components/custom-fields/hooks/use-custom-field'
+import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
 import { toastError } from '@auxx/ui/components/toast'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
 import { FieldType } from '@auxx/database/enums'
@@ -257,8 +257,8 @@ export function KanbanView<TData extends KanbanRow>({
     getFieldMetadata,
   })
 
-  // useCustomField for column option mutations (label, color, etc.)
-  const { update: updateField } = useCustomField({
+  // useCustomFieldMutations for column option mutations (label, color, etc.)
+  const { update: updateField } = useCustomFieldMutations({
     entityDefinitionId: entityDefinitionId || modelType,
   })
 

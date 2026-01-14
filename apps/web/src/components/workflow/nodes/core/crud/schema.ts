@@ -7,10 +7,7 @@ import { getCrudNodeOutputVariables } from './output-variables'
 import { CrudPanel } from './panel'
 import { validateCrudNodeConfig } from './validation'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
-import {
-  extractVariablesFromText,
-  isNodeVariable,
-} from '~/components/workflow/utils/variable-utils'
+import { isNodeVariable } from '~/components/workflow/utils/variable-utils'
 /**
  * Zod schema for CRUD node validation
  */
@@ -22,7 +19,7 @@ export const crudSchema = crudNodeDataSchema
  */
 export function extractCrudVariables(data: Partial<CrudNodeData>): string[] {
   const variableIds = new Set<string>()
-  console.log('Extracting CRUD variables from data:', data)
+
   // Extract from resourceId (for update/delete operations)
   if (isNodeVariable(data.resourceId)) {
     variableIds.add(data.resourceId!)

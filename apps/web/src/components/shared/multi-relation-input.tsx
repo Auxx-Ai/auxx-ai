@@ -48,6 +48,12 @@ export interface MultiRelationInputProps {
 
   /** IDs to exclude from search results (entityInstanceIds) */
   excludeIds?: string[]
+
+  /** Callback when "Create new" is clicked (for complex creation flows via dialog) */
+  onCreate?: () => void
+
+  /** Label for create button (default: "Create new") */
+  createLabel?: string
 }
 
 /**
@@ -66,6 +72,8 @@ export function MultiRelationInput({
   maxDisplayItems = 3,
   multi = true,
   excludeIds = [],
+  onCreate,
+  createLabel,
 }: MultiRelationInputProps) {
   const [open, setOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -221,6 +229,8 @@ export function MultiRelationInput({
           placeholder="Search..."
           onSelectSingle={handleSelectSingle}
           disabled={disabled}
+          onCreate={onCreate}
+          createLabel={createLabel}
         />
       </PopoverContent>
     </Popover>

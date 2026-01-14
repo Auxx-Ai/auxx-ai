@@ -44,25 +44,25 @@ export function containsVariableReference(text: string | null | undefined): bool
  * @param text - The text to extract variables from
  * @returns Array of unique variable names (without the curly braces)
  */
-export function extractVariablesFromText(text: string): string[] {
-  const variables: string[] = []
-  let match
+// export function extractVariablesFromText(text: string): string[] {
+//   const variables: string[] = []
+//   let match
 
-  // Reset lastIndex to ensure consistent results (important for global regex)
-  VARIABLE_PATTERN.lastIndex = 0
+//   // Reset lastIndex to ensure consistent results (important for global regex)
+//   VARIABLE_PATTERN.lastIndex = 0
 
-  while ((match = VARIABLE_PATTERN.exec(text)) !== null) {
-    const varName = match[1]?.trim()
-    if (varName && !variables.includes(varName)) {
-      variables.push(varName)
-    }
-  }
+//   while ((match = VARIABLE_PATTERN.exec(text)) !== null) {
+//     const varName = match[1]?.trim()
+//     if (varName && !variables.includes(varName)) {
+//       variables.push(varName)
+//     }
+//   }
 
-  // Reset lastIndex after use
-  VARIABLE_PATTERN.lastIndex = 0
+//   // Reset lastIndex after use
+//   VARIABLE_PATTERN.lastIndex = 0
 
-  return variables
-}
+//   return variables
+// }
 
 /**
  * Get the nodeId from a variable ID
@@ -476,7 +476,7 @@ export function inferPluckOutputType(
     // Extract items from collection.values
     // Note: collection.values.items IS the properties object directly, not a wrapped structure
     const valuesArray = fieldVar.properties.values
-    const itemProperties = valuesArray.items!  // This is the properties object itself
+    const itemProperties = valuesArray.items! // This is the properties object itself
 
     // Parse reference to get target resource type
     // "contact:ticket" → "ticket"
@@ -484,10 +484,10 @@ export function inferPluckOutputType(
     const targetTable = parts[1] || parts[0]
 
     return {
-      type: BaseType.OBJECT,  // Collection items are always objects (resource types)
-      items: undefined,  // Objects don't have items (only arrays do)
+      type: BaseType.OBJECT, // Collection items are always objects (resource types)
+      items: undefined, // Objects don't have items (only arrays do)
       reference: targetTable,
-      properties: itemProperties as any,  // Properties will get IDs assigned by calling code
+      properties: itemProperties as any, // Properties will get IDs assigned by calling code
     }
   }
 

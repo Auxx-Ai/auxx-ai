@@ -17,7 +17,7 @@ import type { VisibilityState } from '@tanstack/react-table'
 import { EmptyState } from '~/components/global/empty-state'
 import { Ticket as TicketIcon, Plus, Trash2, Users, CircleDot, Flag, Play } from 'lucide-react'
 import { parseAsBoolean, parseAsString, useQueryState } from 'nuqs'
-import { useRecordList, useAllResources } from '~/components/resources'
+import { useRecordList, useResources } from '~/components/resources'
 import { TicketDetailDrawer } from './ticket-detail-drawer'
 import { createTicketColumns } from './ticket-columns'
 import { useTicketMutations } from './use-ticket-mutations'
@@ -125,7 +125,7 @@ export function TicketManagement({
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
 
   // Get custom fields from ResourceProvider (single source of truth)
-  const { resources } = useAllResources()
+  const { resources } = useResources()
   const customFieldsRef = useRef<(typeof resources)[0]['fields']>([])
   const customFields = useMemo(() => {
     const ticketResource = resources.find((r) => r.id === 'ticket')

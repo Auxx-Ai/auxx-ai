@@ -3,7 +3,7 @@
 'use client'
 
 import { createContext, useContext, useMemo, useEffect } from 'react'
-import { useAllResources, useResourceProvider } from '~/components/resources'
+import { useResources, useResourceProvider } from '~/components/resources'
 import type { Resource } from '@auxx/lib/resources/client'
 import { useVarStore } from '../store/use-var-store'
 
@@ -35,7 +35,7 @@ interface WorkflowResourceProviderProps {
  * Fields are embedded in resources - no separate loading needed
  */
 export function WorkflowResourceProvider({ children }: WorkflowResourceProviderProps) {
-  const { resources, isLoading, getResourceById } = useAllResources()
+  const { resources, isLoading, getResourceById } = useResources()
   const { refetch } = useResourceProvider()
   const setResources = useVarStore((state) => state.actions.setResources)
 

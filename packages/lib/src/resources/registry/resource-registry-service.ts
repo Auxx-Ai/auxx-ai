@@ -27,6 +27,7 @@ type CustomFieldRecord = {
   entityDefinitionId: string | null
   isUnique: boolean
   sortOrder: string | null
+  systemAttribute: string | null
 }
 
 /** EntityDefinition with display field relations and customFields loaded */
@@ -38,6 +39,7 @@ type EntityDefinitionWithFields = {
   icon: string
   color: string | null
   organizationId: string
+  entityType: string | null
   primaryDisplayField: { id: string; name: string; type: string } | null
   secondaryDisplayField: { id: string; name: string; type: string } | null
   avatarField: { id: string; name: string; type: string } | null
@@ -56,14 +58,21 @@ function toDisplayFieldConfig(
 
 /**
  * Transform an EntityDefinition to CustomResource (without fields - added separately)
+ * If entityType is defined, it's a system entity stored in EntityDefinition
+ * If entityType is null, it's a custom entity
  */
 function toCustomResourceBase(
   def: Omit<EntityDefinitionWithFields, 'customFields'>
 ): Omit<CustomResource, 'fields'> {
+  // Determine type based on entityType field
+  // If entityType is defined (not null), it's a system resource
+  // If entityType is null, it's a custom resource
+  const resourceType = def.entityType ? 'system' : 'custom'
+
   return {
     id: def.id as CustomResourceId,
     apiSlug: def.apiSlug,
-    type: 'custom',
+    type: resourceType as 'custom', // Type assertion for now - will be fixed when we update CustomResource type
     label: def.singular,
     plural: def.plural,
     icon: def.icon,
@@ -220,7 +229,7 @@ export class ResourceRegistryService {
       ...toCustomResourceBase(def),
       fields: [
         ...getEntityInstanceFields(),
-        ...this.mapCustomFieldsToResourceFields(fieldsByEntityId.get(def.id) ?? []),
+        ...this.mapCustomFieldsToResourceFields(fieldsByEntityId.get(def.id) ?? [], def.entityType),
       ],
     }))
 
@@ -259,7 +268,7 @@ export class ResourceRegistryService {
       ...toCustomResourceBase(def),
       fields: [
         ...getEntityInstanceFields(),
-        ...this.mapCustomFieldsToResourceFields(def.customFields),
+        ...this.mapCustomFieldsToResourceFields(def.customFields, def.entityType),
       ],
     }))
   }
@@ -294,7 +303,8 @@ export class ResourceRegistryService {
       fields: [
         ...getEntityInstanceFields(),
         ...this.mapCustomFieldsToResourceFields(
-          (entityDef as EntityDefinitionWithFields).customFields
+          (entityDef as EntityDefinitionWithFields).customFields,
+          (entityDef as EntityDefinitionWithFields).entityType
         ),
       ],
     }
@@ -395,7 +405,8 @@ export class ResourceRegistryService {
           fields: [
             ...getEntityInstanceFields(),
             ...this.mapCustomFieldsToResourceFields(
-              (entityDef as EntityDefinitionWithFields).customFields
+              (entityDef as EntityDefinitionWithFields).customFields,
+              (entityDef as EntityDefinitionWithFields).entityType
             ),
           ],
         }
@@ -495,7 +506,8 @@ export class ResourceRegistryService {
         fields = [
           ...getEntityInstanceFields(),
           ...this.mapCustomFieldsToResourceFields(
-            entityDef.customFields as CustomFieldRecord[]
+            entityDef.customFields as CustomFieldRecord[],
+            entityDef.entityType
           ),
         ]
       }
@@ -527,8 +539,10 @@ export class ResourceRegistryService {
   /**
    * Map CustomField records to ResourceField format
    * Adds convenience properties and normalizes options for UI consumption
+   * @param customFields - Array of CustomField records
+   * @param entityType - entityType from parent EntityDefinition (if defined, fields are system fields)
    */
-  private mapCustomFieldsToResourceFields(customFields: CustomFieldRecord[]): ResourceField[] {
+  private mapCustomFieldsToResourceFields(customFields: CustomFieldRecord[], entityType?: string | null): ResourceField[] {
     return customFields.map((field) => {
       const baseType = mapFieldTypeToBaseType(field.type)
 
@@ -613,18 +627,27 @@ export class ResourceRegistryService {
         relationship: optionsRelationship,
       }
 
+      // Determine if this is a system field based on parent EntityDefinition's entityType
+      // If entityType is defined (not null), the fields belong to a system entity
+      const isSystemField = !!entityType
+
+      // System fields cannot have their definition configured
+      // But their values can still be updated (e.g., you can change an email value, but not rename the "Email" field)
+      const isConfigurable = !isSystemField
+
       return {
         // Core identifiers
         id: field.id,
         key: field.name,
         label: field.name,
         type: baseType,
-        fieldType: field.type,
+        fieldType: field.type as any,
         description: field.description ?? undefined,
 
-        // System field properties - custom fields are NOT system fields
-        isSystem: false,
-        showInPanel: true, // Custom fields always shown
+        // System field properties - determined by parent entity's entityType
+        isSystem: isSystemField,
+        showInPanel: true, // All fields shown in panel
+        systemAttribute: field.systemAttribute ?? undefined,
 
         // Convenience properties (avoid needing transforms)
         name: field.name,
@@ -638,7 +661,8 @@ export class ResourceRegistryService {
           filterable: true,
           sortable: true,
           creatable: true,
-          updatable: true,
+          updatable: true, // Can update field values (data)
+          configurable: isConfigurable, // Can edit field definition (name, type, etc.)
           required: field.required,
           isUnique: field.isUnique,
         },

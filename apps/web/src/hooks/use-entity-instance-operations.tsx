@@ -5,7 +5,7 @@ import { useCallback, useRef } from 'react'
 import { api } from '~/trpc/react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { toastError } from '@auxx/ui/components/toast'
-import { useCustomField } from '~/components/custom-fields/hooks/use-custom-field'
+import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
 import type { EntityRow } from '~/app/(protected)/app/custom/[slug]/_components/types'
 
 /**
@@ -47,9 +47,8 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
   const [confirmArchive, ConfirmArchiveDialog] = useConfirm()
 
   // Custom field mutations
-  const { create: createField } = useCustomField({
+  const { create: createField } = useCustomFieldMutations({
     entityDefinitionId,
-    skipFetch: true,
   })
 
   // ============================================================

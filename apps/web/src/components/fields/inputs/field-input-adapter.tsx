@@ -7,8 +7,10 @@ import type { FieldOptions } from '@auxx/lib/field-values/client'
 import { isMultiRelationship } from '@auxx/lib/field-values/client'
 import type { SelectOption } from '@auxx/types/custom-field'
 import type { ResourceId } from '@auxx/types/resource'
+import { toResourceId } from '@auxx/lib/resources/client'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
 import { SelectFieldInput, getSelectConfig } from './select-input-field'
+import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
 import {
   StringInput,
   NumberInput,
@@ -59,6 +61,10 @@ export function FieldInputAdapter({
 }: FieldInputAdapterProps) {
   // For NodeInputProps-compatible components
   const [errors, setErrors] = useState<Record<string, string>>({})
+
+  // State for entity creation dialog (for RELATIONSHIP fields)
+  const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const [createEntityDefinitionId, setCreateEntityDefinitionId] = useState<string | null>(null)
 
   /**
    * Adapter for NodeInputProps onChange
@@ -125,16 +131,44 @@ export function FieldInputAdapter({
       // Value is already ResourceId[] from caller - just pass through
       const resourceIds = (value as ResourceId[]) || []
 
+      /**
+       * Handle opening the create dialog
+       */
+      const handleOpenCreate = () => {
+        setCreateEntityDefinitionId(entityDefinitionId)
+        setCreateDialogOpen(true)
+      }
+
+      /**
+       * Handle instance creation - add the new instance to selection
+       */
+      const handleInstanceCreated = (instanceId: string) => {
+        const newResourceId = toResourceId(entityDefinitionId, instanceId)
+        const updatedIds = multi ? [...resourceIds, newResourceId] : [newResourceId]
+        onChange(updatedIds)
+      }
+
       return (
-        <MultiRelationInput
-          entityDefinitionId={entityDefinitionId}
-          value={resourceIds}
-          onChange={onChange}
-          multi={multi}
-          placeholder={placeholder}
-          disabled={disabled}
-          className={className}
-        />
+        <>
+          <MultiRelationInput
+            entityDefinitionId={entityDefinitionId}
+            value={resourceIds}
+            onChange={onChange}
+            multi={multi}
+            placeholder={placeholder}
+            disabled={disabled}
+            className={className}
+            onCreate={handleOpenCreate}
+          />
+          {createDialogOpen && createEntityDefinitionId && (
+            <EntityInstanceDialog
+              open={createDialogOpen}
+              onOpenChange={setCreateDialogOpen}
+              entityDefinitionId={createEntityDefinitionId}
+              onSaved={handleInstanceCreated}
+            />
+          )}
+        </>
       )
     }
 

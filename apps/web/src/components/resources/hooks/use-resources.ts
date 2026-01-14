@@ -1,9 +1,9 @@
-// apps/web/src/components/resources/hooks/use-all-resources.ts
+// apps/web/src/components/resources/hooks/use-resources.ts
 
 import { useResourceProvider } from '../providers/resource-provider'
 import type { Resource, CustomResource } from '@auxx/lib/resources/client'
 
-interface UseAllResourcesResult {
+interface UseResourcesResult {
   /** All resources (system + custom) */
   resources: Resource[]
   /** Custom resources only */
@@ -15,9 +15,9 @@ interface UseAllResourcesResult {
 }
 
 /**
- * Hook for accessing all resources
+ * Hook for accessing resources
  */
-export function useAllResources(): UseAllResourcesResult {
+export function useResources(): UseResourcesResult {
   const { resources, customResources, isLoadingResources, getResourceById } = useResourceProvider()
   return { resources, customResources, isLoading: isLoadingResources, getResourceById }
 }

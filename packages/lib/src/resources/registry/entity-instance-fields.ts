@@ -18,6 +18,7 @@ export const ENTITY_INSTANCE_FIELDS: Record<string, ResourceField> = {
     type: BaseType.STRING,
     fieldType: FieldType.TEXT,
     isSystem: true,
+    systemAttribute: 'record_id',
     systemSortOrder: -1,
     showInPanel: false, // Never show ID in property panel
     dbColumn: 'id',
@@ -28,6 +29,7 @@ export const ENTITY_INSTANCE_FIELDS: Record<string, ResourceField> = {
       sortable: false,
       creatable: false,
       updatable: false,
+      configurable: false,
     },
     description: 'Unique record identifier',
   },
@@ -39,6 +41,7 @@ export const ENTITY_INSTANCE_FIELDS: Record<string, ResourceField> = {
     type: BaseType.DATETIME,
     fieldType: FieldType.DATETIME,
     isSystem: true,
+    systemAttribute: 'created_at',
     systemSortOrder: 100,
     dbColumn: 'createdAt',
     nullable: false,
@@ -47,6 +50,7 @@ export const ENTITY_INSTANCE_FIELDS: Record<string, ResourceField> = {
       sortable: true,
       creatable: false,
       updatable: false,
+      configurable: false,
     },
   },
   updatedAt: {
@@ -57,6 +61,7 @@ export const ENTITY_INSTANCE_FIELDS: Record<string, ResourceField> = {
     type: BaseType.DATETIME,
     fieldType: FieldType.DATETIME,
     isSystem: true,
+    systemAttribute: 'updated_at',
     systemSortOrder: 101,
     dbColumn: 'updatedAt',
     nullable: false,
@@ -65,6 +70,7 @@ export const ENTITY_INSTANCE_FIELDS: Record<string, ResourceField> = {
       sortable: true,
       creatable: false,
       updatable: false,
+      configurable: false,
     },
   },
 }

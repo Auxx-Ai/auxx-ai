@@ -18,7 +18,7 @@ import {
 } from '@auxx/ui/components/command'
 import { Variable, ChevronRight, ChevronLeft, Copy, Star, Search } from 'lucide-react'
 import { cn } from '@auxx/ui/lib/utils'
-import { toastSuccess, toastError, toastInfo } from '@auxx/ui/components/toast'
+import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 import { TooltipExplanation } from '~/components/global/tooltip'
 import {
   getPathFromVariableId,
@@ -27,7 +27,7 @@ import {
   parseVariable,
 } from '~/components/workflow/utils/variable-utils'
 import { isNavigableVariable } from '~/components/workflow/utils/variable-conversion'
-import { isTypeCompatible, BaseType, RESOURCE_TABLE_MAP } from '@auxx/lib/workflow-engine/client'
+import { BaseType, RESOURCE_TABLE_MAP } from '@auxx/lib/workflow-engine/client'
 import { useStore } from '@xyflow/react'
 
 // Constants

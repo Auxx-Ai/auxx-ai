@@ -22,7 +22,7 @@ import { useActiveViewConfig } from '~/components/dynamic-table/stores/view-stor
 import type { ExtendedColumnDef } from '~/components/dynamic-table'
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
 import { EmptyState } from '~/components/global/empty-state'
-import { useAllResources, useRecordList } from '~/components/resources'
+import { useResources, useRecordList } from '~/components/resources'
 import { useCustomFieldValueSyncer } from '~/components/resources/hooks/use-custom-field-value-syncer'
 import {
   MainPage,
@@ -188,7 +188,7 @@ export default function CustomerListPage() {
 
   // Get custom fields from ResourceProvider (single source of truth)
   // Use stable reference to prevent column recreation when resources object changes but fields are the same
-  const { resources } = useAllResources()
+  const { resources } = useResources()
   const customFieldsRef = useRef<(typeof resources)[0]['fields']>([])
   const customFields = useMemo(() => {
     const contactResource = resources.find((r) => r.id === 'contact')

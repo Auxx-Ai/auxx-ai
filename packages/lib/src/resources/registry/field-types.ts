@@ -55,8 +55,10 @@ export interface FieldCapabilities {
   sortable: boolean
   /** Can set in CRUD create operation */
   creatable: boolean
-  /** Can set in CRUD update operation */
+  /** Can set field value in CRUD update operation */
   updatable: boolean
+  /** Can edit field definition (name, type, description, etc.) */
+  configurable: boolean
   /** Required for create operation */
   required?: boolean
   /** Field must contain unique values */
