@@ -94,7 +94,7 @@ export const useWorkflowInit = (options?: UseWorkflowInitOptions): UseWorkflowIn
       // Update workflow store
       useWorkflowStore.setState({
         workflow: workflow as any,
-        workflowId: workflow.id,
+        workflowId: workflow.workflowId, // Use the actual workflow ID, not the WorkflowApp ID
         metadata,
         workflowAppId: workflow.workflowAppId,
         isDirty: false,

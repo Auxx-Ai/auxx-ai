@@ -211,7 +211,10 @@ export const useWorkflowStore = create<WorkflowStore>()(
     },
 
     setWorkflow: (workflow) => {
-      const newWorkflowId = workflow?.id || null
+      // Extract the correct workflowId - API responses have workflowId field,
+      // while direct Workflow objects use id field
+      const newWorkflowId = (workflow as any)?.workflowId || workflow?.id || null
+      const newWorkflowAppId = (workflow as any)?.workflowAppId || null
 
       // Development-mode validation
       if (process.env.NODE_ENV === 'development') {
@@ -229,11 +232,18 @@ export const useWorkflowStore = create<WorkflowStore>()(
         }
       }
 
-      set({
+      const updates: any = {
         workflow,
         workflowId: newWorkflowId,
         isDirty: true,
-      })
+      }
+
+      // Update workflowAppId if present in the workflow response
+      if (newWorkflowAppId !== null) {
+        updates.workflowAppId = newWorkflowAppId
+      }
+
+      set(updates)
     },
 
     clearWorkflow: () => {

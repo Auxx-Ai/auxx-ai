@@ -319,11 +319,13 @@ export class WorkflowService {
           enabled: result.enabled,
           version: workflowData?.version || 1,
           triggerType: workflowData?.triggerType || finalTriggerType,
+          entityDefinitionId: workflowData?.entityDefinitionId,
           organizationId: result.organizationId,
           createdAt: result.createdAt,
           updatedAt: result.updatedAt,
           createdBy: result.createdBy,
           workflowId: result.draftWorkflowId, // Return draft workflow ID for editing
+          workflowAppId: result.id, // Include workflowAppId for frontend use
           isPublic: result.isPublic,
           isUniversal: result.isUniversal,
         }
@@ -522,6 +524,7 @@ export class WorkflowService {
           enabled: result.enabled,
           version: workflowData?.version || 1,
           triggerType: workflowData?.triggerType,
+          entityDefinitionId: workflowData?.entityDefinitionId,
           graph: workflowData?.graph,
           envVars: workflowData?.envVars,
           variables: workflowData?.variables || [],
@@ -530,6 +533,7 @@ export class WorkflowService {
           updatedAt: result.updatedAt,
           createdBy: result.createdBy,
           workflowId: result.draftWorkflowId, // Return draft workflow ID for editing
+          workflowAppId: result.id, // Include workflowAppId for frontend use
           isPublic: result.isPublic,
           isUniversal: result.isUniversal,
           // Access settings

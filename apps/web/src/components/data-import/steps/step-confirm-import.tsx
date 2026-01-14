@@ -114,7 +114,7 @@ export function StepConfirmImport({ jobId, onComplete }: StepConfirmImportProps)
       | undefined
     return (
       <ImportCompleteCard
-        targetTable={job.importMapping.targetTable}
+        targetTable={job.importMapping.relatedEntityDefinitionId}
         statistics={{
           created: stats?.created ?? 0,
           updated: stats?.updated ?? 0,
@@ -148,7 +148,7 @@ export function StepConfirmImport({ jobId, onComplete }: StepConfirmImportProps)
             <EntityIcon iconId="upload" variant="muted" />
             <div className="min-w-0">
               <p className="font-medium text-sm">Ready to Import</p>
-              <p className="text-sm text-muted-foreground">{job?.importMapping.targetTable}</p>
+              <p className="text-sm text-muted-foreground">{job?.importMapping.relatedEntityDefinitionId}</p>
             </div>
           </div>
           <Button onClick={handleConfirmImport} variant="default" size="sm">

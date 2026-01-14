@@ -71,10 +71,18 @@ export const useWorkflowSave = () => {
   const buildPayload = useCallback(() => {
     const workflow = useWorkflowStore.getState().workflow
     const metadata = useWorkflowStore.getState().metadata
+    const currentIsDirty = useWorkflowStore.getState().isDirty
     const pending = pendingRef.current
 
     if (!workflow || !metadata || !workflowAppId) return null
-    if (Object.keys(pending).length === 0) return null
+
+    // If there are no pending changes but isDirty is true, include graph data
+    // This handles cases where changes were made but not queued via queueSave
+    if (Object.keys(pending).length === 0) {
+      if (!currentIsDirty) return null
+      // Mark graph as needing save
+      pending.graph = true
+    }
 
     const payload: Record<string, unknown> = { id: workflowAppId }
 

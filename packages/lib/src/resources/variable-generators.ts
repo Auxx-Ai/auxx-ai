@@ -352,10 +352,10 @@ function convertFieldToVariableProperty(
   // Handle RELATION type
   if (field.type === BaseType.RELATION && field.relationship) {
     const relationship = field.relationship
-    const cardinality = relationship.cardinality
+    const relationshipType = relationship.relationshipType
 
     // Check for circular references
-    if (visitedTables.has(relationship.targetTable)) {
+    if (visitedTables.has(relationship.relatedEntityDefinitionId)) {
       return {
         type: 'string',
         label: field.label,
@@ -373,18 +373,18 @@ function convertFieldToVariableProperty(
     }
 
     // Get target fields using helper (works for both system and custom resources)
-    const targetFields = getFieldsForResource(relationship.targetTable, options)
-    const targetMeta = getResourceMeta(relationship.targetTable, options)
+    const targetFields = getFieldsForResource(relationship.relatedEntityDefinitionId, options)
+    const targetMeta = getResourceMeta(relationship.relatedEntityDefinitionId, options)
 
-    // For many-to-one or one-to-one: Generate object with .referenceId
-    if (cardinality === 'many-to-one' || cardinality === 'one-to-one') {
+    // For belongs_to or has_one: Generate object with .referenceId
+    if (relationshipType === 'belongs_to' || relationshipType === 'has_one') {
       const properties: Record<string, any> = {}
 
       // Add .referenceId property
       properties.referenceId = {
         type: 'string',
         label: 'Reference ID',
-        description: `ID of the related ${targetMeta?.label || relationship.targetTable}`,
+        description: `ID of the related ${targetMeta?.label || relationship.relatedEntityDefinitionId}`,
       }
 
       // Add target table fields
@@ -398,7 +398,7 @@ function convertFieldToVariableProperty(
             if (currentDepth + 1 < maxDepth) {
               properties[targetField.key] = convertFieldToVariableProperty(
                 targetField,
-                relationship.targetTable,
+                relationship.relatedEntityDefinitionId,
                 newVisited,
                 currentDepth + 1,
                 options
@@ -407,7 +407,7 @@ function convertFieldToVariableProperty(
           } else {
             properties[targetField.key] = convertFieldToVariableProperty(
               targetField,
-              relationship.targetTable,
+              relationship.relatedEntityDefinitionId,
               newVisited,
               currentDepth + 1,
               options
@@ -425,8 +425,8 @@ function convertFieldToVariableProperty(
       }
     }
 
-    // For one-to-many: Generate collection structure with drilling support
-    if (cardinality === 'one-to-many') {
+    // For has_many: Generate collection structure with drilling support
+    if (relationshipType === 'has_many') {
       const itemProperties: Record<string, any> = {}
 
       if (targetFields) {
@@ -434,24 +434,24 @@ function convertFieldToVariableProperty(
         newVisited.add(tableId)
 
         targetFields.forEach((targetField) => {
-          // Include one-to-many relationships for drilling (e.g., Products -> Variants)
+          // Include has_many relationships for drilling (e.g., Products -> Variants)
           if (targetField.type === BaseType.RELATION) {
-            const nestedCardinality = targetField.relationship?.cardinality
-            // Only drill into one-to-many, skip many-to-many in nested context
-            if (nestedCardinality === 'one-to-many' && currentDepth + 1 < maxDepth) {
+            const nestedRelType = targetField.relationship?.relationshipType
+            // Only drill into has_many, skip many_to_many in nested context
+            if (nestedRelType === 'has_many' && currentDepth + 1 < maxDepth) {
               itemProperties[targetField.key] = convertFieldToVariableProperty(
                 targetField,
-                relationship.targetTable,
+                relationship.relatedEntityDefinitionId,
                 newVisited,
                 currentDepth + 1,
                 options
               )
-            } else if (nestedCardinality === 'many-to-one' || nestedCardinality === 'one-to-one') {
-              // Include many-to-one references within depth limit
+            } else if (nestedRelType === 'belongs_to' || nestedRelType === 'has_one') {
+              // Include belongs_to references within depth limit
               if (currentDepth + 1 < maxDepth) {
                 itemProperties[targetField.key] = convertFieldToVariableProperty(
                   targetField,
-                  relationship.targetTable,
+                  relationship.relatedEntityDefinitionId,
                   newVisited,
                   currentDepth + 1,
                   options
@@ -462,7 +462,7 @@ function convertFieldToVariableProperty(
             // Include non-relationship fields
             itemProperties[targetField.key] = convertFieldToVariableProperty(
               targetField,
-              relationship.targetTable,
+              relationship.relatedEntityDefinitionId,
               newVisited,
               currentDepth + 1,
               options
@@ -473,16 +473,16 @@ function convertFieldToVariableProperty(
 
       // Use helper function to create collection structure
       const collectionProperties = createRelationshipCollection(
-        targetMeta?.label || relationship.targetTable,
-        cardinality
+        targetMeta?.label || relationship.relatedEntityDefinitionId,
+        relationshipType
       )
 
       // Set the values property with proper item structure for UI rendering
       collectionProperties.values.items = {
         type: BaseType.OBJECT,
-        label: targetMeta?.label || relationship.targetTable,
+        label: targetMeta?.label || relationship.relatedEntityDefinitionId,
         properties: itemProperties,
-        reference: relationship.targetTable,
+        reference: relationship.relatedEntityDefinitionId,
       }
 
       return {
@@ -490,12 +490,12 @@ function convertFieldToVariableProperty(
         label: field.label,
         description: field.description,
         properties: collectionProperties,
-        reference: relationship.targetTable,
+        reference: relationship.relatedEntityDefinitionId,
       }
     }
 
-    // For many-to-many: Limited support (no nested drilling)
-    if (cardinality === 'many-to-many') {
+    // For many_to_many: Limited support (no nested drilling)
+    if (relationshipType === 'many_to_many') {
       const itemProperties: Record<string, any> = {}
 
       if (targetFields) {
@@ -507,7 +507,7 @@ function convertFieldToVariableProperty(
           if (targetField.type !== BaseType.RELATION) {
             itemProperties[targetField.key] = convertFieldToVariableProperty(
               targetField,
-              relationship.targetTable,
+              relationship.relatedEntityDefinitionId,
               newVisited,
               currentDepth + 1,
               options
@@ -517,16 +517,16 @@ function convertFieldToVariableProperty(
       }
 
       const collectionProperties = createRelationshipCollection(
-        targetMeta?.label || relationship.targetTable,
-        cardinality
+        targetMeta?.label || relationship.relatedEntityDefinitionId,
+        relationshipType
       )
 
       // Set the values property with proper item structure for UI rendering
       collectionProperties.values.items = {
         type: BaseType.OBJECT,
-        label: targetMeta?.label || relationship.targetTable,
+        label: targetMeta?.label || relationship.relatedEntityDefinitionId,
         properties: itemProperties,
-        reference: relationship.targetTable,
+        reference: relationship.relatedEntityDefinitionId,
       }
 
       return {
@@ -534,7 +534,7 @@ function convertFieldToVariableProperty(
         label: field.label,
         description: field.description,
         properties: collectionProperties,
-        reference: relationship.targetTable,
+        reference: relationship.relatedEntityDefinitionId,
       }
     }
   }

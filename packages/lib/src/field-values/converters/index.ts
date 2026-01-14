@@ -80,13 +80,23 @@ export interface FieldOptions {
   }
 
   // ─────────────────────────────────────────────────────────────
-  // RELATIONSHIP (nested - for UI consumers)
+  // RELATIONSHIP (nested - matches database schema)
   // ─────────────────────────────────────────────────────────────
   relationship?: {
     /** Entity definition ID (system resource ID or custom entity UUID) */
-    relatedEntityDefinitionId?: string
-    /** Relationship cardinality */
-    relationshipType?: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
+    relatedEntityDefinitionId: string
+    /** Relationship type */
+    relationshipType: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
+    /** Whether this is the inverse side of a bidirectional relationship */
+    isInverse?: boolean
+    /** Field ID of the inverse relationship field */
+    inverseFieldId?: string
+    /** Join table name (for many-to-many relationships) */
+    joinTable?: string
+    /** Foreign key column in join table pointing to source */
+    joinSourceColumn?: string
+    /** Foreign key column in join table pointing to target */
+    joinTargetColumn?: string
   }
 }
 

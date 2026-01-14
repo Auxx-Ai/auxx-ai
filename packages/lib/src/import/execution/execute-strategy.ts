@@ -116,7 +116,7 @@ export async function executeStrategy(
     const batchCtx: ExecuteBatchContext = {
       organizationId: ctx.organizationId,
       userId: ctx.userId,
-      targetTable: ctx.targetTable,
+      targetTable: ctx.relatedEntityDefinitionId,
       strategy: strategy.strategy,
       createRecord,
       updateRecord,

@@ -26,7 +26,7 @@ import {
 import { VAR_MODE, BaseType } from '~/components/workflow/types'
 import type { ResourceField } from '@auxx/lib/resources/client'
 import { useWorkflowResources } from '../../../providers'
-import { useResourceFields } from '~/components/resources'
+import { useResource, useResourceFields } from '~/components/resources'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { getCrudNodeOutputVariables } from './output-variables'
 import { useCrudValidation } from './use-crud-validation'
@@ -59,7 +59,9 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
 
   // Use dynamic resource registry hooks
   const { resources, getResourceById } = useWorkflowResources()
-  const resource = getResourceById(nodeData.resourceType)
+  const { resource } = useResource(nodeData.resourceType)
+  console.log('Resource in CRUD panel:', resource)
+  // const resource = getResourceById(nodeData.resourceType)
   const { creatableFields, updatableFields } = useResourceFields(nodeData.resourceType ?? null)
 
   // Generate combined field list based on mode
@@ -191,7 +193,10 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
       const hasError = showValidation && hasFieldErrorOfType(fieldPath, 'error')
 
       // Build fieldOptions with enum and fieldReference embedded if applicable
-      const fieldOptions: { enum?: Array<{ label: string; value: string }>; fieldReference?: string } = {}
+      const fieldOptions: {
+        enum?: Array<{ label: string; value: string }>
+        fieldReference?: string
+      } = {}
       if (field.enumValues) {
         fieldOptions.enum = field.enumValues.map((ev) => ({ label: ev.label, value: ev.dbValue }))
       }
@@ -204,8 +209,8 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
 
       if (field.type === BaseType.RELATION) {
         if (field.relationship) {
-          // Primary path: Use relationship.targetTable - cast to BaseType for type safety
-          allowedTypes.push(field.relationship.targetTable as BaseType)
+          // Primary path: Use relationship.relatedEntityDefinitionId - cast to BaseType for type safety
+          allowedTypes.push(field.relationship.relatedEntityDefinitionId as BaseType)
         } else {
           // Error case: RELATION field with no way to determine target
           console.error(
@@ -217,6 +222,7 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
         // For non-relation fields, allow matching type
         allowedTypes.push(field.type)
       }
+      console.log('Allowed types for field', field.key, ':', allowedTypes)
 
       return (
         <VarEditorFieldRow

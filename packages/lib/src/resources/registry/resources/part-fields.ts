@@ -234,9 +234,8 @@ export const PART_FIELDS: Record<string, ResourceField> = {
       updatable: false,
     },
     relationship: {
-      targetTable: 'user',
-      cardinality: 'many-to-one',
-      reciprocalField: undefined,
+      relatedEntityDefinitionId: 'user',
+      relationshipType: 'belongs_to',
     },
     relationshipConfig: {
       relatedEntityType: 'user',

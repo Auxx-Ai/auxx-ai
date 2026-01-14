@@ -48,8 +48,8 @@ const ValueInput = ({
 
     const allowedTypes: (BaseType | string)[] = []
 
-    if ((varType === BaseType.RELATION || varType === BaseType.REFERENCE) && targetField.targetTable) {
-      allowedTypes.push(targetField.targetTable)
+    if ((varType === BaseType.RELATION || varType === BaseType.REFERENCE) && targetField.relatedEntityDefinitionId) {
+      allowedTypes.push(targetField.relatedEntityDefinitionId)
     } else if (varType !== BaseType.ANY) {
       allowedTypes.push(varType)
     }

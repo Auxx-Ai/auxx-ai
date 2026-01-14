@@ -217,7 +217,7 @@ export function parseVariable(variable: UnifiedVariable) {
         result.displayType = tableMeta.label // e.g., "Contact"
         result.actualType = BaseType.RELATION // Use REFERENCE type for correct operators
         result.fieldReference = variable.reference // Store for filtering
-        result.targetTable = variable.reference as TableId
+        result.relatedEntityDefinitionId = variable.reference as TableId
         result.operators = getOperatorsForFieldType(BaseType.REFERENCE).map((op) => op.key)
       } else if (variable.label) {
         // Fallback for custom entities: use the label property
@@ -235,13 +235,13 @@ export function parseVariable(variable: UnifiedVariable) {
       const field = RESOURCE_FIELD_REGISTRY[resourceType]?.[fieldKey]
 
       if (field?.type === BaseType.RELATION && field.relationship) {
-        const targetTable = field.relationship.targetTable as TableId
+        const targetTable = field.relationship.relatedEntityDefinitionId as TableId
         const tableMeta = RESOURCE_TABLE_MAP[targetTable]
 
         result.displayType = tableMeta?.label || variable.type // e.g., "Contact"
         result.actualType = BaseType.RELATION // Use RELATION type for correct operators
         result.fieldReference = variable.reference // e.g., "ticket:contact"
-        result.targetTable = targetTable
+        result.relatedEntityDefinitionId = targetTable
         result.resourceType = resourceType as TableId
         result.fieldKey = fieldKey
         result.field = field
@@ -286,7 +286,7 @@ export function isVariableTypeCompatible(
   // Check relationship type match via reference (for RELATION fields)
   if (variable.reference && relationshipTypes.length > 0) {
     const parsed = parseVariable(variable)
-    if (parsed.targetTable && relationshipTypes.includes(parsed.targetTable)) {
+    if (parsed.relatedEntityDefinitionId && relationshipTypes.includes(parsed.relatedEntityDefinitionId)) {
       return true
     }
   }

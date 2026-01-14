@@ -78,7 +78,7 @@ export async function executePlan(options: ExecutePlanOptions): Promise<Executio
       organizationId: options.organizationId,
       userId: options.userId,
       jobId: options.jobId,
-      targetTable: options.targetTable,
+      targetTable: options.relatedEntityDefinitionId,
       mappings: options.mappings,
       resolutions: options.resolutions,
       createRecord: options.createRecord,

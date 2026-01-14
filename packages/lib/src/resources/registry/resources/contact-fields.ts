@@ -285,10 +285,8 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
       updatable: false,
     },
     relationship: {
-      targetTable: 'ticket',
-      cardinality: 'one-to-many',
-      reciprocalField: 'contact',
-      // FK is in ticket table (ticket.contactId)
+      relatedEntityDefinitionId: 'ticket',
+      relationshipType: 'has_many',
     },
     description: 'All tickets associated with this contact',
   },

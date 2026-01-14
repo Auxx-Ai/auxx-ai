@@ -54,5 +54,5 @@ export { NodeType, isNodeType, getNodeTypeDisplayName } from './node-types'
 // variable types
 export { BaseType } from './unified-types'
 
-export type { UnifiedVariable, ReferenceType, VariableGroup, VarMode } from './variable-types'
+export type { UnifiedVariable, VariableGroup, VarMode } from './variable-types'
 export { VAR_MODE } from './variable-types'

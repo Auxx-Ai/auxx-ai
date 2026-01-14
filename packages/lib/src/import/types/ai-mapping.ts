@@ -15,7 +15,7 @@ export interface AIColumnMappingInput {
     isRelation: boolean
     enumValues?: Array<{ dbValue: string; label: string }>
   }>
-  targetTable: string // For context (e.g., "contact", "ticket")
+  entityDefinitionId: string // For context (e.g., "contact", "ticket")
 }
 
 /** Single column mapping result from AI */

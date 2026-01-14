@@ -77,7 +77,7 @@ export function ImportHistoryList({ onDeleteJob }: ImportHistoryListProps) {
 
   /** Navigate to the appropriate import page based on job status */
   const handleJobClick = (job: NonNullable<typeof jobs>[number]) => {
-    const basePath = getBasePath(job.importMapping.targetTable)
+    const basePath = getBasePath(job.importMapping.relatedEntityDefinitionId)
 
     // Navigate to the import job page (wizard determines correct step from status)
     router.push(`${basePath}/import/${job.id}`)
@@ -156,7 +156,7 @@ export function ImportHistoryList({ onDeleteJob }: ImportHistoryListProps) {
             {
               // Import job cards
               jobs.map((job) => {
-                const resourceDisplay = getResourceDisplay(job.importMapping.targetTable)
+                const resourceDisplay = getResourceDisplay(job.importMapping.relatedEntityDefinitionId)
                 const createdByName = job.createdBy?.name || job.createdBy?.email || 'Unknown'
 
                 return (

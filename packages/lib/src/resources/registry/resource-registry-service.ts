@@ -580,17 +580,11 @@ export class ResourceRegistryService {
       if (field.type === FieldTypeEnum.RELATIONSHIP) {
         const rel = rawOptions?.relationship
 
-        // relatedEntityDefinitionId is the unified ID for both system and custom resources
-        const targetTable = rel?.relatedEntityDefinitionId
-
-        if (targetTable) {
+        if (rel?.relatedEntityDefinitionId) {
+          // Direct passthrough - schemas are identical now!
           relationship = {
-            targetTable,
-            cardinality:
-              rel?.relationshipType === 'has_many' || rel?.relationshipType === 'many_to_many'
-                ? 'one-to-many'
-                : 'many-to-one',
             relatedEntityDefinitionId: rel.relatedEntityDefinitionId,
+            relationshipType: rel.relationshipType || 'belongs_to',
           }
         }
 

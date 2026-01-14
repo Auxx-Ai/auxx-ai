@@ -59,11 +59,11 @@ export function FieldPicker({
   const contentRef = useRef<HTMLDivElement>(null)
 
   // Get target resource info for icon display
-  const { resource: targetResource } = useResource(relationshipContext?.targetTable ?? null)
+  const { resource: targetResource } = useResource(relationshipContext?.relatedEntityDefinitionId ?? null)
 
   // For relationship navigation - get target resource fields
   const { filterableFields: targetFields } = useResourceFields(
-    relationshipContext?.targetTable ?? null
+    relationshipContext?.relatedEntityDefinitionId ?? null
   )
 
   // Separate fields: identifiers first, then scalar, then relationships
@@ -104,7 +104,7 @@ export function FieldPicker({
     setRelationshipContext({
       fieldKey: field.key,
       fieldLabel: field.label,
-      targetTable: field.relationConfig?.targetTable ?? '',
+      targetTable: field.relationConfig?.relatedEntityDefinitionId ?? '',
     })
     setSearch('')
     contentRef.current?.scrollTo(0, 0)
@@ -116,7 +116,7 @@ export function FieldPicker({
 
   // Selection handlers
   const selectField = (field: ImportableField) => {
-    if (field.isRelation && field.relationConfig?.targetTable) {
+    if (field.isRelation && field.relationConfig?.relatedEntityDefinitionId) {
       navigateToRelationship(field)
       return
     }
@@ -145,11 +145,11 @@ export function FieldPicker({
       // On open: if current value is a relationship with matchField, navigate to it
       if (value && matchField) {
         const selectedField = fields.find((f) => f.key === value)
-        if (selectedField?.isRelation && selectedField.relationConfig?.targetTable) {
+        if (selectedField?.isRelation && selectedField.relationConfig?.relatedEntityDefinitionId) {
           setRelationshipContext({
             fieldKey: selectedField.key,
             fieldLabel: selectedField.label,
-            targetTable: selectedField.relationConfig.targetTable,
+            targetTable: selectedField.relationConfig.relatedEntityDefinitionId,
           })
         }
       }
@@ -176,7 +176,7 @@ export function FieldPicker({
           {isSelected ? (
             <Check className="" />
           ) : field.isRelation && field.relationConfig ? (
-            <RelationFieldIcon targetTable={field.relationConfig.targetTable} />
+            <RelationFieldIcon targetTable={field.relationConfig.relatedEntityDefinitionId} />
           ) : (
             getFieldIcon(field)
           )}

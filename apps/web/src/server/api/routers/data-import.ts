@@ -59,7 +59,7 @@ export const dataImportRouter = createTRPCRouter({
           organizationId,
           userId,
           fileName: input.fileName,
-          targetTable: input.targetTable,
+          targetTable: input.relatedEntityDefinitionId,
           headers: input.headers,
           columnCount: input.columnCount,
           rowCount: input.rowCount,
@@ -151,13 +151,13 @@ export const dataImportRouter = createTRPCRouter({
       // Run initial auto-mapping (fallback only, no AI cost)
       try {
         const registry = new ResourceRegistryService(organizationId, ctx.db)
-        const resource = await registry.getById(job.importMapping.targetTable)
+        const resource = await registry.getById(job.importMapping.relatedEntityDefinitionId)
 
         if (resource) {
           const result = await runAutoMap(ctx.db, resource, {
             jobId: input.jobId,
             importMappingId: job.importMappingId,
-            targetTable: job.importMapping.targetTable,
+            targetTable: job.importMapping.relatedEntityDefinitionId,
             organizationId,
             userId,
             strategy: 'fallback',
@@ -188,7 +188,7 @@ export const dataImportRouter = createTRPCRouter({
       const { organizationId } = ctx.session
       const registry = new ResourceRegistryService(organizationId, ctx.db)
 
-      const resource = await registry.getById(input.targetTable)
+      const resource = await registry.getById(input.relatedEntityDefinitionId)
       if (!resource) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Resource not found' })
       }
@@ -290,7 +290,7 @@ export const dataImportRouter = createTRPCRouter({
 
       // Get resource for target table
       const registry = new ResourceRegistryService(organizationId, ctx.db)
-      const resource = await registry.getById(job.importMapping.targetTable)
+      const resource = await registry.getById(job.importMapping.relatedEntityDefinitionId)
 
       if (!resource) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Resource not found' })
@@ -300,7 +300,7 @@ export const dataImportRouter = createTRPCRouter({
       return runAutoMap(ctx.db, resource, {
         jobId: input.jobId,
         importMappingId: job.importMappingId,
-        targetTable: job.importMapping.targetTable,
+        targetTable: job.importMapping.relatedEntityDefinitionId,
         organizationId,
         userId,
         strategy: input.strategy,

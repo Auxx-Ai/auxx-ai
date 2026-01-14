@@ -367,11 +367,11 @@ export async function fetchResourceWithRelationships(
     }
 
     const rel = fieldDef.relationship
-    const targetResourceType = rel.targetTable
+    const targetResourceType = rel.relatedEntityDefinitionId
 
-    switch (rel.cardinality) {
-      case 'many-to-one':
-      case 'one-to-one': {
+    switch (rel.relationshipType) {
+      case 'belongs_to':
+      case 'has_one': {
         // belongs_to: Get related entity by ID stored in this resource
         const relatedId = getRelatedIdForBelongsTo(resource, fieldDef, resourceType)
 
@@ -384,7 +384,7 @@ export async function fetchResourceWithRelationships(
         }
       }
 
-      case 'one-to-many': {
+      case 'has_many': {
         // has_many: Query child resources where FK points to this resource
         let items: any[] = []
 
@@ -422,7 +422,7 @@ export async function fetchResourceWithRelationships(
         }
       }
 
-      case 'many-to-many': {
+      case 'many_to_many': {
         // TODO: Implement when many-to-many relationships exist
         return { relFieldName, value: [] }
       }
@@ -500,7 +500,7 @@ async function fetchHasManyRelationship(
 
   // Find the reciprocal field on target that points back to parent
   const reciprocalField = targetResource.fields.find(
-    (f) => f.type === BaseType.RELATION && f.relationship?.targetTable === parentResourceType
+    (f) => f.type === BaseType.RELATION && f.relationship?.relatedEntityDefinitionId === parentResourceType
   )
 
   if (!reciprocalField) {
@@ -665,7 +665,7 @@ export async function analyzePathForRelationships(
       fieldCount: fields.length,
       relationFields: fields
         .filter((f) => f.type === BaseType.RELATION)
-        .map((f) => ({ key: f.key, target: f.relationship?.targetTable })),
+        .map((f) => ({ key: f.key, target: f.relationship?.relatedEntityDefinitionId })),
     })
 
     const field = fields.find((f) => f.key === segment)
@@ -674,11 +674,11 @@ export async function analyzePathForRelationships(
       // This is a relationship - needs fetching
       logger.debug('analyzePathForRelationships: found relationship', {
         segment,
-        targetTable: field.relationship.targetTable,
-        cardinality: field.relationship.cardinality,
+        relatedEntityDefinitionId: field.relationship.relatedEntityDefinitionId,
+        relationshipType: field.relationship.relationshipType,
       })
       relationshipsNeeded.push(segment)
-      currentResourceType = field.relationship.targetTable
+      currentResourceType = field.relationship.relatedEntityDefinitionId
     } else {
       // Hit a scalar field or unknown field - stop analyzing
       logger.debug('analyzePathForRelationships: not a relationship, stopping', {

@@ -107,7 +107,7 @@ export async function orchestrateAutoMap(
           sampleValues: h.sampleValues,
         })),
         targetFields: fields,
-        targetTable: options.targetTable,
+        entityDefinitionId: options.relatedEntityDefinitionId,
       }
 
       const aiResults = await aiAutoMapColumns(db, organizationId, userId, input)

@@ -2,7 +2,8 @@
 
 import { RESOURCE_FIELD_REGISTRY } from './field-registry'
 import type { TableId } from './field-registry'
-import type { ResourceField, RelationshipConfig } from './field-types'
+import type { ResourceField } from './field-types'
+import type { FieldOptions } from '../../field-values/converters'
 import { BaseType } from '../types'
 
 /**
@@ -23,7 +24,7 @@ export function getRelationshipFields(tableId: TableId): ResourceField[] {
 export function getRelationship(
   tableId: TableId,
   fieldKey: string
-): RelationshipConfig | undefined {
+): FieldOptions['relationship'] | undefined {
   const field = RESOURCE_FIELD_REGISTRY[tableId]?.[fieldKey]
   return field?.relationship
 }
@@ -56,37 +57,20 @@ export function getRelationshipDbColumn(tableId: TableId, fieldKey: string): str
  */
 export function getTargetTable(tableId: TableId, fieldKey: string): TableId | undefined {
   const relationship = getRelationship(tableId, fieldKey)
-  return relationship?.targetTable as TableId | undefined
+  return relationship?.relatedEntityDefinitionId as TableId | undefined
 }
 
 /**
  * Check if relationship has .referenceId accessor
- * (Only many-to-one and one-to-one relationships)
+ * (Only belongs_to and has_one relationships)
  */
 export function hasReferenceId(field: ResourceField): boolean {
   if (field.type !== BaseType.RELATION || !field.relationship) return false
 
-  const cardinality = field.relationship.cardinality
-  return cardinality === 'many-to-one' || cardinality === 'one-to-one'
+  const type = field.relationship.relationshipType
+  return type === 'belongs_to' || type === 'has_one'
 }
 
-/**
- * Get reciprocal field in target table
- */
-export function getReciprocalField(
-  tableId: TableId,
-  fieldKey: string
-): { tableId: TableId; fieldKey: string } | undefined {
-  const relationship = getRelationship(tableId, fieldKey)
-  if (!relationship?.targetTable || !relationship.reciprocalField) {
-    return undefined
-  }
-
-  return {
-    tableId: relationship.targetTable as TableId,
-    fieldKey: relationship.reciprocalField,
-  }
-}
 
 /**
  * Resolve a .referenceId path to its database column
@@ -116,12 +100,12 @@ export function resolveReferenceIdPath(
 }
 
 /**
- * Create a relationship collection structure for one-to-many and many-to-many
+ * Create a relationship collection structure for has_many and many_to_many
  * Provides helper properties: values, count, isEmpty, first, last
  */
 export function createRelationshipCollection(
   relatedResource: string,
-  cardinality: 'one-to-many' | 'many-to-many'
+  relationshipType: 'has_many' | 'many_to_many'
 ): Record<string, any> {
   return {
     // Core array of items

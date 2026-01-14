@@ -43,7 +43,7 @@ export function ColumnMappingRow({
 
   // Get target resource for relationship fields
   const { resource: targetResource } = useResource(
-    selectedField?.relationConfig?.targetTable ?? null
+    selectedField?.relationConfig?.relatedEntityDefinitionId ?? null
   )
 
   // Build display label including match field for relationships

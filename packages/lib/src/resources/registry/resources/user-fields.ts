@@ -66,9 +66,8 @@ export const USER_FIELDS: Record<string, ResourceField> = {
       updatable: false,
     },
     relationship: {
-      targetTable: 'ticket',
-      cardinality: 'one-to-many',
-      reciprocalField: 'assignee',
+      relatedEntityDefinitionId: 'ticket',
+      relationshipType: 'has_many',
     },
     description: 'Tickets assigned to this user',
   },

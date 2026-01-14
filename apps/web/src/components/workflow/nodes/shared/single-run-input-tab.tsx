@@ -297,7 +297,7 @@ const VariableInput = memo(function VariableInput({
   if (parsed.actualType === BaseType.RELATION || parsed.actualType === BaseType.REFERENCE) {
     // Use metadata from parseVariable (already extracted from variable.reference)
     specificProps.fieldReference = parsed.fieldReference
-    specificProps.targetTable = parsed.targetTable
+    specificProps.relatedEntityDefinitionId = parsed.relatedEntityDefinitionId
     specificProps.placeholder = `Select ${variable.label || 'record'}`
     // Note: RelationInput follows NodeInput interface - uses inputs[name] and onChange(name, val)
     // commonProps.onChange already handles this correctly, no override needed

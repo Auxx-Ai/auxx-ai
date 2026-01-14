@@ -38,7 +38,7 @@ export async function createImportJob(
     .insert(schema.ImportMapping)
     .values({
       organizationId: input.organizationId,
-      targetTable: input.targetTable,
+      targetTable: input.relatedEntityDefinitionId,
       title: `Import from ${input.fileName}`,
       sourceType: 'csv',
       defaultStrategy: 'create',

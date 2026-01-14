@@ -19,7 +19,7 @@ import {
 } from '@auxx/lib/workflow-engine'
 import { type Database, schema } from '@auxx/database'
 import { eq, and, isNull } from 'drizzle-orm'
-import { resourceIdSchema } from '@auxx/types/resource'
+import { resourceIdSchema, type ResourceId } from '@auxx/types/resource'
 
 /**
  * Validate entity definition ID - accepts system TableId or custom entity UUID
@@ -132,9 +132,7 @@ export const resourceRouter = createTRPCRouter({
 
       try {
         const service = new ResourcePickerService(organizationId, userId, ctx.db)
-        return await service.getResourcesByIds(
-          input.items as import('@auxx/types/resource').ResourceId[]
-        )
+        return await service.getResourcesByIds(input.items as ResourceId[])
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         throw new TRPCError({

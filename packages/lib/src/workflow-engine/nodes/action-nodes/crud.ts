@@ -224,7 +224,7 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
       const field = getField(resourceType as TableId, fieldKey)
 
       if (field?.type === BaseType.RELATION && field.relationship) {
-        const expectedTargetTable = field.relationship.targetTable
+        const expectedTargetTable = field.relationship.relatedEntityDefinitionId
 
         // If value is a variable reference (e.g., "{{node-123.contact}}")
         if (typeof value === 'string' && value.startsWith('{{') && value.endsWith('}}')) {
@@ -243,7 +243,7 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
                 const sourceField = getField(sourceResourceType as TableId, sourceFieldKey!)
 
                 if (sourceField?.type === BaseType.RELATION && sourceField.relationship) {
-                  const actualTargetTable = sourceField.relationship.targetTable
+                  const actualTargetTable = sourceField.relationship.relatedEntityDefinitionId
 
                   // Validate target table matches
                   if (actualTargetTable !== expectedTargetTable) {

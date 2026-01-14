@@ -5,32 +5,6 @@ import { BaseType } from './unified-types'
 import type { TableId } from '@auxx/lib/workflow-engine/client'
 
 export { BaseType } from './unified-types'
-/**
- * Reference types for specialized object pickers
- */
-export enum ReferenceType {
-  // Customer-related
-  CONTACT = 'contact',
-  CUSTOMER = 'customer',
-
-  // Communication-related
-  THREAD = 'thread',
-  MESSAGE = 'message',
-
-  // Shopify-related
-  ORDER = 'order',
-  PRODUCT = 'product',
-
-  // Workflow-related
-  WORKFLOW = 'workflow',
-
-  // System-related
-  USER = 'user',
-  ORGANIZATION = 'organization',
-
-  // Generic
-  CUSTOM = 'custom',
-}
 
 /**
  * Unified variable type that merges all legacy variable formats
@@ -50,7 +24,7 @@ export interface UnifiedVariable {
   type: BaseType // Base type from unified type system
 
   // For reference types: specialized picker or resource type identifier
-  // Can be ReferenceType enum OR TableId string (e.g., 'ticket', 'contact')
+  // Can be TableId string (e.g., 'ticket', 'contact')
   reference?: TableId
 
   // For arrays: type of items

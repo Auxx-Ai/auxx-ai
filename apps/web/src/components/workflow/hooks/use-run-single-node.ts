@@ -32,8 +32,9 @@ export interface RunNodeInput {
   loopContext?: LoopExecutionContext
 }
 export function useRunSingleNode(nodeId?: string) {
-  // Get workflow information from the store
-  const workflow = useWorkflowStore((state) => state.workflow)
+  // Get workflow information from the store - subscribe to individual fields to avoid unnecessary re-renders
+  const workflowAppId = useWorkflowStore((state) => state.workflowAppId)
+  const workflowId = useWorkflowStore((state) => state.workflowId)
 
   const state = useStoreApi()
   // Get workflow save functionality
@@ -65,8 +66,10 @@ export function useRunSingleNode(nodeId?: string) {
   const runSingleNode = useCallback(
     async (params: RunNodeInput) => {
       const { nodeId, data, inputs, nodeDefinition, loopContext } = params
+      console.log('Running single node:', workflowAppId, workflowId)
+
       // Validate we have the necessary workflow context
-      if (!workflow?.workflowAppId || !workflow?.workflowId) {
+      if (!workflowAppId || !workflowId) {
         toastError({
           title: 'Missing workflow context',
           description: 'Please save the workflow before running individual nodes',
@@ -89,6 +92,7 @@ export function useRunSingleNode(nodeId?: string) {
         try {
           // Save the workflow
           const saved = await saveWorkflow()
+          console.log('Workflow saved before running node:', saved)
           if (!saved) {
             toastError({
               title: 'Failed to save workflow',
@@ -149,21 +153,13 @@ export function useRunSingleNode(nodeId?: string) {
           }))
       // Execute the node with correct IDs
       runNodeMutation.mutate({
-        workflowAppId: workflow.workflowAppId, // From metadata
-        workflowId: workflow.workflowId, // From workflow
+        workflowAppId: workflowAppId,
+        workflowId: workflowId,
         nodeId,
         inputs: apiInputs,
       })
     },
-    [
-      workflow?.workflowAppId,
-      workflow?.workflowId,
-      runNodeMutation,
-      setNodeRunning,
-      isDirty,
-      isSaving,
-      saveWorkflow,
-    ]
+    [workflowAppId, workflowId, runNodeMutation, setNodeRunning, isDirty, isSaving, saveWorkflow]
   )
   const clearResult = useCallback(
     (nodeIdToClear?: string) => {

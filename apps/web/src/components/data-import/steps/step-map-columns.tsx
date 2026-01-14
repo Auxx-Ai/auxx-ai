@@ -40,8 +40,8 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
   // Fetch job details and available fields
   const { data: job, isLoading: jobLoading } = api.dataImport.getJob.useQuery({ jobId })
   const { data: fields, isLoading: fieldsLoading } = api.dataImport.getImportableFields.useQuery(
-    { targetTable: job?.importMapping?.targetTable ?? '', includeIdentifiers: true },
-    { enabled: !!job?.importMapping?.targetTable }
+    { targetTable: job?.importMapping?.relatedEntityDefinitionId ?? '', includeIdentifiers: true },
+    { enabled: !!job?.importMapping?.relatedEntityDefinitionId }
   )
   const { data: mappableProperties } = api.dataImport.getMappableProperties.useQuery({ jobId })
 

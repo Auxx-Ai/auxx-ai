@@ -289,7 +289,7 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
     (variable: UnifiedVariable) => {
       const parsed = parseVariable(variable)
       const displayType = parsed.displayType
-      const targetTable = parsed.targetTable
+      const targetTable = parsed.relatedEntityDefinitionId
       const expectedType = allowedTypes[0]
       const expectedLabel = getExpectedTypeLabel(expectedType)
 

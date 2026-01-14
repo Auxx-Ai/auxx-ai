@@ -45,7 +45,7 @@ export const RelationInput = createNodeInput<RelationInputProps>(
 
       // Lookup field to get relationship target
       const field = fields.find((f) => f.key === fieldKey)
-      return field?.relationship?.targetTable ?? null
+      return field?.relationship?.relatedEntityDefinitionId ?? null
     }, [fieldReference, fields, fieldKey])
 
     // Get current value from inputs

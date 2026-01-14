@@ -81,7 +81,13 @@ export class ResourcePickerService {
     }
 
     // Fetch from database
-    const result = await this.fetchResourcesFromDb(entityDefinitionId as TableId, limit, cursor, search, filters)
+    const result = await this.fetchResourcesFromDb(
+      entityDefinitionId as TableId,
+      limit,
+      cursor,
+      search,
+      filters
+    )
 
     // Cache result
     await this.cache.cacheResources(this.organizationId, entityDefinitionId, result, {
@@ -115,7 +121,11 @@ export class ResourcePickerService {
     }
 
     // Check cache
-    const cached = await this.cache.getCachedSingleResource(this.organizationId, entityDefinitionId, id)
+    const cached = await this.cache.getCachedSingleResource(
+      this.organizationId,
+      entityDefinitionId,
+      id
+    )
     if (cached) {
       logger.debug('Cache hit for single item', { entityDefinitionId, id })
       return cached
@@ -140,7 +150,7 @@ export class ResourcePickerService {
     limit: number,
     cursor: string | null | undefined,
     search: string | undefined,
-    filters: Record<string, any> | undefined,
+    filters: Record<string, any> | undefined
   ): Promise<PaginatedResourcesResult> {
     const tableConfig = RESOURCE_TABLE_MAP[tableId]
     const displayConfig = RESOURCE_DISPLAY_CONFIG[tableId]
@@ -161,10 +171,18 @@ export class ResourcePickerService {
         limit,
         cursor,
         search,
-        filters,
+        filters
       )
     } else {
-      return this.fetchResourcesDirect(tableId, table, displayConfig, limit, cursor, search, filters)
+      return this.fetchResourcesDirect(
+        tableId,
+        table,
+        displayConfig,
+        limit,
+        cursor,
+        search,
+        filters
+      )
     }
   }
 
@@ -179,7 +197,7 @@ export class ResourcePickerService {
     limit: number,
     cursor: string | null | undefined,
     search: string | undefined,
-    filters: Record<string, any> | undefined,
+    filters: Record<string, any> | undefined
   ): Promise<PaginatedResourcesResult> {
     const tableConfig = RESOURCE_TABLE_MAP[tableId]
     const tableName = tableConfig.dbName
@@ -205,8 +223,8 @@ export class ResourcePickerService {
             conditions.push(
               or(
                 comparison(table[sortField], sortValue),
-                and(eq(table[sortField], sortValue), comparison(table.id, id)),
-              )!,
+                and(eq(table[sortField], sortValue), comparison(table.id, id))
+              )!
             )
           }
         }
@@ -214,7 +232,7 @@ export class ResourcePickerService {
         // Search across configured fields
         if (search && search.trim()) {
           const searchConditions = displayConfig.searchFields.map((fieldKey: string) =>
-            ilike(table[fieldKey], `%${search.trim()}%`),
+            ilike(table[fieldKey], `%${search.trim()}%`)
           )
           if (searchConditions.length > 0) {
             conditions.push(or(...searchConditions)!)
@@ -273,7 +291,7 @@ export class ResourcePickerService {
     limit: number,
     cursor: string | null | undefined,
     search: string | undefined,
-    filters: Record<string, any> | undefined,
+    filters: Record<string, any> | undefined
   ): Promise<PaginatedResourcesResult> {
     const tableConfig = RESOURCE_TABLE_MAP[tableId]
     const joinConfig = displayConfig.joinScoping!
@@ -307,9 +325,9 @@ export class ResourcePickerService {
             sql`${table[sortField]} ${sql.raw(comparison)} ${sortValue}`,
             and(
               sql`${table[sortField]} = ${sortValue}`,
-              sql`${table.id} ${sql.raw(eqComparison)} ${id}`,
-            ),
-          )!,
+              sql`${table.id} ${sql.raw(eqComparison)} ${id}`
+            )
+          )!
         )
       }
     }
@@ -317,7 +335,7 @@ export class ResourcePickerService {
     // Search across configured fields
     if (search && search.trim()) {
       const searchConditions = displayConfig.searchFields.map((fieldKey: string) =>
-        ilike(table[fieldKey], `%${search.trim()}%`),
+        ilike(table[fieldKey], `%${search.trim()}%`)
       )
       if (searchConditions.length > 0) {
         conditions.push(or(...searchConditions)!)
@@ -377,7 +395,7 @@ export class ResourcePickerService {
    */
   private async fetchSingleResourceFromDb(
     tableId: TableId,
-    id: string,
+    id: string
   ): Promise<ResourcePickerItem | null> {
     const tableConfig = RESOURCE_TABLE_MAP[tableId]
     const displayConfig = RESOURCE_DISPLAY_CONFIG[tableId]
@@ -589,7 +607,9 @@ export class ResourcePickerService {
    * @param resourceIds - Array of ResourceId (format: entityDefinitionId:entityInstanceId)
    * @returns Record keyed by ResourceId
    */
-  async getResourcesByIds(resourceIds: ResourceId[]): Promise<Record<ResourceId, ResourcePickerItem>> {
+  async getResourcesByIds(
+    resourceIds: ResourceId[]
+  ): Promise<Record<ResourceId, ResourcePickerItem>> {
     const result: Record<ResourceId, ResourcePickerItem> = {}
 
     // Group by entityDefinitionId for efficient batching
@@ -599,17 +619,14 @@ export class ResourcePickerService {
       if (!grouped.has(entityDefinitionId)) grouped.set(entityDefinitionId, [])
       grouped.get(entityDefinitionId)!.push(entityInstanceId)
     }
-
     // Fetch each group in parallel
     await Promise.all(
       Array.from(grouped.entries()).map(async ([entityDefinitionId, ids]) => {
         if (this.registryService.isCustomResource(entityDefinitionId)) {
           // Custom entity - fetch EntityInstances by IDs
           const resource = await this.registryService.getById(entityDefinitionId)
-          if (resource && isCustomResource(resource)) {
-            const fetched = await this.fetchEntityInstancesByIds(resource, ids)
-            for (const item of fetched) result[item.resourceId] = item
-          }
+          const fetched = await this.fetchEntityInstancesByIds(resource!, ids)
+          for (const item of fetched) result[item.resourceId] = item
         } else if (RESOURCE_TABLE_MAP[entityDefinitionId as TableId]) {
           // System resource - use existing fetchResourcesFromDb with ID filter
           const { items: fetched } = await this.fetchResourcesFromDb(
@@ -675,13 +692,7 @@ export class ResourcePickerService {
    */
   async search(params: GlobalSearchParams): Promise<GlobalSearchResult> {
     const startTime = performance.now()
-    const {
-      query = '',
-      entityDefinitionId,
-      entityDefinitionIds,
-      limit = 25,
-      cursor,
-    } = params
+    const { query = '', entityDefinitionId, entityDefinitionIds, limit = 25, cursor } = params
 
     const trimmedQuery = query.trim()
 

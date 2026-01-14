@@ -120,7 +120,7 @@ export async function aiAutoMapColumns(
     2
   )
 
-  const prompt = COLUMN_MAPPING_PROMPT.replace('{{TARGET_TABLE}}', input.targetTable)
+  const prompt = COLUMN_MAPPING_PROMPT.replace('{{TARGET_TABLE}}', input.entityDefinitionId)
     .replace('{{FIELDS_JSON}}', fieldsJson)
     .replace('{{COLUMNS_JSON}}', columnsJson)
 

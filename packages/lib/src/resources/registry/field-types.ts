@@ -81,59 +81,6 @@ export interface FieldValidation {
   maxLength?: number
 }
 
-/**
- * Relationship cardinality types
- */
-export type RelationshipCardinality =
-  | 'one-to-one' // User.profile → Profile (user has one profile)
-  | 'many-to-one' // Ticket.contact → Contact (many tickets → one contact)
-  | 'one-to-many' // Contact.tickets → Ticket[] (one contact → many tickets)
-  | 'many-to-many' // Ticket.tags → Tag[] (via join table)
-
-/**
- * Relationship configuration for RELATION type fields
- */
-export interface RelationshipConfig {
-  /** Target table ID (e.g., 'contact', 'user', 'ticket') */
-  targetTable: string
-
-  /** Target field key in the related table (usually 'id') */
-  targetField?: string // Default: 'id'
-
-  /** Relationship cardinality */
-  cardinality: RelationshipCardinality
-
-  /** Reciprocal field in target table (for bidirectional navigation) */
-  reciprocalField?: string
-
-  /** Join table name (for many-to-many relationships) */
-  joinTable?: string
-
-  /** Foreign key column in join table pointing to source */
-  joinSourceColumn?: string
-
-  /** Foreign key column in join table pointing to target */
-  joinTargetColumn?: string
-
-  /** Whether the relationship is required (cannot be null) */
-  required?: boolean
-
-  /** Whether to auto-fetch related data (lazy vs eager loading) */
-  autoFetch?: boolean // Default: false (lazy)
-
-  /** Cascade behavior on delete */
-  onDelete?: 'CASCADE' | 'SET_NULL' | 'RESTRICT'
-
-  /** Cascade behavior on update */
-  onUpdate?: 'CASCADE' | 'RESTRICT'
-
-  /**
-   * Entity definition ID of the related resource.
-   * For system resources: the resource type (e.g., 'contact', 'ticket')
-   * For custom entities: the EntityDefinition UUID
-   */
-  relatedEntityDefinitionId?: string
-}
 
 /**
  * Unified field definition
@@ -207,8 +154,8 @@ export interface ResourceField {
   validation?: FieldValidation
 
   // Relationship configuration (REQUIRED for RELATION type)
-  /** Relationship configuration for RELATION type fields */
-  relationship?: RelationshipConfig
+  /** Relationship configuration for RELATION type fields - matches database schema */
+  relationship?: FieldOptions['relationship']
 
   /**
    * Relationship field configuration for EntitySeeder

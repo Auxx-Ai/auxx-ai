@@ -21,8 +21,8 @@ export function getIdentifiableFields(resource: Resource): ImportableField[] {
     .filter((field) => {
       // Must be filterable for lookups
       if (!field.capabilities.filterable) return false
-      // Skip relation fields (except one-to-one which could be unique)
-      if (field.relationship && field.relationship.cardinality !== 'one-to-one') return false
+      // Skip relation fields (except has_one which could be unique)
+      if (field.relationship && field.relationship.relationshipType !== 'has_one') return false
       // Include if explicitly marked as identifier (system or unique custom field)
       if (field.isIdentifier) return true
       // Include known system identifier fields

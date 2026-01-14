@@ -69,7 +69,7 @@ export async function resolveRelationLookups(
 
   logger.info('Resolving relation lookups', {
     count: pendingLookups.length,
-    tables: [...new Set(pendingLookups.map((l) => l.targetTable))],
+    tables: [...new Set(pendingLookups.map((l) => l.relatedEntityDefinitionId))],
   })
 
   const registry = new ResourceRegistryService(organizationId, db)
@@ -78,9 +78,9 @@ export async function resolveRelationLookups(
   // Group by target table for batch queries
   const byTable = new Map<string, PendingRelationLookup[]>()
   for (const lookup of pendingLookups) {
-    const existing = byTable.get(lookup.targetTable) ?? []
+    const existing = byTable.get(lookup.relatedEntityDefinitionId) ?? []
     existing.push(lookup)
-    byTable.set(lookup.targetTable, existing)
+    byTable.set(lookup.relatedEntityDefinitionId, existing)
   }
 
   // Process each table

@@ -87,8 +87,8 @@ export function getImportableFields(
         isIdentifier: false,
         group: 'relationship' as FieldGroup,
         relationConfig: {
-          targetTable: field.relationship!.targetTable,
-          cardinality: field.relationship!.cardinality,
+          targetTable: field.relationship!.relatedEntityDefinitionId,
+          relationshipType: field.relationship!.relationshipType,
         },
       }))
     fields.push(...relationFields)
