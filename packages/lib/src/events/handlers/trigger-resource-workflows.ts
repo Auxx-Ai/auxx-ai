@@ -11,6 +11,7 @@ import {
   getResourceIdField,
 } from '../../resources/resource-fetcher'
 import { getWorkflowAppsByTrigger } from '@auxx/services/workflows'
+import { toResourceId } from '@auxx/types/resource'
 
 const logger = createScopedLogger('trigger-resource-workflows')
 
@@ -77,13 +78,14 @@ export const triggerResourceWorkflows = async ({ data: event }: { data: AuxxEven
     return
   }
 
-  const resourceId = (event.data as any)[resourceIdField] as string
-  const resourceData = await fetchResourceById(resourceType, resourceId, event.data.organizationId)
+  const resourceInstanceId = (event.data as any)[resourceIdField] as string
+  const fullResourceId = toResourceId(resourceType, resourceInstanceId)
+  const resourceData = await fetchResourceById(fullResourceId, event.data.organizationId)
 
   if (!resourceData) {
     logger.warn('Resource not found, skipping workflows', {
       resourceType,
-      resourceId,
+      resourceId: resourceInstanceId,
       eventType: event.type,
     })
     return
@@ -109,6 +111,6 @@ export const triggerResourceWorkflows = async ({ data: event }: { data: AuxxEven
     workflowCount: matchingWorkflows.length,
     triggerType,
     entityDefinitionId,
-    resourceId,
+    resourceId: resourceInstanceId,
   })
 }

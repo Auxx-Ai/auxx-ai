@@ -49,7 +49,6 @@ export function EntityInstanceDialog({
   presetValues,
 }: EntityInstanceDialogProps) {
   const isEditing = !!editingInstanceId
-  const utils = api.useUtils()
 
   // Get resource definition with fields
   const { resource } = useResource(entityDefinitionId)
@@ -247,9 +246,6 @@ export function EntityInstanceDialog({
         const success = await saveMultipleAsync(instanceId, valuesToSave)
         if (!success) return // Error already handled by hook
       }
-
-      // Invalidate queries
-      await utils.entityInstance.list.invalidate()
 
       onSaved?.(instanceId)
       onOpenChange(false)

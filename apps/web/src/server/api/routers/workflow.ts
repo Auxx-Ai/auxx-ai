@@ -30,6 +30,7 @@ import {
 } from '@auxx/lib/workflow-engine'
 import { generateId } from '@auxx/utils/generateId'
 import { and, eq } from 'drizzle-orm'
+import { type ResourceId, resourceIdSchema } from '@auxx/types/resource'
 
 /**
  * Convert database workflow format to workflow-engine format for validation
@@ -335,6 +336,8 @@ export const workflowRouter = createTRPCRouter({
    */
   update: protectedProcedure.input(updateWorkflowSchema).mutation(async ({ ctx, input }) => {
     const workflowService = new WorkflowService(ctx.db)
+
+    console.log('[workflow.update] Updating workflow with input:', input)
     try {
       return await workflowService.update(ctx.session.organizationId, input)
     } catch (error) {
@@ -780,15 +783,13 @@ export const workflowRouter = createTRPCRouter({
     .input(
       z.object({
         workflowAppId: z.string(),
-        entityDefinitionId: z.string().min(1),
-        resourceId: z.string().min(1),
+        resourceId: resourceIdSchema,
       })
     )
     .mutation(async ({ ctx, input }) => {
       const result = await triggerManualResourceWorkflow({
         workflowAppId: input.workflowAppId,
-        entityDefinitionId: input.entityDefinitionId,
-        resourceId: input.resourceId,
+        resourceId: input.resourceId as ResourceId,
         organizationId: ctx.session.organizationId,
         createdBy: ctx.session.userId,
       })
@@ -836,15 +837,13 @@ export const workflowRouter = createTRPCRouter({
     .input(
       z.object({
         workflowAppId: z.string(),
-        entityDefinitionId: z.string().min(1),
-        resourceIds: z.array(z.string().min(1)).min(1).max(100), // Limit to 100 resources
+        resourceIds: z.array(resourceIdSchema).min(1).max(100), // Limit to 100 resources
       })
     )
     .mutation(async ({ ctx, input }) => {
       const result = await triggerManualResourceWorkflowBulk({
         workflowAppId: input.workflowAppId,
-        entityDefinitionId: input.entityDefinitionId,
-        resourceIds: input.resourceIds,
+        resourceIds: input.resourceIds as ResourceId[],
         organizationId: ctx.session.organizationId,
         createdBy: ctx.session.userId,
       })

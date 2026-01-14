@@ -398,8 +398,7 @@ export function TicketDetailDrawer({ ticketId, open, onOpenChange }: TicketDetai
                 </Tooltip>
 
                 <ManualTriggerButton
-                  resourceType="ticket"
-                  resourceId={ticket.id}
+                  resourceId={`ticket:${ticket.id}`}
                   buttonVariant="ghost"
                   buttonSize="icon-sm"
                   buttonClassName="rounded-full"

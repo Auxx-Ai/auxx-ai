@@ -14,6 +14,7 @@ import { BaseType } from './types'
 import { getEntityInstance } from '@auxx/services/entity-instances'
 import { ResourceRegistryService } from './registry/resource-registry-service'
 import type { ResourceField } from './registry/field-types'
+import { parseResourceId, toResourceId, type ResourceId } from '@auxx/types/resource'
 
 const logger = createScopedLogger('resource-fetcher')
 
@@ -156,16 +157,18 @@ export async function executeResourceQuery(
  * Fetch a single resource by ID
  * Supports both system resources (contact, ticket, etc.) and custom entities (entity_xxx)
  *
- * @param resourceType - Resource type (system or custom entity)
- * @param resourceId - ID of the resource to fetch
+ * @param resourceId - ResourceId in format "entityDefinitionId:instanceId"
  * @param organizationId - Organization ID for scoping
  * @returns Resource data or null if not found
  */
 export async function fetchResourceById(
-  resourceType: string,
-  resourceId: string,
+  resourceId: ResourceId,
   organizationId: string | undefined
 ): Promise<any | null> {
+  // Parse ResourceId to extract both components
+  const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+  const resourceType = entityDefinitionId
+
   // Handle custom entities (entity_xxx)
   if (isCustomResourceId(resourceType)) {
     if (!organizationId) {
@@ -175,7 +178,7 @@ export async function fetchResourceById(
 
     try {
       const result = await getEntityInstance({
-        id: resourceId,
+        id: entityInstanceId,
         organizationId,
       })
 
@@ -185,7 +188,7 @@ export async function fetchResourceById(
         }
         logger.error('Failed to fetch entity instance', {
           resourceType,
-          resourceId,
+          entityInstanceId,
           error: result.error.message,
         })
         return null
@@ -216,7 +219,7 @@ export async function fetchResourceById(
     } catch (error) {
       logger.error('Failed to fetch entity instance', {
         resourceType,
-        resourceId,
+        entityInstanceId,
         error: error instanceof Error ? error.message : String(error),
       })
       return null
@@ -230,7 +233,7 @@ export async function fetchResourceById(
     return null
   }
 
-  const whereSql = eq(schema[tableInfo.dbName].id, resourceId)
+  const whereSql = eq(schema[tableInfo.dbName].id, entityInstanceId)
   return executeResourceQuery(resourceType as TableId, organizationId, { where: whereSql }, 'findOne')
 }
 
@@ -298,8 +301,7 @@ export function getResourceIdField(eventType: string): string | null {
  * This is the core of lazy loading - fetches only requested relationships
  * instead of loading everything upfront.
  *
- * @param resourceType - Type of resource (system or custom entity)
- * @param resourceId - ID of resource to fetch
+ * @param resourceId - ResourceId in format "entityDefinitionId:instanceId"
  * @param relationships - Array of relationship field names to load (e.g., ["contact", "Variants"])
  * @param organizationId - Organization context
  * @param db - Database connection
@@ -309,24 +311,27 @@ export function getResourceIdField(eventType: string): string | null {
  * @example
  * // Fetch ticket with only contact relationship
  * const ticket = await fetchResourceWithRelationships(
- *   'ticket', 'ticket-123', ['contact'], 'org-456', db
+ *   'ticket:ticket-123', ['contact'], 'org-456', db
  * )
  *
  * // Fetch custom entity with relationships
  * const product = await fetchResourceWithRelationships(
- *   'entity_products', 'product-123', ['Variants'], 'org-456', db
+ *   'entity_products:product-123', ['Variants'], 'org-456', db
  * )
  */
 export async function fetchResourceWithRelationships(
-  resourceType: string,
-  resourceId: string,
+  resourceId: ResourceId,
   relationships: string[],
   organizationId: string | undefined,
   db?: Database,
   existingService?: ResourceRegistryService
 ): Promise<any | null> {
+  // Parse ResourceId to extract both components
+  const { entityDefinitionId } = parseResourceId(resourceId)
+  const resourceType = entityDefinitionId
+
   // 1. Fetch base resource
-  const resource = await fetchResourceById(resourceType, resourceId, organizationId)
+  const resource = await fetchResourceById(resourceId, organizationId)
   if (!resource) return null
 
   // If no relationships requested or no DB for custom entity lookups, return base resource
@@ -371,7 +376,8 @@ export async function fetchResourceWithRelationships(
         const relatedId = getRelatedIdForBelongsTo(resource, fieldDef, resourceType)
 
         if (relatedId) {
-          const relatedResource = await fetchResourceById(targetResourceType, relatedId, organizationId)
+          const relatedResourceId = toResourceId(targetResourceType, relatedId)
+          const relatedResource = await fetchResourceById(relatedResourceId, organizationId)
           return { relFieldName, value: relatedResource }
         } else {
           return { relFieldName, value: null }

@@ -147,9 +147,7 @@ export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
               </Button>
             </Tooltip>
             <ManualTriggerButton
-              resourceType="entity"
-              entitySlug={entitySlug}
-              resourceId={entityInstanceId!}
+              resourceId={resourceId}
               buttonVariant="ghost"
               buttonSize="icon-xs"
               buttonClassName="rounded-full"

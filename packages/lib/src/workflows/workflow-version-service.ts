@@ -72,7 +72,7 @@ export class WorkflowVersionService {
             version: nextVersion,
             triggerType:
               workflowApp.draftWorkflow?.triggerType || WorkflowTriggerType.MESSAGE_RECEIVED,
-            triggerConfig: workflowApp.draftWorkflow?.triggerConfig || undefined,
+            entityDefinitionId: workflowApp.draftWorkflow?.entityDefinitionId || undefined,
             graph: workflowApp.draftWorkflow?.graph || undefined,
             envVars: workflowApp.draftWorkflow?.envVars || undefined,
             variables: workflowApp.draftWorkflow?.variables || undefined,

@@ -5,7 +5,17 @@ import { useMemo, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import type { VisibilityState } from '@tanstack/react-table'
 import { Button } from '@auxx/ui/components/button'
-import { Plus, Trash2, Archive, Database, FileText, SquarePen, BookPlus, Play, Combine } from 'lucide-react'
+import {
+  Plus,
+  Trash2,
+  Archive,
+  Database,
+  FileText,
+  SquarePen,
+  BookPlus,
+  Play,
+  Combine,
+} from 'lucide-react'
 import { useEntityInstanceOperations } from '~/hooks/use-entity-instance-operations'
 import {
   DynamicView,
@@ -317,7 +327,8 @@ export function EntityRecordsContent() {
    */
   const handleDialogSaved = useCallback(() => {
     setEditingInstance(null)
-  }, [])
+    refresh()
+  }, [refresh])
 
   /**
    * Handle dialog open change
@@ -714,9 +725,7 @@ export function EntityRecordsContent() {
         <MassWorkflowTriggerDialog
           open={isWorkflowDialogOpen}
           onOpenChange={setIsWorkflowDialogOpen}
-          resourceType="entity"
-          entitySlug={slug}
-          resourceIds={Array.from(selectedRowIds)}
+          resourceIds={Array.from(selectedRowIds).map((id) => `${entityDefinitionId}:${id}`)}
           onSuccess={() => {
             setSelectedRowIds(new Set())
             refresh()

@@ -35,6 +35,7 @@ import {
 } from '../../resources/resource-fetcher'
 import { ResourceRegistryService } from '../../resources/registry/resource-registry-service'
 import { LRUCache } from 'lru-cache'
+import { toResourceId } from '@auxx/types/resource'
 
 const logger = createScopedLogger('execution-context')
 
@@ -587,9 +588,9 @@ export class ExecutionContextManager {
       })
 
       // Fetch resource with relationships - pass DB context and cached service for custom entity support
+      const resourceId = toResourceId(ref.resourceType, ref.resourceId)
       const resource = await fetchResourceWithRelationships(
-        ref.resourceType,
-        ref.resourceId,
+        resourceId,
         relationshipsNeeded,
         ref.organizationId ?? this.context.organizationId,
         database,

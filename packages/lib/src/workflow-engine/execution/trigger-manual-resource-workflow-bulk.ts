@@ -9,6 +9,7 @@ import { database as db, schema } from '@auxx/database'
 import { executeResourceQuery, fetchResourceById } from '../../resources/resource-fetcher'
 import { RESOURCE_TABLE_MAP, isCustomResourceId, type TableId } from '../../resources/client'
 import { inArray } from 'drizzle-orm'
+import { parseResourceId, type ResourceId } from '@auxx/types/resource'
 
 const logger = createScopedLogger('trigger-manual-workflow-bulk')
 
@@ -78,12 +79,32 @@ export interface BulkTriggerError {
  */
 export async function triggerManualResourceWorkflowBulk(params: {
   workflowAppId: string
-  entityDefinitionId: string
-  resourceIds: string[]
+  resourceIds: ResourceId[]
   organizationId: string
   createdBy: string
 }): Promise<Result<BulkTriggerResponse, BulkTriggerError>> {
-  const { workflowAppId, entityDefinitionId, resourceIds, organizationId, createdBy } = params
+  const { workflowAppId, resourceIds, organizationId, createdBy } = params
+
+  // Parse all ResourceIds
+  const parsedResources = resourceIds.map(parseResourceId)
+
+  // Validate all have same entityDefinitionId (workflows are entity-specific)
+  const entityDefinitionIds = [...new Set(parsedResources.map(r => r.entityDefinitionId))]
+  if (entityDefinitionIds.length > 1) {
+    return err({
+      code: 'WORKFLOW_TYPE_MISMATCH',
+      message: 'Cannot trigger workflow for resources from different entity types',
+    })
+  }
+  if (entityDefinitionIds.length === 0) {
+    return err({
+      code: 'WORKFLOW_TYPE_MISMATCH',
+      message: 'No resources provided',
+    })
+  }
+
+  const entityDefinitionId = entityDefinitionIds[0]!
+  const entityInstanceIds = parsedResources.map(r => r.entityInstanceId)
 
   logger.info('Bulk manual trigger started', {
     workflowAppId,
@@ -129,7 +150,7 @@ export async function triggerManualResourceWorkflowBulk(params: {
   }
 
   // 2. Batch fetch all resources
-  const resourcesMap = await fetchResourcesByIds(entityDefinitionId, resourceIds, organizationId)
+  const resourcesMap = await fetchResourcesByIds(resourceIds, organizationId)
 
   logger.info('Resources fetched', {
     requested: resourceIds.length,
@@ -141,17 +162,17 @@ export async function triggerManualResourceWorkflowBulk(params: {
   const results: ResourceTriggerResult[] = []
 
   // Use Promise.allSettled to handle partial failures
-  const executions = resourceIds.map(async (resourceId): Promise<ResourceTriggerResult> => {
+  const executions = entityInstanceIds.map(async (entityInstanceId, index): Promise<ResourceTriggerResult> => {
     try {
       // Check if resource exists
-      const resourceData = resourcesMap.get(resourceId)
+      const resourceData = resourcesMap.get(entityInstanceId)
       if (!resourceData) {
         return {
-          resourceId,
+          resourceId: entityInstanceId,
           success: false,
           error: {
             code: 'RESOURCE_NOT_FOUND',
-            message: `Resource ${resourceId} not found or does not belong to organization`,
+            message: `Resource ${entityInstanceId} not found or does not belong to organization`,
           },
         }
       }
@@ -162,7 +183,7 @@ export async function triggerManualResourceWorkflowBulk(params: {
         inputs: {
           trigger_type: 'manual',
           entity_definition_id: entityDefinitionId,
-          resource_id: resourceId,
+          resource_id: entityInstanceId,
           triggered_at: new Date().toISOString(),
           [entityDefinitionId]: resourceData, // Store resource data under entity-specific key
           createdBy,
@@ -177,29 +198,29 @@ export async function triggerManualResourceWorkflowBulk(params: {
       executionService.executeWorkflowAsync(workflowRun, reporter).catch((error) => {
         logger.error('Async workflow execution failed', {
           workflowRunId: workflowRun.id,
-          resourceId,
+          entityInstanceId,
           error: error instanceof Error ? error.message : String(error),
         })
       })
 
       logger.debug('Workflow run created', {
-        resourceId,
+        entityInstanceId,
         workflowRunId: workflowRun.id,
       })
 
       return {
-        resourceId,
+        resourceId: entityInstanceId,
         success: true,
         workflowRunId: workflowRun.id,
       }
     } catch (error) {
       logger.error('Failed to create workflow run', {
-        resourceId,
+        entityInstanceId,
         error: error instanceof Error ? error.message : String(error),
       })
 
       return {
-        resourceId,
+        resourceId: entityInstanceId,
         success: false,
         error: {
           code: 'WORKFLOW_EXECUTION_FAILED',
@@ -250,23 +271,43 @@ export async function triggerManualResourceWorkflowBulk(params: {
  * For system resources: Uses single batch query with IN clause
  * For custom entities: Fetches individually (no batch query available yet)
  *
- * @returns Map for O(1) lookup by ID
+ * @param resourceIds - Array of ResourceIds in format "entityDefinitionId:instanceId"
+ * @param organizationId - Organization ID for scoping
+ * @returns Map for O(1) lookup by instance ID
  */
 async function fetchResourcesByIds(
-  resourceType: string,
-  resourceIds: string[],
+  resourceIds: ResourceId[],
   organizationId: string
 ): Promise<Map<string, any>> {
   const resourcesMap = new Map<string, any>()
+
+  // Parse all ResourceIds
+  const parsedResources = resourceIds.map(parseResourceId)
+
+  // Validate all have same entityDefinitionId
+  const entityDefinitionIds = [...new Set(parsedResources.map(r => r.entityDefinitionId))]
+  if (entityDefinitionIds.length > 1) {
+    logger.error('Mixed entity types in batch fetch', { entityDefinitionIds })
+    return resourcesMap
+  }
+  if (entityDefinitionIds.length === 0) {
+    return resourcesMap
+  }
+
+  const entityDefinitionId = entityDefinitionIds[0]!
+  const resourceType = entityDefinitionId
+  const entityInstanceIds = parsedResources.map(r => r.entityInstanceId)
 
   // Handle custom entities (UUID/CUID format)
   if (isCustomResourceId(resourceType)) {
     // Fetch each entity instance individually
     // TODO: Implement batch fetch for entity instances when available
     const fetchPromises = resourceIds.map(async (resourceId) => {
-      const resource = await fetchResourceById(resourceType, resourceId, organizationId)
+      const resource = await fetchResourceById(resourceId, organizationId)
       if (resource) {
-        resourcesMap.set(resourceId, resource)
+        // Use entityInstanceId as the key for lookup
+        const { entityInstanceId } = parseResourceId(resourceId)
+        resourcesMap.set(entityInstanceId, resource)
       }
     })
 
@@ -281,8 +322,8 @@ async function fetchResourcesByIds(
     return resourcesMap
   }
 
-  // Build WHERE clause: id IN (...resourceIds)
-  const whereSql = inArray(schema[tableInfo.dbName].id, resourceIds)
+  // Build WHERE clause: id IN (...entityInstanceIds)
+  const whereSql = inArray(schema[tableInfo.dbName].id, entityInstanceIds)
 
   // Fetch all resources in single query
   const resources = await executeResourceQuery(

@@ -16,7 +16,7 @@ import { api } from '~/trpc/react'
 import { useWorkflowRunStatusStore } from '~/stores/workflow-run-status-store'
 import { showWorkflowProgressToast } from './workflow-progress-toast'
 import { createWorkflowInvalidator } from '~/lib/workflow'
-import { Tooltip } from '../global/tooltip'
+import { type ResourceId, parseResourceId } from '@auxx/types/resource'
 
 /**
  * ManualTriggerButton: Trigger workflows manually for a resource
@@ -46,10 +46,10 @@ import { Tooltip } from '../global/tooltip'
  */
 interface ManualTriggerButtonProps {
   /** Entity definition ID: 'contact', 'ticket', 'thread', or custom entity ID */
-  entityDefinitionId: string
+  // entityDefinitionId: string
 
   /** Resource ID */
-  resourceId: string
+  resourceId: ResourceId
 
   /** Button variant (default: 'ghost') */
   buttonVariant?: 'ghost' | 'outline' | 'default'
@@ -74,7 +74,7 @@ interface ManualTriggerButtonProps {
  * ManualTriggerButton component for triggering workflows on resources
  */
 export function ManualTriggerButton({
-  entityDefinitionId,
+  // entityDefinitionId,
   resourceId,
   buttonVariant = 'ghost',
   buttonSize = 'icon-sm',
@@ -83,10 +83,14 @@ export function ManualTriggerButton({
   onSuccess,
   children,
 }: ManualTriggerButtonProps) {
+  const { entityDefinitionId, entityInstanceId } = resourceId
+    ? parseResourceId(resourceId)
+    : { entityDefinitionId: '', entityInstanceId: '' }
+
   // Store ref to selected workflow for use in onSuccess
   const selectedWorkflowRef = useRef<{ id: string; name: string } | null>(null)
   // Query available workflows for this entity
-  const { data: workflows, isLoading: workflowsLoading} = api.workflow.getManualWorkflows.useQuery(
+  const { data: workflows, isLoading: workflowsLoading } = api.workflow.getManualWorkflows.useQuery(
     { entityDefinitionId },
     { enabled: resourceId.length > 0 && entityDefinitionId.length > 0 }
   )
@@ -100,8 +104,8 @@ export function ManualTriggerButton({
           runId: data.workflowRunId,
           workflowName: selectedWorkflowRef.current?.name ?? 'Workflow',
           resourceType: entityDefinitionId,
-          resourceId,
-          onComplete: createWorkflowInvalidator(entityDefinitionId, resourceId),
+          resourceId: entityInstanceId,
+          onComplete: createWorkflowInvalidator(entityDefinitionId, entityInstanceId),
         })
 
         // Show progress toast
@@ -131,7 +135,6 @@ export function ManualTriggerButton({
     selectedWorkflowRef.current = workflow
     triggerWorkflow({
       workflowAppId: workflow.id,
-      entityDefinitionId,
       resourceId,
     })
   }

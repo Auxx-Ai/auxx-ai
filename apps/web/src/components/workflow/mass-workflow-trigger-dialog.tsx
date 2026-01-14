@@ -25,6 +25,7 @@ import { api } from '~/trpc/react'
 import { useWorkflowRunStatusStore } from '~/stores/workflow-run-status-store'
 import { showWorkflowProgressToast } from './workflow-progress-toast'
 import { invalidateBatchResources } from '~/lib/workflow'
+import { type ResourceId, parseResourceId } from '@auxx/types/resource'
 
 /**
  * Mass workflow trigger dialog
@@ -37,12 +38,8 @@ interface MassWorkflowTriggerDialogProps {
   open: boolean
   /** Dialog open state change handler */
   onOpenChange: (open: boolean) => void
-  /** Resource type */
-  resourceType?: 'contact' | 'ticket' | 'thread' | 'message' | 'entity'
-  /** Entity slug - required when resourceType is 'entity' */
-  entitySlug?: string
-  /** Array of resource IDs to trigger workflow for */
-  resourceIds: string[]
+  /** Array of ResourceIds to trigger workflow for */
+  resourceIds: ResourceId[]
   /** Success callback (for refetching data) */
   onSuccess?: () => void
 }
@@ -50,17 +47,18 @@ interface MassWorkflowTriggerDialogProps {
 export function MassWorkflowTriggerDialog({
   open,
   onOpenChange,
-  resourceType = 'contact',
-  entitySlug,
   resourceIds,
   onSuccess,
 }: MassWorkflowTriggerDialogProps) {
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>('')
 
+  // Parse first ResourceId to get entityDefinitionId for querying workflows
+  const entityDefinitionId = resourceIds.length > 0 ? parseResourceId(resourceIds[0]!).entityDefinitionId : ''
+
   // Query available workflows
   const { data: workflows, isLoading: workflowsLoading } = api.workflow.getManualWorkflows.useQuery(
-    { resourceType, entitySlug },
-    { enabled: open && resourceIds.length > 0 && (resourceType !== 'entity' || !!entitySlug) }
+    { entityDefinitionId },
+    { enabled: open && resourceIds.length > 0 && entityDefinitionId.length > 0 }
   )
 
   // Get selected workflow name
@@ -83,12 +81,12 @@ export function MassWorkflowTriggerDialog({
       if (successfulRuns.length > 0) {
         const batchId = useWorkflowRunStatusStore.getState().trackBatch({
           workflowName: selectedWorkflow?.name ?? 'Workflow',
-          resourceType,
+          resourceType: entityDefinitionId,
           results: successfulRuns,
           onComplete: () => {
             // Invalidate all resources efficiently (list queries only once)
             invalidateBatchResources(
-              resourceType,
+              entityDefinitionId,
               successfulRuns.map(({ resourceId }) => resourceId)
             )
           },
@@ -112,7 +110,7 @@ export function MassWorkflowTriggerDialog({
       } else {
         toastError({
           title: 'All workflows failed',
-          description: `Failed to trigger workflows for ${summary.failed} ${resourceType}${summary.failed !== 1 ? 's' : ''}`,
+          description: `Failed to trigger workflows for ${summary.failed} resource${summary.failed !== 1 ? 's' : ''}`,
         })
       }
     },
@@ -136,9 +134,7 @@ export function MassWorkflowTriggerDialog({
 
     triggerBulk.mutate({
       workflowAppId: selectedWorkflowId,
-      resourceType,
       resourceIds,
-      entitySlug, // Pass entitySlug for entity resources
     })
   }
 
@@ -150,7 +146,7 @@ export function MassWorkflowTriggerDialog({
         <DialogHeader>
           <DialogTitle>Run Workflow</DialogTitle>
           <DialogDescription>
-            Select a workflow to run for {resourceIds.length} selected {resourceType}
+            Select a workflow to run for {resourceIds.length} selected resource
             {resourceIds.length !== 1 ? 's' : ''}
           </DialogDescription>
         </DialogHeader>
@@ -176,7 +172,7 @@ export function MassWorkflowTriggerDialog({
           </Select>
         ) : (
           <div className="text-sm text-muted-foreground">
-            No manual trigger workflows available for {resourceType}s
+            No manual trigger workflows available
           </div>
         )}
 

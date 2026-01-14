@@ -267,7 +267,6 @@ const CommentComposer = ({
             return isExpanded
           },
           onSubmit: (editor) => {
-            console.log('SubmitOnEnter triggered', editor)
             handleSubmitRef.current(editor)
           },
         }),
@@ -386,7 +385,6 @@ const CommentComposer = ({
           // Check if all attachments are ready
           const selected = fileSelect.selectedItems
           const notReady = selected.filter((i) => i.source !== 'filesystem' && !i.serverFileId)
-          console.log(selected)
           if (notReady.length) {
             // Still uploading files - don't submit yet
             setIsSubmitting(false)
