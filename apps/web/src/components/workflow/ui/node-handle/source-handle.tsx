@@ -106,7 +106,7 @@ export const NodeSourceHandle = memo(
                     <Plus className="size-4" />
                   </button>
                 </AddNodeTrigger>
-                <div className="absolute -top-1 left-1/2 hidden -translate-x-1/2 -translate-y-full z-3 rounded-lg border-[0.5px] border-border bg-popover p-1.5 shadow-lg group-hover/handle:block pointer-events-none">
+                {/* <div className="absolute -top-1 left-1/2 hidden -translate-x-1/2 -translate-y-full z-3 rounded-lg border-[0.5px] border-border bg-popover p-1.5 shadow-lg group-hover/handle:block pointer-events-none">
                   <div className="text-xs text-muted-foreground">
                     <div className="whitespace-nowrap">
                       <span className="font-medium text-foreground">Click:</span>
@@ -117,7 +117,7 @@ export const NodeSourceHandle = memo(
                       {' Connect to existing node'}
                     </div>
                   </div>
-                </div>
+                </div> */}
               </>
             )}
           </Handle>

@@ -10,8 +10,12 @@ import { useCanvasStore } from '../store/canvas-store'
 import { useTestInputStore } from '../store/test-input-store'
 import { useReadOnly } from './use-read-only'
 import { toastError } from '@auxx/ui/components/toast'
-import type { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
-import { isValidTableId } from '@auxx/lib/resources/client'
+import {
+  type WorkflowTriggerType,
+  type ResourceTriggerOperation,
+  RESOURCE_OPERATION_TO_TRIGGER_TYPE,
+  WorkflowTriggerType as TriggerType,
+} from '@auxx/lib/workflow-engine/types'
 
 const DEBOUNCE_MS = 5000
 
@@ -54,7 +58,10 @@ export const useWorkflowSave = () => {
         description: error.message,
       })
     },
-    onSuccess: () => {
+    onSuccess: (updatedWorkflow) => {
+      // Sync the workflow object from backend response to ensure all fields are up-to-date
+      // Critically, this updates the version number which is incremented on each save
+      useWorkflowStore.getState().setWorkflow(updatedWorkflow)
       markClean()
     },
   })
@@ -100,32 +107,52 @@ export const useWorkflowSave = () => {
         return { ...edge, data: Object.keys(cleanData).length > 0 ? cleanData : undefined }
       })
 
-      // Compute trigger type from node data
-      const VALID_OPERATIONS = ['created', 'updated', 'deleted', 'manual'] as const
+      // Compute trigger type and entityDefinitionId from node data
       const triggerNode = cleanNodes.find((n) => n.data.type === 'resource-trigger')
       let triggerType = workflow.triggerType
-      let triggerConfig: Record<string, unknown> | undefined
+      let entityDefinitionId: string | undefined
 
       if (triggerNode) {
-        const { resourceType, operation } = triggerNode.data
-        const isValidOp =
-          typeof operation === 'string' &&
-          VALID_OPERATIONS.includes(operation as (typeof VALID_OPERATIONS)[number])
-        const isValidRes = typeof resourceType === 'string' && resourceType.length > 0
+        const { operation, entityDefinitionId: nodeEntityDefId } = triggerNode.data
 
-        if (isValidRes && isValidOp) {
-          if (resourceType.startsWith('entity_')) {
-            triggerType = `entity-${operation}-trigger` as WorkflowTriggerType
-            triggerConfig = { entitySlug: resourceType.replace('entity_', '') }
-          } else if (isValidTableId(resourceType)) {
-            triggerType = `${resourceType}-${operation}-trigger` as WorkflowTriggerType
+        // Use the linker to map resource operations to trigger types
+        if (operation && nodeEntityDefId) {
+          const mappedTriggerType = RESOURCE_OPERATION_TO_TRIGGER_TYPE[operation as ResourceTriggerOperation]
+          if (mappedTriggerType) {
+            triggerType = mappedTriggerType
+            entityDefinitionId = nodeEntityDefId
           }
         }
       }
 
+      // Other trigger types (non-resource)
+      const manualNode = cleanNodes.find((n) => n.data.type === 'manual-trigger')
+      if (manualNode) {
+        triggerType = TriggerType.FORM
+        entityDefinitionId = undefined // Form triggers don't have entity
+      }
+
+      const webhookNode = cleanNodes.find((n) => n.data.type === 'webhook-trigger')
+      if (webhookNode) {
+        triggerType = TriggerType.WEBHOOK
+        entityDefinitionId = undefined
+      }
+
+      const scheduledNode = cleanNodes.find((n) => n.data.type === 'scheduled-trigger')
+      if (scheduledNode) {
+        triggerType = TriggerType.SCHEDULED
+        entityDefinitionId = undefined
+      }
+
+      const messageNode = cleanNodes.find((n) => n.data.type === 'message-received-trigger')
+      if (messageNode) {
+        triggerType = TriggerType.MESSAGE_RECEIVED
+        entityDefinitionId = undefined
+      }
+
       payload.graph = { nodes: cleanNodes, edges: cleanEdges, viewport: { x, y, zoom } }
       payload.triggerType = triggerType
-      payload.triggerConfig = triggerConfig
+      payload.entityDefinitionId = entityDefinitionId
     }
 
     // Metadata fields

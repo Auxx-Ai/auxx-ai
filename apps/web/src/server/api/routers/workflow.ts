@@ -7,6 +7,7 @@ import {
   WorkflowVersionService,
   WorkflowStatsService,
   WorkflowTriggerType,
+  WORKFLOW_TRIGGER_TYPE_VALUES,
   WorkflowExecutionService,
   type WorkflowExecutionError,
   TemplateGraphTransformer,
@@ -30,8 +31,6 @@ import {
 import { generateId } from '@auxx/utils/generateId'
 import { and, eq } from 'drizzle-orm'
 
-// const a = z.enum(WorkflowTriggerType).nullish()
-// console.log('RESULT', a.parse('message-received-trigger'))
 /**
  * Convert database workflow format to workflow-engine format for validation
  */
@@ -61,7 +60,7 @@ function convertToEngineFormat(dbWorkflow: any): Workflow {
     enabled: dbWorkflow.enabled || false,
     version: dbWorkflow.version || 1,
     triggerType: dbWorkflow.triggerType,
-    triggerConfig: dbWorkflow.triggerConfig,
+    entityDefinitionId: dbWorkflow.entityDefinitionId,
     nodes,
     graph: dbWorkflow.graph,
     envVars: dbWorkflow.envVars,
@@ -103,13 +102,8 @@ const updateWorkflowSchema = z.object({
   name: z.string().min(1).optional(),
   description: z.string().optional(),
   enabled: z.boolean().optional(),
-  triggerType: z.enum(WorkflowTriggerType).nullish(),
-  triggerConfig: z
-    .object({
-      entitySlug: z.string().optional(),
-      entityDefinitionId: z.string().optional(),
-    })
-    .nullish(),
+  triggerType: z.enum(WORKFLOW_TRIGGER_TYPE_VALUES).nullish(),
+  entityDefinitionId: z.string().nullish(), // NEW: replaces triggerConfig
   graph: z
     .object({
       nodes: z.array(z.any()),
@@ -183,7 +177,7 @@ const testWorkflowSchema = z.object({
 // Filter schema for listing workflows
 const listWorkflowsSchema = z.object({
   enabled: z.boolean().optional(),
-  triggerType: z.enum(WorkflowTriggerType).optional(),
+  triggerType: z.enum(WORKFLOW_TRIGGER_TYPE_VALUES).optional(),
   search: z.string().optional(),
   limit: z.number().min(1).max(100).default(50),
   offset: z.number().min(0).default(0),
@@ -250,7 +244,7 @@ export const workflowRouter = createTRPCRouter({
         description: workflowApp.description,
         enabled: workflowApp.enabled,
         triggerType: workflowData?.triggerType,
-        triggerConfig: workflowData?.triggerConfig,
+        entityDefinitionId: workflowData?.entityDefinitionId,
         version: workflowData?.version || 1,
         graph: workflowData?.graph,
         variables: workflowData?.variables || [],
@@ -310,7 +304,7 @@ export const workflowRouter = createTRPCRouter({
         const transformed = transformer.transformTemplate({
           graph: template.graph as any,
           triggerType: template.triggerType ?? undefined,
-          triggerConfig: template.triggerConfig ?? undefined,
+          entityDefinitionId: template.entityDefinitionId ?? undefined,
           envVars: template.envVars ?? undefined,
           variables: template.variables ?? undefined,
         })
@@ -318,7 +312,7 @@ export const workflowRouter = createTRPCRouter({
         templateData = {
           graph: transformed.graph,
           triggerType: transformed.triggerType,
-          triggerConfig: transformed.triggerConfig,
+          entityDefinitionId: transformed.entityDefinitionId,
           envVars: transformed.envVars,
           variables: transformed.variables,
         }
@@ -745,33 +739,20 @@ export const workflowRouter = createTRPCRouter({
     }),
 
   /**
-   * Get available manual workflows for a resource type
+   * Get available manual workflows for an entity
    * Used to populate the workflow selection dropdown
    */
   getManualWorkflows: protectedProcedure
     .input(
       z.object({
-        resourceType: z.enum(['contact', 'ticket', 'thread', 'message', 'entity', 'dataset']),
-        entitySlug: z.string().min(1).optional(),
+        entityDefinitionId: z.string().min(1),
       })
     )
     .query(async ({ ctx, input }) => {
-      // Validate entitySlug is provided for entity resource type
-      if (input.resourceType === 'entity' && !input.entitySlug) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: 'entitySlug is required for entity resource type',
-        })
-      }
-
-      const triggerType = `${input.resourceType}-manual-trigger`
-
       const result = await getWorkflowAppsByTrigger({
-        triggerType,
+        triggerType: 'manual',
+        entityDefinitionId: input.entityDefinitionId,
         organizationId: ctx.session.organizationId,
-        // Only pass filter for entity resources
-        triggerConfigFilter:
-          input.resourceType === 'entity' ? { entitySlug: input.entitySlug } : undefined,
       })
 
       if (result.isErr()) {
@@ -798,27 +779,16 @@ export const workflowRouter = createTRPCRouter({
   triggerManualResource: protectedProcedure
     .input(
       z.object({
-        workflowAppId: z.string(), // The workflow user selected from dropdown
-        resourceType: z.enum(['contact', 'ticket', 'thread', 'message', 'entity', 'dataset']),
+        workflowAppId: z.string(),
+        entityDefinitionId: z.string().min(1),
         resourceId: z.string().min(1),
-        entitySlug: z.string().min(1).optional(), // Required when resourceType === 'entity'
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Validate entitySlug is provided for entity resource type
-      if (input.resourceType === 'entity' && !input.entitySlug) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: 'entitySlug is required for entity resource type',
-        })
-      }
-
-      // Pass entitySlug separately - workflow engine handles conversion for fetching
       const result = await triggerManualResourceWorkflow({
         workflowAppId: input.workflowAppId,
-        resourceType: input.resourceType,
+        entityDefinitionId: input.entityDefinitionId,
         resourceId: input.resourceId,
-        entitySlug: input.entitySlug,
         organizationId: ctx.session.organizationId,
         createdBy: ctx.session.userId,
       })
@@ -866,26 +836,15 @@ export const workflowRouter = createTRPCRouter({
     .input(
       z.object({
         workflowAppId: z.string(),
-        resourceType: z.enum(['contact', 'ticket', 'thread', 'message', 'entity', 'dataset']),
+        entityDefinitionId: z.string().min(1),
         resourceIds: z.array(z.string().min(1)).min(1).max(100), // Limit to 100 resources
-        entitySlug: z.string().min(1).optional(), // Required when resourceType === 'entity'
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Validate entitySlug is provided for entity resource type
-      if (input.resourceType === 'entity' && !input.entitySlug) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: 'entitySlug is required for entity resource type',
-        })
-      }
-
-      // Pass entitySlug separately - workflow engine handles conversion for fetching
       const result = await triggerManualResourceWorkflowBulk({
         workflowAppId: input.workflowAppId,
-        resourceType: input.resourceType,
+        entityDefinitionId: input.entityDefinitionId,
         resourceIds: input.resourceIds,
-        entitySlug: input.entitySlug,
         organizationId: ctx.session.organizationId,
         createdBy: ctx.session.userId,
       })

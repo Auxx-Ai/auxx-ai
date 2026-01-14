@@ -14,7 +14,8 @@ export interface ResourceTriggerData extends BaseNodeData {
   selected: boolean
 
   // Resource trigger configuration
-  resourceType: string // Resource ID (e.g., 'contact', 'ticket', 'entity_vendors')
+  resourceType: string // Resource ID for display (e.g., 'contact', 'ticket', 'entity_vendors')
+  entityDefinitionId: string // Actual entity definition ID: 'contact', 'ticket', 'clq1abc123'
   operation: 'created' | 'updated' | 'deleted' | 'manual'
 
   // Node configuration (flattened structure like other nodes)
@@ -44,6 +45,7 @@ export const resourceTriggerNodeDataSchema = z.object({
 
   // Resource trigger configuration
   resourceType: z.string().min(1, 'Resource type is required'),
+  entityDefinitionId: z.string().min(1, 'Entity definition ID is required'),
   operation: z.enum(['created', 'updated', 'deleted', 'manual']),
 
   // Flattened config properties

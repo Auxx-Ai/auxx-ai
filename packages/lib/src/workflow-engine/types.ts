@@ -30,6 +30,9 @@ export {
   type ValidationResult,
   type WorkflowTriggerEvent,
   type WorkflowExecutionOptions,
+  type ResourceTriggerOperation,
+  RESOURCE_OPERATION_TO_TRIGGER_TYPE,
+  isResourceTriggerType,
 } from './core/types'
 
 // export { AI_NODE_CONSTANTS } from './constants'

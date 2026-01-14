@@ -311,8 +311,14 @@ export const resourceRouter = createTRPCRouter({
       // Extract pagination from cursor if provided
       const snapshotId = input.cursor?.snapshotId
       const offset = input.cursor?.offset ?? 0
-
-      // If snapshotId provided via cursor, try to fetch chunk from cache
+      console.log(
+        'listFiltered: snapshotId=',
+        snapshotId,
+        'offset=',
+        offset,
+        input.entityDefinitionId
+      )
+      // If snapshotId provided via cursor, try to fetch chunk from cacheb
       if (snapshotId) {
         const chunk = await getSnapshotChunk({
           snapshotId,
@@ -342,6 +348,7 @@ export const resourceRouter = createTRPCRouter({
           // Route to appropriate query function
           // Check if system resource first
           if (RESOURCE_TABLE_REGISTRY.some((r) => r.id === input.entityDefinitionId)) {
+            console.log('Querying system resource IDs for', input.entityDefinitionId)
             return querySystemResourceIds({
               db: ctx.db,
               tableId: input.entityDefinitionId as TableId,

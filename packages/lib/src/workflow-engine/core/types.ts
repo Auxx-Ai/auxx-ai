@@ -49,87 +49,93 @@ export const BASE_TYPE_GROUPS: Record<string, BaseType[]> = {
 }
 
 /**
- * Workflow trigger types
+ * Workflow trigger types - Simplified operation-based triggers
+ * Separates operation (when/how) from entity (what)
  */
 export enum WorkflowTriggerType {
-  MESSAGE_RECEIVED = 'message-received-trigger',
-  SCHEDULED = 'scheduled-trigger',
-  WEBHOOK = 'webhook-trigger',
-  MANUAL = 'manual-trigger',
+  // Form-based workflow (no specific resource context)
+  FORM = 'form',
+
+  // Webhook trigger
+  WEBHOOK = 'webhook',
+
+  // Resource-based triggers
+  MANUAL = 'manual', // Triggered manually from UI on a specific record
+  CREATED = 'created', // Triggered when resource is created
+  UPDATED = 'updated', // Triggered when resource is updated
+  DELETED = 'deleted', // Triggered when resource is deleted
+
+  // Time-based trigger
+  SCHEDULED = 'scheduled',
+
+  // Message-based trigger (special case - tied to messaging system)
+  MESSAGE_RECEIVED = 'message-received',
+
+  // UI-only identifier for resource trigger node (not stored in DB)
+  // Actual trigger type comes from the operation field (created/updated/deleted/manual)
   RESOURCE_TRIGGER = 'resource-trigger',
-  EVENT = 'event-trigger',
-  RESOURCE = 'resource-trigger',
-
-  // Resource trigger types
-  CONTACT_CREATED = 'contact-created-trigger',
-  CONTACT_UPDATED = 'contact-updated-trigger',
-  CONTACT_DELETED = 'contact-deleted-trigger',
-  TICKET_CREATED = 'ticket-created-trigger',
-  TICKET_UPDATED = 'ticket-updated-trigger',
-  TICKET_DELETED = 'ticket-deleted-trigger',
-  THREAD_CREATED = 'thread-created-trigger',
-  THREAD_UPDATED = 'thread-updated-trigger',
-  THREAD_DELETED = 'thread-deleted-trigger',
-  MESSAGE_CREATED = 'message-created-trigger',
-  MESSAGE_UPDATED = 'message-updated-trigger',
-  MESSAGE_DELETED = 'message-deleted-trigger',
-
-  // Manual resource triggers
-  CONTACT_MANUAL = 'contact-manual-trigger',
-  TICKET_MANUAL = 'ticket-manual-trigger',
-  THREAD_MANUAL = 'thread-manual-trigger',
-  MESSAGE_MANUAL = 'message-manual-trigger',
-
-  // Entity (custom) triggers - for EntityDefinitions
-  ENTITY_CREATED = 'entity-created-trigger',
-  ENTITY_UPDATED = 'entity-updated-trigger',
-  ENTITY_DELETED = 'entity-deleted-trigger',
-  ENTITY_MANUAL = 'entity-manual-trigger',
-
-  // Dataset triggers
-  DATASET_MANUAL = 'dataset-manual-trigger',
 }
+
+/**
+ * Array of all workflow trigger type values for Zod validation
+ */
+export const WORKFLOW_TRIGGER_TYPE_VALUES = [
+  WorkflowTriggerType.FORM,
+  WorkflowTriggerType.WEBHOOK,
+  WorkflowTriggerType.MANUAL,
+  WorkflowTriggerType.CREATED,
+  WorkflowTriggerType.UPDATED,
+  WorkflowTriggerType.DELETED,
+  WorkflowTriggerType.SCHEDULED,
+  WorkflowTriggerType.MESSAGE_RECEIVED,
+  WorkflowTriggerType.RESOURCE_TRIGGER,
+] as const
 
 /**
  * Human-readable names for workflow trigger types
  * Maps trigger type values to display names
  */
 export const TRIGGER_NAME_MAP: Record<WorkflowTriggerType, string> = {
-  [WorkflowTriggerType.MESSAGE_RECEIVED]: 'Message Received',
-  [WorkflowTriggerType.SCHEDULED]: 'Scheduled',
+  [WorkflowTriggerType.FORM]: 'Form',
   [WorkflowTriggerType.WEBHOOK]: 'Webhook',
   [WorkflowTriggerType.MANUAL]: 'Manual',
-  [WorkflowTriggerType.RESOURCE_TRIGGER]: 'Resource',
-  [WorkflowTriggerType.EVENT]: 'Event',
+  [WorkflowTriggerType.CREATED]: 'Created',
+  [WorkflowTriggerType.UPDATED]: 'Updated',
+  [WorkflowTriggerType.DELETED]: 'Deleted',
+  [WorkflowTriggerType.SCHEDULED]: 'Scheduled',
+  [WorkflowTriggerType.MESSAGE_RECEIVED]: 'Message Received',
+  [WorkflowTriggerType.RESOURCE_TRIGGER]: 'Resource Trigger',
+}
 
-  // Resource trigger types
-  [WorkflowTriggerType.CONTACT_CREATED]: 'Contact Created',
-  [WorkflowTriggerType.CONTACT_UPDATED]: 'Contact Updated',
-  [WorkflowTriggerType.CONTACT_DELETED]: 'Contact Deleted',
-  [WorkflowTriggerType.TICKET_CREATED]: 'Ticket Created',
-  [WorkflowTriggerType.TICKET_UPDATED]: 'Ticket Updated',
-  [WorkflowTriggerType.TICKET_DELETED]: 'Ticket Deleted',
-  [WorkflowTriggerType.THREAD_CREATED]: 'Thread Created',
-  [WorkflowTriggerType.THREAD_UPDATED]: 'Thread Updated',
-  [WorkflowTriggerType.THREAD_DELETED]: 'Thread Deleted',
-  [WorkflowTriggerType.MESSAGE_CREATED]: 'Message Created',
-  [WorkflowTriggerType.MESSAGE_UPDATED]: 'Message Updated',
-  [WorkflowTriggerType.MESSAGE_DELETED]: 'Message Deleted',
+/**
+ * Resource trigger operations that map to actual trigger types
+ */
+export type ResourceTriggerOperation = 'created' | 'updated' | 'deleted' | 'manual'
 
-  // Manual resource triggers
-  [WorkflowTriggerType.CONTACT_MANUAL]: 'Contact Manual',
-  [WorkflowTriggerType.TICKET_MANUAL]: 'Ticket Manual',
-  [WorkflowTriggerType.THREAD_MANUAL]: 'Thread Manual',
-  [WorkflowTriggerType.MESSAGE_MANUAL]: 'Message Manual',
+/**
+ * Maps resource trigger operations to actual workflow trigger types
+ * Used when saving workflows to convert from UI operation to DB trigger type
+ */
+export const RESOURCE_OPERATION_TO_TRIGGER_TYPE: Record<
+  ResourceTriggerOperation,
+  WorkflowTriggerType
+> = {
+  created: WorkflowTriggerType.CREATED,
+  updated: WorkflowTriggerType.UPDATED,
+  deleted: WorkflowTriggerType.DELETED,
+  manual: WorkflowTriggerType.MANUAL,
+}
 
-  // Entity (custom) triggers
-  [WorkflowTriggerType.ENTITY_CREATED]: 'Entity Created',
-  [WorkflowTriggerType.ENTITY_UPDATED]: 'Entity Updated',
-  [WorkflowTriggerType.ENTITY_DELETED]: 'Entity Deleted',
-  [WorkflowTriggerType.ENTITY_MANUAL]: 'Entity Manual',
-
-  // Dataset triggers
-  [WorkflowTriggerType.DATASET_MANUAL]: 'Dataset Manual',
+/**
+ * Check if a trigger type is a resource-based trigger
+ */
+export function isResourceTriggerType(triggerType: string): boolean {
+  return [
+    WorkflowTriggerType.CREATED,
+    WorkflowTriggerType.UPDATED,
+    WorkflowTriggerType.DELETED,
+    WorkflowTriggerType.MANUAL,
+  ].includes(triggerType as WorkflowTriggerType)
 }
 
 /**
@@ -368,7 +374,7 @@ export interface Workflow {
   enabled: boolean
   version: number
   triggerType: WorkflowTriggerType
-  triggerConfig?: Record<string, any>
+  entityDefinitionId?: string // Entity identifier (system or custom) - replaces triggerConfig
   nodes: WorkflowNode[]
   graph?: WorkflowGraph // Graph data from frontend
   envVars?: any[] // Environment variables
@@ -532,7 +538,10 @@ export interface ValidationResult {
 export interface WorkflowBuilder {
   setName(name: string): WorkflowBuilder
   setDescription(description: string): WorkflowBuilder
-  setTrigger(type: WorkflowTriggerType, config?: Record<string, any>): WorkflowBuilder
+  setTrigger(
+    type: WorkflowTriggerType,
+    entityDefinitionId?: string
+  ): WorkflowBuilder
   addNode(node: Omit<WorkflowNode, 'id' | 'workflowId'>): WorkflowBuilder
   connect(fromNodeId: string, toNodeId: string, connectionType?: string): WorkflowBuilder
   build(): Workflow
@@ -808,45 +817,6 @@ export interface BranchConvergenceResult {
   errors?: Error[]
 }
 
-/**
- * Trigger config for entity manual triggers
- * Stores entity-specific information for filtering workflows
- */
-export interface EntityManualTriggerConfig {
-  /** Entity slug this trigger is scoped to (e.g., 'products', 'vendors') */
-  entitySlug: string
-  /** Entity definition ID for reference */
-  entityDefinitionId?: string
-}
-
-/**
- * Trigger config for scheduled triggers
- */
-export interface ScheduledTriggerConfig {
-  /** Cron expression for scheduling */
-  cronExpression?: string
-  /** Timezone for the schedule */
-  timezone?: string
-}
-
-/**
- * Trigger config for webhook triggers
- */
-export interface WebhookTriggerConfig {
-  /** Webhook path */
-  path?: string
-  /** HTTP method */
-  method?: string
-}
-
-/**
- * Union of all trigger config types
- */
-export type TriggerConfig =
-  | EntityManualTriggerConfig
-  | ScheduledTriggerConfig
-  | WebhookTriggerConfig
-  | null
 
 /**
  * Join state for tracking branch convergence

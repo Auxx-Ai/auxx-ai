@@ -17,7 +17,7 @@ import { ModelTypeValues, ModelTypeMeta, type ModelType } from '@auxx/database/e
  * - 'entity' is handled via EntityDefinition
  * - 'contact' is excluded from table registry
  */
-const EXCLUDED_RESOURCE_TYPES = ['entity', 'contact'] as const
+const EXCLUDED_RESOURCE_TYPES = ['entity'] as const
 
 /**
  * Resource Table Registry - Metadata about resource tables themselves
@@ -86,7 +86,7 @@ export function isValidTableId(value: string): value is TableId {
  */
 export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   ticket: TICKET_FIELDS,
-  // contact: CONTACT_FIELDS,
+  contact: CONTACT_FIELDS,
   user: USER_FIELDS,
   inbox: INBOX_FIELDS,
   participant: PARTICIPANT_FIELDS,

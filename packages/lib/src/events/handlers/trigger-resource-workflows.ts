@@ -15,16 +15,19 @@ import { getWorkflowAppsByTrigger } from '@auxx/services/workflows'
 const logger = createScopedLogger('trigger-resource-workflows')
 
 /**
- * Event to workflow trigger type mapping
- * Only includes existing trigger types in WorkflowNodeType enum
+ * Event to workflow trigger type and entity mapping
  */
-const EVENT_TO_TRIGGER_MAP: Record<string, string> = {
-  'contact:created': WorkflowNodeType.CONTACT_CREATED,
-  'contact:updated': WorkflowNodeType.CONTACT_UPDATED,
-  'contact:deleted': WorkflowNodeType.CONTACT_DELETED,
-  'ticket:created': WorkflowNodeType.TICKET_CREATED,
-  'ticket:updated': WorkflowNodeType.TICKET_UPDATED,
-  'ticket:deleted': WorkflowNodeType.TICKET_DELETED,
+const EVENT_TO_WORKFLOW_MAP: Record<string, { triggerType: string; entityDefinitionId: string }> = {
+  'contact:created': { triggerType: 'created', entityDefinitionId: 'contact' },
+  'contact:updated': { triggerType: 'updated', entityDefinitionId: 'contact' },
+  'contact:deleted': { triggerType: 'deleted', entityDefinitionId: 'contact' },
+  'ticket:created': { triggerType: 'created', entityDefinitionId: 'ticket' },
+  'ticket:updated': { triggerType: 'updated', entityDefinitionId: 'ticket' },
+  'ticket:deleted': { triggerType: 'deleted', entityDefinitionId: 'ticket' },
+  'thread:created': { triggerType: 'created', entityDefinitionId: 'thread' },
+  'thread:updated': { triggerType: 'updated', entityDefinitionId: 'thread' },
+  'thread:deleted': { triggerType: 'deleted', entityDefinitionId: 'thread' },
+  // Add more as needed
 }
 
 /**
@@ -32,23 +35,27 @@ const EVENT_TO_TRIGGER_MAP: Record<string, string> = {
  * Fetches matching workflows and queues execution jobs
  */
 export const triggerResourceWorkflows = async ({ data: event }: { data: AuxxEvent }) => {
-  // 1. Map event type to workflow trigger type
-  const workflowTriggerType = EVENT_TO_TRIGGER_MAP[event.type]
-  if (!workflowTriggerType) {
-    logger.debug('No workflow trigger type for event', { eventType: event.type })
+  // 1. Map event type to workflow trigger criteria
+  const mapping = EVENT_TO_WORKFLOW_MAP[event.type]
+  if (!mapping) {
+    logger.debug('No workflow trigger mapping for event', { eventType: event.type })
     return
   }
 
-  // 2. Query workflows using service method
+  const { triggerType, entityDefinitionId } = mapping
+
+  // 2. Query workflows using NEW service signature
   const workflowAppsResult = await getWorkflowAppsByTrigger({
     organizationId: event.data.organizationId,
-    triggerType: workflowTriggerType,
+    triggerType,
+    entityDefinitionId,
   })
 
   if (workflowAppsResult.isErr()) {
     logger.error('Failed to query workflow apps', {
       error: workflowAppsResult.error.message,
-      triggerType: workflowTriggerType,
+      triggerType,
+      entityDefinitionId,
       eventType: event.type,
     })
     throw new Error(`Database error: ${workflowAppsResult.error.message}`)
@@ -57,11 +64,11 @@ export const triggerResourceWorkflows = async ({ data: event }: { data: AuxxEven
   const matchingWorkflows = workflowAppsResult.value
 
   if (matchingWorkflows.length === 0) {
-    logger.debug('No enabled workflows found', { triggerType: workflowTriggerType })
+    logger.debug('No enabled workflows found', { triggerType, entityDefinitionId })
     return
   }
 
-  // 3. Fetch complete resource data using shared utility
+  // 3. Fetch complete resource data
   const resourceType = getResourceTypeFromEvent(event.type)
   const resourceIdField = getResourceIdField(event.type)
 
@@ -71,8 +78,6 @@ export const triggerResourceWorkflows = async ({ data: event }: { data: AuxxEven
   }
 
   const resourceId = (event.data as any)[resourceIdField] as string
-
-  // Uses resource-fetcher utility (automatically enriches with virtual fields)
   const resourceData = await fetchResourceById(resourceType, resourceId, event.data.organizationId)
 
   if (!resourceData) {
@@ -84,7 +89,7 @@ export const triggerResourceWorkflows = async ({ data: event }: { data: AuxxEven
     return
   }
 
-  // 4. Enqueue jobs to workflow delay queue
+  // 4. Enqueue jobs
   const workflowDelayQueue = getQueue(Queues.workflowDelayQueue)
 
   for (const workflow of matchingWorkflows) {
@@ -92,9 +97,9 @@ export const triggerResourceWorkflows = async ({ data: event }: { data: AuxxEven
       workflowAppId: workflow.workflowApp.id,
       workflowId: workflow.publishedWorkflow.id,
       organizationId: event.data.organizationId,
-      resourceType,
-      resourceData, // Already enriched with virtual fields (contact.name)
-      triggerType: workflowTriggerType,
+      entityDefinitionId, // NEW: pass entityDefinitionId instead of resourceType
+      resourceData,
+      triggerType,
       triggeredAt: new Date().toISOString(),
     })
   }
@@ -102,7 +107,8 @@ export const triggerResourceWorkflows = async ({ data: event }: { data: AuxxEven
   logger.info('Queued workflows for resource trigger', {
     eventType: event.type,
     workflowCount: matchingWorkflows.length,
-    resourceType,
+    triggerType,
+    entityDefinitionId,
     resourceId,
   })
 }

@@ -70,7 +70,7 @@ export interface BulkTriggerError {
  * Security:
  * - Verifies workflow belongs to organization
  * - Verifies workflow is enabled and published
- * - Verifies workflow type matches resource type
+ * - Verifies workflow trigger type is 'manual' and entityDefinitionId matches
  * - Verifies all resources belong to organization (batch check)
  *
  * @param params - Bulk trigger parameters
@@ -78,19 +78,17 @@ export interface BulkTriggerError {
  */
 export async function triggerManualResourceWorkflowBulk(params: {
   workflowAppId: string
-  resourceType: string
+  entityDefinitionId: string
   resourceIds: string[]
-  entityDefinitionId?: string // EntityDefinitionId UUID when resourceType === 'entity'
   organizationId: string
   createdBy: string
 }): Promise<Result<BulkTriggerResponse, BulkTriggerError>> {
-  const { workflowAppId, resourceType, resourceIds, entityDefinitionId, organizationId, createdBy } = params
+  const { workflowAppId, entityDefinitionId, resourceIds, organizationId, createdBy } = params
 
   logger.info('Bulk manual trigger started', {
     workflowAppId,
-    resourceType,
-    resourceCount: resourceIds.length,
     entityDefinitionId,
+    resourceCount: resourceIds.length,
     organizationId,
     createdBy,
   })
@@ -115,21 +113,23 @@ export async function triggerManualResourceWorkflowBulk(params: {
     })
   }
 
-  // Verify workflow type matches resource type
-  const expectedTriggerType = `${resourceType}-manual-trigger`
-  if (publishedWorkflow.triggerType !== expectedTriggerType) {
+  // Verify workflow trigger type is 'manual' and entityDefinitionId matches
+  if (publishedWorkflow.triggerType !== 'manual') {
     return err({
       code: 'WORKFLOW_TYPE_MISMATCH',
-      message: `Workflow type mismatch. Expected ${expectedTriggerType}, got ${publishedWorkflow.triggerType}`,
-      resourceType,
+      message: `Workflow type mismatch. Expected 'manual', got '${publishedWorkflow.triggerType}'`,
     })
   }
 
-  // 2. Batch fetch all resources (single query for system, individual for custom entities)
-  // For entities, use entityDefinitionId (UUID) directly
-  const fetchResourceType =
-    resourceType === 'entity' && entityDefinitionId ? entityDefinitionId : resourceType
-  const resourcesMap = await fetchResourcesByIds(fetchResourceType, resourceIds, organizationId)
+  if (publishedWorkflow.entityDefinitionId !== entityDefinitionId) {
+    return err({
+      code: 'WORKFLOW_TYPE_MISMATCH',
+      message: `Entity definition mismatch. Expected '${entityDefinitionId}', got '${publishedWorkflow.entityDefinitionId}'`,
+    })
+  }
+
+  // 2. Batch fetch all resources
+  const resourcesMap = await fetchResourcesByIds(entityDefinitionId, resourceIds, organizationId)
 
   logger.info('Resources fetched', {
     requested: resourceIds.length,
@@ -151,21 +151,20 @@ export async function triggerManualResourceWorkflowBulk(params: {
           success: false,
           error: {
             code: 'RESOURCE_NOT_FOUND',
-            message: `${resourceType} ${resourceId} not found or does not belong to organization`,
+            message: `Resource ${resourceId} not found or does not belong to organization`,
           },
         }
       }
 
       // Create workflow run
-      // Use fetchResourceType for resource_type and data key so trigger node can find it
       const workflowRun = await executionService.createRun({
         workflowId: publishedWorkflow.id,
         inputs: {
-          trigger_type: expectedTriggerType,
-          resource_type: fetchResourceType,
+          trigger_type: 'manual',
+          entity_definition_id: entityDefinitionId,
           resource_id: resourceId,
           triggered_at: new Date().toISOString(),
-          [fetchResourceType]: resourceData,
+          [entityDefinitionId]: resourceData, // Store resource data under entity-specific key
           createdBy,
         },
         mode: 'production',

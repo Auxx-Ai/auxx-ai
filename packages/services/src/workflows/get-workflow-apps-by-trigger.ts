@@ -6,37 +6,41 @@ import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 
 /**
- * Filter options for triggerConfig properties
- */
-interface TriggerConfigFilter {
-  /** Entity slug to filter by (for entity-manual-trigger) */
-  entitySlug?: string
-}
-
-/**
- * Get all enabled workflow apps with published workflows matching a trigger type
+ * Get all enabled workflow apps with published workflows matching trigger criteria
  *
  * @param params.organizationId - Organization ID
- * @param params.triggerType - Trigger type to match
- * @param params.triggerConfigFilter - Optional filter for triggerConfig properties
+ * @param params.triggerType - Trigger operation type (manual, created, updated, deleted, form, scheduled, message-received)
+ * @param params.entityDefinitionId - Optional entity filter (for resource triggers)
  * @returns Result with array of workflow apps (empty array if none found)
  */
 export async function getWorkflowAppsByTrigger(params: {
   organizationId: string
   triggerType: string
-  triggerConfigFilter?: TriggerConfigFilter
+  entityDefinitionId?: string
 }) {
-  const { organizationId, triggerType, triggerConfigFilter } = params
+  const { organizationId, triggerType, entityDefinitionId } = params
+
+  // Build where conditions
+  const whereConditions = [
+    eq(schema.WorkflowApp.organizationId, organizationId),
+    eq(schema.WorkflowApp.enabled, true),
+  ]
 
   const dbResult = await fromDatabase(
     database.query.WorkflowApp.findMany({
-      where: and(
-        eq(schema.WorkflowApp.organizationId, organizationId),
-        eq(schema.WorkflowApp.enabled, true)
-      ),
+      where: and(...whereConditions),
       with: {
         publishedWorkflow: {
-          where: (publishedWorkflow, { eq }) => eq(publishedWorkflow.triggerType, triggerType),
+          where: (publishedWorkflow, { eq, and }) => {
+            const conditions = [eq(publishedWorkflow.triggerType, triggerType)]
+
+            // Filter by entityDefinitionId if provided
+            if (entityDefinitionId) {
+              conditions.push(eq(publishedWorkflow.entityDefinitionId, entityDefinitionId))
+            }
+
+            return and(...conditions)
+          },
         },
         organization: {
           columns: {
@@ -54,23 +58,14 @@ export async function getWorkflowAppsByTrigger(params: {
 
   const workflowApps = dbResult.value
 
-  // Filter out apps without published workflows (left join may return null)
-  let filteredApps = workflowApps
+  // Filter out apps without published workflows
+  const filteredApps = workflowApps
     .filter((app) => app.publishedWorkflow !== null)
     .map((app) => ({
       workflowApp: app,
       publishedWorkflow: app.publishedWorkflow!,
       organization: app.organization,
     }))
-
-  // Apply triggerConfig filter if provided
-  if (triggerConfigFilter?.entitySlug) {
-    filteredApps = filteredApps.filter((app) => {
-      const config = app.publishedWorkflow.triggerConfig as { entitySlug?: string } | null
-      // Must have matching entitySlug - legacy workflows without entitySlug are excluded
-      return config?.entitySlug === triggerConfigFilter.entitySlug
-    })
-  }
 
   return ok(filteredApps)
 }

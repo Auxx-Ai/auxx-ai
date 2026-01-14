@@ -17,7 +17,7 @@ export type ResourceTriggerJobData = {
   workflowAppId: string
   workflowId: string
   organizationId: string
-  resourceType: string
+  entityDefinitionId: string // NEW: replaces resourceType
   resourceData: any
   triggerType: string
   triggeredAt: string
@@ -28,12 +28,12 @@ export type ResourceTriggerJobData = {
  * Fetches workflow app and executes the workflow with resource data
  */
 export async function executeResourceTrigger(job: Job<ResourceTriggerJobData>) {
-  const { workflowAppId, organizationId, resourceType, resourceData, triggerType } = job.data
+  const { workflowAppId, organizationId, entityDefinitionId, resourceData, triggerType } = job.data
 
   logger.info('Executing resource trigger', {
     workflowAppId,
     organizationId,
-    resourceType,
+    entityDefinitionId,
     triggerType,
     jobId: job.id,
   })
@@ -77,10 +77,13 @@ export async function executeResourceTrigger(job: Job<ResourceTriggerJobData>) {
       workflowId: publishedWorkflow.id,
       inputs: {
         trigger_type: triggerType,
-        resource_type: resourceType,
+        entity_definition_id: entityDefinitionId,
         resource_id: resourceData.id,
         triggered_at: job.data.triggeredAt,
-        [resourceType]: resourceData, // Include full resource data for workflow context
+
+        // Store resource data under entity-specific key for workflow context
+        // E.g., contact: {...}, ticket: {...}, or custom entity key
+        [entityDefinitionId]: resourceData,
       },
       mode: 'production',
       userId:
@@ -92,7 +95,7 @@ export async function executeResourceTrigger(job: Job<ResourceTriggerJobData>) {
     logger.info('Created workflow run for resource trigger', {
       workflowAppId,
       workflowRunId: workflowRun.id,
-      resourceType,
+      entityDefinitionId,
       resourceId: resourceData.id,
       jobId: job.id,
     })
@@ -104,7 +107,7 @@ export async function executeResourceTrigger(job: Job<ResourceTriggerJobData>) {
     logger.info('Resource trigger executed successfully', {
       workflowAppId,
       workflowRunId: workflowRun.id,
-      resourceType,
+      entityDefinitionId,
       jobId: job.id,
     })
 
@@ -120,7 +123,7 @@ export async function executeResourceTrigger(job: Job<ResourceTriggerJobData>) {
       stack: error instanceof Error ? error.stack : undefined,
       workflowAppId,
       organizationId,
-      resourceType,
+      entityDefinitionId,
       jobId: job.id,
     })
     throw error

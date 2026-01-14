@@ -66,12 +66,14 @@ const ResourceTriggerPanelComponent: React.FC<ResourceTriggerPanelProps> = ({ no
     [resources]
   )
 
-  // Ensure node.data has resourceType and operation on mount
+  // Ensure node.data has resourceType, entityDefinitionId, and operation on mount
   useEffect(() => {
-    if (!nodeData.resourceType || !nodeData.operation) {
+    if (!nodeData.resourceType || !nodeData.operation || !nodeData.entityDefinitionId) {
+      const currentResourceData = resources.find((r) => r.id === resourceType)
       setNodeData({
         ...nodeData,
         resourceType: resourceType,
+        entityDefinitionId: currentResourceData?.entityDefinitionId || resourceType,
         operation,
       })
     }
@@ -85,6 +87,7 @@ const ResourceTriggerPanelComponent: React.FC<ResourceTriggerPanelProps> = ({ no
     setNodeData({
       ...nodeData,
       resourceType: newResourceType,
+      entityDefinitionId: newResource?.entityDefinitionId || newResourceType, // Store entityDefinitionId from resource
       title: `${newResource?.label || newResourceType} ${operationLabel}`,
       icon: newResource?.icon || 'zap',
     })

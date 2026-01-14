@@ -45,7 +45,7 @@ export interface WorkflowCreateInput {
   // Template-related fields (optional, used when creating from template)
   graph?: WorkflowGraph
   triggerType?: WorkflowTriggerType
-  triggerConfig?: Record<string, any>
+  entityDefinitionId?: string // NEW: replaces triggerConfig
   envVars?: EnvironmentVariable[]
   variables?: any[]
 }
@@ -55,7 +55,7 @@ export interface WorkflowUpdateInput {
   description?: string
   enabled?: boolean
   triggerType?: WorkflowTriggerType | null
-  triggerConfig?: Record<string, any> | null
+  entityDefinitionId?: string | null // NEW: replaces triggerConfig
   graph?: WorkflowGraph
   envVars?: EnvironmentVariable[]
   variables?: any[]

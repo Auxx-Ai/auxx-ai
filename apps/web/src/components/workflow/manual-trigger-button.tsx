@@ -22,14 +22,14 @@ import { Tooltip } from '../global/tooltip'
  * ManualTriggerButton: Trigger workflows manually for a resource
  *
  * Displays a button that opens a dropdown menu with available workflows
- * for the given resource type. Clicking a workflow triggers it.
+ * for the given entity. Clicking a workflow triggers it.
  *
  * The component automatically hides when no workflows are available.
  *
  * @example
  * // Default button
  * <ManualTriggerButton
- *   resourceType="contact"
+ *   entityDefinitionId="contact"
  *   resourceId={contactId}
  *   buttonVariant="ghost"
  *   buttonSize="icon-sm"
@@ -38,18 +38,15 @@ import { Tooltip } from '../global/tooltip'
  *
  * @example
  * // Custom trigger element
- * <ManualTriggerButton resourceType="thread" resourceId={threadId}>
+ * <ManualTriggerButton entityDefinitionId="thread" resourceId={threadId}>
  *   <Button variant="ghost" size="icon">
  *     <Zap />
  *   </Button>
  * </ManualTriggerButton>
  */
 interface ManualTriggerButtonProps {
-  /** Resource type: 'contact', 'ticket', 'thread', 'message', 'entity', 'dataset' */
-  resourceType: 'contact' | 'ticket' | 'thread' | 'message' | 'entity' | 'dataset'
-
-  /** Entity slug - required when resourceType is 'entity' */
-  entitySlug?: string
+  /** Entity definition ID: 'contact', 'ticket', 'thread', or custom entity ID */
+  entityDefinitionId: string
 
   /** Resource ID */
   resourceId: string
@@ -77,8 +74,7 @@ interface ManualTriggerButtonProps {
  * ManualTriggerButton component for triggering workflows on resources
  */
 export function ManualTriggerButton({
-  resourceType,
-  entitySlug,
+  entityDefinitionId,
   resourceId,
   buttonVariant = 'ghost',
   buttonSize = 'icon-sm',
@@ -89,10 +85,10 @@ export function ManualTriggerButton({
 }: ManualTriggerButtonProps) {
   // Store ref to selected workflow for use in onSuccess
   const selectedWorkflowRef = useRef<{ id: string; name: string } | null>(null)
-  // Query available workflows for this resource type
-  const { data: workflows, isLoading: workflowsLoading } = api.workflow.getManualWorkflows.useQuery(
-    { resourceType, entitySlug },
-    { enabled: resourceId.length > 0 && (resourceType !== 'entity' || !!entitySlug) }
+  // Query available workflows for this entity
+  const { data: workflows, isLoading: workflowsLoading} = api.workflow.getManualWorkflows.useQuery(
+    { entityDefinitionId },
+    { enabled: resourceId.length > 0 && entityDefinitionId.length > 0 }
   )
 
   // Trigger mutation
@@ -103,9 +99,9 @@ export function ManualTriggerButton({
         useWorkflowRunStatusStore.getState().trackRun({
           runId: data.workflowRunId,
           workflowName: selectedWorkflowRef.current?.name ?? 'Workflow',
-          resourceType,
+          resourceType: entityDefinitionId,
           resourceId,
-          onComplete: createWorkflowInvalidator(resourceType, resourceId),
+          onComplete: createWorkflowInvalidator(entityDefinitionId, resourceId),
         })
 
         // Show progress toast
@@ -135,9 +131,8 @@ export function ManualTriggerButton({
     selectedWorkflowRef.current = workflow
     triggerWorkflow({
       workflowAppId: workflow.id,
-      resourceType,
+      entityDefinitionId,
       resourceId,
-      entitySlug,
     })
   }
 

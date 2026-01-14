@@ -231,7 +231,7 @@ export class WorkflowService {
       icon,
       graph,
       triggerType,
-      triggerConfig,
+      entityDefinitionId,
       envVars,
       variables,
     } = input
@@ -263,7 +263,7 @@ export class WorkflowService {
             name: `${name} (Draft)`,
             description,
             triggerType: finalTriggerType,
-            triggerConfig: triggerConfig as any,
+            entityDefinitionId,
             enabled: false, // Draft is always disabled
             organizationId,
             createdById: userId,
@@ -388,21 +388,21 @@ export class WorkflowService {
 
         // Access settings fields (stored on WorkflowApp)
         if (webEnabled !== undefined) {
-          // Only allow enabling web access for manual trigger workflows
+          // Only allow enabling web access for form trigger workflows
           if (webEnabled === true) {
             const workflowTriggerType = existingWorkflowApp.draftWorkflow?.triggerType
-            if (workflowTriggerType !== 'manual-trigger') {
-              throw new Error('Only workflows with a Manual trigger can have web access enabled')
+            if (workflowTriggerType !== 'form') {
+              throw new Error('Only workflows with a Form trigger can have web access enabled')
             }
           }
           workflowAppUpdates.webEnabled = webEnabled
         }
         if (apiEnabled !== undefined) {
-          // Only allow enabling API access for manual trigger workflows
+          // Only allow enabling API access for form trigger workflows
           if (apiEnabled === true) {
             const workflowTriggerType = existingWorkflowApp.draftWorkflow?.triggerType
-            if (workflowTriggerType !== 'manual-trigger') {
-              throw new Error('Only workflows with a Manual trigger can have API access enabled')
+            if (workflowTriggerType !== 'form') {
+              throw new Error('Only workflows with a Form trigger can have API access enabled')
             }
           }
           workflowAppUpdates.apiEnabled = apiEnabled
@@ -430,8 +430,8 @@ export class WorkflowService {
           if (basicUpdateData.description !== undefined)
             workflowUpdates.description = basicUpdateData.description
           if (basicUpdateData.triggerType) workflowUpdates.triggerType = basicUpdateData.triggerType
-          if (basicUpdateData.triggerConfig !== undefined)
-            workflowUpdates.triggerConfig = basicUpdateData.triggerConfig
+          if (basicUpdateData.entityDefinitionId !== undefined)
+            workflowUpdates.entityDefinitionId = basicUpdateData.entityDefinitionId
           if (graph) workflowUpdates.graph = graph as any
           if (envVars) workflowUpdates.envVars = envVars as any
           if (variables) workflowUpdates.variables = variables as any
@@ -448,7 +448,7 @@ export class WorkflowService {
               name: `${basicUpdateData.name || existingWorkflowApp.name} (Draft)`,
               description: basicUpdateData.description || existingWorkflowApp.description,
               triggerType: basicUpdateData.triggerType || WorkflowTriggerType.MESSAGE_RECEIVED,
-              triggerConfig: basicUpdateData.triggerConfig as any,
+              entityDefinitionId: basicUpdateData.entityDefinitionId,
               enabled: false,
               organizationId,
               version: 1,
@@ -817,7 +817,7 @@ export class WorkflowService {
               name: `${newName} (Draft)`,
               description: sourceWorkflow.description,
               triggerType: sourceWorkflow.triggerType,
-              triggerConfig: sourceWorkflow.triggerConfig as any,
+              entityDefinitionId: sourceWorkflow.entityDefinitionId,
               enabled: false,
               organizationId,
               createdById: userId,

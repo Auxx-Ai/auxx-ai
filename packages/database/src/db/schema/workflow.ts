@@ -32,8 +32,8 @@ export const Workflow = pgTable(
     description: text(),
     enabled: boolean().default(true).notNull(),
     version: integer().default(1).notNull(),
-    triggerType: text(),
-    triggerConfig: jsonb(),
+    triggerType: text(), // 'form', 'manual', 'created', 'updated', 'deleted', 'scheduled', 'message-received'
+    entityDefinitionId: text(), // Entity identifier (system or custom) - nullable for form/scheduled/message-received triggers
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     updatedAt: timestamp({ precision: 3 }).notNull(),
     createdById: text().references((): AnyPgColumn => User.id, { onUpdate: 'cascade' }),
@@ -50,10 +50,11 @@ export const Workflow = pgTable(
       table.organizationId.asc().nullsLast(),
       table.enabled.asc().nullsLast()
     ),
-    index('Workflow_organizationId_triggerType_idx').using(
+    index('Workflow_orgId_triggerType_entityDefId_idx').using(
       'btree',
       table.organizationId.asc().nullsLast(),
-      table.triggerType.asc().nullsLast()
+      table.triggerType.asc().nullsLast(),
+      table.entityDefinitionId.asc().nullsLast()
     ),
   ]
 )

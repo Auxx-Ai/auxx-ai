@@ -15,14 +15,14 @@ const logger = createScopedLogger('trigger-manual-workflow')
  *
  * UX Flow:
  * 1. User views resource (contact, ticket, etc.)
- * 2. Dropdown shows available manual workflows for that resource type
+ * 2. Dropdown shows available manual workflows for that entity
  * 3. User selects ONE workflow
  * 4. This function triggers that specific workflow
  *
  * Security:
  * - Verifies workflow belongs to organization
  * - Verifies workflow is enabled
- * - Verifies workflow type matches resource type
+ * - Verifies workflow trigger type is 'manual' and entityDefinitionId matches
  * - Verifies resource belongs to organization
  *
  * @param params - Trigger parameters
@@ -30,19 +30,17 @@ const logger = createScopedLogger('trigger-manual-workflow')
  */
 export async function triggerManualResourceWorkflow(params: {
   workflowAppId: string
-  resourceType: string
+  entityDefinitionId: string
   resourceId: string
-  entitySlug?: string // Required when resourceType === 'entity'
   organizationId: string
   createdBy: string
 }) {
-  const { workflowAppId, resourceType, resourceId, entitySlug, organizationId, createdBy } = params
+  const { workflowAppId, entityDefinitionId, resourceId, organizationId, createdBy } = params
 
   logger.info('Manual trigger started', {
     workflowAppId,
-    resourceType,
+    entityDefinitionId,
     resourceId,
-    entitySlug,
     organizationId,
     createdBy,
   })
@@ -67,26 +65,33 @@ export async function triggerManualResourceWorkflow(params: {
     })
   }
 
-  // Verify workflow type matches resource type
-  const expectedTriggerType = `${resourceType}-manual-trigger`
-  if (publishedWorkflow.triggerType !== expectedTriggerType) {
+  // Verify workflow trigger type is 'manual' and entityDefinitionId matches
+  if (publishedWorkflow.triggerType !== 'manual') {
     return err({
       code: 'WORKFLOW_TYPE_MISMATCH' as const,
-      message: `Workflow type mismatch. Expected ${expectedTriggerType}, got ${publishedWorkflow.triggerType}`,
-      expected: expectedTriggerType,
+      message: `Workflow type mismatch. Expected 'manual', got '${publishedWorkflow.triggerType}'`,
+      expected: 'manual',
       actual: publishedWorkflow.triggerType,
     })
   }
 
+  if (publishedWorkflow.entityDefinitionId !== entityDefinitionId) {
+    return err({
+      code: 'WORKFLOW_TYPE_MISMATCH' as const,
+      message: `Entity definition mismatch. Expected '${entityDefinitionId}', got '${publishedWorkflow.entityDefinitionId}'`,
+      expected: entityDefinitionId,
+      actual: publishedWorkflow.entityDefinitionId,
+    })
+  }
+
   // 2. Fetch resource and verify organization ownership
-  // resourceType is already in the correct format (system ID or UUID for custom entities)
-  const resourceData = await fetchResourceById(resourceType as any, resourceId, organizationId)
+  const resourceData = await fetchResourceById(entityDefinitionId as any, resourceId, organizationId)
 
   if (!resourceData) {
     return err({
       code: 'RESOURCE_NOT_FOUND' as const,
-      message: `${resourceType} ${resourceId} not found or does not belong to organization ${organizationId}`,
-      resourceType,
+      message: `Resource ${resourceId} not found or does not belong to organization ${organizationId}`,
+      entityDefinitionId,
       resourceId,
     })
   }
@@ -96,15 +101,14 @@ export async function triggerManualResourceWorkflow(params: {
     const executionService = new WorkflowExecutionService(db)
 
     // Create workflow run
-    // Use fetchResourceType for resource_type and data key so trigger node can find it
     const workflowRun = await executionService.createRun({
       workflowId: publishedWorkflow.id,
       inputs: {
-        trigger_type: expectedTriggerType,
-        resource_type: fetchResourceType,
+        trigger_type: 'manual',
+        entity_definition_id: entityDefinitionId,
         resource_id: resourceId,
         triggered_at: new Date().toISOString(),
-        [fetchResourceType]: resourceData, // Key must match trigger node's resourceType config
+        [entityDefinitionId]: resourceData, // Store resource data under entity-specific key
         createdBy, // User ID for audit trail
       },
       mode: 'production',
@@ -115,7 +119,7 @@ export async function triggerManualResourceWorkflow(params: {
     logger.info('Created workflow run for manual trigger', {
       workflowAppId,
       workflowRunId: workflowRun.id,
-      resourceType,
+      entityDefinitionId,
       resourceId,
       createdBy,
     })
@@ -138,7 +142,7 @@ export async function triggerManualResourceWorkflow(params: {
     logger.info('Manual trigger initiated', {
       workflowAppId,
       workflowRunId: workflowRun.id,
-      resourceType,
+      entityDefinitionId,
       resourceId,
       organizationId,
     })
