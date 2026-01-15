@@ -272,17 +272,11 @@ export function EntityRecordsContent() {
     [items, entityDefinitionId]
   )
 
-  // Custom field column IDs for syncer (uses customField_ prefix format)
-  const customFieldColumnIds = useMemo(
-    () => customFields.map((f) => `customField_${f.id}`),
-    [customFields]
-  )
-
   // Custom field value syncer - reads from store for reactive updates
   const { getValue, isValueLoading } = useCustomFieldValueSyncer({
     resourceIds,
     columnVisibility,
-    customFieldColumnIds,
+    fieldIds: customFields.map((f) => f.id),
     enabled: !!entityDefinitionId && customFields.length > 0,
   })
 

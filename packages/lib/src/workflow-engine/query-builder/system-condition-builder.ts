@@ -26,7 +26,7 @@ import {
 import { RESOURCE_FIELD_REGISTRY, RESOURCE_TABLE_MAP } from '../../resources/registry'
 import type { TableId } from '../../resources/registry/field-registry'
 import type { EnumValue } from '../../resources/registry/field-types'
-import type { Operator } from '../client'
+import type { Operator } from '../operators/definitions'
 import { BaseConditionBuilder, type GenericCondition } from './base-condition-builder'
 
 const logger = createScopedLogger('system-condition-builder')
@@ -121,7 +121,7 @@ export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
    * Build SQL for a specific operator using Drizzle column references
    */
   private buildOperatorSql(
-    operator: string,
+    operator: Operator,
     rawValue: any,
     columns: AnyColumn[],
     normalizedType: string,

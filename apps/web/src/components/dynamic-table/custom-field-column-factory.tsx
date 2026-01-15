@@ -95,12 +95,12 @@ export interface CustomFieldColumnOptions {
  *
  * @example
  * ```tsx
- * // Syncer still triggers batch fetches for visible columns
+ * // Syncer triggers batch fetches for visible columns
  * useCustomFieldValueSyncer({
- *   entityDefinitionId: 'contact',
- *   rowIds: contacts.map(c => c.id),
+ *   resourceIds: contacts.map(c => toResourceId('contact', c.id)),
  *   columnVisibility,
- *   customFieldColumnIds: fields.map(f => `customField_${f.id}`),
+ *   fieldIds: fields.map(f => f.id),
+ *   enabled: fields.length > 0,
  * })
  *
  * // Cells subscribe directly to store - no getValue/isValueLoading needed
@@ -141,6 +141,10 @@ export function createCustomFieldColumns<T extends { id: string }>(
         defaultVisible: true,
         minSize: 100,
         size: 150,
+        meta: {
+          isCustomField: true,
+          fieldId: fieldId,
+        },
         cell: ({ row }) => (
           <CustomFieldCell
             entityDefinitionId={entityDefinitionId}

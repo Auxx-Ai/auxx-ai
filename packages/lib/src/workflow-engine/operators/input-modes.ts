@@ -204,6 +204,67 @@ export function resolveInputConfig(fieldType: BaseType, operator: Operator): Inp
     }
   }
 
+  // ===== CURRENCY FIELD HANDLING =====
+  if (fieldType === BaseType.CURRENCY) {
+    return {
+      mode: InputMode.SINGLE,
+      varType: BaseType.CURRENCY,
+      allowVarEditor: true,
+      placeholder: 'Enter amount',
+    }
+  }
+
+  // ===== ADDRESS FIELD HANDLING =====
+  if (fieldType === BaseType.ADDRESS) {
+    // For "contains" operator, allow text search
+    if (['contains', 'not contains'].includes(operator)) {
+      return {
+        mode: InputMode.TEXT,
+        varType: BaseType.STRING,
+        allowVarEditor: true,
+        placeholder: 'Search address',
+      }
+    }
+    // Default structured address input
+    return {
+      mode: InputMode.SINGLE,
+      varType: BaseType.ADDRESS,
+      allowVarEditor: true,
+      placeholder: 'Enter address',
+    }
+  }
+
+  // ===== TAGS FIELD HANDLING (same as MULTI_SELECT) =====
+  if (fieldType === BaseType.TAGS) {
+    // Note: "in" / "not in" already handled above with MULTIPLE mode
+    // For "contains" / "not contains", single tag
+    if (['contains', 'not contains'].includes(operator)) {
+      return {
+        mode: InputMode.SINGLE,
+        varType: BaseType.TAGS,
+        allowVarEditor: true,
+        placeholder: 'Select tag',
+      }
+    }
+    // Default (for "is", "is not" if ever supported)
+    return {
+      mode: InputMode.SINGLE,
+      varType: BaseType.TAGS,
+      allowVarEditor: true,
+      placeholder: 'Select tag',
+    }
+  }
+
+  // ===== SECRET FIELD HANDLING =====
+  // SECURITY: Never show value inputs for SECRET fields
+  if (fieldType === BaseType.SECRET) {
+    return {
+      mode: InputMode.NONE,
+      allowVarEditor: false,
+      placeholder: 'Secret fields cannot be filtered',
+    }
+  }
+
   // ===== DEFAULT FALLBACK =====
   return {
     mode: InputMode.SINGLE,

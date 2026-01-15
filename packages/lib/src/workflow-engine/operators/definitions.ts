@@ -50,6 +50,7 @@ export const OPERATOR_DEFINITIONS = {
     supportedTypes: [
       BaseType.STRING,
       BaseType.NUMBER,
+      BaseType.CURRENCY,
       BaseType.BOOLEAN,
       BaseType.ENUM,
       BaseType.EMAIL,
@@ -68,6 +69,7 @@ export const OPERATOR_DEFINITIONS = {
     supportedTypes: [
       BaseType.STRING,
       BaseType.NUMBER,
+      BaseType.CURRENCY,
       BaseType.BOOLEAN,
       BaseType.ENUM,
       BaseType.EMAIL,
@@ -85,7 +87,7 @@ export const OPERATOR_DEFINITIONS = {
     key: '>',
     label: 'Greater than',
     requiresValue: true,
-    supportedTypes: [BaseType.NUMBER],
+    supportedTypes: [BaseType.NUMBER, BaseType.CURRENCY],
     valueType: 'single',
     category: 'comparison',
   },
@@ -93,7 +95,7 @@ export const OPERATOR_DEFINITIONS = {
     key: '<',
     label: 'Less than',
     requiresValue: true,
-    supportedTypes: [BaseType.NUMBER],
+    supportedTypes: [BaseType.NUMBER, BaseType.CURRENCY],
     valueType: 'single',
     category: 'comparison',
   },
@@ -101,7 +103,7 @@ export const OPERATOR_DEFINITIONS = {
     key: '>=',
     label: 'Greater than or equal',
     requiresValue: true,
-    supportedTypes: [BaseType.NUMBER],
+    supportedTypes: [BaseType.NUMBER, BaseType.CURRENCY],
     valueType: 'single',
     category: 'comparison',
   },
@@ -109,7 +111,7 @@ export const OPERATOR_DEFINITIONS = {
     key: '<=',
     label: 'Less than or equal',
     requiresValue: true,
-    supportedTypes: [BaseType.NUMBER],
+    supportedTypes: [BaseType.NUMBER, BaseType.CURRENCY],
     valueType: 'single',
     category: 'comparison',
   },
@@ -125,11 +127,14 @@ export const OPERATOR_DEFINITIONS = {
       BaseType.URL,
       BaseType.PHONE,
       BaseType.ARRAY,
+      BaseType.TAGS,
+      BaseType.ADDRESS,
       BaseType.RELATION,
       BaseType.ANY,
     ],
     valueType: 'single',
     category: 'string',
+    description: 'For ADDRESS: searches across all address fields. For TAGS: checks if tag exists',
   },
   'not contains': {
     key: 'not contains',
@@ -141,11 +146,14 @@ export const OPERATOR_DEFINITIONS = {
       BaseType.URL,
       BaseType.PHONE,
       BaseType.ARRAY,
+      BaseType.TAGS,
+      BaseType.ADDRESS,
       BaseType.RELATION,
       BaseType.ANY,
     ],
     valueType: 'single',
     category: 'string',
+    description: 'For ADDRESS: searches across all address fields. For TAGS: checks if tag does not exist',
   },
   'starts with': {
     key: 'starts with',
@@ -186,7 +194,9 @@ export const OPERATOR_DEFINITIONS = {
     supportedTypes: [
       BaseType.STRING,
       BaseType.NUMBER,
+      BaseType.CURRENCY,
       BaseType.ENUM,
+      BaseType.TAGS,
       BaseType.EMAIL,
       BaseType.URL,
       BaseType.PHONE,
@@ -194,6 +204,7 @@ export const OPERATOR_DEFINITIONS = {
     ],
     valueType: 'multiple',
     category: 'set',
+    description: 'For TAGS: checks if ANY selected tag is in the list',
   },
   'not in': {
     key: 'not in',
@@ -202,7 +213,9 @@ export const OPERATOR_DEFINITIONS = {
     supportedTypes: [
       BaseType.STRING,
       BaseType.NUMBER,
+      BaseType.CURRENCY,
       BaseType.ENUM,
+      BaseType.TAGS,
       BaseType.EMAIL,
       BaseType.URL,
       BaseType.PHONE,
@@ -210,6 +223,7 @@ export const OPERATOR_DEFINITIONS = {
     ],
     valueType: 'multiple',
     category: 'set',
+    description: 'For TAGS: checks if NO selected tag is in the list',
   },
 
   // ===== DATE OPERATORS =====
@@ -308,10 +322,14 @@ export const OPERATOR_DEFINITIONS = {
       BaseType.EMAIL,
       BaseType.URL,
       BaseType.PHONE,
+      BaseType.CURRENCY,
+      BaseType.ADDRESS,
+      BaseType.TAGS,
       BaseType.ANY,
     ],
     valueType: 'none',
     category: 'existence',
+    description: 'For TAGS: checks if no tags selected. For ADDRESS: checks if address is empty',
   },
   'not empty': {
     key: 'not empty',
@@ -324,10 +342,14 @@ export const OPERATOR_DEFINITIONS = {
       BaseType.EMAIL,
       BaseType.URL,
       BaseType.PHONE,
+      BaseType.CURRENCY,
+      BaseType.ADDRESS,
+      BaseType.TAGS,
       BaseType.ANY,
     ],
     valueType: 'none',
     category: 'existence',
+    description: 'For TAGS: checks if at least one tag selected. For ADDRESS: checks if address is not empty',
   },
   exists: {
     key: 'exists',
@@ -550,6 +572,20 @@ export const OPERATOR_DEFINITIONS = {
     description: 'Format: key:value',
   },
 } as const satisfies Record<string, OperatorDefinition>
+
+/**
+ * SECURITY NOTE: BaseType.SECRET
+ *
+ * SECRET fields (passwords, API keys, tokens) do NOT support any operators
+ * for security reasons. Secret values should never be:
+ * - Displayed in UI
+ * - Used in filter conditions
+ * - Compared in queries
+ * - Accessible via workflow variables
+ *
+ * Only existence checks (exists/not exists) could be considered in the future
+ * if explicitly required by a security-reviewed use case.
+ */
 
 /**
  * All valid operator keys as array

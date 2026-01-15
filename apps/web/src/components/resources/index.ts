@@ -9,6 +9,8 @@ export {
   useResource,
   useRelationship,
   useResourceFields,
+  useField,
+  useFields,
   // Record store hooks
   useRecordList,
   useRecord,

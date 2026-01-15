@@ -42,7 +42,7 @@ export function ColumnManager<TData = any>() {
         const originalName =
           typeof header === 'string' ? header : typeof header === 'function' ? col.id : col.id
         const name = columnLabels?.[col.id] ?? originalName
-        const isCustomField = col.id.startsWith('customField_')
+        const isCustomField = col.columnDef.meta?.isCustomField ?? false
         return { id: col.id, name, isVisible: col.getIsVisible(), isCustomField }
       })
 
@@ -68,7 +68,7 @@ export function ColumnManager<TData = any>() {
         const originalName =
           typeof header === 'string' ? header : typeof header === 'function' ? col.id : col.id
         const name = columnLabels?.[col.id] ?? originalName
-        const isCustomField = col.id.startsWith('customField_')
+        const isCustomField = col.columnDef.meta?.isCustomField ?? false
         return { id: col.id, name, isVisible: col.getIsVisible(), isCustomField }
       })
 

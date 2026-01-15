@@ -20,6 +20,11 @@ import {
 import { type Database, schema } from '@auxx/database'
 import { eq, and, isNull } from 'drizzle-orm'
 import { resourceIdSchema, type ResourceId } from '@auxx/types/resource'
+import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
+import type { ResourceField } from '@auxx/lib/resources'
+import { createScopedLogger } from '@auxx/logger'
+
+const logger = createScopedLogger('resource-router')
 
 /**
  * Validate entity definition ID - accepts system TableId or custom entity UUID
@@ -379,6 +384,47 @@ export const resourceRouter = createTRPCRouter({
 // ─────────────────────────────────────────────────────────────────
 
 /**
+ * Scan conditions to identify which related entities are needed.
+ * Returns set of relatedEntityDefinitionIds.
+ */
+function extractRequiredRelatedEntities(
+  filters: ConditionGroup[],
+  sourceFields: ResourceField[]
+): Set<string> {
+  const relatedEntityIds = new Set<string>()
+
+  for (const group of filters) {
+    for (const condition of group.conditions) {
+      const fieldRef = condition.fieldId
+
+      // Only process array format (relationship paths)
+      if (!Array.isArray(fieldRef) || fieldRef.length < 2) {
+        continue
+      }
+
+      // First element is the relationship field on source entity
+      const relationshipRef = fieldRef[0]
+
+      // Parse field key (handle both ResourceFieldId and plain string)
+      const relationshipFieldKey = typeof relationshipRef === 'string' && relationshipRef.includes(':')
+        ? parseResourceFieldId(relationshipRef as ResourceFieldId).fieldId
+        : relationshipRef
+
+      // Find relationship field in source fields
+      const relationshipField = sourceFields.find(f =>
+        f.key === relationshipFieldKey || (f.id && f.id === relationshipFieldKey)
+      )
+
+      if (relationshipField?.relationship?.relatedEntityDefinitionId) {
+        relatedEntityIds.add(relationshipField.relationship.relatedEntityDefinitionId)
+      }
+    }
+  }
+
+  return relatedEntityIds
+}
+
+/**
  * Query entity instance IDs using EntityConditionBuilder
  */
 async function queryEntityInstanceIds(params: {
@@ -390,14 +436,30 @@ async function queryEntityInstanceIds(params: {
 }): Promise<string[]> {
   const { db, entityDefinitionId, organizationId, filters, sorting } = params
 
+  logger.debug(`Querying entity instances for entityDefinitionId: ${entityDefinitionId}, filters: ${JSON.stringify(filters)}`)
+
   // Get fields for this entity via ResourceRegistryService (entityDefinitionId is now UUID, no prefix)
   const registryService = new ResourceRegistryService(organizationId, db)
   const fields = await registryService.getFieldsForResource(entityDefinitionId)
+
+  // Detect required related entities from filters
+  const requiredRelatedEntities = extractRequiredRelatedEntities(filters, fields)
+  logger.debug(`Detected ${requiredRelatedEntities.size} required related entities: ${Array.from(requiredRelatedEntities).join(', ')}`)
+
+  // Build relatedEntityFields map
+  const relatedEntityFields: Record<string, ResourceField[]> = {}
+  for (const relatedEntityId of requiredRelatedEntities) {
+    logger.debug(`Fetching fields for related entity: ${relatedEntityId}`)
+    const relatedFields = await registryService.getFieldsForResource(relatedEntityId)
+    relatedEntityFields[relatedEntityId] = relatedFields
+    logger.debug(`Loaded ${relatedFields.length} fields for entity '${relatedEntityId}'`)
+  }
 
   // Build WHERE clause using existing EntityConditionBuilder
   const context: EntityQueryContext = {
     fields,
     outerTable: schema.EntityInstance,
+    relatedEntityFields,
   }
 
   const whereClause = entityConditionBuilder.buildGroupedQuery(filters, context)

@@ -21,8 +21,8 @@ interface UseCustomFieldValueSyncerOptions {
   /** Column visibility state from DynamicTable */
   columnVisibility: VisibilityState
 
-  /** Custom field column IDs (e.g., ['customField_abc', 'customField_xyz']) */
-  customFieldColumnIds: string[]
+  /** Raw field IDs (e.g., ['abc', 'xyz']) */
+  fieldIds: string[]
 
   /** Whether syncing is enabled */
   enabled?: boolean
@@ -45,12 +45,23 @@ interface SyncerResult {
 /**
  * Hook that syncs custom field values based on visible columns and rows.
  * Batches requests and deduplicates to minimize API calls.
+ *
+ * @example
+ * ```tsx
+ * // Pass raw field IDs - syncer handles prefixing internally
+ * useCustomFieldValueSyncer({
+ *   resourceIds,
+ *   columnVisibility,
+ *   fieldIds: customFields.map(f => f.id),
+ *   enabled: customFields.length > 0,
+ * })
+ * ```
  */
 export function useCustomFieldValueSyncer(options: UseCustomFieldValueSyncerOptions): SyncerResult {
   const {
     resourceIds,
     columnVisibility,
-    customFieldColumnIds,
+    fieldIds,
     enabled = true,
     debounceMs = 150,
   } = options
@@ -65,11 +76,10 @@ export function useCustomFieldValueSyncer(options: UseCustomFieldValueSyncerOpti
   const pendingFetchRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Extract field IDs from visible custom field columns
+  // Build prefixed column IDs internally for visibility check
   const visibleFieldIds = useMemo(() => {
-    return customFieldColumnIds
-      .filter((colId) => columnVisibility[colId] !== false) // visible by default or explicitly true
-      .map((colId) => colId.replace('customField_', ''))
-  }, [customFieldColumnIds, columnVisibility])
+    return fieldIds.filter((fieldId) => columnVisibility[`customField_${fieldId}`] !== false)
+  }, [fieldIds, columnVisibility])
 
   // Helper to check if a key is loading (uses getState, not subscription)
   const isKeyLoading = useCallback((key: FieldValueKey) => {

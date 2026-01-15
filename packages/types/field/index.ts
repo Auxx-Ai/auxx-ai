@@ -23,6 +23,34 @@ export type FieldId = string & { readonly __brand: 'FieldId' }
  */
 export type ResourceFieldId = string & { readonly __brand: 'ResourceFieldId' }
 
+/**
+ * Field path for relationship traversal.
+ * Non-empty array of ResourceFieldId elements.
+ *
+ * Each element explicitly states which entity the field belongs to.
+ * The path is validated by checking that related entities match.
+ *
+ * Examples:
+ *   ["product:vendor", "vendor:name"]
+ *     ↑                ↑
+ *     |                └─ "name" field on "vendor" entity
+ *     └──────────────── "vendor" field on "product" entity
+ *
+ *   ["product:vendor", "vendor:country", "country:name"]
+ *     ↑                 ↑                  ↑
+ *     |                 |                  └─ "name" on "country"
+ *     |                 └──────────────────── "country" on "vendor"
+ *     └────────────────────────────────────── "vendor" on "product"
+ *
+ *   ["vendor:products", "product:price"]  // has_many relationship
+ */
+export type FieldPath = [ResourceFieldId, ...ResourceFieldId[]] // At least 1 element
+
+/**
+ * Flexible field reference - either direct ResourceFieldId or relationship path
+ */
+export type FieldReference = ResourceFieldId | FieldPath
+
 export { resourceFieldIdSchema, fieldIdSchema } from './schema'
 export {
   toFieldId,
@@ -33,4 +61,10 @@ export {
   getFieldId,
   getFieldDefinitionId,
   toResourceFieldIds,
+  toFieldPath,
+  isFieldPath,
+  validateFieldPath,
+  fieldPathToString,
+  getRootEntityId,
+  getTargetFieldId,
 } from './utils'

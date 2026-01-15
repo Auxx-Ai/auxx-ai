@@ -3,11 +3,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { usePropertyContext } from '../property-provider'
 import { useFieldNavigationOptional } from '../field-navigation-context'
-import {
-  toResourceId,
-  getRelationshipStoreState,
-  useResourceStore,
-} from '~/components/resources'
+import { toResourceId, getRelationshipStoreState, useResourceStore } from '~/components/resources'
 import { useResourceIdFromField } from '../hooks/use-resource-id-from-field'
 import {
   extractRelationshipResourceIds,
@@ -63,7 +59,7 @@ export function RelationshipInputField() {
   }, [resourceRef, getResourceById])
 
   // Only custom resources support inline create (system resources have dedicated flows)
-  const canInlineCreate = relatedResource && isCustomResource(relatedResource)
+  const canInlineCreate = true //relatedResource && isCustomResource(relatedResource)
 
   // Convert field value to ResourceId[] for ResourcePicker
   const currentResourceIds = useMemo<ResourceId[]>(() => {

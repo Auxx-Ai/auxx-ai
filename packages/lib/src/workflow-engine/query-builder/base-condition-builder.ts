@@ -2,7 +2,8 @@
 
 import { and, or, type SQL } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
-import type { Operator } from '../client'
+import type { Operator } from '../operators/definitions'
+import { operatorRequiresValue } from '../operators/definitions'
 import type { EnumValue } from '../../resources/registry/field-types'
 import { BaseType } from '../core/types'
 
@@ -12,6 +13,8 @@ import type {
   ConditionGroup as BaseConditionGroup,
   ConditionValidationResult,
 } from '../../conditions'
+import type { ResourceFieldId } from '@auxx/types/field'
+import { parseResourceFieldId } from '@auxx/types/field'
 
 const logger = createScopedLogger('base-condition-builder')
 
@@ -97,16 +100,34 @@ export abstract class BaseConditionBuilder<TContext> {
     const errors: string[] = []
 
     for (const condition of conditions) {
-      // Check if field is allowed
-      if (allowedFieldIds && !allowedFieldIds.includes(condition.fieldId)) {
-        errors.push(`Field '${condition.fieldId}' is not allowed`)
-        continue
+      // Check if field is allowed (handle both string and array formats)
+      if (allowedFieldIds) {
+        const fieldRef = condition.fieldId
+
+        // For array paths, validate the first element (source field)
+        const fieldToValidate = Array.isArray(fieldRef) ? fieldRef[0] : fieldRef
+
+        if (!allowedFieldIds.includes(fieldToValidate)) {
+          const displayRef = Array.isArray(fieldRef) ? fieldRef.join(' → ') : fieldRef
+          errors.push(`Field '${displayRef}' is not allowed`)
+          continue
+        }
       }
 
-      // Check if field exists
-      const fieldType = this.getFieldType(condition.fieldId, context)
+      // Check if field exists (extract field key from either format)
+      const fieldRef = condition.fieldId
+      const fieldKey = Array.isArray(fieldRef)
+        ? (fieldRef[0].includes(':')
+            ? parseResourceFieldId(fieldRef[0] as ResourceFieldId).fieldId
+            : fieldRef[0])
+        : (fieldRef.includes(':')
+            ? parseResourceFieldId(fieldRef as ResourceFieldId).fieldId
+            : fieldRef)
+
+      const fieldType = this.getFieldType(fieldKey, context)
       if (!fieldType) {
-        errors.push(`Unknown field: ${condition.fieldId}`)
+        const displayRef = Array.isArray(fieldRef) ? fieldRef.join(' → ') : fieldRef
+        errors.push(`Unknown field: ${displayRef}`)
         continue
       }
 
@@ -125,13 +146,14 @@ export abstract class BaseConditionBuilder<TContext> {
       }
 
       // Validate enum values if applicable
-      const enumValues = this.getEnumValues(condition.fieldId, context)
+      const enumValues = this.getEnumValues(fieldKey, context)
       if (enumValues && condition.value) {
         const validLabels = enumValues.map((ev) => ev.label)
         const values = Array.isArray(condition.value) ? condition.value : [condition.value]
         for (const val of values) {
           if (typeof val === 'string' && !validLabels.includes(val)) {
-            errors.push(`Invalid value '${val}' for field '${condition.fieldId}'`)
+            const displayRef = Array.isArray(fieldRef) ? fieldRef.join(' → ') : fieldRef
+            errors.push(`Invalid value '${val}' for field '${displayRef}'`)
           }
         }
       }
@@ -284,46 +306,18 @@ export abstract class BaseConditionBuilder<TContext> {
 
   /**
    * Check if operator doesn't require a value
+   * Uses centralized definition from OPERATOR_DEFINITIONS
    */
-  protected isNullableOperator(operator: string): boolean {
-    const nullableOperators = [
-      'empty',
-      'isEmpty',
-      'not empty',
-      'isNotEmpty',
-      'exists',
-      'not exists',
-    ]
-    return nullableOperators.includes(operator)
+  protected isNullableOperator(operator: Operator): boolean {
+    return !operatorRequiresValue(operator)
   }
 
   /**
    * Check if operator requires a value
+   * Uses centralized definition from OPERATOR_DEFINITIONS
    */
-  protected isValueRequiredOperator(operator: string): boolean {
-    const valueRequiredOperators = [
-      '=',
-      '!=',
-      'equals',
-      'not equals',
-      'contains',
-      'not contains',
-      'starts with',
-      'ends with',
-      '>',
-      '<',
-      '>=',
-      '<=',
-      'greaterThan',
-      'lessThan',
-      'greaterThanOrEqual',
-      'lessThanOrEqual',
-      'in',
-      'not in',
-      'is',
-      'is not',
-    ]
-    return valueRequiredOperators.includes(operator)
+  protected isValueRequiredOperator(operator: Operator): boolean {
+    return operatorRequiresValue(operator)
   }
 
   /**
@@ -336,8 +330,10 @@ export abstract class BaseConditionBuilder<TContext> {
       case BaseType.PHONE:
       case BaseType.URL:
       case BaseType.RELATION:
+      case BaseType.SECRET:
         return 'string'
       case BaseType.NUMBER:
+      case BaseType.CURRENCY:
         return 'number'
       case BaseType.BOOLEAN:
         return 'boolean'
@@ -348,7 +344,14 @@ export abstract class BaseConditionBuilder<TContext> {
       case BaseType.ENUM:
         return 'enum'
       case BaseType.ARRAY:
+      case BaseType.TAGS:
         return 'array'
+      case BaseType.OBJECT:
+      case BaseType.JSON:
+      case BaseType.ADDRESS:
+        return 'object'
+      case BaseType.FILE:
+        return 'file'
       default:
         return 'string'
     }

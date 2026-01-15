@@ -209,18 +209,12 @@ export default function CustomerListPage() {
   // Convert to ResourceIds for syncer
   const resourceIds = useMemo(() => items.map((c) => toResourceId('contact', c.id)), [items])
 
-  // Custom field column IDs
-  const customFieldColumnIds = useMemo(
-    () => customFields.map((f) => `customField_${f.id}`),
-    [customFields]
-  )
-
   // Custom field value syncer - triggers batch fetches for visible columns
   // Cells subscribe directly to store via CustomFieldCell
   useCustomFieldValueSyncer({
     resourceIds,
     columnVisibility,
-    customFieldColumnIds,
+    fieldIds: customFields.map((f) => f.id),
     enabled: customFields.length > 0,
   })
 

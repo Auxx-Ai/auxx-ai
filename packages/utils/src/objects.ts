@@ -109,3 +109,37 @@ export function deepMerge<T extends Record<string, unknown>>(
 
   return result
 }
+
+/**
+ * Shallow equality check for objects.
+ * Compares top-level properties only (reference equality for nested objects).
+ */
+export function shallowEqual(a: any, b: any): boolean {
+  if (a === b) return true
+  if (!a || !b) return a === b
+  if (typeof a !== 'object' || typeof b !== 'object') return false
+
+  const keysA = Object.keys(a)
+  const keysB = Object.keys(b)
+
+  if (keysA.length !== keysB.length) return false
+
+  for (const key of keysA) {
+    if (a[key] !== b[key]) return false
+  }
+
+  return true
+}
+
+/**
+ * Deep equality check using JSON serialization.
+ * Fast but doesn't handle functions, undefined values, or circular references.
+ * Good enough for comparing plain data structures.
+ */
+export function deepEqual(a: any, b: any): boolean {
+  if (a === b) return true
+  if (a === null || a === undefined || b === null || b === undefined) {
+    return a === b
+  }
+  return JSON.stringify(a) === JSON.stringify(b)
+}

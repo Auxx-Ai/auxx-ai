@@ -35,10 +35,11 @@ export function EntityAppearanceEditor({
 
   // Get display field IDs based on resource type
   const primaryDisplayFieldId =
-    resource.type === 'custom' ? resource.display.primaryDisplayField?.id ?? null : null
+    resource.type === 'custom' ? (resource.display.primaryDisplayField?.id ?? null) : null
   const secondaryDisplayFieldId =
-    resource.type === 'custom' ? resource.display.secondaryDisplayField?.id ?? null : null
-  const avatarFieldId = resource.type === 'custom' ? resource.display.avatarField?.id ?? null : null
+    resource.type === 'custom' ? (resource.display.secondaryDisplayField?.id ?? null) : null
+  const avatarFieldId =
+    resource.type === 'custom' ? (resource.display.avatarField?.id ?? null) : null
 
   // Use resource.fields instead of separate query (includes both system and custom)
   // For display field selection, only show custom fields
@@ -97,7 +98,7 @@ export function EntityAppearanceEditor({
                   {customFields
                     ?.filter((f) =>
                       ['TEXT', 'EMAIL', 'NAME', 'PHONE', 'PHONE_INTL', 'URL', 'NUMBER'].includes(
-                        f.type
+                        f.fieldType
                       )
                     )
                     .map((field) => (

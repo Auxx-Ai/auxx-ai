@@ -52,7 +52,8 @@ export class CustomFieldService {
     })
 
     if (result.isErr()) {
-      throw new Error(result.error.message)
+      // Preserve the cause for better error debugging
+      throw new Error(result.error.message, { cause: result.error.cause })
     }
 
     return result.value
@@ -89,7 +90,8 @@ export class CustomFieldService {
     })
 
     if (result.isErr()) {
-      throw new Error(result.error.message)
+      // Preserve the cause for better error debugging
+      throw new Error(result.error.message, { cause: result.error.cause })
     }
 
     return result.value
@@ -121,7 +123,8 @@ export class CustomFieldService {
     })
 
     if (result.isErr()) {
-      throw new Error(result.error.message)
+      // Preserve the cause for better error debugging
+      throw new Error(result.error.message, { cause: result.error.cause })
     }
 
     return result.value
@@ -139,7 +142,8 @@ export class CustomFieldService {
     })
 
     if (result.isErr()) {
-      throw new Error(result.error.message)
+      // Preserve the cause for better error debugging
+      throw new Error(result.error.message, { cause: result.error.cause })
     }
 
     return result.value
@@ -158,7 +162,8 @@ export class CustomFieldService {
     })
 
     if (result.isErr()) {
-      throw new Error(result.error.message)
+      // Preserve the cause for better error debugging
+      throw new Error(result.error.message, { cause: result.error.cause })
     }
 
     return result.value

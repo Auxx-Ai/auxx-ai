@@ -4,6 +4,10 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import type { Resource, CustomResource } from '@auxx/lib/resources/client'
 import { isCustomResource } from '@auxx/lib/resources/client'
+import type { ResourceField } from '@auxx/lib/resources/registry/field-types'
+import type { ResourceFieldId } from '@auxx/types/field'
+import { toResourceFieldId } from '@auxx/types/field'
+import { shallowEqual, deepEqual } from '@auxx/utils/objects'
 
 /**
  * Resource store state
@@ -28,6 +32,9 @@ interface ResourceStoreState {
   /** Map for O(1) lookups by id or apiSlug */
   resourceMap: Map<string, Resource>
 
+  /** Field-level lookup map for granular subscriptions (O(1) lookups by ResourceFieldId) */
+  fieldMap: Record<ResourceFieldId, ResourceField>
+
   // ─────────────────────────────────────────────────────────────────
   // ACTIONS
   // ─────────────────────────────────────────────────────────────────
@@ -46,6 +53,45 @@ interface ResourceStoreState {
 }
 
 /**
+ * Check if two fields have the same content (for reference stability).
+ * Only compare properties that matter for field definition.
+ */
+function isFieldContentEqual(a: ResourceField, b: ResourceField): boolean {
+  // Compare primitive properties
+  if (
+    a.id !== b.id ||
+    a.key !== b.key ||
+    a.label !== b.label ||
+    a.type !== b.type ||
+    a.fieldType !== b.fieldType
+  ) {
+    return false
+  }
+
+  // Compare capabilities
+  if (!shallowEqual(a.capabilities, b.capabilities)) {
+    return false
+  }
+
+  // Compare relationship config (deep)
+  if (!deepEqual(a.relationship, b.relationship)) {
+    return false
+  }
+
+  // Compare enum values (deep)
+  if (!deepEqual(a.enumValues, b.enumValues)) {
+    return false
+  }
+
+  // Compare options
+  if (!deepEqual(a.options, b.options)) {
+    return false
+  }
+
+  return true
+}
+
+/**
  * Initial state
  */
 const initialState = {
@@ -54,6 +100,7 @@ const initialState = {
   isLoading: false,
   hasLoadedOnce: false,
   resourceMap: new Map<string, Resource>(),
+  fieldMap: {} as Record<ResourceFieldId, ResourceField>,
 }
 
 /**
@@ -77,7 +124,32 @@ export const useResourceStore = create<ResourceStoreState>()(
       // Filter custom resources
       const customResources = resources.filter(isCustomResource)
 
-      set({ resources, customResources, resourceMap, hasLoadedOnce: true })
+      // Build fieldMap with stable references
+      const prevFieldMap = get().fieldMap || {}
+      const newFieldMap: Record<ResourceFieldId, ResourceField> = {}
+
+      resources.forEach((resource) => {
+        resource.fields.forEach((field) => {
+          // Build ResourceFieldId (use existing or compute)
+          const resourceFieldId =
+            field.resourceFieldId || toResourceFieldId(resource.id, field.id)
+
+          const prevField = prevFieldMap[resourceFieldId]
+
+          // If field hasn't changed, reuse previous reference
+          if (prevField && isFieldContentEqual(prevField, field)) {
+            newFieldMap[resourceFieldId] = prevField
+          } else {
+            // New or changed field - create new reference with resourceFieldId
+            newFieldMap[resourceFieldId] = {
+              ...field,
+              resourceFieldId,
+            }
+          }
+        })
+      })
+
+      set({ resources, customResources, resourceMap, fieldMap: newFieldMap, hasLoadedOnce: true })
     },
 
     setLoading: (isLoading) => {
@@ -89,7 +161,11 @@ export const useResourceStore = create<ResourceStoreState>()(
     },
 
     reset: () => {
-      set(initialState)
+      set({
+        ...initialState,
+        resourceMap: new Map<string, Resource>(),
+        fieldMap: {} as Record<ResourceFieldId, ResourceField>,
+      })
     },
   }))
 )

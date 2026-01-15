@@ -1,6 +1,7 @@
 // packages/lib/src/conditions/types.ts
 
 import type { Operator } from '../workflow-engine/operators/definitions'
+import type { ResourceFieldId } from '@auxx/types/field'
 
 /**
  * Generic condition for filtering/querying resources
@@ -8,7 +9,18 @@ import type { Operator } from '../workflow-engine/operators/definitions'
  */
 export interface Condition {
   id: string
-  fieldId: string
+  /**
+   * Field identifier - supports multiple formats:
+   *
+   * 1. Direct field (ResourceFieldId): 'product:price', 'product:vendor'
+   * 2. Relationship path (ResourceFieldId[]):
+   *    ['product:vendor', 'vendor:name']
+   *    ['product:vendor', 'vendor:country', 'country:code']
+   * 3. Legacy formats (converted internally):
+   *    - Simple string: 'price' → context.entityId + ':price'
+   *    - Dot notation: 'vendor.name' → ['product:vendor', 'vendor:name']
+   */
+  fieldId: ResourceFieldId | ResourceFieldId[] | string
   operator: Operator
   value: string | number | boolean | string[] | any
   logicalOperator?: 'AND' | 'OR'

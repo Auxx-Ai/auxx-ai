@@ -82,6 +82,15 @@ export type ExtendedColumnDef<TData = any> = ColumnDef<TData> & {
   fieldType?: FieldType
   /** Default formatting options from field definition */
   defaultFormatting?: Partial<ColumnFormatting>
+  /** Additional column metadata */
+  meta?: {
+    /** Whether this is a custom field column */
+    isCustomField?: boolean
+    /** Unprefixed field ID for custom fields */
+    fieldId?: string
+    /** Extensible for other metadata */
+    [key: string]: any
+  }
 }
 
 

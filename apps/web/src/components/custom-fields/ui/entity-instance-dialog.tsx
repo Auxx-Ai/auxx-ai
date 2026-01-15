@@ -64,18 +64,12 @@ export function EntityInstanceDialog({
       .sort((a, b) => (a.sortOrder ?? '').localeCompare(b.sortOrder ?? ''))
   }, [resource])
 
-  // Column IDs for syncer
-  const customFieldColumnIds = useMemo(
-    () => editableFields.map((f) => `customField_${f.id}`),
-    [editableFields]
-  )
-
   // ResourceIds for syncer
   const resourceIds = useMemo(() => (resourceId ? [resourceId] : []), [resourceId])
 
   const { getValue } = useCustomFieldValueSyncer({
     resourceIds,
-    customFieldColumnIds,
+    fieldIds: editableFields.map((f) => f.id),
     columnVisibility: {},
     enabled: !!resourceId && editableFields.length > 0,
   })

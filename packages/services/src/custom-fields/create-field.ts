@@ -6,6 +6,7 @@ import { ok, err } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
 import { getInverseCardinality } from '@auxx/utils'
+import { getModelType } from '@auxx/types/resource'
 import {
   ModelTypes,
   type ModelType,
@@ -297,7 +298,9 @@ async function createRelationshipFieldWithInverse(
     }
 
     // Inverse field uses the related entity's modelType and entityDefinitionId
-    const inverseModelType = relatedDef.entityType
+    // Use getModelType to properly derive modelType from entityDefinitionId
+    // (for system entities it returns 'contact'/'ticket'/etc, for custom entities it returns 'entity')
+    const inverseModelType = getModelType(relatedEntityDefinitionId)
     const inverseEntityDefinitionId = relatedEntityDefinitionId
 
     // Get sortOrder for both sides using tx
