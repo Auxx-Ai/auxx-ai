@@ -426,15 +426,6 @@ export class ResourceRegistryService {
   }
 
   /**
-   * Get system resource by TableId (synchronous, no database call)
-   * Returns only static fields from the registry.
-   * Use getById() if you need organization's custom fields included.
-   */
-  getSystemById(tableId: TableId): SystemResource {
-    return toSystemResource(tableId)
-  }
-
-  /**
    * Check if resource ID is a system resource
    */
   isSystemResource(resourceId: string): resourceId is TableId {

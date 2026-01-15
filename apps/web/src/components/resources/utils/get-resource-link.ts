@@ -5,7 +5,7 @@
 import { useMemo } from 'react'
 import type { ResourceId, Resource } from '@auxx/lib/resources/client'
 import { parseResourceId, getDefinitionId, isSystemResource } from '@auxx/lib/resources/client'
-import { useResourceProvider } from '../providers/resource-provider'
+import { useResourceStore } from '../store/resource-store'
 
 /**
  * Options for generating resource links
@@ -196,7 +196,7 @@ export function useResourceLink(
   resourceId: ResourceId | null | undefined,
   options: GetResourceLinkOptions = {}
 ): string | null {
-  const { getResourceById } = useResourceProvider()
+  const getResourceById = useResourceStore((s) => s.getResourceById)
 
   return useMemo(() => {
     if (!resourceId) return null

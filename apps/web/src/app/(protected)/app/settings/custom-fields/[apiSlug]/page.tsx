@@ -21,7 +21,7 @@ function CustomFieldsDetailPage() {
 
   // Get resource from unified registry (handles both system and custom)
   const { resource, isLoading } = useResource(apiSlug)
-
+  console.log('Resource:', resource)
   useUser({
     requireOrganization: true,
     requireRoles: ['ADMIN', 'OWNER'],

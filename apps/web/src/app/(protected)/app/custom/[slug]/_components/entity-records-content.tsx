@@ -54,7 +54,7 @@ import { useCustomFieldValueSyncer } from '~/components/resources/hooks/use-cust
 import { useCombinedFilters } from '~/components/dynamic-table/hooks/use-combined-filters'
 import { useActiveViewConfig } from '~/components/dynamic-table/stores/view-store'
 import { useRecordList, useResource, toResourceId, type RecordMeta } from '~/components/resources'
-import { isCustomResource, type ResourceField } from '@auxx/lib/resources/client'
+import { isCustomResource, type ResourceField, type ResourceId } from '@auxx/lib/resources/client'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 
 /** Stable filter ID to prevent reference changes */
@@ -147,7 +147,7 @@ export function EntityRecordsContent() {
     [resource?.fields]
   )
 
-  const entityDefinitionId = resource?.id ?? null
+  const entityDefinitionId = resource?.id
 
   // State
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
@@ -268,7 +268,7 @@ export function EntityRecordsContent() {
 
   // Convert to ResourceIds for syncer
   const resourceIds = useMemo(
-    () => items.map((i) => toResourceId(entityDefinitionId, i.id)),
+    () => (entityDefinitionId ? items.map((i) => toResourceId(entityDefinitionId, i.id)) : []),
     [items, entityDefinitionId]
   )
 
@@ -598,7 +598,7 @@ export function EntityRecordsContent() {
 
   // Build docked panel content
   const dockedPanel =
-    isDocked && isDrawerOpen && selectedInstanceId ? (
+    isDocked && isDrawerOpen && selectedInstanceId && entityDefinitionId ? (
       <EntityRecordDrawer
         open={isDrawerOpen}
         onOpenChange={handleDrawerOpenChange}
@@ -696,7 +696,9 @@ export function EntityRecordsContent() {
           open={isCreateDialogOpen}
           onOpenChange={handleDialogOpenChange}
           entityDefinitionId={entityDefinitionId}
-          resourceId={editingInstance ? toResourceId(entityDefinitionId, editingInstance.id) : undefined}
+          resourceId={
+            editingInstance ? toResourceId(entityDefinitionId, editingInstance.id) : undefined
+          }
           onSaved={handleDialogSaved}
         />
       )}
@@ -726,7 +728,7 @@ export function EntityRecordsContent() {
       )}
 
       {/* Workflow Trigger Dialog */}
-      {isWorkflowDialogOpen && (
+      {isWorkflowDialogOpen && entityDefinitionId && (
         <MassWorkflowTriggerDialog
           open={isWorkflowDialogOpen}
           onOpenChange={setIsWorkflowDialogOpen}
@@ -762,7 +764,9 @@ export function EntityRecordsContent() {
           open={isDrawerOpen}
           onOpenChange={handleDrawerOpenChange}
           resourceId={
-            selectedInstanceId ? toResourceId(entityDefinitionId, selectedInstanceId) : undefined
+            selectedInstanceId && entityDefinitionId
+              ? toResourceId(entityDefinitionId, selectedInstanceId)
+              : undefined
           }
           onDeleteInstance={handleDrawerDelete}
           onMutationSuccess={refresh}

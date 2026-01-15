@@ -20,3 +20,5 @@ export {
   EMPTY_SORTING,
   type RecordMeta,
 } from './record-store'
+
+export { useResourceStore, getResourceStoreState } from './resource-store'

@@ -2,43 +2,20 @@
 
 'use client'
 
-import { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from '~/trpc/react'
 import { getRelationshipStoreState, useRelationshipStore, getRecordStoreState } from '../store'
-import type { Resource, CustomResource, ResourceId } from '@auxx/lib/resources/client'
-import { isCustomResource } from '@auxx/lib/resources/client'
+import { getResourceStoreState } from '../store/resource-store'
+import type { ResourceId } from '@auxx/lib/resources/client'
 import { useRecordBatchFetcher } from '../hooks/use-record-batch-fetcher'
 
 /**
  * Component that handles batch fetching of records.
- * Must be rendered inside ResourceContext to access getResourceById for hydration.
  */
 function RecordBatchFetcher() {
-  const { getResourceById } = useResourceProvider()
-  useRecordBatchFetcher({ getResourceById })
+  useRecordBatchFetcher()
   return null
 }
-
-interface ResourceContextValue {
-  /** Resources (preloaded, includes embedded entity definitions and fields) */
-  resources: Resource[]
-  /** Custom resources only */
-  customResources: CustomResource[]
-  /** Loading state for resources */
-  isLoadingResources: boolean
-  /** Get resource by id, apiSlug, or entityResourceId */
-  getResourceById: (id: string) => Resource | undefined
-
-  /** Request hydration for relationship items (batch fetched on demand) */
-  requestRelationshipHydration: (resourceIds: ResourceId[]) => void
-  /** Invalidate specific relationship keys */
-  invalidateRelationship: (keys: string[]) => void
-
-  /** Refetch all resources */
-  refetch: () => void
-}
-
-const ResourceContext = createContext<ResourceContextValue | null>(null)
 
 const BATCH_DELAY = 50
 const MAX_RELATIONSHIP_BATCH = 100
@@ -49,6 +26,9 @@ const MAX_RELATIONSHIP_BATCH = 100
  * Provides:
  * 1. Resources - Unified list of system + custom resources with fields (loaded once upfront)
  * 2. Relationship Items - ResourcePickerItem objects (batch fetched on demand)
+ * 3. Record Items - Batch fetched on demand
+ *
+ * All data is stored in Zustand stores for selective subscriptions.
  */
 export function ResourceProvider({ children }: { children: React.ReactNode }) {
   // === PRELOADED: RESOURCES (with fields embedded) ===
@@ -57,26 +37,17 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
     refetchOnWindowFocus: false,
   })
 
-  // Memoize resource lookups (by id and apiSlug)
-  const resourceMap = useMemo(() => {
-    const map = new Map<string, Resource>()
-    resourcesQuery.data?.forEach((r) => {
-      map.set(r.id, r)
-      // Map apiSlug for both system and custom resources
-      if (r.apiSlug) {
-        map.set(r.apiSlug, r)
-      }
-    })
-    return map
+  // Sync query data to store
+  useEffect(() => {
+    if (resourcesQuery.data) {
+      getResourceStoreState().setResources(resourcesQuery.data)
+    }
   }, [resourcesQuery.data])
 
-  // Memoize custom resources filter
-  const customResources = useMemo(
-    () => (resourcesQuery.data ?? []).filter(isCustomResource),
-    [resourcesQuery.data]
-  )
-  /** Get resource by id, apiSlug, or entityResourceId */
-  const getResourceById = useCallback((id: string) => resourceMap.get(id), [resourceMap])
+  // Sync loading state to store
+  useEffect(() => {
+    getResourceStoreState().setLoading(resourcesQuery.isLoading)
+  }, [resourcesQuery.isLoading])
 
   // === RELATIONSHIP ITEMS BATCHING ===
   const [relationshipBatch, setRelationshipBatch] = useState<ResourceId[]>([])
@@ -113,55 +84,12 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
     setRelationshipBatch([])
   }, [relationshipError, relationshipBatch])
 
-  // === METHODS ===
-  const requestRelationshipHydration = useCallback((resourceIds: ResourceId[]) => {
-    getRelationshipStoreState().requestHydration(resourceIds)
-  }, [])
-
-  const invalidateRelationship = useCallback((keys: string[]) => {
-    getRelationshipStoreState().invalidate(keys)
-  }, [])
-
-  const refetch = useCallback(() => {
-    resourcesQuery.refetch()
-  }, [resourcesQuery])
-
-  const value = useMemo<ResourceContextValue>(
-    () => ({
-      resources: resourcesQuery.data ?? [],
-      customResources,
-      isLoadingResources: resourcesQuery.isLoading,
-      getResourceById,
-      requestRelationshipHydration,
-      invalidateRelationship,
-      refetch,
-    }),
-    [
-      resourcesQuery.data,
-      resourcesQuery.isLoading,
-      customResources,
-      getResourceById,
-      requestRelationshipHydration,
-      invalidateRelationship,
-      refetch,
-    ]
-  )
-
   return (
-    <ResourceContext.Provider value={value}>
+    <>
       <RecordBatchFetcher />
       {children}
-    </ResourceContext.Provider>
+    </>
   )
-}
-
-/**
- * Hook to access the ResourceProvider context
- */
-export function useResourceProvider() {
-  const ctx = useContext(ResourceContext)
-  if (!ctx) throw new Error('useResourceProvider must be used within ResourceProvider')
-  return ctx
 }
 
 /**
@@ -169,6 +97,7 @@ export function useResourceProvider() {
  * Call on logout or organization switch.
  */
 export function clearResourceCaches() {
+  getResourceStoreState().reset()
   getRelationshipStoreState().reset()
   getRecordStoreState().clearAll()
 }

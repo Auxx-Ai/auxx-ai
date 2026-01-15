@@ -1,7 +1,7 @@
 // apps/web/src/components/resources/hooks/use-resource-fields.ts
 
 import { useMemo } from 'react'
-import { useResourceProvider } from '../providers/resource-provider'
+import { useResourceStore } from '../store/resource-store'
 import type { ResourceField } from '@auxx/lib/resources/client'
 
 /** Stable empty array to prevent unnecessary re-renders */
@@ -27,21 +27,24 @@ interface UseResourceFieldsResult {
  * Fields are loaded with resources - no separate fetch needed
  */
 export function useResourceFields(resourceId: string | null): UseResourceFieldsResult {
-  const { resources, isLoadingResources } = useResourceProvider()
-
-  const fields = useMemo(() => {
-    if (!resourceId) return EMPTY_FIELDS
-    return resources.find((r) => r.id === resourceId)?.fields ?? EMPTY_FIELDS
-  }, [resources, resourceId])
+  // Subscribe directly to the fields data from the map - triggers re-render when fields change
+  const fields = useResourceStore((s) =>
+    resourceId ? s.resourceMap.get(resourceId)?.fields ?? EMPTY_FIELDS : EMPTY_FIELDS
+  )
+  const isQueryLoading = useResourceStore((s) => s.isLoading)
+  const hasLoadedOnce = useResourceStore((s) => s.hasLoadedOnce)
 
   const filterableFields = useMemo(() => fields.filter((f) => f.capabilities?.filterable), [fields])
   const sortableFields = useMemo(() => fields.filter((f) => f.capabilities?.sortable), [fields])
   const creatableFields = useMemo(() => fields.filter((f) => f.capabilities?.creatable), [fields])
   const updatableFields = useMemo(() => fields.filter((f) => f.capabilities?.updatable), [fields])
 
+  // If we haven't loaded resources yet, we're loading
+  const isLoading = !hasLoadedOnce || isQueryLoading
+
   return {
     fields,
-    isLoading: isLoadingResources,
+    isLoading,
     filterableFields,
     sortableFields,
     creatableFields,

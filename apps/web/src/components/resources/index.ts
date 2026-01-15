@@ -1,11 +1,7 @@
 // apps/web/src/components/resources/index.ts
 
 // Provider
-export {
-  ResourceProvider,
-  useResourceProvider,
-  clearResourceCaches,
-} from './providers/resource-provider'
+export { ResourceProvider, clearResourceCaches } from './providers/resource-provider'
 
 // Hooks
 export {
@@ -29,6 +25,10 @@ export {
 export {
   toResourceId,
   parseResourceId,
+  // Resource store
+  useResourceStore,
+  getResourceStoreState,
+  // Relationship store
   getRelationshipStoreState,
   // Record store utilities
   useRecordStore,

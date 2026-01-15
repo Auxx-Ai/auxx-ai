@@ -4,9 +4,9 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { usePropertyContext } from '../property-provider'
 import { useFieldNavigationOptional } from '../field-navigation-context'
 import {
-  useResourceProvider,
   toResourceId,
   getRelationshipStoreState,
+  useResourceStore,
 } from '~/components/resources'
 import { useResourceIdFromField } from '../hooks/use-resource-id-from-field'
 import {
@@ -54,7 +54,7 @@ export function RelationshipInputField() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
 
   // Get resource by ID to determine label and if inline create is supported
-  const { getResourceById } = useResourceProvider()
+  const getResourceById = useResourceStore((s) => s.getResourceById)
 
   // Get the related resource for label and inline create capability
   const relatedResource = useMemo(() => {

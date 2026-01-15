@@ -23,7 +23,7 @@ import {
   type ResourcePickerItem,
   type ResourceId,
 } from '@auxx/lib/resources/client'
-import { useRelationship, useResource, useResourceProvider } from '~/components/resources'
+import { useRelationship, useResource, useResourceStore } from '~/components/resources'
 import { api } from '~/trpc/react'
 
 /**
@@ -160,7 +160,7 @@ export function ResourcePicker({
   excludeIds = [],
 }: ResourcePickerProps) {
   const [search, setSearch] = useState('')
-  const { getResourceById } = useResourceProvider()
+  const getResourceById = useResourceStore((s) => s.getResourceById)
 
   // Notify parent about capture state on mount/unmount
   useEffect(() => {

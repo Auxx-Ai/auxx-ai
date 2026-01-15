@@ -3,17 +3,13 @@
 import { useEffect, useState, useMemo } from 'react'
 import { api } from '~/trpc/react'
 import { useRecordStore, getRecordStoreState, type RecordMeta } from '../store/record-store'
+import { useResourceStore } from '../store/resource-store'
 import { hydrateMultipleRecords } from '~/components/resources/store/hydrate-field-values'
-import type { Resource, ResourceId } from '@auxx/lib/resources/client'
+import type { ResourceId } from '@auxx/lib/resources/client'
 import { toResourceId, getDefinitionId } from '@auxx/lib/resources/client'
 
 const BATCH_DELAY = 50
 const EMPTY_ITEMS: ResourceId[] = []
-
-interface UseRecordBatchFetcherOptions {
-  /** Function to get Resource by ID (from ResourceProvider context) */
-  getResourceById: (id: string) => Resource | undefined
-}
 
 /**
  * Hook that subscribes to record store pending fetches and executes them.
@@ -22,7 +18,9 @@ interface UseRecordBatchFetcherOptions {
  *
  * Pattern: subscribe to pendingFetchIds.size → schedule batch → fetch all types together → distribute to store → hydrate
  */
-export function useRecordBatchFetcher({ getResourceById }: UseRecordBatchFetcherOptions) {
+export function useRecordBatchFetcher() {
+  // Get getResourceById from store (stable reference)
+  const getResourceById = useResourceStore((s) => s.getResourceById)
   // Track current batch being fetched (mixed ResourceIds)
   const [currentBatch, setCurrentBatch] = useState<ResourceId[]>([])
 

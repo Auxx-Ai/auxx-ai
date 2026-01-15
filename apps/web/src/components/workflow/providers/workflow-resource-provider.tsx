@@ -3,9 +3,10 @@
 'use client'
 
 import { createContext, useContext, useMemo, useEffect } from 'react'
-import { useResources, useResourceProvider } from '~/components/resources'
+import { useResources } from '~/components/resources'
 import type { Resource } from '@auxx/lib/resources/client'
 import { useVarStore } from '../store/use-var-store'
+import { api } from '~/trpc/react'
 
 /**
  * Context value for workflow resource provider
@@ -36,8 +37,13 @@ interface WorkflowResourceProviderProps {
  */
 export function WorkflowResourceProvider({ children }: WorkflowResourceProviderProps) {
   const { resources, isLoading, getResourceById } = useResources()
-  const { refetch } = useResourceProvider()
   const setResources = useVarStore((state) => state.actions.setResources)
+  const utils = api.useUtils()
+
+  // Refetch function that invalidates the resource query
+  const refetch = () => {
+    utils.resource.getAllResourceTypes.invalidate()
+  }
 
   // Sync resources to var store for dynamic variable generation
   useEffect(() => {

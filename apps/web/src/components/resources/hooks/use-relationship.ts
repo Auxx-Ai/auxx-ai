@@ -1,8 +1,7 @@
 // apps/web/src/components/resources/hooks/use-relationship.ts
 
 import { useEffect, useMemo } from 'react'
-import { useResourceProvider } from '../providers/resource-provider'
-import { useHydratedItems, useIsLoadingRelationships } from '../store'
+import { useHydratedItems, useIsLoadingRelationships, getRelationshipStoreState } from '../store'
 import type { ResourcePickerItem } from '@auxx/lib/resources/client'
 import { getInstanceId, type ResourceId } from '@auxx/lib/resources/client'
 
@@ -28,7 +27,6 @@ interface UseRelationshipResult {
  * const { items, isLoading } = useRelationship(resourceIds)
  */
 export function useRelationship(resourceIds: ResourceId[]): UseRelationshipResult {
-  const { requestRelationshipHydration } = useResourceProvider()
 
   // Create stable key for effect dependency
   const resourceIdsKey = useMemo(() => resourceIds.join('|'), [resourceIds])
@@ -36,8 +34,8 @@ export function useRelationship(resourceIds: ResourceId[]): UseRelationshipResul
   // Request hydration on mount/change
   useEffect(() => {
     if (resourceIds.length === 0) return
-    requestRelationshipHydration(resourceIds)
-  }, [resourceIdsKey, requestRelationshipHydration])
+    getRelationshipStoreState().requestHydration(resourceIds)
+  }, [resourceIdsKey, resourceIds])
 
   // Subscribe to hydrated items
   const items = useHydratedItems(resourceIds)

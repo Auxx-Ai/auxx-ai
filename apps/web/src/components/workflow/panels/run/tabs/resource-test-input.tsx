@@ -16,7 +16,7 @@ import Section from '~/components/workflow/ui/section'
 import { toastError } from '@auxx/ui/components/toast'
 import { VarEditorFieldRow, VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
 import { BaseType } from '~/components/workflow/types'
-import { useResourceProvider } from '~/components/resources/providers/resource-provider'
+import { useResourceStore } from '~/components/resources'
 
 interface ResourceTestInputProps {
   resourceType: ResourceId
@@ -37,7 +37,8 @@ export function ResourceTestInput({
   errors,
   onChange,
 }: ResourceTestInputProps) {
-  const { getResourceById, isLoadingResources } = useResourceProvider()
+  const getResourceById = useResourceStore((s) => s.getResourceById)
+  const isLoadingResources = useResourceStore((s) => s.isLoading)
 
   // Get resource config from provider (supports both system and custom resources)
   const resource = getResourceById(resourceType)
