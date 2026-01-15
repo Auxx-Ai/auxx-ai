@@ -309,13 +309,7 @@ export const resourceRouter = createTRPCRouter({
       // Extract pagination from cursor if provided
       const snapshotId = input.cursor?.snapshotId
       const offset = input.cursor?.offset ?? 0
-      console.log(
-        'listFiltered: snapshotId=',
-        snapshotId,
-        'offset=',
-        offset,
-        input.entityDefinitionId
-      )
+
       // If snapshotId provided via cursor, try to fetch chunk from cacheb
       if (snapshotId) {
         const chunk = await getSnapshotChunk({

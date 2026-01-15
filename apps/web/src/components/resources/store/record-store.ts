@@ -20,7 +20,7 @@ const MAX_BATCH_SIZE = 100 // max records per batch request
  */
 export interface RecordMeta {
   id: string
-  resourceId?: string
+  resourceId?: ResourceId
   displayName?: string
   secondaryInfo?: string
   avatarUrl?: string
@@ -49,7 +49,7 @@ interface RecordStoreState {
   // STATE
   // ─────────────────────────────────────────────────────────────────
 
-  /** Record metadata cache: resourceType → id → metadata */
+  /** Record metadata cache: entityDefinitionId → id → metadata */
   records: Record<string, Map<string, RecordMeta>>
 
   /** List cache: listKey → cached state */
@@ -72,13 +72,13 @@ interface RecordStoreState {
   // ─────────────────────────────────────────────────────────────────
 
   /** Set multiple records (from list fetch) */
-  setRecords: (resourceType: string, records: RecordMeta[]) => void
+  setRecords: (entityDefinitionId: string, records: RecordMeta[]) => void
 
   /** Update a single record (optimistic update) */
-  updateRecord: (resourceType: string, id: string, updates: Partial<RecordMeta>) => void
+  updateRecord: (entityDefinitionId: string, id: string, updates: Partial<RecordMeta>) => void
 
   /** Remove a record (after deletion) */
-  removeRecord: (resourceType: string, id: string) => void
+  removeRecord: (entityDefinitionId: string, id: string) => void
 
   // ─────────────────────────────────────────────────────────────────
   // LIST ACTIONS
@@ -124,16 +124,16 @@ interface RecordStoreState {
   // ─────────────────────────────────────────────────────────────────
 
   /** Invalidate a single record */
-  invalidateRecord: (resourceType: string, id: string) => void
+  invalidateRecord: (entityDefinitionId: string, id: string) => void
 
-  /** Invalidate all lists for a resource type (after create/delete) */
-  invalidateLists: (resourceType: string) => void
+  /** Invalidate all lists for an entity definition (after create/delete) */
+  invalidateLists: (entityDefinitionId: string) => void
 
   /** Invalidate specific list (after filter data changes) */
   invalidateList: (key: string) => void
 
-  /** Invalidate all data for a resource type */
-  invalidateResourceType: (resourceType: string) => void
+  /** Invalidate all data for an entity definition */
+  invalidateResourceType: (entityDefinitionId: string) => void
 
   /** Clear everything (logout, org switch) */
   clearAll: () => void
@@ -147,7 +147,7 @@ interface RecordStoreState {
  * Create a stable key for list cache
  */
 export function createListKey(
-  resourceType: string,
+  entityDefinitionId: string,
   filters: ConditionGroup[],
   sorting: Array<{ id: string; desc: boolean }>
 ): string {
@@ -157,7 +157,7 @@ export function createListKey(
   for (let i = 0; i < config.length; i++) {
     hash = (hash * 33) ^ config.charCodeAt(i)
   }
-  return `${resourceType}:${Math.abs(hash).toString(36)}`
+  return `${entityDefinitionId}:${Math.abs(hash).toString(36)}`
 }
 
 /**
@@ -192,21 +192,21 @@ export const useRecordStore = create<RecordStoreState>()(
       // ─── RECORD ACTIONS ────────────────────────────────────────────
       // With immer: direct mutations, structural sharing preserved
 
-      setRecords: (resourceType, records) => {
+      setRecords: (entityDefinitionId, records) => {
         set((state) => {
-          if (!state.records[resourceType]) {
-            state.records[resourceType] = new Map()
+          if (!state.records[entityDefinitionId]) {
+            state.records[entityDefinitionId] = new Map()
           }
-          const map = state.records[resourceType]
+          const map = state.records[entityDefinitionId]
           for (const record of records) {
             map.set(record.id, record)
           }
         })
       },
 
-      updateRecord: (resourceType, id, updates) => {
+      updateRecord: (entityDefinitionId, id, updates) => {
         set((state) => {
-          const record = state.records[resourceType]?.get(id)
+          const record = state.records[entityDefinitionId]?.get(id)
           if (record) {
             // Direct mutation - immer handles immutability
             Object.assign(record, updates)
@@ -214,14 +214,14 @@ export const useRecordStore = create<RecordStoreState>()(
         })
       },
 
-      removeRecord: (resourceType, id) => {
+      removeRecord: (entityDefinitionId, id) => {
         set((state) => {
           // Remove from records
-          state.records[resourceType]?.delete(id)
+          state.records[entityDefinitionId]?.delete(id)
 
-          // Remove from all lists for this resource type
+          // Remove from all lists for this entity definition
           for (const [key, cache] of Object.entries(state.lists)) {
-            if (key.startsWith(`${resourceType}:`)) {
+            if (key.startsWith(`${entityDefinitionId}:`)) {
               const idx = cache.ids.indexOf(id)
               if (idx !== -1) {
                 cache.ids.splice(idx, 1)
@@ -332,15 +332,15 @@ export const useRecordStore = create<RecordStoreState>()(
 
       // ─── INVALIDATION ──────────────────────────────────────────────
 
-      invalidateRecord: (resourceType, id) => {
+      invalidateRecord: (entityDefinitionId, id) => {
         set((state) => {
-          state.records[resourceType]?.delete(id)
+          state.records[entityDefinitionId]?.delete(id)
         })
       },
 
-      invalidateLists: (resourceType) => {
+      invalidateLists: (entityDefinitionId) => {
         set((state) => {
-          const prefix = `${resourceType}:`
+          const prefix = `${entityDefinitionId}:`
           for (const key of Object.keys(state.lists)) {
             if (key.startsWith(prefix)) {
               delete state.lists[key]
@@ -355,10 +355,10 @@ export const useRecordStore = create<RecordStoreState>()(
         })
       },
 
-      invalidateResourceType: (resourceType) => {
+      invalidateResourceType: (entityDefinitionId) => {
         set((state) => {
-          delete state.records[resourceType]
-          const prefix = `${resourceType}:`
+          delete state.records[entityDefinitionId]
+          const prefix = `${entityDefinitionId}:`
           for (const key of Object.keys(state.lists)) {
             if (key.startsWith(prefix)) {
               delete state.lists[key]

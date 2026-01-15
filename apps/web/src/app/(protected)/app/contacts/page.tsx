@@ -22,7 +22,7 @@ import { useActiveViewConfig } from '~/components/dynamic-table/stores/view-stor
 import type { ExtendedColumnDef } from '~/components/dynamic-table'
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
 import { EmptyState } from '~/components/global/empty-state'
-import { useResources, useRecordList } from '~/components/resources'
+import { useResources, useRecordList, toResourceId } from '~/components/resources'
 import { useCustomFieldValueSyncer } from '~/components/resources/hooks/use-custom-field-value-syncer'
 import {
   MainPage,
@@ -177,7 +177,7 @@ export default function CustomerListPage() {
     fetchNextPage,
     refresh: refetch,
   } = useRecordList<Contact>({
-    resourceType: 'contact',
+    entityDefinitionId: 'contact',
     filters: combinedFilters,
     sorting: viewSorting,
     limit: PAGE_SIZE,
@@ -206,8 +206,8 @@ export default function CustomerListPage() {
     return customFieldsRef.current
   }, [resources])
 
-  // Row IDs for syncer
-  const rowIds = useMemo(() => items.map((c) => c.id), [items])
+  // Convert to ResourceIds for syncer
+  const resourceIds = useMemo(() => items.map((c) => toResourceId('contact', c.id)), [items])
 
   // Custom field column IDs
   const customFieldColumnIds = useMemo(
@@ -218,8 +218,7 @@ export default function CustomerListPage() {
   // Custom field value syncer - triggers batch fetches for visible columns
   // Cells subscribe directly to store via CustomFieldCell
   useCustomFieldValueSyncer({
-    entityDefinitionId: 'contact',
-    rowIds,
+    resourceIds,
     columnVisibility,
     customFieldColumnIds,
     enabled: customFields.length > 0,

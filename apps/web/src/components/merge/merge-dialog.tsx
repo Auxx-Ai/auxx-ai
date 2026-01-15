@@ -63,7 +63,7 @@ export function MergeDialog({
   const [sourceResourceIds, setSourceResourceIds] = useState<ResourceId[]>(() =>
     baseResourceIds.filter((id) => id !== (initialTargetId ?? baseResourceIds[0]))
   )
-
+  console.log('MergeDialog sourceResourceIds:', sourceResourceIds, targetResourceId)
   // Fetch all records for display
   const allResourceIds = useMemo(
     () => [targetResourceId, ...sourceResourceIds].filter(Boolean),

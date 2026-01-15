@@ -17,7 +17,7 @@ import {
 } from '~/components/resources/store/custom-field-value-store'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
-import { parseResourceId, type ResourceId } from '@auxx/lib/resources/client'
+import type { ResourceId } from '@auxx/lib/resources/client'
 import type { FieldType } from '@auxx/database/types'
 /**
  * property-provider.tsx
@@ -202,9 +202,6 @@ export function PropertyProvider({
   showTitle = true,
   children,
 }: PropertyProviderProps) {
-  // Parse resourceId to get components
-  const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
-
   // ─── Store Integration ───
   // Get value from store using ResourceId directly
   const storeKey = buildFieldValueKey(resourceId, field.id)
@@ -223,14 +220,12 @@ export function PropertyProvider({
     [field]
   )
 
-  // Use store save hook (still uses instance ID internally)
+  // Use store save hook
   const {
     saveFieldValue: storeSave,
     saveFieldValueAsync: storeSaveAsync,
     isPending: isSaving,
   } = useSaveFieldValue({
-    entityDefinitionId,
-    resourceId: entityInstanceId,
     getFieldMetadata,
   })
 
@@ -283,11 +278,11 @@ export function PropertyProvider({
       setIsDirty(false)
 
       // 2. Fire mutation in BACKGROUND (optimistic + background mutation)
-      storeSave(field.id, newValue, field.fieldType)
+      storeSave(resourceId, field.id, newValue, field.fieldType)
       // Store handles the optimistic update, so also update local serverValue
       setServerValue(newValue)
     },
-    [serverValue, storeSave, field.id, field.fieldType]
+    [resourceId, serverValue, storeSave, field.id, field.fieldType]
   )
 
   /**
@@ -335,10 +330,10 @@ export function PropertyProvider({
       isOutsideClick.current = false
 
       // Fire mutation in background (optimistic + background mutation)
-      storeSave(field.id, newValue, field.fieldType)
+      storeSave(resourceId, field.id, newValue, field.fieldType)
       setServerValue(newValue)
     },
-    [isSaving, serverValue, storeSave, field.id, field.fieldType]
+    [resourceId, isSaving, serverValue, storeSave, field.id, field.fieldType]
   )
 
   /**
@@ -366,11 +361,11 @@ export function PropertyProvider({
       setIsDirty(false)
 
       // Use async save path
-      const result = await storeSaveAsync(field.id, newValue, field.fieldType)
+      const result = await storeSaveAsync(resourceId, field.id, newValue, field.fieldType)
       setServerValue(newValue)
       return result
     },
-    [isSaving, serverValue, storeSaveAsync, field.id, field.fieldType]
+    [resourceId, isSaving, serverValue, storeSaveAsync, field.id, field.fieldType]
   )
 
   /**

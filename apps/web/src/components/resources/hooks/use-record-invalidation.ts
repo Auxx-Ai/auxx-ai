@@ -10,55 +10,55 @@ import { getRecordStoreState } from '../store/record-store'
 export function useRecordInvalidation() {
   /**
    * Call after creating a new record.
-   * Invalidates all lists for the resource type (they need new totals).
+   * Invalidates all lists for the entity definition (they need new totals).
    */
-  const onRecordCreated = useCallback((resourceType: string) => {
-    getRecordStoreState().invalidateLists(resourceType)
+  const onRecordCreated = useCallback((entityDefinitionId: string) => {
+    getRecordStoreState().invalidateLists(entityDefinitionId)
   }, [])
 
   /**
    * Call after updating a record.
    * Record will be re-fetched on next access.
    */
-  const onRecordUpdated = useCallback((resourceType: string, id: string) => {
-    getRecordStoreState().invalidateRecord(resourceType, id)
+  const onRecordUpdated = useCallback((entityDefinitionId: string, id: string) => {
+    getRecordStoreState().invalidateRecord(entityDefinitionId, id)
   }, [])
 
   /**
    * Call after deleting a record.
    * Removes from cache and all lists.
    */
-  const onRecordDeleted = useCallback((resourceType: string, id: string) => {
-    getRecordStoreState().removeRecord(resourceType, id)
+  const onRecordDeleted = useCallback((entityDefinitionId: string, id: string) => {
+    getRecordStoreState().removeRecord(entityDefinitionId, id)
   }, [])
 
   /**
    * Call after bulk updates.
    * Invalidates multiple records.
    */
-  const onBulkUpdated = useCallback((resourceType: string, ids: string[]) => {
+  const onBulkUpdated = useCallback((entityDefinitionId: string, ids: string[]) => {
     const store = getRecordStoreState()
     for (const id of ids) {
-      store.invalidateRecord(resourceType, id)
+      store.invalidateRecord(entityDefinitionId, id)
     }
   }, [])
 
   /**
    * Call after bulk deletions.
    */
-  const onBulkDeleted = useCallback((resourceType: string, ids: string[]) => {
+  const onBulkDeleted = useCallback((entityDefinitionId: string, ids: string[]) => {
     const store = getRecordStoreState()
     for (const id of ids) {
-      store.removeRecord(resourceType, id)
+      store.removeRecord(entityDefinitionId, id)
     }
   }, [])
 
   /**
-   * Clear all data for a resource type.
+   * Clear all data for an entity definition.
    * Use after major data changes.
    */
-  const invalidateResourceType = useCallback((resourceType: string) => {
-    getRecordStoreState().invalidateResourceType(resourceType)
+  const invalidateResourceType = useCallback((entityDefinitionId: string) => {
+    getRecordStoreState().invalidateResourceType(entityDefinitionId)
   }, [])
 
   return {

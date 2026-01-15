@@ -4,16 +4,16 @@ import { useCallback } from 'react'
 import { api } from '~/trpc/react'
 import {
   useCustomFieldValueStore,
-  buildFieldValueKeyFromParts,
+  buildFieldValueKey,
   type FieldValueKey,
   type StoredFieldValue,
 } from '~/components/resources/store/custom-field-value-store'
-import { toResourceId, toResourceIds, type ResourceId } from '@auxx/lib/resources/client'
+import { parseResourceId, type ResourceId } from '@auxx/lib/resources/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { formatToTypedInput, isArrayReturnFieldType } from '@auxx/lib/field-values/client'
 import {
   useRelationshipSync,
-  extractRelatedIds,
+  extractRelatedResourceIds,
   type InverseSyncInfo,
 } from './use-relationship-sync'
 import { getInverseCardinality, type RelationshipType } from '@auxx/utils'
@@ -31,10 +31,6 @@ interface FieldMetadata {
 }
 
 interface UseSaveFieldValueOptions {
-  /** Entity definition ID (e.g., 'contact', 'ticket', or a custom entity UUID) */
-  entityDefinitionId: string
-  /** Default resourceId (entity instance ID) - can be overridden per-call */
-  resourceId?: string
   /** Optional callback after successful save */
   onSuccess?: () => void
   /** Optional field metadata provider for relationship sync */
@@ -47,20 +43,19 @@ interface OptimisticUpdatePrep {
   mutationVersion: number
   typedValue: unknown
   inverseInfo: InverseSyncInfo | null
-  oldIds: string[]
-  newIds: string[]
+  oldRelatedResourceIds: ResourceId[]
+  newRelatedResourceIds: ResourceId[]
 }
 
 /** Prepare optimistic update and capture rollback info */
 function prepareOptimisticUpdate(
-  entityDefinitionId: string,
-  resourceId: string,
+  resourceId: ResourceId,
   fieldId: string,
   value: unknown,
   fieldType: FieldType,
   getFieldMetadata?: (fieldId: string) => FieldMetadata | undefined
 ): OptimisticUpdatePrep {
-  const key = buildFieldValueKeyFromParts(entityDefinitionId, resourceId, fieldId)
+  const key = buildFieldValueKey(resourceId, fieldId)
   const store = useCustomFieldValueStore.getState()
 
   // Capture old value for relationship sync rollback
@@ -75,28 +70,29 @@ function prepareOptimisticUpdate(
 
   // Relationship sync prep
   let inverseInfo: InverseSyncInfo | null = null
-  let oldIds: string[] = []
-  let newIds: string[] = []
+  let oldRelatedResourceIds: ResourceId[] = []
+  let newRelatedResourceIds: ResourceId[] = []
 
-  if (fieldType === 'RELATIONSHIP' && entityDefinitionId) {
+  if (fieldType === 'RELATIONSHIP') {
+    const { entityDefinitionId } = parseResourceId(resourceId)
     const metadata = getFieldMetadata?.(fieldId)
     const rel = metadata?.relationship
 
     if (rel?.inverseFieldId && rel.relationshipType && rel.relatedEntityDefinitionId) {
-      oldIds = extractRelatedIds(oldValue)
-      newIds = extractRelatedIds(typedValue)
+      oldRelatedResourceIds = extractRelatedResourceIds(oldValue)
+      newRelatedResourceIds = extractRelatedResourceIds(typedValue)
 
       inverseInfo = {
         inverseFieldId: rel.inverseFieldId,
         inverseRelationshipType: getInverseCardinality(rel.relationshipType),
         sourceEntityDefinitionId: entityDefinitionId,
-        targetEntityDefId: rel.relatedEntityDefinitionId,
+        targetEntityDefinitionId: rel.relatedEntityDefinitionId,
         sourceFieldId: fieldId,
       }
     }
   }
 
-  return { key, mutationVersion, typedValue, inverseInfo, oldIds, newIds }
+  return { key, mutationVersion, typedValue, inverseInfo, oldRelatedResourceIds, newRelatedResourceIds }
 }
 
 /** Handle mutation success - apply server result to store */
@@ -127,12 +123,16 @@ function handleMutationSuccess(
 function handleMutationError(
   key: FieldValueKey,
   mutationVersion: number,
-  prep: { inverseInfo: InverseSyncInfo | null; oldIds: string[]; newIds: string[] },
-  resourceId: string,
+  prep: {
+    inverseInfo: InverseSyncInfo | null
+    oldRelatedResourceIds: ResourceId[]
+    newRelatedResourceIds: ResourceId[]
+  },
+  sourceResourceId: ResourceId,
   syncInverseCache: (input: {
-    sourceEntityId: string
-    oldRelatedIds: string[]
-    newRelatedIds: string[]
+    sourceResourceId: ResourceId
+    oldRelatedResourceIds: ResourceId[]
+    newRelatedResourceIds: ResourceId[]
     inverseInfo: InverseSyncInfo
   }) => void,
   error: Error | unknown
@@ -147,9 +147,9 @@ function handleMutationError(
   // Rollback inverse cache (swap old/new to reverse)
   if (prep.inverseInfo) {
     syncInverseCache({
-      sourceEntityId: resourceId,
-      oldRelatedIds: prep.newIds,
-      newRelatedIds: prep.oldIds,
+      sourceResourceId,
+      oldRelatedResourceIds: prep.newRelatedResourceIds, // Swap!
+      newRelatedResourceIds: prep.oldRelatedResourceIds, // Swap!
       inverseInfo: prep.inverseInfo,
     })
   }
@@ -166,8 +166,8 @@ function handleMutationError(
  * Updates store immediately, then syncs to DB in background.
  * Automatically rolls back on error.
  */
-export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
-  const { entityDefinitionId, resourceId: defaultResourceId, onSuccess, getFieldMetadata } = options
+export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
+  const { onSuccess, getFieldMetadata } = options
 
   // Relationship sync hook
   const { syncInverseCache } = useRelationshipSync()
@@ -178,39 +178,26 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
 
   /**
    * Save a field value with optimistic update.
-   * Returns immediately after updating store - mutation runs in background.
+   * @param resourceId - Full ResourceId (entityDefinitionId:entityInstanceId)
    * @param fieldId - The custom field ID
-   * @param value - The value to save (raw value or TypedFieldValue)
+   * @param value - The value to save
    * @param fieldType - The field type for proper value extraction
    */
   const saveFieldValue = useCallback(
-    (fieldId: string, value: StoredFieldValue | unknown, fieldType: FieldType): void => {
-      if (!defaultResourceId) {
-        console.error('saveFieldValue called without resourceId')
-        return
-      }
-
-      const prep = prepareOptimisticUpdate(
-        entityDefinitionId,
-        defaultResourceId,
-        fieldId,
-        value,
-        fieldType,
-        getFieldMetadata
-      )
+    (resourceId: ResourceId, fieldId: string, value: StoredFieldValue | unknown, fieldType: FieldType): void => {
+      const prep = prepareOptimisticUpdate(resourceId, fieldId, value, fieldType, getFieldMetadata)
 
       // Sync relationship cache
       if (prep.inverseInfo) {
         syncInverseCache({
-          sourceEntityId: defaultResourceId,
-          oldRelatedIds: prep.oldIds,
-          newRelatedIds: prep.newIds,
+          sourceResourceId: resourceId,
+          oldRelatedResourceIds: prep.oldRelatedResourceIds,
+          newRelatedResourceIds: prep.newRelatedResourceIds,
           inverseInfo: prep.inverseInfo,
         })
       }
 
-      // Fire mutation with ResourceId format
-      const resourceId = toResourceId(entityDefinitionId, defaultResourceId)
+      // Fire mutation
       mutation.mutate(
         { resourceId, fieldId, value },
         {
@@ -220,54 +207,42 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
             }
           },
           onError: (error) => {
-            handleMutationError(prep.key, prep.mutationVersion, prep, defaultResourceId, syncInverseCache, error)
+            handleMutationError(prep.key, prep.mutationVersion, prep, resourceId, syncInverseCache, error)
           },
         }
       )
     },
-    [entityDefinitionId, defaultResourceId, mutation, onSuccess, getFieldMetadata, syncInverseCache]
+    [mutation, onSuccess, getFieldMetadata, syncInverseCache]
   )
 
   /**
    * Async version that waits for mutation to complete.
-   * Use when you need confirmation of save completion or the value ID (for FILE fields).
+   * @param resourceId - Full ResourceId (entityDefinitionId:entityInstanceId)
    * @param fieldId - The custom field ID
-   * @param value - The value to save (raw value or TypedFieldValue)
+   * @param value - The value to save
    * @param fieldType - The field type for proper value extraction
    * @returns Object with success flag and optional id (first value's ID if available)
    */
   const saveFieldValueAsync = useCallback(
     async (
+      resourceId: ResourceId,
       fieldId: string,
       value: StoredFieldValue | unknown,
       fieldType: FieldType
     ): Promise<{ success: boolean; id?: string } | undefined> => {
-      if (!defaultResourceId) {
-        console.error('saveFieldValueAsync called without resourceId')
-        return undefined
-      }
-
-      const prep = prepareOptimisticUpdate(
-        entityDefinitionId,
-        defaultResourceId,
-        fieldId,
-        value,
-        fieldType,
-        getFieldMetadata
-      )
+      const prep = prepareOptimisticUpdate(resourceId, fieldId, value, fieldType, getFieldMetadata)
 
       // Sync relationship cache
       if (prep.inverseInfo) {
         syncInverseCache({
-          sourceEntityId: defaultResourceId,
-          oldRelatedIds: prep.oldIds,
-          newRelatedIds: prep.newIds,
+          sourceResourceId: resourceId,
+          oldRelatedResourceIds: prep.oldRelatedResourceIds,
+          newRelatedResourceIds: prep.newRelatedResourceIds,
           inverseInfo: prep.inverseInfo,
         })
       }
 
       try {
-        const resourceId = toResourceId(entityDefinitionId, defaultResourceId)
         const result = await mutation.mutateAsync({ resourceId, fieldId, value })
 
         // Check if stale (a newer mutation was fired)
@@ -288,22 +263,21 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
           return undefined
         }
 
-        handleMutationError(prep.key, prep.mutationVersion, prep, defaultResourceId, syncInverseCache, error)
+        handleMutationError(prep.key, prep.mutationVersion, prep, resourceId, syncInverseCache, error)
         return undefined
       }
     },
-    [entityDefinitionId, defaultResourceId, mutation, onSuccess, getFieldMetadata, syncInverseCache]
+    [mutation, onSuccess, getFieldMetadata, syncInverseCache]
   )
 
   /**
    * Save multiple field values to a single resource (async version).
-   * Applies optimistic updates, waits for mutation to complete.
-   * @param instanceId - The entity instance ID
-   * @param fieldValues - Array of { fieldId, value, fieldType } to save
+   * @param resourceId - Full ResourceId
+   * @param fieldValues - Array of { fieldId, value, fieldType }
    */
   const saveMultipleAsync = useCallback(
     async (
-      instanceId: string,
+      resourceId: ResourceId,
       fieldValues: Array<{ fieldId: string; value: unknown; fieldType: FieldType }>
     ): Promise<boolean> => {
       const store = useCustomFieldValueStore.getState()
@@ -311,7 +285,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
       // Build keys, capture versions, and apply optimistic updates
       const keyVersions: Array<{ key: string; version: number }> = []
       for (const { fieldId, value, fieldType } of fieldValues) {
-        const key = buildFieldValueKeyFromParts(entityDefinitionId, instanceId, fieldId)
+        const key = buildFieldValueKey(resourceId, fieldId)
         const version = store.incrementMutationVersion(key)
         keyVersions.push({ key, version })
         const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
@@ -322,9 +296,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
       const apiValues = fieldValues.map(({ fieldId, value }) => ({ fieldId, value }))
 
       try {
-        // Send ResourceId format
-        const resourceIds = [toResourceId(entityDefinitionId, instanceId)]
-        await bulkMutation.mutateAsync({ resourceIds, values: apiValues })
+        await bulkMutation.mutateAsync({ resourceIds: [resourceId], values: apiValues })
 
         const currentStore = useCustomFieldValueStore.getState()
         for (const { key, version } of keyVersions) {
@@ -346,20 +318,19 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
         return false
       }
     },
-    [entityDefinitionId, bulkMutation, onSuccess]
+    [bulkMutation, onSuccess]
   )
 
   /**
    * Save the same field value for multiple resources in a single API call.
-   * Applies optimistic updates to all resources, then fires one bulk mutation.
-   * @param instanceIds - Array of entity instance IDs to update
+   * @param resourceIds - Array of ResourceIds to update
    * @param fieldId - The field ID to update
    * @param value - The value to set for all resources
-   * @param fieldType - The field type for proper value extraction
+   * @param fieldType - The field type
    */
   const saveBulkValues = useCallback(
     (
-      instanceIds: string[],
+      resourceIds: ResourceId[],
       fieldId: string,
       value: StoredFieldValue | unknown,
       fieldType: FieldType
@@ -369,15 +340,15 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
       // Build keys, capture versions, and apply optimistic updates
       const keyVersions: Array<{ key: FieldValueKey; version: number }> = []
       const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
-      for (const id of instanceIds) {
-        const key = buildFieldValueKeyFromParts(entityDefinitionId, id, fieldId)
+
+      for (const resourceId of resourceIds) {
+        const key = buildFieldValueKey(resourceId, fieldId)
         const version = store.incrementMutationVersion(key)
         keyVersions.push({ key, version })
         store.setValueOptimistic(key, typedValue)
       }
 
-      // Send ResourceId format
-      const resourceIds = toResourceIds(entityDefinitionId, instanceIds)
+      // Fire mutation
       bulkMutation.mutate(
         { resourceIds, values: [{ fieldId, value }] },
         {
@@ -405,27 +376,27 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
         }
       )
     },
-    [entityDefinitionId, bulkMutation, onSuccess]
+    [bulkMutation, onSuccess]
   )
 
   /**
    * Save multiple field values to multiple resources in one API call.
-   * Applies optimistic updates to store immediately. Fire-and-forget.
-   * @param instanceIds - Array of entity instance IDs to update
-   * @param fieldValues - Array of { fieldId, value, fieldType } to set for all resources
+   * @param resourceIds - Array of ResourceIds to update
+   * @param fieldValues - Array of { fieldId, value, fieldType }
    */
   const saveBulkMultipleFields = useCallback(
     (
-      instanceIds: string[],
+      resourceIds: ResourceId[],
       fieldValues: Array<{ fieldId: string; value: unknown; fieldType: FieldType }>
     ): void => {
       const store = useCustomFieldValueStore.getState()
 
       // Build all keys, capture versions, and apply optimistic updates
       const keyVersions: Array<{ key: string; version: number }> = []
-      for (const instanceId of instanceIds) {
+
+      for (const resourceId of resourceIds) {
         for (const { fieldId, value, fieldType } of fieldValues) {
-          const key = buildFieldValueKeyFromParts(entityDefinitionId, instanceId, fieldId)
+          const key = buildFieldValueKey(resourceId, fieldId)
           const version = store.incrementMutationVersion(key)
           keyVersions.push({ key, version })
           const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
@@ -433,9 +404,8 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
         }
       }
 
-      // Build API payload and send ResourceId format
+      // Build API payload
       const apiValues = fieldValues.map(({ fieldId, value }) => ({ fieldId, value }))
-      const resourceIds = toResourceIds(entityDefinitionId, instanceIds)
 
       bulkMutation.mutate(
         { resourceIds, values: apiValues },
@@ -464,7 +434,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions) {
         }
       )
     },
-    [entityDefinitionId, bulkMutation, onSuccess]
+    [bulkMutation, onSuccess]
   )
 
   return {

@@ -17,8 +17,8 @@ import { toResourceId } from '@auxx/lib/resources/client'
 const EMPTY_IDS: string[] = []
 
 interface UseRecordListOptions {
-  /** Resource type (e.g., 'contact', 'ticket', 'entity_abc') */
-  resourceType: string
+  /** Entity definition ID (e.g., 'contact', 'ticket', 'entity_abc') */
+  entityDefinitionId: string
   /** Filter conditions - pass undefined or stable reference, NOT [] */
   filters?: ConditionGroup[]
   /** Sorting config - pass undefined or stable reference, NOT [] */
@@ -70,7 +70,7 @@ interface UseRecordListResult<T = RecordMeta> {
  * IMPORTANT: Do NOT pass [] or {} as defaults - use undefined instead.
  */
 export function useRecordList<T extends RecordMeta = RecordMeta>({
-  resourceType,
+  entityDefinitionId,
   filters,
   sorting,
   limit = 50,
@@ -82,8 +82,8 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
 
   // Create stable list key for store caching
   const listKey = useMemo(
-    () => createListKey(resourceType, stableFilters, stableSorting),
-    [resourceType, stableFilters, stableSorting]
+    () => createListKey(entityDefinitionId, stableFilters, stableSorting),
+    [entityDefinitionId, stableFilters, stableSorting]
   )
 
   // Track snapshotId for use after initial fetch
@@ -106,12 +106,12 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
   // Stable query input to prevent infinite loops
   const queryInput = useMemo(
     () => ({
-      entityDefinitionId: resourceType,
+      entityDefinitionId,
       filters: stableFilters.length > 0 ? stableFilters : undefined,
       sorting: stableSorting.length > 0 ? stableSorting : undefined,
       limit,
     }),
-    [resourceType, stableFilters, stableSorting, limit]
+    [entityDefinitionId, stableFilters, stableSorting, limit]
   )
 
   const {
@@ -173,13 +173,13 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
     })
 
     // Queue record fetches for IDs not in cache
-    const recordCache = useRecordStore.getState().records[resourceType]
+    const recordCache = useRecordStore.getState().records[entityDefinitionId]
     for (const id of allIds) {
       if (!recordCache?.has(id)) {
-        requestRecord(toResourceId(resourceType, id))
+        requestRecord(toResourceId(entityDefinitionId, id))
       }
     }
-  }, [data, listKey, setList, resourceType, requestRecord])
+  }, [data, listKey, setList, entityDefinitionId, requestRecord])
 
   // ─── FETCH NEXT PAGE ────────────────────────────────────────────────
 
@@ -205,8 +205,8 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
   const total = cachedList?.total ?? data?.pages?.[data.pages.length - 1]?.total ?? 0
 
   // ─── RESOLVE ITEMS FROM RECORD STORE ─────────────────────────────────
-  // Subscribe to record cache for this resource type
-  const recordCache = useRecordStore((s) => s.records[resourceType])
+  // Subscribe to record cache for this entity definition
+  const recordCache = useRecordStore((s) => s.records[entityDefinitionId])
   const loadingIds = useRecordStore((s) => s.loadingIds)
   const pendingIds = useRecordStore((s) => s.pendingFetchIds)
 
@@ -224,13 +224,13 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
     // Records are loading if we have fewer items than IDs, and some are pending/loading
     if (items.length < recordIds.length) {
       const hasLoading = recordIds.some((id: string) => {
-        const resourceId = toResourceId(resourceType, id)
+        const resourceId = toResourceId(entityDefinitionId, id)
         return loadingIds.has(resourceId) || pendingIds.has(resourceId)
       })
       return hasLoading
     }
     return false
-  }, [recordIds, items.length, loadingIds, pendingIds, resourceType])
+  }, [recordIds, items.length, loadingIds, pendingIds, entityDefinitionId])
 
   return {
     recordIds,

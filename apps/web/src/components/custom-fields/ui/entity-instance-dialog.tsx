@@ -22,14 +22,15 @@ import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-v
 import { useResource } from '~/components/resources'
 import { useCustomFieldValueSyncer } from '~/components/resources/hooks/use-custom-field-value-syncer'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
+import { toResourceId, parseResourceId, type ResourceId } from '@auxx/lib/resources/client'
 
 interface EntityInstanceDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   /** Entity definition ID */
   entityDefinitionId: string
-  /** Existing instance ID for edit mode, null/undefined for create */
-  editingInstanceId?: string | null
+  /** ResourceId for edit mode (format: "entityDefinitionId:entityInstanceId"), undefined for create */
+  resourceId?: ResourceId
   /** Callback after successful save */
   onSaved?: (instanceId: string) => void
   /** Preset field values for CREATE mode. Format: { fieldId: value } */
@@ -44,10 +45,12 @@ export function EntityInstanceDialog({
   open,
   onOpenChange,
   entityDefinitionId,
-  editingInstanceId,
+  resourceId,
   onSaved,
   presetValues,
 }: EntityInstanceDialogProps) {
+  // Parse resourceId to get instance ID for editing
+  const editingInstanceId = resourceId ? parseResourceId(resourceId).entityInstanceId : undefined
   const isEditing = !!editingInstanceId
 
   // Get resource definition with fields
@@ -67,13 +70,14 @@ export function EntityInstanceDialog({
     [editableFields]
   )
 
-  // Get values from store for edit mode
+  // ResourceIds for syncer
+  const resourceIds = useMemo(() => (resourceId ? [resourceId] : []), [resourceId])
+
   const { getValue } = useCustomFieldValueSyncer({
-    entityDefinitionId,
-    rowIds: editingInstanceId ? [editingInstanceId] : [],
+    resourceIds,
     customFieldColumnIds,
     columnVisibility: {},
-    enabled: !!editingInstanceId && editableFields.length > 0,
+    enabled: !!resourceId && editableFields.length > 0,
   })
 
   // Field values state: { fieldId: value }
@@ -112,10 +116,9 @@ export function EntityInstanceDialog({
 
       const initValues: Record<string, unknown> = {}
 
-      if (editingInstanceId) {
-        // Edit mode: populate from store values
+      if (resourceId) {
         for (const field of editableFields) {
-          const storeValue = getValue(editingInstanceId, field.id)
+          const storeValue = getValue(resourceId, field.id)
           if (storeValue !== undefined && storeValue !== null) {
             initValues[field.id] = formatToRawValue(storeValue, field.fieldType ?? 'TEXT')
           }
@@ -170,7 +173,6 @@ export function EntityInstanceDialog({
 
   // Save field values with Zustand store sync
   const { saveMultipleAsync, isPending: isSavingFields } = useSaveFieldValue({
-    entityDefinitionId,
     getFieldMetadata,
   })
 
@@ -234,7 +236,10 @@ export function EntityInstanceDialog({
         instanceId = created.id
       }
 
-      // Save all field values with Zustand store sync
+      // Convert to ResourceId
+      const instanceResourceId = toResourceId(entityDefinitionId, instanceId)
+
+      // Save all field values
       const valuesToSave = Object.entries(values)
         .filter(([_, value]) => value !== undefined && value !== null && value !== '')
         .map(([fieldId, value]) => {
@@ -243,8 +248,8 @@ export function EntityInstanceDialog({
         })
 
       if (valuesToSave.length > 0) {
-        const success = await saveMultipleAsync(instanceId, valuesToSave)
-        if (!success) return // Error already handled by hook
+        const success = await saveMultipleAsync(instanceResourceId, valuesToSave)
+        if (!success) return
       }
 
       onSaved?.(instanceId)

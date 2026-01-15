@@ -38,20 +38,28 @@ export function MergePreviewPanel({
     () => [targetResourceId, ...sourceResourceIds],
     [targetResourceId, sourceResourceIds]
   )
+
   const { records, isLoading: recordsLoading } = useRecords({ resourceIds: allIds })
   const { resource } = useResource(entityDefinitionId ?? '')
 
   const isLoading = externalLoading || recordsLoading
-
   // Use merge preview hook
   const { mergedFields } = useMergePreview({
     targetResourceId,
     sourceResourceIds,
     fields: resource?.fields ?? [],
   })
-
+  console.log(
+    'MergePreviewPanel mergedFields:',
+    mergedFields,
+    targetResourceId,
+    sourceResourceIds,
+    resource?.fields
+  )
   // Get target record info
   const targetRecord = useMemo(() => records[0], [records])
+
+  console.log('mergedFields:', mergedFields, records)
 
   return (
     <div className="flex-1 flex flex-col border rounded-2xl bg-muted max-h-[400px]">
@@ -98,8 +106,7 @@ export function MergePreviewPanel({
                       <div className="group/row-wrapper" key={fieldId}>
                         <div
                           className="group/property-row flex w-full h-fit row group min-h-[30px]"
-                          data-slot="property-row"
-                        >
+                          data-slot="property-row">
                           <Tooltip align="start" side="left" content={field.label}>
                             <div className="min-w-0 relative flex text-sm flex-1">
                               <div className="items-center flex-1 flex gap-[4px] w-full overflow-y-auto no-scrollbar">

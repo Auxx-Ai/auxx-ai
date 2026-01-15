@@ -20,14 +20,13 @@ import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-v
 import { useResource } from '~/components/resources'
 import { useCustomFieldValueSyncer } from '~/components/resources/hooks/use-custom-field-value-syncer'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
+import { parseResourceId, type ResourceId } from '@auxx/lib/resources/client'
 
 interface BulkUpdateEntityInstanceDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** Entity definition ID */
-  entityDefinitionId: string
-  /** Array of selected entity instance IDs */
-  selectedInstanceIds: string[]
+  /** ResourceIds to bulk update (all must share same entityDefinitionId) */
+  resourceIds: ResourceId[]
   /** Callback after successful save */
   onSaved?: () => void
 }
@@ -40,11 +39,12 @@ interface BulkUpdateEntityInstanceDialogProps {
 export function BulkUpdateEntityInstanceDialog({
   open,
   onOpenChange,
-  entityDefinitionId,
-  selectedInstanceIds,
+  resourceIds,
   onSaved,
 }: BulkUpdateEntityInstanceDialogProps) {
-  const instanceCount = selectedInstanceIds.length
+  // Derive entityDefinitionId from first resourceId
+  const entityDefinitionId = resourceIds.length > 0 ? parseResourceId(resourceIds[0]).entityDefinitionId : ''
+  const instanceCount = resourceIds.length
 
   // Get resource definition with fields
   const { resource } = useResource(entityDefinitionId)
@@ -63,13 +63,11 @@ export function BulkUpdateEntityInstanceDialog({
     [editableFields]
   )
 
-  // Get values from store for all selected instances
   const { getValue } = useCustomFieldValueSyncer({
-    entityDefinitionId,
-    rowIds: selectedInstanceIds,
+    resourceIds,
     customFieldColumnIds,
     columnVisibility: {},
-    enabled: selectedInstanceIds.length > 0 && editableFields.length > 0,
+    enabled: resourceIds.length > 0 && editableFields.length > 0,
   })
 
   // Field metadata provider for relationship sync
@@ -92,7 +90,6 @@ export function BulkUpdateEntityInstanceDialog({
 
   // Use hook for store-synced bulk updates
   const { saveBulkMultipleFields } = useSaveFieldValue({
-    entityDefinitionId,
     getFieldMetadata,
   })
 
@@ -123,12 +120,12 @@ export function BulkUpdateEntityInstanceDialog({
 
   // Compute initial values from store when dialog opens
   useEffect(() => {
-    if (open && selectedInstanceIds.length > 0) {
+    if (open && resourceIds.length > 0) {
       const computed: Record<string, { value: unknown; varies: boolean }> = {}
 
       for (const field of editableFields) {
-        const fieldValues = selectedInstanceIds.map((id) => {
-          const storeValue = getValue(id, field.id)
+        const fieldValues = resourceIds.map((resourceId) => {
+          const storeValue = getValue(resourceId, field.id)
           return formatToRawValue(storeValue, field.fieldType ?? 'TEXT')
         })
 
@@ -154,7 +151,7 @@ export function BulkUpdateEntityInstanceDialog({
       setInitial(initValues)
       setModifiedFields(new Set())
     }
-  }, [open, selectedInstanceIds, editableFields, setInitial, getValue])
+  }, [open, resourceIds, editableFields, setInitial, getValue])
 
   /**
    * Handle field value change
@@ -184,8 +181,8 @@ export function BulkUpdateEntityInstanceDialog({
       return
     }
 
-    // Fire-and-forget: updates store optimistically, API call runs in background
-    saveBulkMultipleFields(selectedInstanceIds, fieldValues)
+    // Fire-and-forget bulk update
+    saveBulkMultipleFields(resourceIds, fieldValues)
 
     onSaved?.()
     onOpenChange(false)

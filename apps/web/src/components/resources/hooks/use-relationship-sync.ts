@@ -3,10 +3,11 @@
 import { useCallback } from 'react'
 import {
   useCustomFieldValueStore,
-  buildFieldValueKeyFromParts,
+  buildFieldValueKey,
   type FieldValueKey,
   type StoredFieldValue,
 } from '~/components/resources/store/custom-field-value-store'
+import { parseResourceId, toResourceId, type ResourceId } from '@auxx/lib/resources/client'
 import { isSingleValueRelationship, type RelationshipType } from '@auxx/utils'
 import type { RelationshipFieldValue } from '@auxx/types/field-value'
 
@@ -18,20 +19,20 @@ export interface InverseSyncInfo {
   inverseRelationshipType: RelationshipType
   /** The entity definition ID of the SOURCE entity (for relatedEntityDefinitionId on inverse) */
   sourceEntityDefinitionId: string
-  /** Target entity definition ID (from relatedEntityDefinitionId) or system model type */
-  targetEntityDefId: string
+  /** The entityDefinitionId of the TARGET entity */
+  targetEntityDefinitionId: string
   /** The field ID on the SOURCE entity (for cascade cleanup) */
   sourceFieldId: string
 }
 
 /** Input for computing inverse updates */
 export interface SyncInput {
-  /** The entity being updated */
-  sourceEntityId: string
-  /** Previous related entity IDs */
-  oldRelatedIds: string[]
-  /** New related entity IDs */
-  newRelatedIds: string[]
+  /** The resource being updated (source) */
+  sourceResourceId: ResourceId
+  /** Previous related resource IDs */
+  oldRelatedResourceIds: ResourceId[]
+  /** New related resource IDs */
+  newRelatedResourceIds: ResourceId[]
   /** Inverse relationship info */
   inverseInfo: InverseSyncInfo
 }
@@ -52,33 +53,29 @@ export function useRelationshipSync() {
    */
   const syncInverseCache = useCallback(
     (input: SyncInput) => {
-      const { sourceEntityId, oldRelatedIds, newRelatedIds, inverseInfo } = input
+      const { sourceResourceId, oldRelatedResourceIds, newRelatedResourceIds, inverseInfo } = input
       const {
         inverseFieldId,
         inverseRelationshipType,
         sourceEntityDefinitionId,
-        targetEntityDefId,
+        targetEntityDefinitionId,
       } = inverseInfo
 
-      // Calculate changes
-      const removedIds = oldRelatedIds.filter((id) => !newRelatedIds.includes(id))
-      const addedIds = newRelatedIds.filter((id) => !oldRelatedIds.includes(id))
+      // Parse source for logging
+      const { entityInstanceId: sourceInstanceId } = parseResourceId(sourceResourceId)
 
-      if (removedIds.length === 0 && addedIds.length === 0) {
+      // Calculate changes
+      const removedResourceIds = oldRelatedResourceIds.filter(
+        (id) => !newRelatedResourceIds.includes(id)
+      )
+      const addedResourceIds = newRelatedResourceIds.filter(
+        (id) => !oldRelatedResourceIds.includes(id)
+      )
+
+      if (removedResourceIds.length === 0 && addedResourceIds.length === 0) {
         console.log(LOG_PREFIX, 'No changes detected, skipping sync')
         return
       }
-
-      console.log(LOG_PREFIX, 'Syncing inverse cache', {
-        sourceEntityId,
-        oldRelatedIds,
-        newRelatedIds,
-        removedIds,
-        addedIds,
-        inverseFieldId,
-        inverseRelationshipType,
-        targetEntityDefId,
-      })
 
       const isSingleValue = isSingleValueRelationship(inverseRelationshipType)
 
@@ -86,18 +83,10 @@ export function useRelationshipSync() {
       const currentValues = useCustomFieldValueStore.getState().values
 
       // ═══ Remove source from entities that were unlinked ═══
-      for (const targetId of removedIds) {
-        const key = buildFieldValueKeyFromParts(targetEntityDefId, targetId, inverseFieldId)
+      for (const targetResourceId of removedResourceIds) {
+        const key = buildFieldValueKey(targetResourceId, inverseFieldId)
         const currentValue = currentValues[key]
         const hasCache = key in currentValues
-
-        console.log(LOG_PREFIX, 'Removing from inverse', {
-          targetId,
-          key,
-          hasCache,
-          isSingleValue,
-          currentValue,
-        })
 
         if (!hasCache) {
           console.log(LOG_PREFIX, 'Skipping remove - target not in cache')
@@ -108,9 +97,12 @@ export function useRelationshipSync() {
           // Single-value: set to null
           setValueOptimistic(key, null)
         } else {
-          // Multi-value: filter out the sourceEntityId
+          // Multi-value: filter out the sourceResourceId
           const currentArray = normalizeToArray(currentValue)
-          const newArray = currentArray.filter((v) => extractRelatedEntityId(v) !== sourceEntityId)
+          const newArray = currentArray.filter((v) => {
+            const relatedResourceId = extractRelatedResourceId(v)
+            return relatedResourceId !== sourceResourceId
+          })
           console.log(LOG_PREFIX, 'Filtered array', {
             before: currentArray.length,
             after: newArray.length,
@@ -123,9 +115,9 @@ export function useRelationshipSync() {
       // When inverse is belongs_to/has_one, a target can only have ONE owner.
       // Scan all cached entities of the same type to find and remove targets from old owners.
       // This works even when the target entity itself isn't in cache.
-      if (isSingleValue && addedIds.length > 0) {
+      if (isSingleValue && addedResourceIds.length > 0) {
         const { sourceFieldId } = inverseInfo
-        // New key format: ${entityDefinitionId}:${entityInstanceId}:${fieldId}
+        // Key format: ${entityDefinitionId}:${entityInstanceId}:${fieldId}
         const keyPrefix = `${sourceEntityDefinitionId}:`
         const keySuffix = `:${sourceFieldId}`
 
@@ -135,24 +127,23 @@ export function useRelationshipSync() {
           if (!cacheKey.startsWith(keyPrefix) || !cacheKey.endsWith(keySuffix)) continue
 
           // Extract the owner ID from the cache key
-          const ownerIdMatch = cacheKey.slice(keyPrefix.length, -keySuffix.length)
-          if (!ownerIdMatch || ownerIdMatch === sourceEntityId) continue // Skip self
+          const ownerInstanceId = cacheKey.slice(keyPrefix.length, -keySuffix.length)
+          if (!ownerInstanceId || ownerInstanceId === sourceInstanceId) continue // Skip self
 
           const ownerArray = normalizeToArray(cacheValue)
-          const targetIdsInOwner = ownerArray.map((v) => extractRelatedEntityId(v)).filter(Boolean)
+          const targetResourceIdsInOwner = ownerArray
+            .map((v) => extractRelatedResourceId(v))
+            .filter((id): id is ResourceId => id !== null)
 
           // Check if any of our added targets are in this owner's collection
-          const targetsToRemove = addedIds.filter((id) => targetIdsInOwner.includes(id))
+          const targetsToRemove = addedResourceIds.filter((id) =>
+            targetResourceIdsInOwner.includes(id)
+          )
 
           if (targetsToRemove.length > 0) {
-            const filteredArray = ownerArray.filter(
-              (v) => !targetsToRemove.includes(extractRelatedEntityId(v) ?? '')
-            )
-            console.log(LOG_PREFIX, 'CASCADE: Removing targets from old owner', {
-              oldOwnerId: ownerIdMatch,
-              targetsToRemove,
-              before: ownerArray.length,
-              after: filteredArray.length,
+            const filteredArray = ownerArray.filter((v) => {
+              const relatedResourceId = extractRelatedResourceId(v)
+              return !relatedResourceId || !targetsToRemove.includes(relatedResourceId)
             })
             setValueOptimistic(cacheKey as FieldValueKey, filteredArray)
           }
@@ -160,32 +151,27 @@ export function useRelationshipSync() {
       }
 
       // ═══ Add source to entities that were linked ═══
-      for (const targetId of addedIds) {
-        const key = buildFieldValueKeyFromParts(targetEntityDefId, targetId, inverseFieldId)
+      for (const targetResourceId of addedResourceIds) {
+        const key = buildFieldValueKey(targetResourceId, inverseFieldId)
         const currentValue = currentValues[key]
         const hasCache = key in currentValues
-
-        console.log(LOG_PREFIX, 'Adding to inverse', {
-          targetId,
-          key,
-          hasCache,
-          isSingleValue,
-          currentValue,
-        })
 
         if (!hasCache) {
           console.log(LOG_PREFIX, 'Skipping add - target not in cache')
           continue
         }
 
+        // Parse target to get instanceId for RelationshipFieldValue
+        const { entityInstanceId: targetInstanceId } = parseResourceId(targetResourceId)
+
         // Build the new relationship value pointing back to source
         const newRelValue: RelationshipFieldValue = {
           type: 'relationship',
-          relatedEntityId: sourceEntityId,
+          relatedEntityId: sourceInstanceId, // Still uses instanceId in the value object
           relatedEntityDefinitionId: sourceEntityDefinitionId,
           // Minimal fields for cache (full data comes from server)
           id: '',
-          entityId: targetId,
+          entityId: targetInstanceId,
           fieldId: inverseFieldId,
           sortKey: '',
           createdAt: '',
@@ -194,14 +180,13 @@ export function useRelationshipSync() {
 
         if (isSingleValue) {
           // Single-value: replace
-          console.log(LOG_PREFIX, 'Setting single value', newRelValue)
           setValueOptimistic(key, newRelValue)
         } else {
           // Multi-value: append
           const currentArray = normalizeToArray(currentValue)
           // Check for duplicates
           const alreadyExists = currentArray.some(
-            (v) => extractRelatedEntityId(v) === sourceEntityId
+            (v) => extractRelatedResourceId(v) === sourceResourceId
           )
           if (!alreadyExists) {
             console.log(LOG_PREFIX, 'Appending to array', {
@@ -209,8 +194,6 @@ export function useRelationshipSync() {
               after: currentArray.length + 1,
             })
             setValueOptimistic(key, [...currentArray, newRelValue])
-          } else {
-            console.log(LOG_PREFIX, 'Skipping add - already exists in array')
           }
         }
       }
@@ -233,24 +216,28 @@ function normalizeToArray(value: StoredFieldValue): RelationshipFieldValue[] {
 }
 
 /**
- * Extract the relatedEntityId from a relationship value
+ * Extract the related ResourceId from a relationship value.
+ * Constructs ResourceId from relatedEntityDefinitionId + relatedEntityId in the value.
  */
-function extractRelatedEntityId(value: unknown): string | null {
+function extractRelatedResourceId(value: unknown): ResourceId | null {
   if (!value || typeof value !== 'object') return null
-  if ('relatedEntityId' in value) return (value as RelationshipFieldValue).relatedEntityId
-  return null
+  const rel = value as RelationshipFieldValue
+  if (!rel.relatedEntityId || !rel.relatedEntityDefinitionId) return null
+  return toResourceId(rel.relatedEntityDefinitionId, rel.relatedEntityId)
 }
 
 /**
- * Extract related entity IDs from a stored value (single or array)
+ * Extract related ResourceIds from a stored value (single or array).
  */
-export function extractRelatedIds(value: StoredFieldValue): string[] {
+export function extractRelatedResourceIds(value: StoredFieldValue): ResourceId[] {
   if (!value) return []
 
   if (Array.isArray(value)) {
-    return value.map((v) => extractRelatedEntityId(v)).filter((id): id is string => id !== null)
+    return value
+      .map((v) => extractRelatedResourceId(v))
+      .filter((id): id is ResourceId => id !== null)
   }
 
-  const id = extractRelatedEntityId(value)
+  const id = extractRelatedResourceId(value)
   return id ? [id] : []
 }

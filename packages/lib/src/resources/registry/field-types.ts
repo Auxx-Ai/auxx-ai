@@ -62,7 +62,9 @@ export interface FieldCapabilities {
   /** Required for create operation */
   required?: boolean
   /** Field must contain unique values */
-  isUnique?: boolean
+  unique?: boolean
+  /** Field is computed/derived and cannot be directly set */
+  computed?: boolean
 }
 
 /**
@@ -206,7 +208,7 @@ export interface ResourceField {
   /** Whether field is currently active/visible (default: true) */
   active?: boolean
 
-  /** Whether field must contain unique values (convenience for capabilities.isUnique) */
+  /** Whether field must contain unique values (convenience for capabilities.unique) */
   isUnique?: boolean
 
   /** Whether field is required (convenience for capabilities.required) */

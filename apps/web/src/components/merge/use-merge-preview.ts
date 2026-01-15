@@ -37,7 +37,8 @@ export function useMergePreview({
     let fieldsMerged = 0
 
     for (const field of fields) {
-      if (field.isSystem) continue
+      // Only merge fields that can be updated
+      if (!field.capabilities?.updatable) continue
 
       // Get target value from store (TypedFieldValue format)
       const targetStoreKey = buildFieldValueKey(targetResourceId, field.id)
@@ -54,6 +55,14 @@ export function useMergePreview({
         // EXPLICIT CONVERSION: TypedFieldValue → raw value
         return formatToRawValue(sourceStoreValue, field.fieldType)
       })
+
+      // Skip fields that have no data in target or any sources
+      const hasTargetData = targetValue != null && targetValue !== '' &&
+        (Array.isArray(targetValue) ? targetValue.length > 0 : true)
+      const hasSourceData = sourceValues.some(val =>
+        val != null && val !== '' && (Array.isArray(val) ? val.length > 0 : true)
+      )
+      if (!hasTargetData && !hasSourceData) continue
 
       // Merge using raw values
       const result = mergeFieldValue({

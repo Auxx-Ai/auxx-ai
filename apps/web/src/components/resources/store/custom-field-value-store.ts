@@ -126,7 +126,8 @@ export function buildFieldValueKey(resourceId: ResourceId, fieldId: string): Fie
 
 /**
  * Build a field value key from individual components.
- * Convenience function when you have components but not a ResourceId.
+ * @deprecated Prefer buildFieldValueKey(resourceId, fieldId) for consistency.
+ * Only kept for backward compatibility. Do not use in new code.
  */
 export function buildFieldValueKeyFromParts(
   entityDefinitionId: string,

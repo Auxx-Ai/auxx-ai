@@ -147,7 +147,7 @@ export function EntityRecordsContent() {
     [resource?.fields]
   )
 
-  const entityDefinitionId: string = resource?.id ?? null
+  const entityDefinitionId = resource?.id ?? null
 
   // State
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
@@ -208,8 +208,8 @@ export function EntityRecordsContent() {
     hasNextPage,
     fetchNextPage,
     refresh,
-  } = useRecordList<RecordMeta>({
-    resourceType: entityDefinitionId ?? '',
+  } = useRecordList<EntityRow>({
+    entityDefinitionId: entityDefinitionId ?? '',
     filters: combinedFilters,
     sorting: viewSorting,
     limit: PAGE_SIZE,
@@ -266,8 +266,11 @@ export function EntityRecordsContent() {
     [customFields]
   )
 
-  // Row IDs for syncer
-  const rowIds = useMemo(() => items.map((i) => i.id), [items])
+  // Convert to ResourceIds for syncer
+  const resourceIds = useMemo(
+    () => items.map((i) => toResourceId(entityDefinitionId, i.id)),
+    [items, entityDefinitionId]
+  )
 
   // Custom field column IDs for syncer (uses customField_ prefix format)
   const customFieldColumnIds = useMemo(
@@ -277,8 +280,7 @@ export function EntityRecordsContent() {
 
   // Custom field value syncer - reads from store for reactive updates
   const { getValue, isValueLoading } = useCustomFieldValueSyncer({
-    entityDefinitionId,
-    rowIds,
+    resourceIds,
     columnVisibility,
     customFieldColumnIds,
     enabled: !!entityDefinitionId && customFields.length > 0,
@@ -520,10 +522,14 @@ export function EntityRecordsContent() {
       },
       getCellValue: (rowId: string, columnId: string) => {
         const fieldId = columnId.replace('field_', '')
-        return getValue(rowId, fieldId)
+        if (!entityDefinitionId) return undefined
+        return getValue(toResourceId(entityDefinitionId, rowId), fieldId)
       },
       // ResourceId for optimistic updates via PropertyProvider
-      getResourceId: (rowId: string) => toResourceId(entityDefinitionId, rowId),
+      getResourceId: (rowId: string) => {
+        if (!entityDefinitionId) return null as unknown as ResourceId
+        return toResourceId(entityDefinitionId, rowId)
+      },
     }),
     [customFields, getValue, entityDefinitionId]
   )
@@ -690,7 +696,7 @@ export function EntityRecordsContent() {
           open={isCreateDialogOpen}
           onOpenChange={handleDialogOpenChange}
           entityDefinitionId={entityDefinitionId}
-          editingInstanceId={editingInstance?.id}
+          resourceId={editingInstance ? toResourceId(entityDefinitionId, editingInstance.id) : undefined}
           onSaved={handleDialogSaved}
         />
       )}
@@ -700,8 +706,7 @@ export function EntityRecordsContent() {
         <BulkUpdateEntityInstanceDialog
           open={isBulkUpdateDialogOpen}
           onOpenChange={setIsBulkUpdateDialogOpen}
-          entityDefinitionId={entityDefinitionId}
-          selectedInstanceIds={Array.from(selectedRowIds)}
+          resourceIds={Array.from(selectedRowIds).map((id) => toResourceId(entityDefinitionId, id))}
           onSaved={() => {
             refresh()
             setSelectedRowIds(new Set())
@@ -725,7 +730,7 @@ export function EntityRecordsContent() {
         <MassWorkflowTriggerDialog
           open={isWorkflowDialogOpen}
           onOpenChange={setIsWorkflowDialogOpen}
-          resourceIds={Array.from(selectedRowIds).map((id) => `${entityDefinitionId}:${id}`)}
+          resourceIds={Array.from(selectedRowIds).map((id) => toResourceId(entityDefinitionId, id))}
           onSuccess={() => {
             setSelectedRowIds(new Set())
             refresh()

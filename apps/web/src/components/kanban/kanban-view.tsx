@@ -42,7 +42,7 @@ import {
   type FieldValueKey,
 } from '~/components/resources/store/custom-field-value-store'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
-import { getModelType } from '@auxx/lib/resources/client'
+import { getModelType, toResourceId } from '@auxx/lib/resources/client'
 import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
 import { toastError } from '@auxx/ui/components/toast'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
@@ -253,7 +253,6 @@ export function KanbanView<TData extends KanbanRow>({
 
   // useSaveFieldValue for internal card moves with optimistic updates
   const { saveBulkValues } = useSaveFieldValue({
-    entityDefinitionId,
     getFieldMetadata,
   })
 
@@ -545,8 +544,9 @@ export function KanbanView<TData extends KanbanRow>({
         }
 
         // Move all cards in single API call with optimistic updates
+        const resourceIds = cardsToMove.map((card) => toResourceId(entityDefinitionId, card.id))
         saveBulkValues(
-          cardsToMove.map((card) => card.id),
+          resourceIds,
           config.groupByFieldId,
           newValue,
           groupByField.fieldType ?? 'SINGLE_SELECT'
