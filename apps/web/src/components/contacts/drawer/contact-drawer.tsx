@@ -58,7 +58,7 @@ export function ContactDrawer({
 
   // Get record data for contact-specific UI
   const { record: contact } = useRecord({
-    resourceId: resourceId,
+    resourceId,
     enabled: !!open && !!contactId,
   })
 
@@ -144,7 +144,7 @@ export function ContactDrawer({
           </Tooltip>
           <ManualTriggerButton
             resourceType="contact"
-            resourceId={contactId}
+            resourceId={resourceId}
             buttonVariant="ghost"
             buttonSize="icon-sm"
             buttonClassName="rounded-full"
@@ -183,4 +183,3 @@ export function ContactDrawer({
     />
   )
 }
-

@@ -8,17 +8,16 @@ import { VarItem } from '../structured-output-generator/output-vars'
 import { type UnifiedVariable, BaseType } from '../../types/variable-types'
 import type { OutputVariablesDisplayProps, DisplayVariable } from '../../types/output-variables'
 import Section from '../section'
-import { parseVariable } from '~/components/workflow/utils/variable-utils'
+import { getVariableDisplayType } from '~/components/workflow/utils/variable-utils'
 
 /**
  * Converts a UnifiedVariable to a DisplayVariable structure for the VarItem component
  * Recursively processes nested objects and arrays to any depth
  */
 function unifiedVariableToDisplayVariable(variable: UnifiedVariable): DisplayVariable {
-  const parsed = parseVariable(variable)
   const displayVar: DisplayVariable = {
     name: variable.label,
-    type: parsed.displayType,
+    type: getVariableDisplayType(variable),
     description: variable.description,
   }
 

@@ -138,7 +138,7 @@ export function createCustomFieldColumns<T extends { id: string }>(
         enableFiltering: field.capabilities?.filterable ?? true,
         enableResizing: true,
         enableReorder: true,
-        defaultVisible: true,
+        defaultVisible: false,
         minSize: 100,
         size: 150,
         meta: {

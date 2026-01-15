@@ -2,8 +2,9 @@
 
 import { useMemo } from 'react'
 import { useFilterFieldResolver } from './use-filter-field-resolver'
-import { BaseType, RESOURCE_FIELD_REGISTRY, type TableId } from '@auxx/lib/workflow-engine/client'
+import { BaseType } from '@auxx/lib/workflow-engine/client'
 import type { FieldDefinition } from '~/components/conditions'
+import { useResourceStore } from '~/components/resources/store/resource-store'
 
 /**
  * Sortable field types (direct)
@@ -54,12 +55,12 @@ export function useSortFieldResolver({
       else if (field.type === BaseType.RELATION && field.fieldReference) {
         // Parse reference: "ticket:contact" or just "contact"
         const parts = field.fieldReference.split(':')
-        const targetTable = (parts.length === 2 ? parts[1] : parts[0]) as TableId
+        const targetTable = parts.length === 2 ? parts[1] : parts[0]
 
-        // Get sortable subfields from resource registry
-        const resourceFields = RESOURCE_FIELD_REGISTRY[targetTable]
-        if (resourceFields) {
-          Object.values(resourceFields)
+        // Get sortable subfields from resource store
+        const resource = useResourceStore.getState().resourceMap.get(targetTable)
+        if (resource) {
+          resource.fields
             .filter((subField) =>
               subField.capabilities.sortable &&
               SORTABLE_TYPES.includes(subField.type)
@@ -78,12 +79,12 @@ export function useSortFieldResolver({
 
       // REFERENCE field (direct resource object) - expand subfields
       else if (field.type === BaseType.REFERENCE && field.fieldReference) {
-        const targetTable = field.fieldReference as TableId
+        const targetTable = field.fieldReference
 
-        // Get sortable subfields from resource registry
-        const resourceFields = RESOURCE_FIELD_REGISTRY[targetTable]
-        if (resourceFields) {
-          Object.values(resourceFields)
+        // Get sortable subfields from resource store
+        const resource = useResourceStore.getState().resourceMap.get(targetTable)
+        if (resource) {
+          resource.fields
             .filter((subField) =>
               subField.capabilities.sortable &&
               SORTABLE_TYPES.includes(subField.type)

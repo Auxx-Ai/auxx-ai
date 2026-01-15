@@ -12,7 +12,6 @@ import {
   type ResourceId,
 } from '@auxx/lib/field-values/client'
 import { api } from '~/trpc/react'
-import { isCustomResource } from '@auxx/lib/resources/client'
 import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
 import { ResourcePicker } from '~/components/pickers/resource-picker'
 

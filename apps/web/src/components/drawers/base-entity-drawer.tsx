@@ -5,7 +5,17 @@ import * as React from 'react'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { DrawerHeader } from '@auxx/ui/components/drawer'
 import { OverflowTabsList, Tabs, TabsContent } from '@auxx/ui/components/tabs'
-import { HouseIcon, Clock, MessagesSquare, Ticket, ShoppingBag, Mail, Package } from 'lucide-react'
+import {
+  HouseIcon,
+  Clock,
+  MessagesSquare,
+  Ticket,
+  ShoppingBag,
+  Mail,
+  Package,
+  Layers,
+  Truck,
+} from 'lucide-react'
 import { getEntityDrawerConfig, parseResourceId } from '@auxx/lib/resources/client'
 import { getTabComponent } from './drawer-tab-registry'
 import { useResource, useRecord } from '~/components/resources'
@@ -264,6 +274,8 @@ function getIconComponent(iconName: string) {
     house: HouseIcon,
     clock: Clock,
     messages: MessagesSquare,
+    layers: Layers,
+    truck: Truck,
     // Add more as needed
   }
   return icons[iconName] ?? HouseIcon

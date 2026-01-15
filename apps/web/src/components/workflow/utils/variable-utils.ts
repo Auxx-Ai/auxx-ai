@@ -15,6 +15,7 @@ import {
   isTypeCompatible as isBaseTypeCompatible,
   getOperatorsForFieldType,
 } from '@auxx/lib/workflow-engine/client'
+import { useResourceStore } from '~/components/resources/store/resource-store'
 
 /**
  * Regular expression pattern for matching workflow variables in the format {{variable-name}}
@@ -150,8 +151,133 @@ export function isVariableMode(
 }
 
 /**
+ * Get display type for a variable (for UI display only)
+ * This is what 90% of consumers actually need
+ *
+ * @param variable - The variable to get display type for
+ * @returns User-friendly display type string (e.g., "Contact", "Contact[]", "string")
+ *
+ * @example
+ * ```typescript
+ * // Direct resource reference
+ * getVariableDisplayType({ type: BaseType.OBJECT, reference: 'contact', label: 'Contact' })
+ * // Returns: "Contact"
+ *
+ * // Relation field
+ * getVariableDisplayType({ type: BaseType.RELATION, reference: 'ticket:contact' })
+ * // Returns: "Contact"
+ *
+ * // Array of resources
+ * getVariableDisplayType({ type: BaseType.ARRAY, items: { type: BaseType.OBJECT, reference: 'contact', label: 'Contact' } })
+ * // Returns: "Contact[]"
+ * ```
+ */
+export function getVariableDisplayType(variable: UnifiedVariable): string {
+  // Handle ARRAY type - recursively get items type with [] suffix
+  if (variable.type === BaseType.ARRAY && variable.items) {
+    return `${getVariableDisplayType(variable.items)}[]`
+  }
+
+  // Handle REFERENCE/RELATION with resource reference
+  if (variable.reference) {
+    // Direct resource reference (e.g., "contact")
+    if (!variable.reference.includes(':')) {
+      const resource = useResourceStore.getState().resourceMap.get(variable.reference)
+      return resource?.label || variable.label || variable.type
+    }
+
+    // Relation field (e.g., "ticket:contact")
+    const parts = variable.reference.split(':')
+    const targetResourceId = parts[1]
+    if (targetResourceId) {
+      const resource = useResourceStore.getState().resourceMap.get(targetResourceId)
+      return resource?.label || variable.type
+    }
+  }
+
+  return variable.type
+}
+
+/**
+ * Get enum values for a variable (for condition builders)
+ * Only call this when you actually need enum values
+ *
+ * @param variable - The variable to get enum values for
+ * @returns Array of enum values with label and dbValue, or undefined if not an enum
+ *
+ * @example
+ * ```typescript
+ * getVariableEnumValues({ type: BaseType.ENUM, reference: 'ticket:status', enum: ['open', 'closed'] })
+ * // Returns: [{ label: 'Open', dbValue: 'open' }, { label: 'Closed', dbValue: 'closed' }]
+ * ```
+ */
+export function getVariableEnumValues(
+  variable: UnifiedVariable
+): Array<{ label: string; dbValue: string }> | undefined {
+  if (variable.type !== BaseType.ENUM || !variable.enum) return undefined
+
+  // If variable has a reference, look up field in store
+  if (variable.reference && variable.reference.includes(':')) {
+    const [resourceId, fieldKey] = variable.reference.split(':')
+    if (resourceId && fieldKey) {
+      const resource = useResourceStore.getState().resourceMap.get(resourceId)
+      const field = resource?.fields.find((f) => f.key === fieldKey)
+      if (field?.enumValues) {
+        return field.enumValues
+      }
+    }
+  }
+
+  // Fallback: use enum values as both label and dbValue
+  return variable.enum.map((v) => ({ label: String(v), dbValue: String(v) }))
+}
+
+/**
+ * Get relationship metadata for a variable (for relation inputs)
+ * Only call this when you need relationship info
+ *
+ * @param variable - The variable to get relationship metadata for
+ * @returns Relationship metadata with relatedEntityDefinitionId and field, or undefined
+ *
+ * @example
+ * ```typescript
+ * getVariableRelationship({ type: BaseType.RELATION, reference: 'ticket:contact' })
+ * // Returns: { relatedEntityDefinitionId: 'contact', field: {...} }
+ * ```
+ */
+export function getVariableRelationship(variable: UnifiedVariable):
+  | {
+      relatedEntityDefinitionId?: string
+      field?: ResourceField
+    }
+  | undefined {
+  if (!variable.reference) return undefined
+
+  if (variable.reference.includes(':')) {
+    const [resourceId, fieldKey] = variable.reference.split(':')
+    if (resourceId && fieldKey) {
+      const resource = useResourceStore.getState().resourceMap.get(resourceId)
+      const field = resource?.fields.find((f) => f.key === fieldKey)
+      return {
+        relatedEntityDefinitionId: field?.relationship?.relatedEntityDefinitionId,
+        field,
+      }
+    }
+  }
+
+  // Direct resource reference
+  return {
+    relatedEntityDefinitionId: variable.reference,
+  }
+}
+
+/**
  * Unified variable parser that returns all metadata about a variable
  * This is the single source of truth for understanding variable types, references, and UI metadata
+ *
+ * @deprecated Use getVariableDisplayType, getVariableEnumValues, or getVariableRelationship instead
+ * This function does too much and uses hardcoded constants
+ * TODO: Remove after all consumers migrated
  *
  * @param variable - The variable to parse
  * @returns Comprehensive metadata including display type, actual type for operators, field references, enum values, etc.

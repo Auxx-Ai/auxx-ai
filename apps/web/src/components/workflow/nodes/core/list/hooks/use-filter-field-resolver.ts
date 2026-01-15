@@ -7,12 +7,11 @@ import {
   BaseType,
   getOperatorsForType,
   getFieldOperators,
-  RESOURCE_FIELD_REGISTRY,
-  type TableId,
   type Operator,
 } from '@auxx/lib/workflow-engine/client'
 import { isNodeVariable } from '~/components/workflow/utils/variable-utils'
 import { useVariable } from '~/components/workflow/hooks/use-var-store-sync'
+import { useResourceStore } from '~/components/resources/store/resource-store'
 
 /**
  * Options for the field resolver hook
@@ -68,9 +67,9 @@ export function useFilterFieldResolver({ nodeId, inputListValue }: UseFilterFiel
     }
     // CASE 1: Item is a reference to a known resource type
     if (itemVar.reference) {
-      const resourceFields = RESOURCE_FIELD_REGISTRY[itemVar.reference as TableId]
-      if (resourceFields) {
-        const filterableFields = Object.values(resourceFields)
+      const resource = useResourceStore.getState().resourceMap.get(itemVar.reference)
+      if (resource) {
+        const filterableFields = resource.fields
           .filter((field) => field.capabilities.filterable) // Only filterable fields
           .map(
             (field): FieldDefinition => ({

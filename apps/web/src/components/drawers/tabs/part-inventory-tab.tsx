@@ -1,4 +1,4 @@
-// apps/web/src/components/manufacturing/parts/parts-drawer-overview.tsx
+// apps/web/src/components/drawers/tabs/part-inventory-tab.tsx
 'use client'
 
 import { useState } from 'react'
@@ -6,30 +6,27 @@ import { Blocks, Edit, PlusCircle } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
 import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import EntityFields from '~/components/fields/entity-fields'
-import { toResourceId } from '~/components/resources'
-import { InventoryDialog } from './inventory-dialog'
-import type { RouterOutputs } from '~/trpc/react'
+import { parseResourceId } from '@auxx/lib/resources/client'
+import { api } from '~/trpc/react'
+import { InventoryDialog } from '~/components/manufacturing/parts/inventory-dialog'
+import type { DrawerTabProps } from '../drawer-tab-registry'
 
-/** Part type from the API */
-type Part = NonNullable<RouterOutputs['part']['byId']>
-
-/** Props for PartsDrawerOverview component */
-interface PartsDrawerOverviewProps {
-  partId: string
-  part: Part | null | undefined
-  isLoading: boolean
-}
-
-/** Overview tab content for parts drawer */
-export function PartsDrawerOverview({ partId, part, isLoading }: PartsDrawerOverviewProps) {
+/** Inventory tab content for parts drawer */
+export function PartInventoryTab({ resourceId }: DrawerTabProps) {
   const [isInventoryDialogOpen, setIsInventoryDialogOpen] = useState(false)
+
+  // Extract partId from resourceId
+  const { entityInstanceId: partId } = parseResourceId(resourceId)
+
+  // Fetch part data
+  const { data: part, isLoading } = api.part.byId.useQuery(
+    { id: partId },
+    { enabled: !!partId }
+  )
 
   if (isLoading) {
     return (
       <div className="p-4 space-y-4">
-        <Skeleton className="h-6 w-32" />
-        <Skeleton className="h-20 w-full" />
         <Skeleton className="h-6 w-32" />
         <Skeleton className="h-20 w-full" />
       </div>
@@ -42,9 +39,6 @@ export function PartsDrawerOverview({ partId, part, isLoading }: PartsDrawerOver
 
   return (
     <>
-      {/* Part Fields using EntityFields */}
-      <EntityFields resourceId={toResourceId('part', part.id)} className="m-4" />
-
       {/* Inventory Section */}
       <Section
         title="Inventory"

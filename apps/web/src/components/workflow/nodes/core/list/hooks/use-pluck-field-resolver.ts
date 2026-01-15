@@ -2,8 +2,9 @@
 
 import { useMemo } from 'react'
 import { useFilterFieldResolver } from './use-filter-field-resolver'
-import { BaseType, RESOURCE_FIELD_REGISTRY, type TableId } from '@auxx/lib/workflow-engine/client'
+import { BaseType } from '@auxx/lib/workflow-engine/client'
 import type { FieldDefinition } from '~/components/conditions'
+import { useResourceStore } from '~/components/resources/store/resource-store'
 
 /**
  * Maximum depth for nested field expansion.
@@ -50,12 +51,12 @@ function expandFieldRecursive(
   ) {
     // Parse reference: "ticket:contact" or just "contact"
     const parts = field.fieldReference.split(':')
-    const targetTable = (parts.length === 2 ? parts[1] : parts[0]) as TableId
+    const targetTable = parts.length === 2 ? parts[1] : parts[0]
 
-    // Get subfields from resource registry
-    const resourceFields = RESOURCE_FIELD_REGISTRY[targetTable]
-    if (resourceFields) {
-      Object.values(resourceFields).forEach((subField) => {
+    // Get subfields from resource store (via getState for non-reactive access)
+    const resource = useResourceStore.getState().resourceMap.get(targetTable)
+    if (resource) {
+      resource.fields.forEach((subField) => {
         const newPath = pathPrefix ? `${pathPrefix}.${subField.key}` : subField.key
         const newLabel = labelPrefix ? `${labelPrefix} → ${subField.label}` : subField.label
 

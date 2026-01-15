@@ -102,7 +102,7 @@ export interface VariableSelectionEvent {
  */
 export interface FieldReferenceMetadata {
   fieldReference: string
-  targetTable: TableId
+  relatedEntityDefinitionId: TableId
   resourceType: string
   fieldKey: string
 }

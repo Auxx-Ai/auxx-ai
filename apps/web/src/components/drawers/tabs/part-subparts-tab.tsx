@@ -1,4 +1,4 @@
-// apps/web/src/components/manufacturing/parts/parts-drawer-subparts.tsx
+// apps/web/src/components/drawers/tabs/part-subparts-tab.tsx
 'use client'
 
 import { useState, useCallback } from 'react'
@@ -23,27 +23,28 @@ import {
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { useConfirm } from '~/hooks/use-confirm'
-import { api, type RouterOutputs } from '~/trpc/react'
+import { parseResourceId } from '@auxx/lib/resources/client'
+import { api } from '~/trpc/react'
 import { formatMoney } from '~/utils/strings'
-import { SubpartDialog } from './subpart-dialog'
+import { SubpartDialog } from '~/components/manufacturing/parts/subpart-dialog'
 import type { SubpartEntity as Subpart } from '@auxx/database/models'
-
-/** Part type from the API */
-type Part = NonNullable<RouterOutputs['part']['byId']>
-
-/** Props for PartsDrawerSubparts component */
-interface PartsDrawerSubpartsProps {
-  partId: string
-  part: Part | null | undefined
-  isLoading: boolean
-}
+import type { DrawerTabProps } from '../drawer-tab-registry'
 
 /** Subparts tab content for parts drawer */
-export function PartsDrawerSubparts({ partId, part, isLoading }: PartsDrawerSubpartsProps) {
+export function PartSubpartsTab({ resourceId }: DrawerTabProps) {
   const utils = api.useUtils()
   const [isSubpartDialogOpen, setIsSubpartDialogOpen] = useState(false)
   const [editingSubpart, setEditingSubpart] = useState<Subpart | null>(null)
   const [confirmDelete, ConfirmDeleteDialog] = useConfirm()
+
+  // Extract partId from resourceId
+  const { entityInstanceId: partId } = parseResourceId(resourceId)
+
+  // Fetch part data
+  const { data: part, isLoading } = api.part.byId.useQuery(
+    { id: partId },
+    { enabled: !!partId }
+  )
 
   // Delete subpart mutation
   const deleteSubpart = api.subpart.delete.useMutation({

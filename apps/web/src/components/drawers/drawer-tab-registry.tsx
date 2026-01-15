@@ -42,6 +42,16 @@ export const DRAWER_TAB_COMPONENTS: Record<
     import('./tabs/contact-parts-tab').then((m) => ({ default: m.ContactPartsTab })),
 
   // ─────────────────────────────────────────────────────────────────
+  // PART TABS
+  // ─────────────────────────────────────────────────────────────────
+  'part:inventory': () =>
+    import('./tabs/part-inventory-tab').then((m) => ({ default: m.PartInventoryTab })),
+  'part:subparts': () =>
+    import('./tabs/part-subparts-tab').then((m) => ({ default: m.PartSubpartsTab })),
+  'part:vendors': () =>
+    import('./tabs/part-vendors-tab').then((m) => ({ default: m.PartVendorsTab })),
+
+  // ─────────────────────────────────────────────────────────────────
   // CUSTOM ENTITY TABS (future - when needed)
   // ─────────────────────────────────────────────────────────────────
   // 'custom:tasks': () =>

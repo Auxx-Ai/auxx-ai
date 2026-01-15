@@ -25,6 +25,7 @@ import {
 } from '@auxx/ui/components/main-page'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
+import { toResourceId } from '~/components/resources'
 import { PartsDrawer } from './parts-drawer'
 import { PartFormDialog } from './part-form-dialog'
 import { createPartColumns, type PartRow } from './parts-columns'
@@ -51,6 +52,12 @@ export function PartsContent() {
       if (!open) setSelectedPartId(null)
     },
     [setSelectedPartId]
+  )
+
+  // Convert partId to resourceId for PartsDrawer
+  const selectedResourceId = useMemo(
+    () => (selectedPartId ? toResourceId('part', selectedPartId) : null),
+    [selectedPartId]
   )
 
   // Dialog state - controlled via URL query param for kbar support
@@ -258,11 +265,11 @@ export function PartsContent() {
 
   // Build docked panel content
   const dockedPanel =
-    isDocked && isDrawerOpen && selectedPartId ? (
+    isDocked && isDrawerOpen && selectedResourceId ? (
       <PartsDrawer
         open={isDrawerOpen}
         onOpenChange={setIsDrawerOpen}
-        partId={selectedPartId}
+        resourceId={selectedResourceId}
         onDelete={handleDelete}
         onEdit={(part) => {
           setEditingPart(part)
@@ -370,7 +377,7 @@ export function PartsContent() {
         <PartsDrawer
           open={isDrawerOpen}
           onOpenChange={setIsDrawerOpen}
-          partId={selectedPartId}
+          resourceId={selectedResourceId}
           onDelete={handleDelete}
           onEdit={(part) => {
             setEditingPart(part)

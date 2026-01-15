@@ -7,7 +7,8 @@ import { createScopedLogger } from '@auxx/logger'
 import { getWorkflowApp } from '@auxx/services/workflows'
 import { database as db, schema } from '@auxx/database'
 import { executeResourceQuery, fetchResourceById } from '../../resources/resource-fetcher'
-import { RESOURCE_TABLE_MAP, isCustomResourceId, type TableId } from '../../resources/client'
+import { isCustomResourceId } from '../../resources/client'
+import { ResourceRegistryService } from '../../resources/registry'
 import { inArray } from 'drizzle-orm'
 import { parseResourceId, type ResourceId } from '@auxx/types/resource'
 
@@ -150,7 +151,8 @@ export async function triggerManualResourceWorkflowBulk(params: {
   }
 
   // 2. Batch fetch all resources
-  const resourcesMap = await fetchResourcesByIds(resourceIds, organizationId)
+  const registryService = new ResourceRegistryService(organizationId, db)
+  const resourcesMap = await fetchResourcesByIds(resourceIds, organizationId, registryService)
 
   logger.info('Resources fetched', {
     requested: resourceIds.length,
@@ -273,11 +275,13 @@ export async function triggerManualResourceWorkflowBulk(params: {
  *
  * @param resourceIds - Array of ResourceIds in format "entityDefinitionId:instanceId"
  * @param organizationId - Organization ID for scoping
+ * @param registryService - Resource registry service for resource metadata lookup
  * @returns Map for O(1) lookup by instance ID
  */
 async function fetchResourcesByIds(
   resourceIds: ResourceId[],
-  organizationId: string
+  organizationId: string,
+  registryService: ResourceRegistryService
 ): Promise<Map<string, any>> {
   const resourcesMap = new Map<string, any>()
 
@@ -316,18 +320,31 @@ async function fetchResourcesByIds(
   }
 
   // Handle system resources (contact, ticket, thread, message)
-  const tableInfo = RESOURCE_TABLE_MAP[resourceType as TableId]
-  if (!tableInfo) {
+  const resource = await registryService.getById(resourceType)
+  if (!resource) {
     logger.error('Invalid resource type', { resourceType })
     return resourcesMap
   }
 
+  // Check if system resource (only system resources have direct DB tables)
+  if (!registryService.isSystemResource(resourceType)) {
+    logger.warn('Bulk load only supports system resources', { resourceType })
+    return resourcesMap
+  }
+
+  // Get DB table name from resource
+  const dbName = (resource as any).dbName
+  if (!dbName) {
+    logger.error('System resource missing dbName', { resourceType })
+    return resourcesMap
+  }
+
   // Build WHERE clause: id IN (...entityInstanceIds)
-  const whereSql = inArray(schema[tableInfo.dbName].id, entityInstanceIds)
+  const whereSql = inArray(schema[dbName].id, entityInstanceIds)
 
   // Fetch all resources in single query
   const resources = await executeResourceQuery(
-    resourceType as TableId,
+    resourceType,
     organizationId,
     { where: whereSql },
     'findMany'

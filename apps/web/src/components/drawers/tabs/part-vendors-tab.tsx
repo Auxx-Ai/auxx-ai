@@ -1,4 +1,4 @@
-// apps/web/src/components/manufacturing/parts/parts-drawer-vendors.tsx
+// apps/web/src/components/drawers/tabs/part-vendors-tab.tsx
 'use client'
 
 import { useState, useCallback } from 'react'
@@ -25,29 +25,30 @@ import {
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { useConfirm } from '~/hooks/use-confirm'
-import { api, type RouterOutputs } from '~/trpc/react'
+import { parseResourceId } from '@auxx/lib/resources/client'
+import { api } from '~/trpc/react'
 import { formatMoney } from '~/utils/strings'
 import { pluralize, getContactDisplayName } from '@auxx/utils'
-import { VendorPartDialog } from './vendor-part-dialog'
+import { VendorPartDialog } from '~/components/manufacturing/parts/vendor-part-dialog'
 import type { VendorPartEntity as VendorPart } from '@auxx/database/models'
 import { Tooltip } from '~/components/global/tooltip'
-
-/** Part type from the API */
-type Part = NonNullable<RouterOutputs['part']['byId']>
-
-/** Props for PartsDrawerVendors component */
-interface PartsDrawerVendorsProps {
-  partId: string
-  part: Part | null | undefined
-  isLoading: boolean
-}
+import type { DrawerTabProps } from '../drawer-tab-registry'
 
 /** Vendors tab content for parts drawer */
-export function PartsDrawerVendors({ partId, part, isLoading }: PartsDrawerVendorsProps) {
+export function PartVendorsTab({ resourceId }: DrawerTabProps) {
   const utils = api.useUtils()
   const [isVendorDialogOpen, setIsVendorDialogOpen] = useState(false)
   const [editingVendorPart, setEditingVendorPart] = useState<VendorPart | null>(null)
   const [confirmDelete, ConfirmDeleteDialog] = useConfirm()
+
+  // Extract partId from resourceId
+  const { entityInstanceId: partId } = parseResourceId(resourceId)
+
+  // Fetch part data
+  const { data: part, isLoading } = api.part.byId.useQuery(
+    { id: partId },
+    { enabled: !!partId }
+  )
 
   // Delete vendor part mutation
   const deleteVendorPart = api.vendorPart.delete.useMutation({

@@ -24,11 +24,13 @@ import {
   getPathFromVariableId,
   isVariableTypeCompatible,
   hasCompatibleChildPath,
-  parseVariable,
+  getVariableDisplayType,
+  getVariableRelationship,
 } from '~/components/workflow/utils/variable-utils'
 import { isNavigableVariable } from '~/components/workflow/utils/variable-conversion'
-import { BaseType, RESOURCE_TABLE_MAP } from '@auxx/lib/workflow-engine/client'
+import { BaseType } from '@auxx/lib/workflow-engine/client'
 import { useStore } from '@xyflow/react'
+import { useResourceStore } from '~/components/resources/store/resource-store'
 
 // Constants
 const CONSTANTS = {
@@ -279,7 +281,7 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
   const getExpectedTypeLabel = useCallback((type: BaseType | string | undefined): string => {
     if (!type) return ''
     if (typeof type !== 'string') return type
-    return RESOURCE_TABLE_MAP[type as any]?.label || type
+    return useResourceStore.getState().resourceMap.get(type)?.label || type
   }, [])
 
   /**
@@ -287,9 +289,9 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
    */
   const showTypeErrorToast = useCallback(
     (variable: UnifiedVariable) => {
-      const parsed = parseVariable(variable)
-      const displayType = parsed.displayType
-      const targetTable = parsed.relatedEntityDefinitionId
+      const displayType = getVariableDisplayType(variable)
+      const relationship = getVariableRelationship(variable)
+      const targetTable = relationship?.relatedEntityDefinitionId
       const expectedType = allowedTypes[0]
       const expectedLabel = getExpectedTypeLabel(expectedType)
 
@@ -639,17 +641,16 @@ const VariableCommandItem: React.FC<VariableCommandItemProps> = ({
     isGroup ||
     ('properties' in item && item.properties && Object.keys(item.properties).length > 0) ||
     ('items' in item && item.items)
-  const parsed = parseVariable(item as UnifiedVariable)
+  const displayType = getVariableDisplayType(item as UnifiedVariable)
 
   // Debug logging for displayType issues
-  if (!isGroup && typeof parsed.displayType !== 'string') {
+  if (!isGroup && typeof displayType !== 'string') {
     console.error('❌ Invalid displayType detected:', {
       itemId: item.id,
       itemType: (item as UnifiedVariable).type,
-      parsedDisplayType: parsed.displayType,
-      parsedDisplayTypeType: typeof parsed.displayType,
+      displayType: displayType,
+      displayTypeType: typeof displayType,
       fullItem: item,
-      fullParsed: parsed,
     })
   }
 
@@ -687,11 +688,9 @@ const VariableCommandItem: React.FC<VariableCommandItemProps> = ({
 
           {!isGroup && (
             <>
-              <TooltipExplanation text={parsed.description || ''} />
+              <TooltipExplanation text={(item as UnifiedVariable).description || ''} />
               <Badge variant="purple" size="xs">
-                {typeof parsed.displayType === 'string'
-                  ? parsed.displayType
-                  : String(parsed.displayType || 'unknown')}
+                {displayType}
               </Badge>
             </>
           )}

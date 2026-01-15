@@ -19,13 +19,6 @@ import {
   LayoutGrid,
 } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
-import { Input } from '@auxx/ui/components/input'
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupInput,
-} from '@auxx/ui/components/input-group'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,27 +36,14 @@ import {
   CommandSeparator,
 } from '@auxx/ui/components/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@auxx/ui/components/dialog'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { Label } from '@auxx/ui/components/label'
-import { RadioGroup, RadioGroupItemCard } from '@auxx/ui/components/radio-group'
-import { Combobox } from '@auxx/ui/components/combobox'
-import { api } from '~/trpc/react'
 import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 import type { TableView, ViewAction, ViewConfig } from '../../types'
 import { cn } from '@auxx/ui/lib/utils'
-import { incrementTitle } from '@auxx/utils'
-import { Tooltip } from '~/components/global/tooltip'
 import type { ModelType } from '@auxx/types/custom-field'
-import { useViewStore } from '../../stores/view-store'
 import { useConfirm } from '~/hooks/use-confirm'
+import { Tooltip } from '~/components/global/tooltip'
+import { CreateViewDialog, RenameViewDialog } from '../dialogs'
+import { useViewMutations } from '../../hooks/use-view-mutations'
 
 /** Select field for kanban grouping */
 interface SelectField {
@@ -116,6 +96,8 @@ export function ViewSelector({
 }: ViewSelectorProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [showRenameDialog, setShowRenameDialog] = useState(false)
+  const [open, setOpen] = useState(false)
   const [confirmDelete, ConfirmDeleteDialog] = useConfirm()
 
   // Sync external control with internal state
@@ -124,92 +106,9 @@ export function ViewSelector({
     setShowCreateDialog(open)
     onCreateDialogChange?.(open)
   }
-  const [showRenameDialog, setShowRenameDialog] = useState(false)
-  const [newViewName, setNewViewName] = useState('')
-  const [open, setOpen] = useState(false)
-  const [viewType, setViewType] = useState<'table' | 'kanban'>('table')
-  const [selectedFieldId, setSelectedFieldId] = useState<string>('')
-  /** State for inline field creation */
-  const [isCreatingField, setIsCreatingField] = useState(false)
-  const [newFieldName, setNewFieldName] = useState('')
 
-  const utils = api.useUtils()
-
-  // Store actions for syncing
-  const addViewToStore = useViewStore((state) => state.addView)
-  const removeViewFromStore = useViewStore((state) => state.removeView)
-  const updateViewMeta = useViewStore((state) => state.updateViewMeta)
-  const setTableViews = useViewStore((state) => state.setTableViews)
-
-  // Mutations - sync with store on success
-  const createView = api.tableView.create.useMutation({
-    onSuccess: (newView) => {
-      toastSuccess({ title: 'View created successfully' })
-      handleCreateDialogChange(false)
-      setNewViewName('')
-      // Add to store immediately
-      addViewToStore(newView as TableView)
-      // Also invalidate for backward compatibility
-      utils.tableView.list.invalidate({ tableId })
-    },
-    onError: (error) => {
-      toastError({ title: 'Failed to create view', description: error.message })
-    },
-  })
-
-  const updateView = api.tableView.update.useMutation({
-    onSuccess: (updatedView) => {
-      toastSuccess({ title: 'View updated successfully' })
-      setShowRenameDialog(false)
-      setNewViewName('')
-      // Update store with new metadata
-      updateViewMeta(updatedView.id, { name: updatedView.name })
-      utils.tableView.list.invalidate({ tableId })
-    },
-    onError: (error) => {
-      toastError({ title: 'Failed to update view', description: error.message })
-    },
-  })
-
-  const deleteView = api.tableView.delete.useMutation({
-    onSuccess: (_data, variables) => {
-      toastSuccess({ title: 'View deleted successfully' })
-      if (activeView?.id === variables.id) {
-        onViewSelect(null)
-      }
-      // Remove from store immediately
-      removeViewFromStore(variables.id, tableId)
-      utils.tableView.list.invalidate({ tableId })
-    },
-    onError: (error) => {
-      toastError({ title: 'Failed to delete view', description: error.message })
-    },
-  })
-
-  const duplicateView = api.tableView.duplicate.useMutation({
-    onSuccess: (newView) => {
-      toastSuccess({ title: 'View duplicated successfully' })
-      // Add duplicated view to store
-      addViewToStore(newView as TableView)
-      utils.tableView.list.invalidate({ tableId })
-    },
-    onError: (error) => {
-      toastError({ title: 'Failed to duplicate view', description: error.message })
-    },
-  })
-
-  const setDefaultView = api.tableView.setDefault.useMutation({
-    onSuccess: async () => {
-      // Refetch to get updated isDefault flags and update store
-      const result = await utils.tableView.list.fetch({ tableId })
-      if (result) {
-        setTableViews(tableId, result as TableView[])
-      }
-    },
-    onError: (error) => {
-      toastError({ title: 'Failed to set default view', description: error.message })
-    },
-  })
+  // View mutations hook
+  const { duplicateView, deleteView, setDefaultView } = useViewMutations(tableId, onViewSelect)
 
   // Filter views based on search
   const filteredViews = views.filter((view) =>
@@ -228,7 +127,6 @@ export function ViewSelector({
         break
 
       case 'rename':
-        setNewViewName(view.name)
         setShowRenameDialog(true)
         break
 
@@ -242,6 +140,10 @@ export function ViewSelector({
         })
         if (confirmed) {
           await deleteView.mutateAsync({ id: viewId })
+          // If deleting active view, switch to default
+          if (activeView?.id === viewId) {
+            onViewSelect(null)
+          }
         }
         break
 
@@ -250,69 +152,6 @@ export function ViewSelector({
         break
     }
   }
-
-  const handleCreateView = async () => {
-    // For kanban, need either a selected field or a new field name
-    if (viewType === 'kanban' && !selectedFieldId && !newFieldName.trim()) return
-
-    // Generate name if not provided
-    const existingNames = new Set(views.map((v) => v.name))
-    const baseTitle = viewType === 'kanban' ? 'Kanban View' : 'Table View'
-    const viewName = newViewName.trim() || incrementTitle(baseTitle, existingNames)
-
-    const config: ViewConfig = {
-      filters: currentFilters ?? [],
-      sorting: [],
-      columnVisibility: {},
-      columnOrder: [],
-      columnSizing: {},
-      viewType,
-      ...(viewType === 'kanban' && {
-        kanban: {
-          // Use empty string if creating new field - backend will populate
-          groupByFieldId: selectedFieldId || '',
-        },
-      }),
-    }
-
-    // If creating new field, pass newField config with modelType
-    const newField =
-      viewType === 'kanban' && !selectedFieldId && newFieldName.trim() && modelType
-        ? {
-            name: newFieldName.trim(),
-            modelType,
-            entityDefinitionId: modelType === 'entity' ? entityDefinitionId : null,
-          }
-        : undefined
-
-    const newView = await createView.mutateAsync({
-      tableId,
-      name: viewName,
-      config,
-      newField,
-    })
-
-    // Navigate to the newly created view
-    onViewSelect(newView.id)
-
-    // Reset state
-    setNewViewName('')
-    setViewType('table')
-    setSelectedFieldId('')
-    setNewFieldName('')
-    setIsCreatingField(false)
-  }
-
-  const handleRenameView = async () => {
-    if (!activeView || !newViewName.trim()) return
-
-    await updateView.mutateAsync({ id: activeView.id, name: newViewName })
-  }
-
-  const isDefaultView = activeView?.isDefault || false
-  const canSave = Boolean(activeView && hasUnsavedChanges && !isSaving)
-  const showUnsavedBadge = Boolean(activeView && hasUnsavedChanges && !isSaving)
-
 
   const handleSave = async () => {
     if (!activeView || !onSave) {
@@ -327,6 +166,10 @@ export function ViewSelector({
       toastError({ title: 'Failed to save view', description: message })
     }
   }
+
+  const isDefaultView = activeView?.isDefault || false
+  const canSave = Boolean(activeView && hasUnsavedChanges && !isSaving)
+  const showUnsavedBadge = Boolean(activeView && hasUnsavedChanges && !isSaving)
 
   return (
     <>
@@ -488,181 +331,25 @@ export function ViewSelector({
       </div>
 
       {/* Create view dialog */}
-      <Dialog open={isCreateDialogOpen} onOpenChange={handleCreateDialogChange}>
-        <DialogContent size="sm" position="tc">
-          <DialogHeader>
-            <DialogTitle>Create New View</DialogTitle>
-            <DialogDescription>
-              Create a new view to save your current configuration
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            {/* View name input */}
-            <div className="flex flex-col space-y-2">
-              <Label htmlFor="view-name">Name (Optional)</Label>
-              <Input
-                id="view-name"
-                value={newViewName}
-                onChange={(e) => setNewViewName(e.target.value)}
-                placeholder="View name..."
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handleCreateView()
-                  }
-                }}
-              />
-            </div>
-
-            {/* View type selector */}
-            <div className="flex flex-col space-y-2">
-              <Label>View Type</Label>
-              <RadioGroup
-                value={viewType}
-                onValueChange={(v) => setViewType(v as 'table' | 'kanban')}>
-                <RadioGroupItemCard
-                  label="Table"
-                  value="table"
-                  icon={<Table2 />}
-                  description="Organize your records on a table"
-                />
-                <RadioGroupItemCard
-                  label="Kanban"
-                  value="kanban"
-                  icon={<LayoutGrid />}
-                  description="Organize records on a pipeline"
-                />
-              </RadioGroup>
-            </div>
-
-            {/* Field selector for kanban */}
-            {viewType === 'kanban' && (
-              <div className="space-y-2 flex flex-col">
-                <Label>Group by field</Label>
-                {isCreatingField ? (
-                  // Inline creation mode - Input field
-                  <InputGroup>
-                    <InputGroupInput
-                      value={newFieldName}
-                      onChange={(e) => setNewFieldName(e.target.value)}
-                      placeholder="Field name..."
-                      autoFocus
-                      onKeyDown={(e) => {
-                        if (e.key === 'Escape') {
-                          setIsCreatingField(false)
-                          setNewFieldName('')
-                        }
-                      }}
-                    />
-                    <InputGroupAddon align="inline-end">
-                      <InputGroupButton
-                        type="button"
-                        className="rounded-lg me-0.5"
-                        variant="destructive-hover"
-                        aria-label="Cancel"
-                        title="Cancel"
-                        size="xs"
-                        onClick={() => {
-                          setIsCreatingField(false)
-                          setNewFieldName('')
-                        }}>
-                        Cancel
-                      </InputGroupButton>
-                    </InputGroupAddon>
-                  </InputGroup>
-                ) : (
-                  // Combobox selection mode
-                  <Combobox
-                    options={(selectFields ?? []).map((f) => ({ value: f.id, label: f.name }))}
-                    placeholder="Select a status field..."
-                    emptyText="No single-select fields found"
-                    value={selectedFieldId}
-                    onChangeValue={(value) => {
-                      setSelectedFieldId(value)
-                      setNewFieldName('') // Clear any pending new field name
-                    }}
-                    addAction={
-                      modelType // Show add action if we have a modelType
-                        ? {
-                            label: 'New Status Field',
-                            onAdd: () => {
-                              setIsCreatingField(true)
-                              setSelectedFieldId('') // Clear selected field when creating new
-                            },
-                          }
-                        : undefined
-                    }
-                  />
-                )}
-                {/* Show the new field name that will be created */}
-                {isCreatingField && newFieldName.trim() && (
-                  <p className="text-xs text-muted-foreground">
-                    A new &quot;{newFieldName}&quot; field will be created when you save this view.
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button size="sm" variant="ghost" onClick={() => handleCreateDialogChange(false)}>
-              Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
-            </Button>
-            <Button
-              data-dialog-submit
-              onClick={handleCreateView}
-              size="sm"
-              variant="outline"
-              loading={createView.isPending}
-              loadingText="Creating..."
-              disabled={
-                createView.isPending ||
-                (viewType === 'kanban' && !selectedFieldId && !newFieldName.trim())
-              }>
-              Create View <KbdSubmit variant="outline" size="sm" />
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <CreateViewDialog
+        open={isCreateDialogOpen}
+        onOpenChange={handleCreateDialogChange}
+        tableId={tableId}
+        views={views}
+        selectFields={selectFields}
+        modelType={modelType}
+        entityDefinitionId={entityDefinitionId}
+        currentFilters={currentFilters}
+        onViewCreated={onViewSelect}
+      />
 
       {/* Rename view dialog */}
-      <Dialog open={showRenameDialog} onOpenChange={setShowRenameDialog}>
-        <DialogContent size="sm" position="tc">
-          <DialogHeader>
-            <DialogTitle>Rename View</DialogTitle>
-            <DialogDescription>Enter a new name for this view</DialogDescription>
-          </DialogHeader>
-
-          <div className="grid gap-2">
-            <Label htmlFor="rename-view">View name</Label>
-            <Input
-              id="rename-view"
-              value={newViewName}
-              onChange={(e) => setNewViewName(e.target.value)}
-              placeholder="My custom view"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  handleRenameView()
-                }
-              }}
-            />
-          </div>
-
-          <DialogFooter>
-            <Button size="sm" variant="ghost" onClick={() => setShowRenameDialog(false)}>
-              Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
-            </Button>
-            <Button
-              data-dialog-submit
-              size="sm"
-              variant="outline"
-              onClick={handleRenameView}
-              disabled={!newViewName.trim() || updateView.isPending}>
-              Rename View <KbdSubmit variant="outline" size="sm" />
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <RenameViewDialog
+        open={showRenameDialog}
+        onOpenChange={setShowRenameDialog}
+        view={activeView}
+        tableId={tableId}
+      />
 
       <ConfirmDeleteDialog />
     </>
