@@ -40,7 +40,7 @@ export interface ExecutionContext {
   db: Database
   organizationId: string
   userId: string
-  targetTable: string
+  entityDefinitionId: string
   onProgress?: (progress: ExecutionProgress) => void
 }
 

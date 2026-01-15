@@ -29,8 +29,8 @@ import type { ImportStep } from './types'
 const stepParser = parseAsStringLiteral(IMPORT_STEPS).withDefault('upload')
 
 interface ImportPageProps {
-  /** Target resource type (e.g., 'contact', 'entity_product') */
-  targetTable: string
+  /** Entity definition ID (e.g., 'contact', 'ticket', or custom entity UUID) */
+  entityDefinitionId: string
   /** Resource display name for breadcrumb */
   resourceLabel: string
   /** Base path for breadcrumb navigation */
@@ -47,7 +47,7 @@ interface ImportPageProps {
  * Uses nuqs for URL-based step navigation.
  */
 export function ImportPage({
-  targetTable,
+  entityDefinitionId,
   resourceLabel,
   basePath,
   importBasePath,
@@ -72,7 +72,7 @@ export function ImportPage({
   >()
 
   const wizard = useImportWizard({
-    targetTable,
+    entityDefinitionId,
     jobId: actualJobId,
     currentStep,
     mapColumnsData,
@@ -155,7 +155,7 @@ export function ImportPage({
   const renderStep = () => {
     switch (currentStep) {
       case 'upload':
-        return <StepUpload targetTable={targetTable} onComplete={handleUploadComplete} />
+        return <StepUpload entityDefinitionId={entityDefinitionId} onComplete={handleUploadComplete} />
       case 'map-columns':
         return (
           <StepMapColumns

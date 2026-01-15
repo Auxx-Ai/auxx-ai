@@ -308,20 +308,6 @@ export interface DynamicTableProps<TData = any> {
   /** Cell selection configuration */
   cellSelection?: CellSelectionConfig
 
-  /** SINGLE_SELECT fields for kanban view grouping */
-  selectFields?: Array<{
-    id: string
-    name: string
-    type?: string
-    options?: { options?: Array<{ id: string; label: string; color?: string }> }
-  }>
-
-  /** All custom fields for kanban card display */
-  customFields?: CustomField[]
-
-  /** Primary display field ID for kanban cards */
-  primaryFieldId?: string
-
   /** Entity label for "New X" buttons in kanban */
   entityLabel?: string
 
@@ -342,9 +328,6 @@ export interface DynamicTableProps<TData = any> {
 
   /** Entity definition ID for field creation */
   entityDefinitionId?: string
-
-  /** Resource type ID for server-side filtering (e.g., 'contact', 'ticket', 'entity_abc123') */
-  resourceType?: string
 }
 
 

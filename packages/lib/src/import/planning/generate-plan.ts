@@ -32,7 +32,7 @@ export interface GeneratePlanOptions {
   db: Database
   organizationId: string
   jobId: string
-  targetTable: string
+  entityDefinitionId: string
   rawData: Map<number, Record<number, string>>
   mappings: ImportMappingProperty[]
   resolutions: Map<string, ValueResolution>
@@ -64,7 +64,7 @@ export async function generatePlan(options: GeneratePlanOptions): Promise<Genera
     db,
     organizationId,
     jobId,
-    targetTable,
+    entityDefinitionId,
     rawData,
     mappings,
     resolutions,
@@ -87,10 +87,10 @@ export async function generatePlan(options: GeneratePlanOptions): Promise<Genera
 
   // Get resource definition and identifier field
   const registry = new ResourceRegistryService(organizationId, db)
-  const resource = await registry.getById(targetTable)
+  const resource = await registry.getById(entityDefinitionId)
 
   logger.info('Planning: Resource lookup', {
-    targetTable,
+    entityDefinitionId,
     resourceFound: !!resource,
     resourceId: resource?.id,
     fieldCount: resource?.fields.length,

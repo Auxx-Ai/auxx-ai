@@ -51,11 +51,10 @@ export function TableToolbar<TData = any>({ children, className }: TableToolbarP
     onRefresh,
     selectFields,
     entityDefinitionId,
-    resourceType,
   } = useTableContext<TData>()
 
   // Get filterable fields from resource system
-  const { filterableFields } = useResourceFields(resourceType ?? null)
+  const { filterableFields } = useResourceFields(entityDefinitionId ?? null)
 
   // Determine view type
   const viewType: ViewType = (currentView?.config as ViewConfig)?.viewType ?? 'table'
@@ -108,13 +107,13 @@ export function TableToolbar<TData = any>({ children, className }: TableToolbarP
         table={table}
       />
 
-      {/* Filter Button - only shown when resourceType is available */}
-      {enableFiltering && resourceType && (
+      {/* Filter Button - only shown when entityDefinitionId is available */}
+      {enableFiltering && entityDefinitionId && (
         <TableFilterBuilder
           filters={filters}
           onFiltersChange={setFilters}
           filterableFields={filterableFields}
-          resourceType={resourceType}
+          resourceType={entityDefinitionId}
         />
       )}
 

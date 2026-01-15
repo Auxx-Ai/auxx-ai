@@ -21,8 +21,8 @@ export interface ColumnHeaderWithSamples extends ColumnHeader {
 export interface AutoMapOptions {
   /** Force use of specific strategy */
   strategy?: 'ai' | 'fallback' | 'auto'
-  /** Target table name for context */
-  targetTable: string
+  /** Entity definition ID for context */
+  entityDefinitionId: string
 }
 
 /**
@@ -107,7 +107,7 @@ export async function orchestrateAutoMap(
           sampleValues: h.sampleValues,
         })),
         targetFields: fields,
-        entityDefinitionId: options.relatedEntityDefinitionId,
+        entityDefinitionId: options.entityDefinitionId,
       }
 
       const aiResults = await aiAutoMapColumns(db, organizationId, userId, input)

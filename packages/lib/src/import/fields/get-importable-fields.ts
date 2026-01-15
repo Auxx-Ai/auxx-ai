@@ -17,8 +17,8 @@ export interface ImportableField {
   isIdentifier: boolean
   group: FieldGroup
   relationConfig?: {
-    targetTable: string
-    cardinality: 'one-to-many' | 'many-to-one'
+    relatedEntityDefinitionId: string
+    relationshipType: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
     /** Target resource for relationship resolution during import */
     targetResource?: {
       displayField?: string // Field to match by (e.g., 'name')
@@ -87,7 +87,7 @@ export function getImportableFields(
         isIdentifier: false,
         group: 'relationship' as FieldGroup,
         relationConfig: {
-          targetTable: field.relationship!.relatedEntityDefinitionId,
+          relatedEntityDefinitionId: field.relationship!.relatedEntityDefinitionId,
           relationshipType: field.relationship!.relationshipType,
         },
       }))

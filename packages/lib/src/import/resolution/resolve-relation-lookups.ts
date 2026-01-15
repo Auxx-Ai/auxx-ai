@@ -34,8 +34,8 @@ export interface PendingRelationLookup {
   hash: string
   /** ImportJobProperty ID */
   jobPropertyId: string
-  /** Target resource type (e.g., 'contact', 'entity_companies') */
-  targetTable: string
+  /** Target entity definition ID (e.g., 'contact', 'ticket', or custom entity UUID) */
+  entityDefinitionId: string
   /** Field to match on (e.g., 'email', 'name') */
   matchField: string
   /** Value to search for */
@@ -69,23 +69,23 @@ export async function resolveRelationLookups(
 
   logger.info('Resolving relation lookups', {
     count: pendingLookups.length,
-    tables: [...new Set(pendingLookups.map((l) => l.relatedEntityDefinitionId))],
+    tables: [...new Set(pendingLookups.map((l) => l.entityDefinitionId))],
   })
 
   const registry = new ResourceRegistryService(organizationId, db)
   const results: RelationLookupResult[] = []
 
-  // Group by target table for batch queries
-  const byTable = new Map<string, PendingRelationLookup[]>()
+  // Group by entity definition for batch queries
+  const byEntity = new Map<string, PendingRelationLookup[]>()
   for (const lookup of pendingLookups) {
-    const existing = byTable.get(lookup.relatedEntityDefinitionId) ?? []
+    const existing = byEntity.get(lookup.entityDefinitionId) ?? []
     existing.push(lookup)
-    byTable.set(lookup.relatedEntityDefinitionId, existing)
+    byEntity.set(lookup.entityDefinitionId, existing)
   }
 
-  // Process each table
-  for (const [targetTable, lookups] of byTable) {
-    const tableResults = await resolveLookupsForTable(db, organizationId, registry, targetTable, lookups)
+  // Process each entity
+  for (const [entityDefinitionId, lookups] of byEntity) {
+    const tableResults = await resolveLookupsForTable(db, organizationId, registry, entityDefinitionId, lookups)
     results.push(...tableResults)
   }
 

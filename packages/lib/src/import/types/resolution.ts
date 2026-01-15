@@ -32,9 +32,9 @@ export interface ResolutionConfig {
 
   /** Relation resolution config (from ResourceRegistryService) */
   relationConfig?: {
-    targetTable: string // e.g., 'contact', 'entity_product'
+    relatedEntityDefinitionId: string // e.g., 'contact', 'ticket', or custom UUID
     matchField?: string // Field to match on (defaults to displayNameField)
-    cardinality: 'one-to-many' | 'many-to-one'
+    relationshipType: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
   }
 }
 
@@ -88,7 +88,7 @@ export interface ColumnFieldConfig {
   resolutionType: string // e.g., 'select:value', 'relation:match'
   enumValues?: Array<{ dbValue: string; label: string }>
   relationConfig?: {
-    targetTable: string
-    cardinality: 'one-to-many' | 'many-to-one'
+    relatedEntityDefinitionId: string
+    relationshipType: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
   }
 }

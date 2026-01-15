@@ -21,9 +21,12 @@ import type {
   KanbanViewConfig,
   ViewConfig,
   CellSelectionState,
+  ResourceField,
+  CustomField,
 } from './types'
 import { Button } from '@auxx/ui/components/button'
 import { X } from 'lucide-react'
+import { useResourceFields } from '~/components/resources/hooks'
 import './styles/table.css'
 
 /**
@@ -234,9 +237,6 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
     emptyState = null,
     headerActions,
     cellSelection,
-    selectFields,
-    customFields,
-    primaryFieldId,
     entityLabel,
     onAddNew,
     onCardClick,
@@ -244,12 +244,32 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
     selectedKanbanCardIds: controlledSelectedCardIds,
     onSelectedKanbanCardIdsChange,
     entityDefinitionId,
-    resourceType,
     ...tableProps
   } = props
 
   // Compute enableBulkActions from bulkActions
   const enableBulkActions = Boolean(bulkActions.length)
+
+  // Derive selectFields and customFields from entityDefinitionId
+  const { fields } = useResourceFields(entityDefinitionId || '')
+
+  const selectFields = useMemo(() => {
+    if (!fields) return []
+    return fields
+      .filter((f): f is ResourceField & { id: string } =>
+        !!f.id && f.fieldType === 'SINGLE_SELECT' && f.active !== false
+      )
+      .map((f) => ({
+        id: f.id,
+        name: f.name ?? f.label,
+        options: f.options as { options?: Array<{ id: string; label: string; color?: string }> },
+      }))
+  }, [fields])
+
+  const customFields = useMemo(() => {
+    if (!fields) return []
+    return fields.filter((f): f is CustomField => !!f.id)
+  }, [fields])
 
   // Get table state from hook
   const tableState = useDynamicTable({ ...tableProps, bulkActions })
@@ -376,13 +396,11 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
       // Kanban-specific props
       selectFields,
       customFields,
-      primaryFieldId,
       entityLabel,
       onAddNew,
       onCardClick,
       onAddCard,
       entityDefinitionId,
-      resourceType,
       selectedKanbanCardIds,
       onSelectedKanbanCardIdsChange: setSelectedKanbanCardIds,
     }),
@@ -439,13 +457,11 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
       // Kanban deps
       selectFields,
       customFields,
-      primaryFieldId,
       entityLabel,
       onAddNew,
       onCardClick,
       onAddCard,
       entityDefinitionId,
-      resourceType,
       selectedKanbanCardIds,
       setSelectedKanbanCardIds,
     ]

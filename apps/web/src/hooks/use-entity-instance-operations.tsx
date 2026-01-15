@@ -192,11 +192,8 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
   /** Handle saving a new custom field */
   const handleSaveField = useCallback(
     async (fieldData: Record<string, unknown>) => {
-      // modelType is derived from entityDefinitionId on server
-      await createField.mutateAsync({
-        ...fieldData,
-        entityDefinitionId,
-      })
+      // entityDefinitionId is now included by CustomFieldDialog
+      await createField.mutateAsync(fieldData)
       // Invalidate custom fields query
       utils.customField.getByEntityDefinition.invalidate({ entityDefinitionId })
       // Also refresh data to pick up new column

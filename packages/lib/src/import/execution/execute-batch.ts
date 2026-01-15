@@ -18,7 +18,7 @@ export interface BatchRecord {
 export interface ExecuteBatchContext {
   organizationId: string
   userId: string
-  targetTable: string
+  entityDefinitionId: string
   strategy: StrategyType
   /** Function to create records in bulk (if available) */
   bulkCreate?: (

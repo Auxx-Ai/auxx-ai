@@ -98,6 +98,8 @@ interface CustomFieldDialogProps {
   editingField?: CustomFieldData | null
   onSave: (field: any) => Promise<void>
   isPending: boolean
+  /** Entity definition ID - required for creating fields */
+  entityDefinitionId?: string
   /** Resource ID for the current entity (used by relationship field editor) */
   currentResourceId?: string
 }
@@ -113,6 +115,7 @@ export function CustomFieldDialog({
   editingField = null,
   onSave,
   isPending,
+  entityDefinitionId,
   currentResourceId,
 }: CustomFieldDialogProps) {
   const isEditing = !!editingField
@@ -411,6 +414,7 @@ export function CustomFieldDialog({
     const submitObj: any = {
       ...values,
       id: editingField?.id || uuidv4(),
+      entityDefinitionId,
     }
 
     // Add type-specific options

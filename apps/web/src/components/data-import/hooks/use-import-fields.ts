@@ -95,7 +95,7 @@ export function useImportFields(
           isIdentifier: false,
           group: 'relationship' as FieldGroup,
           relationConfig: {
-            targetTable: f.relationship!.relatedEntityDefinitionId,
+            relatedEntityDefinitionId: f.relationship!.relatedEntityDefinitionId,
             relationshipType: f.relationship!.relationshipType,
           },
         }))

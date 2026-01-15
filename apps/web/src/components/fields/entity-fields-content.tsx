@@ -158,6 +158,7 @@ export function EntityFieldsContent({
           editingField={editingField}
           onSave={handleSaveField}
           isPending={isPending}
+          entityDefinitionId={entityDefinitionId}
           currentResourceId={entityDefinitionId}
         />
       )}

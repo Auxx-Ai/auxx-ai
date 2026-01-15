@@ -99,7 +99,7 @@ export async function executePlanJob(job: Job<ExecutePlanJobProps>): Promise<voi
 
     // Create CRUD service and record functions
     const crudService = new ResourceCrudService(db, organizationId, userId)
-    const targetTable = importJob.importMapping.targetTable
+    const entityDefinitionId = importJob.importMapping.entityDefinitionId
 
     const createRecord = async (data: {
       standardFields: Record<string, unknown>
@@ -112,13 +112,13 @@ export async function executePlanJob(job: Job<ExecutePlanJobProps>): Promise<voi
         ...data.customFields,
       }
 
-      const result = await crudService.create(targetTable, mergedData, { skipEvents: true })
+      const result = await crudService.create(entityDefinitionId, mergedData, { skipEvents: true })
 
       if (!result.success) {
         throw new Error(result.error || 'Failed to create record')
       }
 
-      logger.debug('Created record', { id: result.id, targetTable })
+      logger.debug('Created record', { id: result.id, entityDefinitionId })
       return { id: result.id }
     }
 
@@ -134,13 +134,13 @@ export async function executePlanJob(job: Job<ExecutePlanJobProps>): Promise<voi
         ...data.customFields,
       }
 
-      const result = await crudService.update(targetTable, id, mergedData, { skipEvents: true })
+      const result = await crudService.update(entityDefinitionId, id, mergedData, { skipEvents: true })
 
       if (!result.success) {
         throw new Error(result.error || 'Failed to update record')
       }
 
-      logger.debug('Updated record', { id, targetTable })
+      logger.debug('Updated record', { id, entityDefinitionId })
       return { id: result.id }
     }
 
@@ -159,7 +159,7 @@ export async function executePlanJob(job: Job<ExecutePlanJobProps>): Promise<voi
       userId,
       jobId,
       plan: planData,
-      targetTable: importJob.importMapping.targetTable,
+      entityDefinitionId: importJob.importMapping.entityDefinitionId,
       mappings,
       resolutions,
       createRecord,

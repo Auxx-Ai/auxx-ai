@@ -8,7 +8,7 @@ import { IMPORT_STEPS } from '../constants'
 import type { ImportStep, StepStatus, StepData } from '../types'
 
 interface UseImportWizardOptions {
-  targetTable: string
+  entityDefinitionId: string
   jobId: string | null
   currentStep: ImportStep
   /** Optional override for map-columns data (avoids extra DB calls) */

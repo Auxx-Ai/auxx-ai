@@ -44,7 +44,7 @@ export const dataImportRouter = createTRPCRouter({
   createJob: protectedProcedure
     .input(
       z.object({
-        targetTable: z.string(),
+        entityDefinitionId: z.string(),
         fileName: z.string(),
         headers: z.array(z.object({ index: z.number(), name: z.string() })),
         columnCount: z.number(),
@@ -59,7 +59,7 @@ export const dataImportRouter = createTRPCRouter({
           organizationId,
           userId,
           fileName: input.fileName,
-          targetTable: input.relatedEntityDefinitionId,
+          entityDefinitionId: input.entityDefinitionId,
           headers: input.headers,
           columnCount: input.columnCount,
           rowCount: input.rowCount,
@@ -151,13 +151,13 @@ export const dataImportRouter = createTRPCRouter({
       // Run initial auto-mapping (fallback only, no AI cost)
       try {
         const registry = new ResourceRegistryService(organizationId, ctx.db)
-        const resource = await registry.getById(job.importMapping.relatedEntityDefinitionId)
+        const resource = await registry.getById(job.importMapping.entityDefinitionId)
 
         if (resource) {
           const result = await runAutoMap(ctx.db, resource, {
             jobId: input.jobId,
             importMappingId: job.importMappingId,
-            targetTable: job.importMapping.relatedEntityDefinitionId,
+            entityDefinitionId: job.importMapping.entityDefinitionId,
             organizationId,
             userId,
             strategy: 'fallback',
@@ -179,7 +179,7 @@ export const dataImportRouter = createTRPCRouter({
   getImportableFields: protectedProcedure
     .input(
       z.object({
-        targetTable: z.string(),
+        entityDefinitionId: z.string(),
         includeIdentifiers: z.boolean().optional().default(false),
         includeRelationships: z.boolean().optional().default(true),
       })
@@ -188,7 +188,7 @@ export const dataImportRouter = createTRPCRouter({
       const { organizationId } = ctx.session
       const registry = new ResourceRegistryService(organizationId, ctx.db)
 
-      const resource = await registry.getById(input.relatedEntityDefinitionId)
+      const resource = await registry.getById(input.entityDefinitionId)
       if (!resource) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Resource not found' })
       }
@@ -230,8 +230,8 @@ export const dataImportRouter = createTRPCRouter({
         matchField: z.string().optional(),
         relationConfig: z
           .object({
-            targetTable: z.string(),
-            cardinality: z.enum(['one-to-many', 'many-to-one']),
+            relatedEntityDefinitionId: z.string(),
+            relationshipType: z.enum(['belongs_to', 'has_one', 'has_many', 'many_to_many']),
           })
           .optional(),
         enumValues: z
@@ -288,9 +288,9 @@ export const dataImportRouter = createTRPCRouter({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Import job not found' })
       }
 
-      // Get resource for target table
+      // Get resource for target entity
       const registry = new ResourceRegistryService(organizationId, ctx.db)
-      const resource = await registry.getById(job.importMapping.relatedEntityDefinitionId)
+      const resource = await registry.getById(job.importMapping.entityDefinitionId)
 
       if (!resource) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Resource not found' })
@@ -300,7 +300,7 @@ export const dataImportRouter = createTRPCRouter({
       return runAutoMap(ctx.db, resource, {
         jobId: input.jobId,
         importMappingId: job.importMappingId,
-        targetTable: job.importMapping.relatedEntityDefinitionId,
+        entityDefinitionId: job.importMapping.entityDefinitionId,
         organizationId,
         userId,
         strategy: input.strategy,

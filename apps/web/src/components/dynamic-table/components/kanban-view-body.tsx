@@ -5,9 +5,8 @@ import { useCallback, useMemo, useState, useEffect } from 'react'
 import { KanbanView } from '../../kanban'
 import { useTableContext } from '../context/table-context'
 import type { ViewConfig, KanbanViewConfig, KanbanRow } from '../types'
-import type { ModelType } from '@auxx/types/custom-field'
 import { useViewStore } from '../stores/view-store'
-import { getModelType } from '@auxx/types/resource'
+import { useResource } from '~/components/resources'
 
 /**
  * Kanban view body that integrates with TableContext.
@@ -20,7 +19,6 @@ export function KanbanViewBody<TData extends KanbanRow>() {
     currentView,
     selectFields,
     customFields,
-    primaryFieldId,
     entityLabel,
     onCardClick,
     onAddCard,
@@ -30,11 +28,8 @@ export function KanbanViewBody<TData extends KanbanRow>() {
     onSelectedKanbanCardIdsChange,
   } = useTableContext<TData>()
 
-  // Derive modelType from entityDefinitionId
-  const modelType = useMemo(
-    () => (entityDefinitionId ? getModelType(entityDefinitionId) : ('contact' as ModelType)),
-    [entityDefinitionId]
-  )
+  // Get resource for primaryFieldId derivation
+  const { resource } = useResource(entityDefinitionId || null)
 
   const updateKanbanConfig = useViewStore((state) => state.updateKanbanConfig)
 
@@ -59,6 +54,15 @@ export function KanbanViewBody<TData extends KanbanRow>() {
     if (!kanbanConfig?.groupByFieldId || !selectFields) return null
     return selectFields.find((f) => f.id === kanbanConfig.groupByFieldId) ?? null
   }, [kanbanConfig?.groupByFieldId, selectFields])
+
+  // Derive primaryFieldId from viewConfig or resource
+  const primaryFieldId = useMemo(() => {
+    // Priority 1: View config
+    if (kanbanConfig?.primaryFieldId) return kanbanConfig.primaryFieldId
+
+    // Priority 2: Resource display field
+    return resource?.display.primaryDisplayField?.id
+  }, [kanbanConfig?.primaryFieldId, resource])
 
   // Handle column reorder with optimistic updates
   const handleColumnReorder = useCallback(
@@ -132,16 +136,14 @@ export function KanbanViewBody<TData extends KanbanRow>() {
       config={effectiveConfig}
       groupByField={groupByFieldForKanban}
       customFields={customFields ?? []}
-      primaryFieldId={effectiveConfig.primaryFieldId ?? primaryFieldId}
+      primaryFieldId={primaryFieldId}
       entityLabel={entityLabel}
       onCardClick={onCardClick}
       onAddCard={onAddCard}
       onColumnReorder={handleColumnReorder}
       isLoading={isLoading}
       onColumnVisibilityChange={handleColumnVisibilityChange}
-      resourceType={modelType === 'entity' ? 'entity' : 'contact'}
       entityDefinitionId={entityDefinitionId}
-      modelType={(modelType ?? 'contact') as ModelType}
       selectedCardIds={selectedKanbanCardIds}
       onSelectedCardIdsChange={onSelectedKanbanCardIdsChange}
     />

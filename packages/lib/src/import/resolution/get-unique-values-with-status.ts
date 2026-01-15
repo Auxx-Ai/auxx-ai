@@ -58,7 +58,7 @@ function buildFieldConfig(mappingProp: {
 
   const resolutionConfig = mappingProp.resolutionConfig as {
     enumValues?: Array<{ dbValue: string; label: string }>
-    relationConfig?: { targetTable: string; cardinality: 'one-to-many' | 'many-to-one' }
+    relationConfig?: { relatedEntityDefinitionId: string; relationshipType: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many' }
   } | null
 
   // Derive base type from resolution type

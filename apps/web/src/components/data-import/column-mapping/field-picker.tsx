@@ -54,7 +54,7 @@ export function FieldPicker({
   const [relationshipContext, setRelationshipContext] = useState<{
     fieldKey: string
     fieldLabel: string
-    targetTable: string
+    relatedEntityDefinitionId: string
   } | null>(null)
   const contentRef = useRef<HTMLDivElement>(null)
 
@@ -104,7 +104,7 @@ export function FieldPicker({
     setRelationshipContext({
       fieldKey: field.key,
       fieldLabel: field.label,
-      targetTable: field.relationConfig?.relatedEntityDefinitionId ?? '',
+      relatedEntityDefinitionId: field.relationConfig?.relatedEntityDefinitionId ?? '',
     })
     setSearch('')
     contentRef.current?.scrollTo(0, 0)
@@ -149,7 +149,7 @@ export function FieldPicker({
           setRelationshipContext({
             fieldKey: selectedField.key,
             fieldLabel: selectedField.label,
-            targetTable: selectedField.relationConfig.relatedEntityDefinitionId,
+            relatedEntityDefinitionId: selectedField.relationConfig.relatedEntityDefinitionId,
           })
         }
       }
@@ -176,7 +176,7 @@ export function FieldPicker({
           {isSelected ? (
             <Check className="" />
           ) : field.isRelation && field.relationConfig ? (
-            <RelationFieldIcon targetTable={field.relationConfig.relatedEntityDefinitionId} />
+            <RelationFieldIcon relatedEntityDefinitionId={field.relationConfig.relatedEntityDefinitionId} />
           ) : (
             getFieldIcon(field)
           )}
@@ -317,8 +317,8 @@ export function FieldPicker({
  * Component to render EntityIcon for relationship fields.
  * Fetches target resource to display its icon.
  */
-function RelationFieldIcon({ targetTable }: { targetTable: string }) {
-  const { resource } = useResource(targetTable)
+function RelationFieldIcon({ relatedEntityDefinitionId }: { relatedEntityDefinitionId: string }) {
+  const { resource } = useResource(relatedEntityDefinitionId)
 
   if (!resource) {
     return <Type className="h-4 w-4 text-muted-foreground" />

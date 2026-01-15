@@ -28,7 +28,12 @@ import {
   normalizeViewConfig,
   buildViewConfig,
 } from '../utils/view-config'
-import { useTableViews, useViewStore, useViewStoreInitialized } from '../stores/view-store'
+import {
+  useTableViews,
+  useViewStore,
+  useViewStoreInitialized,
+  useActiveViewConfig,
+} from '../stores/view-store'
 import { useViewStorePersistence } from './use-view-store-persistence'
 
 /**
@@ -65,7 +70,7 @@ export function useDynamicTable<TData extends Record<string, any>>({
   const isSaving = useViewStore((state) => state.isSaving)
   const resetToSaved = useViewStore((state) => state.resetToSaved)
   const setActiveViewInStore = useViewStore((state) => state.setActiveView)
-  const setSessionFilters = useViewStore((state) => state.setSessionFilters)
+  const updateSessionView = useViewStore((state) => state.updateSessionView)
 
   const currentView = useMemo(() => {
     if (!urlState.v) {
@@ -102,6 +107,9 @@ export function useDynamicTable<TData extends Record<string, any>>({
 
   // Initialize persistence (triggers auto-save on changes)
   useViewStorePersistence(currentView?.id ?? null, tableId)
+
+  // Get active view config (includes pending changes and session view)
+  const activeViewConfig = useActiveViewConfig(tableId)
 
   const baseViewConfig = useMemo(() => {
     if (currentView) {
@@ -229,6 +237,29 @@ export function useDynamicTable<TData extends Record<string, any>>({
 
   const lastAppliedViewIdRef = useRef<string | null>(currentView?.id ?? null)
 
+  // Sync external changes from store to local state (for column-manager)
+  // Only sync columnVisibility and columnOrder to avoid infinite loops
+  useEffect(() => {
+    if (!activeViewConfig) return
+
+    const storeVisibility = activeViewConfig.columnVisibility ?? {}
+    const storeOrder = activeViewConfig.columnOrder ?? []
+
+    // Only update if different (avoid infinite loop)
+    setColumnVisibility((current) => {
+      const currentStr = JSON.stringify(current)
+      const storeStr = JSON.stringify(storeVisibility)
+      return currentStr !== storeStr ? storeVisibility : current
+    })
+
+    setColumnOrder((current) => {
+      const currentStr = JSON.stringify(current)
+      const storeOrderWithSpecial = applySpecialColumnOrder(storeOrder)
+      const storeStr = JSON.stringify(storeOrderWithSpecial)
+      return currentStr !== storeStr ? storeOrderWithSpecial : current
+    })
+  }, [activeViewConfig, applySpecialColumnOrder])
+
   useEffect(() => {
     const viewId = currentView?.id ?? null
 
@@ -245,12 +276,12 @@ export function useDynamicTable<TData extends Record<string, any>>({
     }
 
     // Switching to a view - apply its config including filters
-    // Also clear session filters since we're now using view filters
+    // Also clear session view since we're now using view filters
     const nextConfig = normalizeViewConfig(currentView.config)
     applyViewConfig(nextConfig)
-    setSessionFilters(tableId, [])
+    updateSessionView(tableId, { filters: [] })
     lastAppliedViewIdRef.current = viewId
-  }, [applyViewConfig, currentView, tableId, setSessionFilters])
+  }, [applyViewConfig, currentView, tableId, updateSessionView])
 
   const checkboxColumn: ColumnDef<TData> = useMemo(
     () => ({
@@ -451,9 +482,9 @@ export function useDynamicTable<TData extends Record<string, any>>({
     // Only sync when NO view is selected
     if (currentView?.id) return
 
-    // Sync filters to sessionFilters store
-    setSessionFilters(tableId, localFilters)
-  }, [currentView?.id, tableId, localFilters, setSessionFilters])
+    // Sync filters to session view store
+    updateSessionView(tableId, { filters: localFilters })
+  }, [currentView?.id, tableId, localFilters, updateSessionView])
 
   // Compute dirty/saving state from store
   const hasUnsavedViewChanges = currentView?.id ? hasUnsavedChanges(currentView.id) : false

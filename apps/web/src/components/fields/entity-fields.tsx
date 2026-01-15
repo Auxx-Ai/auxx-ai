@@ -217,11 +217,8 @@ function EntityFields({
     if (editingField) {
       await update.mutateAsync({ ...fieldData, id: editingField.id })
     } else {
-      // modelType is derived from entityDefinitionId on server
-      await create.mutateAsync({
-        ...fieldData,
-        entityDefinitionId,
-      })
+      // entityDefinitionId is now included by CustomFieldDialog
+      await create.mutateAsync(fieldData)
     }
 
     setEditingField(null)

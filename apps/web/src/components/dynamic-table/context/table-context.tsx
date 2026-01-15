@@ -32,14 +32,11 @@ interface TableContextValue<TData = any> {
   enableCheckbox: boolean
   showRowNumbers?: boolean
 
-  /** SINGLE_SELECT fields for kanban view grouping */
+  /** SINGLE_SELECT fields for kanban view grouping (derived from entityDefinitionId) */
   selectFields?: SelectField[]
 
-  /** All custom fields for kanban card display */
+  /** All custom fields for kanban card display (derived from entityDefinitionId) */
   customFields?: CustomField[]
-
-  /** Primary display field ID for kanban cards */
-  primaryFieldId?: string
 
   /** Entity label for "New X" buttons in kanban */
   entityLabel?: string
@@ -49,9 +46,6 @@ interface TableContextValue<TData = any> {
 
   /** Entity definition ID for field creation */
   entityDefinitionId?: string
-
-  /** Resource type ID for server-side filtering (e.g., 'contact', 'ticket', 'entity_abc123') */
-  resourceType?: string
 
   // Kanban callbacks
   /** Callback when kanban card is clicked */

@@ -7,7 +7,7 @@ import { Button } from '@auxx/ui/components/button'
 import { EntityIcon } from '@auxx/ui/components/icons'
 
 interface ImportCompleteCardProps {
-  targetTable: string
+  entityDefinitionId: string
   statistics: {
     created: number
     updated: number
@@ -20,7 +20,7 @@ interface ImportCompleteCardProps {
  * Card displayed when import is complete, showing final statistics.
  */
 export function ImportCompleteCard({
-  targetTable,
+  entityDefinitionId,
   statistics,
   onComplete,
 }: ImportCompleteCardProps) {
@@ -33,7 +33,7 @@ export function ImportCompleteCard({
             <EntityIcon iconId="check" variant="muted" />
             <div className="min-w-0">
               <p className="font-medium text-sm">Import Complete</p>
-              <p className="text-sm text-muted-foreground">{targetTable}</p>
+              <p className="text-sm text-muted-foreground">{entityDefinitionId}</p>
             </div>
           </div>
           <CheckCircle2 className="size-5 text-green-500" />

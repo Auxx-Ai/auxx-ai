@@ -114,7 +114,7 @@ export function StepConfirmImport({ jobId, onComplete }: StepConfirmImportProps)
       | undefined
     return (
       <ImportCompleteCard
-        targetTable={job.importMapping.relatedEntityDefinitionId}
+        entityDefinitionId={job.importMapping.entityDefinitionId}
         statistics={{
           created: stats?.created ?? 0,
           updated: stats?.updated ?? 0,

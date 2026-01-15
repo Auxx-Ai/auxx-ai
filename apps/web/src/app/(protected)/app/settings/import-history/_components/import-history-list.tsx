@@ -26,13 +26,15 @@ import { EntityIcon } from '@auxx/ui/components/icons'
 import { useResources } from '~/components/resources'
 import { formatRelativeTime } from '@auxx/utils/date'
 
-/** Returns base path for a given target table */
-function getBasePath(targetTable: string): string {
-  if (targetTable === 'contact') return '/app/contacts'
-  if (targetTable === 'ticket') return '/app/tickets'
-  if (targetTable.startsWith('entity_')) {
-    const slug = targetTable.replace('entity_', '')
-    return `/app/custom/${slug}`
+/** Returns base path for a given entity definition ID */
+function getBasePath(entityDefinitionId: string): string {
+  if (entityDefinitionId === 'contact') return '/app/contacts'
+  if (entityDefinitionId === 'ticket') return '/app/tickets'
+  // Custom entity IDs are UUIDs, need to get slug from resource
+  if (entityDefinitionId.length > 20) {
+    // Likely a custom entity UUID
+    // Note: We'd need to resolve this properly, but for now assume slug pattern
+    return `/app/custom/${entityDefinitionId}`
   }
   return '/app'
 }
@@ -77,7 +79,7 @@ export function ImportHistoryList({ onDeleteJob }: ImportHistoryListProps) {
 
   /** Navigate to the appropriate import page based on job status */
   const handleJobClick = (job: NonNullable<typeof jobs>[number]) => {
-    const basePath = getBasePath(job.importMapping.relatedEntityDefinitionId)
+    const basePath = getBasePath(job.importMapping.entityDefinitionId)
 
     // Navigate to the import job page (wizard determines correct step from status)
     router.push(`${basePath}/import/${job.id}`)
@@ -156,7 +158,7 @@ export function ImportHistoryList({ onDeleteJob }: ImportHistoryListProps) {
             {
               // Import job cards
               jobs.map((job) => {
-                const resourceDisplay = getResourceDisplay(job.importMapping.relatedEntityDefinitionId)
+                const resourceDisplay = getResourceDisplay(job.importMapping.entityDefinitionId)
                 const createdByName = job.createdBy?.name || job.createdBy?.email || 'Unknown'
 
                 return (

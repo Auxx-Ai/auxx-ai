@@ -29,10 +29,14 @@ interface UseResourceFieldsResult {
  * Hook for accessing resource field definitions
  * Fields are loaded with resources - no separate fetch needed
  */
-export function useResourceFields(entityDefinitionIdOrApiSlug: string | null): UseResourceFieldsResult {
+export function useResourceFields(
+  entityDefinitionIdOrApiSlug: string | null | undefined
+): UseResourceFieldsResult {
   // Subscribe directly to the fields data from the map - triggers re-render when fields change
   const fields = useResourceStore((s) =>
-    entityDefinitionIdOrApiSlug ? s.resourceMap.get(entityDefinitionIdOrApiSlug)?.fields ?? EMPTY_FIELDS : EMPTY_FIELDS
+    entityDefinitionIdOrApiSlug
+      ? (s.resourceMap.get(entityDefinitionIdOrApiSlug)?.fields ?? EMPTY_FIELDS)
+      : EMPTY_FIELDS
   )
   const isQueryLoading = useResourceStore((s) => s.isLoading)
   const hasLoadedOnce = useResourceStore((s) => s.hasLoadedOnce)
@@ -53,7 +57,7 @@ export function useResourceFields(entityDefinitionIdOrApiSlug: string | null): U
       if (!resource) return null
       return toResourceFieldId(resource.entityDefinitionId, fieldId)
     },
-    [entityDefinitionIdOrApiSlug],
+    [entityDefinitionIdOrApiSlug]
   )
 
   return {

@@ -308,6 +308,7 @@ function CommandInput({
   className,
   onValueChange,
   value,
+  autoFocus,
   ...props
 }: React.ComponentProps<typeof CommandPrimitive.Input>) {
   const resetInput = React.useCallback(() => {
@@ -325,6 +326,7 @@ function CommandInput({
         )}
         onValueChange={onValueChange}
         value={value}
+        autoFocus={autoFocus}
         {...props}
       />
       {value && (

@@ -142,7 +142,7 @@ export async function generatePlanJob(job: Job<GeneratePlanJobProps>): Promise<v
       db,
       organizationId,
       jobId,
-      targetTable: importJob.importMapping.targetTable,
+      entityDefinitionId: importJob.importMapping.entityDefinitionId,
       rawData,
       mappings,
       resolutions,

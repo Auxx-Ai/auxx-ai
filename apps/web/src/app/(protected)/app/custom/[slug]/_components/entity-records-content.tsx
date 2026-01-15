@@ -253,19 +253,6 @@ export function EntityRecordsContent() {
     onRefetch: refresh,
   })
 
-  // Get SINGLE_SELECT fields for kanban view
-  const selectFields = useMemo(
-    () =>
-      customFields
-        .filter((f) => f.fieldType === 'SINGLE_SELECT' && f.active !== false)
-        .map((f) => ({
-          id: f.id,
-          name: f.name ?? f.label,
-          options: f.options as { options?: Array<{ id: string; label: string; color?: string }> },
-        })),
-    [customFields]
-  )
-
   // Convert to ResourceIds for syncer
   const resourceIds = useMemo(
     () => (entityDefinitionId ? items.map((i) => toResourceId(entityDefinitionId, i.id)) : []),
@@ -629,7 +616,6 @@ export function EntityRecordsContent() {
             <DynamicView
               data={items}
               className="h-full flex-1"
-              resourceType={entityDefinitionId}
               tableId={`entity-${entityDefinitionId}`}
               bulkActions={bulkActions}
               enableSearch
@@ -647,13 +633,6 @@ export function EntityRecordsContent() {
                 <HeaderActionsDropdown onNewField={() => setIsFieldDialogOpen(true)} />
               }
               cellSelection={cellSelectionConfig}
-              selectFields={selectFields}
-              customFields={customFields}
-              primaryFieldId={
-                resource && isCustomResource(resource)
-                  ? resource.display.primaryDisplayField?.id
-                  : undefined
-              }
               entityLabel={resource?.label}
               onAddNew={() => setIsCreateDialogOpen(true)}
               onCardClick={handleOpenDrawer}
@@ -710,12 +689,13 @@ export function EntityRecordsContent() {
       )}
 
       {/* Custom Field Dialog */}
-      {isFieldDialogOpen && (
+      {isFieldDialogOpen && entityDefinitionId && (
         <CustomFieldDialog
           open={isFieldDialogOpen}
           onOpenChange={setIsFieldDialogOpen}
           onSave={handleSaveField}
           isPending={isCreatingField}
+          entityDefinitionId={entityDefinitionId}
           currentResourceId={resource?.id}
         />
       )}

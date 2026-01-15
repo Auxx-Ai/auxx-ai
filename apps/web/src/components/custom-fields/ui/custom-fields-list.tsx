@@ -67,11 +67,8 @@ export function CustomFieldsList({ resource }: CustomFieldsListProps) {
       // Update existing field - include the id
       await update.mutateAsync({ ...fieldData, id: editingField.id })
     } else {
-      // Create new field - modelType is derived from entityDefinitionId on server
-      await create.mutateAsync({
-        ...fieldData,
-        entityDefinitionId: resource.entityDefinitionId,
-      })
+      // entityDefinitionId is now included by CustomFieldDialog
+      await create.mutateAsync(fieldData)
     }
     setEditingField(null)
   }
@@ -141,6 +138,7 @@ export function CustomFieldsList({ resource }: CustomFieldsListProps) {
           editingField={editingField}
           onSave={handleSave}
           isPending={isPending}
+          entityDefinitionId={resource.entityDefinitionId}
           currentResourceId={resource.id}
         />
       )}

@@ -14,7 +14,7 @@ export default async function ContactsImportStepPage({ params }: PageProps) {
 
   return (
     <ImportPage
-      targetTable="contact"
+      entityDefinitionId="contact"
       resourceLabel="Contacts"
       basePath="/app/contacts"
       importBasePath="/app/contacts/import"

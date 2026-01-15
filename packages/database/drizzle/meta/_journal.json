@@ -428,6 +428,13 @@
       "when": 1768347240711,
       "tag": "0060_update_workflow",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1768516358398,
+      "tag": "0061_drop_target_table_mapping",
+      "breakpoints": true
     }
   ]
 }

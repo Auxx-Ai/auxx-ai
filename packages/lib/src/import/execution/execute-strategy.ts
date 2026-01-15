@@ -20,7 +20,7 @@ export interface ExecuteStrategyContext {
   organizationId: string
   userId: string
   jobId: string
-  targetTable: string
+  entityDefinitionId: string
   mappings: ImportMappingProperty[]
   resolutions: Map<string, ValueResolution>
   /** Function to create a single record */
@@ -116,7 +116,7 @@ export async function executeStrategy(
     const batchCtx: ExecuteBatchContext = {
       organizationId: ctx.organizationId,
       userId: ctx.userId,
-      targetTable: ctx.relatedEntityDefinitionId,
+      entityDefinitionId: ctx.entityDefinitionId,
       strategy: strategy.strategy,
       createRecord,
       updateRecord,

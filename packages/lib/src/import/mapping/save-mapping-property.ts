@@ -6,8 +6,8 @@ import { schema } from '@auxx/database'
 
 /** Relation configuration for a mapping */
 export interface RelationConfig {
-  targetTable: string
-  cardinality: 'one-to-many' | 'many-to-one'
+  relatedEntityDefinitionId: string
+  relationshipType: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
   matchField?: string
 }
 

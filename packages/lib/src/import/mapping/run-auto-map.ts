@@ -17,7 +17,7 @@ export type AutoMapStrategy = 'ai' | 'fallback' | 'auto'
 export interface RunAutoMapInput {
   jobId: string
   importMappingId: string
-  targetTable: string
+  entityDefinitionId: string
   organizationId: string
   userId: string
   /** Auto-map strategy: 'ai' | 'fallback' | 'auto' */
@@ -48,7 +48,7 @@ export async function runAutoMap(
   resource: Resource,
   input: RunAutoMapInput
 ): Promise<RunAutoMapResult> {
-  const { jobId, importMappingId, targetTable, organizationId, userId, strategy = 'auto' } = input
+  const { jobId, importMappingId, entityDefinitionId, organizationId, userId, strategy = 'auto' } = input
 
   // 1. Get mappable properties with samples
   const properties = await getMappablePropertiesWithSamples(db, jobId, importMappingId)
@@ -72,7 +72,7 @@ export async function runAutoMap(
     fields,
     {
       strategy,
-      targetTable,
+      entityDefinitionId,
     }
   )
 

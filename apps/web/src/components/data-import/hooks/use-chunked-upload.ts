@@ -13,7 +13,7 @@ interface UseChunkedUploadOptions {
 }
 
 interface UploadParams {
-  targetTable: string
+  entityDefinitionId: string
   fileName: string
   headers: ColumnHeader[]
   rows: string[][]
@@ -38,7 +38,7 @@ export function useChunkedUpload(options: UseChunkedUploadOptions = {}) {
   const finalizeUpload = api.dataImport.finalizeUpload.useMutation()
 
   const upload = useCallback(
-    async ({ targetTable, fileName, headers, rows }: UploadParams) => {
+    async ({ entityDefinitionId, fileName, headers, rows }: UploadParams) => {
       try {
         const chunks = chunkRows(rows)
 
@@ -54,7 +54,7 @@ export function useChunkedUpload(options: UseChunkedUploadOptions = {}) {
 
         // Create the job first
         const job = await createJob.mutateAsync({
-          targetTable,
+          entityDefinitionId,
           fileName,
           headers: headers.map((h) => ({ index: h.index, name: h.name })),
           columnCount: headers.length,

@@ -15,7 +15,7 @@ import { formatBytes } from '@auxx/utils/file'
 import type { ParsedCSVData } from '../types'
 
 interface StepUploadProps {
-  targetTable: string
+  entityDefinitionId: string
   onComplete: (jobId: string) => void
 }
 
@@ -24,7 +24,7 @@ interface StepUploadProps {
  * Parses CSV client-side with PapaParse, shows compact file card, uploads in chunks.
  * Uses the existing FileSelectDropZone component for file selection.
  */
-export function StepUpload({ targetTable, onComplete }: StepUploadProps) {
+export function StepUpload({ entityDefinitionId, onComplete }: StepUploadProps) {
   const [parsedData, setParsedData] = useState<ParsedCSVData | null>(null)
   const [parseError, setParseError] = useState<string | null>(null)
   const [fileName, setFileName] = useState<string | null>(null)
@@ -64,7 +64,7 @@ export function StepUpload({ targetTable, onComplete }: StepUploadProps) {
     if (!parsedData || !fileName) return
 
     await upload({
-      targetTable,
+      entityDefinitionId,
       fileName,
       headers: parsedData.headers,
       rows: parsedData.rows,

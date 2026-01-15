@@ -32,9 +32,9 @@ export function resolveRelationMatch(
     return { type: 'value', value: null }
   }
 
-  const { targetTable } = config.relationConfig || {}
-  if (!targetTable) {
-    return { type: 'error', error: 'Relation target table not configured' }
+  const { relatedEntityDefinitionId } = config.relationConfig || {}
+  if (!relatedEntityDefinitionId) {
+    return { type: 'error', error: 'Relation target entity not configured' }
   }
 
   // During initial resolution, we mark this as a pending lookup
@@ -43,7 +43,7 @@ export function resolveRelationMatch(
     type: 'value',
     value: {
       __pendingRelationLookup: true,
-      targetTable,
+      targetTable: relatedEntityDefinitionId,
       matchField: config.relationConfig?.matchField,
       searchValue: trimmed,
     },
@@ -64,9 +64,9 @@ export function resolveRelationCreate(
     return { type: 'value', value: null }
   }
 
-  const { targetTable } = config.relationConfig || {}
-  if (!targetTable) {
-    return { type: 'error', error: 'Relation target table not configured' }
+  const { relatedEntityDefinitionId } = config.relationConfig || {}
+  if (!relatedEntityDefinitionId) {
+    return { type: 'error', error: 'Relation target entity not configured' }
   }
 
   // Mark as pending lookup with create capability
@@ -75,7 +75,7 @@ export function resolveRelationCreate(
     value: {
       __pendingRelationLookup: true,
       __createIfNotFound: true,
-      targetTable,
+      targetTable: relatedEntityDefinitionId,
       matchField: config.relationConfig?.matchField,
       searchValue: trimmed,
     },
@@ -97,9 +97,9 @@ export function resolveRelationId(
     return { type: 'value', value: null }
   }
 
-  const { targetTable } = config.relationConfig || {}
-  if (!targetTable) {
-    return { type: 'error', error: 'Relation target table not configured' }
+  const { relatedEntityDefinitionId } = config.relationConfig || {}
+  if (!relatedEntityDefinitionId) {
+    return { type: 'error', error: 'Relation target entity not configured' }
   }
 
   // Mark as pending ID verification - we need to verify the ID exists
@@ -108,7 +108,7 @@ export function resolveRelationId(
     value: {
       __pendingRelationLookup: true,
       __isDirectId: true,
-      targetTable,
+      targetTable: relatedEntityDefinitionId,
       matchField: 'id',
       searchValue: trimmed,
     },

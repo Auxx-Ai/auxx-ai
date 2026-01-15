@@ -4,11 +4,10 @@ import { pgTable, index, text, timestamp, type AnyPgColumn } from './_shared'
 import { createId } from '@paralleldrive/cuid2'
 import { Organization } from './organization'
 import { User } from './user'
-import { EntityDefinition } from './entity-definition'
 
 /**
  * ImportMapping - Reusable import mapping template
- * Defines how CSV columns map to target table fields
+ * Defines how CSV columns map to entity fields
  */
 export const ImportMapping = pgTable(
   'ImportMapping',
@@ -25,14 +24,14 @@ export const ImportMapping = pgTable(
       .notNull()
       .references((): AnyPgColumn => Organization.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
 
-    // Target table (e.g., 'contact', 'ticket', 'entity_products')
-    targetTable: text().notNull(),
-
-    // For custom entities, reference the EntityDefinition
-    entityDefinitionId: text().references((): AnyPgColumn => EntityDefinition.id, {
-      onUpdate: 'cascade',
-      onDelete: 'set null',
-    }),
+    /**
+     * Entity to import data into.
+     * - For system resources: 'contact', 'ticket', 'user', etc.
+     * - For custom entities: EntityDefinition UUID (e.g., 'cm1abc123...')
+     *
+     * Note: No FK constraint since system resources don't have EntityDefinition records.
+     */
+    entityDefinitionId: text().notNull(),
 
     // User-friendly name for this mapping template
     title: text().notNull(),
@@ -54,7 +53,7 @@ export const ImportMapping = pgTable(
   },
   (table) => [
     index('ImportMapping_organizationId_idx').using('btree', table.organizationId.asc().nullsLast()),
-    index('ImportMapping_targetTable_idx').using('btree', table.targetTable.asc().nullsLast()),
+    index('ImportMapping_entityDefinitionId_idx').using('btree', table.entityDefinitionId.asc().nullsLast()),
   ]
 )
 

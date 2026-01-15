@@ -88,8 +88,8 @@ export interface ColumnFieldConfig {
   resolutionType: string
   enumValues?: Array<{ dbValue: string; label: string }>
   relationConfig?: {
-    targetTable: string
-    cardinality: 'one-to-many' | 'many-to-one'
+    relatedEntityDefinitionId: string
+    relationshipType: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
   }
 }
 

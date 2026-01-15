@@ -14,7 +14,6 @@ import {
   ImportPlanStrategy,
   ImportPlanRow,
   Organization,
-  EntityDefinition,
   User,
   CustomField,
 } from '../schema'
@@ -24,10 +23,6 @@ export const importMappingRelations = relations(ImportMapping, ({ one, many }) =
   organization: one(Organization, {
     fields: [ImportMapping.organizationId],
     references: [Organization.id],
-  }),
-  entityDefinition: one(EntityDefinition, {
-    fields: [ImportMapping.entityDefinitionId],
-    references: [EntityDefinition.id],
   }),
   createdBy: one(User, {
     fields: [ImportMapping.createdById],

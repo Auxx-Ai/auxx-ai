@@ -14,7 +14,7 @@ export default async function TicketsImportStepPage({ params }: PageProps) {
 
   return (
     <ImportPage
-      targetTable="ticket"
+      entityDefinitionId="ticket"
       resourceLabel="Tickets"
       basePath="/app/tickets"
       importBasePath="/app/tickets/import"

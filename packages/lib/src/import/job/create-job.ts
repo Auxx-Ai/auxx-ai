@@ -8,7 +8,7 @@ export interface CreateJobInput {
   organizationId: string
   userId: string
   fileName: string
-  targetTable: string
+  entityDefinitionId: string
   headers: Array<{ index: number; name: string }>
   columnCount: number
   rowCount: number
@@ -38,7 +38,7 @@ export async function createImportJob(
     .insert(schema.ImportMapping)
     .values({
       organizationId: input.organizationId,
-      targetTable: input.relatedEntityDefinitionId,
+      entityDefinitionId: input.entityDefinitionId,
       title: `Import from ${input.fileName}`,
       sourceType: 'csv',
       defaultStrategy: 'create',

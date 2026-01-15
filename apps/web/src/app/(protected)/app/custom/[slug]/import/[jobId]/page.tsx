@@ -23,7 +23,7 @@ export default async function CustomEntityImportStepPage({ params }: PageProps) 
 
   return (
     <ImportPage
-      targetTable={entityDefinition.id}
+      entityDefinitionId={entityDefinition.id}
       resourceLabel={entityDefinition.plural}
       basePath={`/app/custom/${slug}`}
       importBasePath={`/app/custom/${slug}/import`}

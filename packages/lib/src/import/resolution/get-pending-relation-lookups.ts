@@ -49,7 +49,7 @@ export async function getPendingRelationLookups(
         pendingLookups.push({
           hash: resolution.hashedValue,
           jobPropertyId: jobProp.id,
-          targetTable: firstValue.relatedEntityDefinitionId,
+          entityDefinitionId: firstValue.targetTable,
           matchField: firstValue.matchField ?? '',
           searchValue: firstValue.searchValue,
           createIfNotFound: firstValue.__createIfNotFound,
