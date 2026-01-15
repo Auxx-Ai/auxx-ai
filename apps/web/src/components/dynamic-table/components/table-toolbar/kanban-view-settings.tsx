@@ -327,7 +327,7 @@ function AddCardFieldStack() {
                 onSelect={() => handleAddField(field.id)}
                 className="ps-0.5 py-0">
                 <EntityIcon
-                  iconId={fieldTypeOptions[field.type as FieldType]?.iconId ?? 'circle'}
+                  iconId={field.fieldType ? fieldTypeOptions[field.fieldType].iconId : 'circle'}
                   variant="default"
                   size="default"
                 />

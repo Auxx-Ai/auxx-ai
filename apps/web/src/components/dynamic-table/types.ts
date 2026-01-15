@@ -3,7 +3,7 @@
 import { type ColumnDef, type Table as TanstackTable } from '@tanstack/react-table'
 import { type LucideIcon } from 'lucide-react'
 import type { ResourceId } from '@auxx/lib/resources/client'
-import type { ModelType, TargetTimeInStatus } from '@auxx/types/custom-field'
+import type { TargetTimeInStatus } from '@auxx/types/custom-field'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import type { FieldType } from '@auxx/database/types'
 
@@ -340,10 +340,7 @@ export interface DynamicTableProps<TData = any> {
   /** Callback when kanban card selection changes */
   onSelectedKanbanCardIdsChange?: (ids: Set<string>) => void
 
-  /** Model type for creating new fields: 'contact', 'ticket', 'entity', etc. */
-  modelType?: ModelType
-
-  /** Entity definition ID - required only when modelType is 'entity' */
+  /** Entity definition ID for field creation */
   entityDefinitionId?: string
 
   /** Resource type ID for server-side filtering (e.g., 'contact', 'ticket', 'entity_abc123') */

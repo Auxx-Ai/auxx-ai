@@ -243,7 +243,6 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
     onAddCard,
     selectedKanbanCardIds: controlledSelectedCardIds,
     onSelectedKanbanCardIdsChange,
-    modelType,
     entityDefinitionId,
     resourceType,
     ...tableProps
@@ -382,7 +381,6 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
       onAddNew,
       onCardClick,
       onAddCard,
-      modelType,
       entityDefinitionId,
       resourceType,
       selectedKanbanCardIds,
@@ -446,7 +444,6 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
       onAddNew,
       onCardClick,
       onAddCard,
-      modelType,
       entityDefinitionId,
       resourceType,
       selectedKanbanCardIds,

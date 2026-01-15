@@ -658,7 +658,6 @@ export function EntityRecordsContent() {
               onAddNew={() => setIsCreateDialogOpen(true)}
               onCardClick={handleOpenDrawer}
               onAddCard={() => setIsCreateDialogOpen(true)}
-              modelType="entity"
               entityDefinitionId={entityDefinitionId}
               selectedKanbanCardIds={selectedKanbanCardIds}
               onSelectedKanbanCardIdsChange={setSelectedKanbanCardIds}>

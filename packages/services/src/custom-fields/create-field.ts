@@ -41,7 +41,6 @@ export interface CreateCustomFieldInput {
   addressComponents?: string[]
   icon?: string
   isCustom?: boolean
-  modelType?: ModelType
   entityDefinitionId?: string | null
   /** Relationship-specific options (required when type is RELATIONSHIP) */
   relationship?: RelationshipOptions
@@ -100,7 +99,6 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
     addressComponents,
     icon,
     isCustom = true,
-    modelType = ModelTypes.CONTACT,
     entityDefinitionId,
     relationship,
     isUnique = false,
@@ -110,7 +108,8 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
   // Use provided transaction or default to global database
   const db = tx ?? database
 
-  // modelType is already lowercase and matches DB format directly
+  // Derive modelType from entityDefinitionId
+  const modelType = entityDefinitionId ? getModelType(entityDefinitionId) : ModelTypes.CONTACT
   const dbModelType = modelType
 
   // Validate isUnique is only set for allowed types

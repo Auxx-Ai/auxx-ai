@@ -7,6 +7,7 @@ import { useTableContext } from '../context/table-context'
 import type { ViewConfig, KanbanViewConfig, KanbanRow } from '../types'
 import type { ModelType } from '@auxx/types/custom-field'
 import { useViewStore } from '../stores/view-store'
+import { getModelType } from '@auxx/types/resource'
 
 /**
  * Kanban view body that integrates with TableContext.
@@ -24,11 +25,16 @@ export function KanbanViewBody<TData extends KanbanRow>() {
     onCardClick,
     onAddCard,
     isLoading,
-    modelType,
     entityDefinitionId,
     selectedKanbanCardIds,
     onSelectedKanbanCardIdsChange,
   } = useTableContext<TData>()
+
+  // Derive modelType from entityDefinitionId
+  const modelType = useMemo(
+    () => (entityDefinitionId ? getModelType(entityDefinitionId) : ('contact' as ModelType)),
+    [entityDefinitionId]
+  )
 
   const updateKanbanConfig = useViewStore((state) => state.updateKanbanConfig)
 

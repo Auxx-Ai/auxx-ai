@@ -302,7 +302,6 @@ export class EntityInstanceService {
     // Get all fields for this entity to check uniqueness BEFORE creating instance
     const fieldsResult = await getCustomFields({
       organizationId: this.organizationId,
-      modelType: ModelTypes.ENTITY,
       entityDefinitionId,
     })
 

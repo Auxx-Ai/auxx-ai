@@ -74,6 +74,24 @@ export function useDynamicTable<TData extends Record<string, any>>({
     return views.find((view) => view.id === urlState.v) ?? null
   }, [urlState.v, views])
 
+  // Find default view
+  const defaultView = useMemo(() => {
+    return views.find((view) => view.isDefault) ?? null
+  }, [views])
+
+  // Auto-select default view on mount if no view in URL
+  useEffect(() => {
+    // Only run when store is initialized and we have views
+    if (!isStoreInitialized || views.length === 0) return
+
+    // If no view selected and default view exists, auto-select it
+    if (!urlState.v && defaultView) {
+      startTransition(() => {
+        setUrlState({ v: defaultView.id })
+      })
+    }
+  }, [isStoreInitialized, urlState.v, defaultView, views.length, setUrlState])
+
   // ═══════════════════════════════════════════════════════════════════════════
   // SYNC URL VIEW ID TO STORE
   // This ensures useActiveViewConfig() returns the correct config
@@ -257,6 +275,32 @@ export function useDynamicTable<TData extends Record<string, any>>({
     }
     return nextColumns
   }, [checkboxColumn, columns, enableCheckbox])
+
+  // Handle saved views with empty columnVisibility (legacy bug fix)
+  // If a view was saved with empty columnVisibility, hide all hideable columns
+  useEffect(() => {
+    const config = baseViewConfig.columnVisibility
+
+    // Only apply this fix for saved views with empty columnVisibility
+    if (Object.keys(config).length === 0 && currentView) {
+      const hideAll: VisibilityState = {}
+
+      enhancedColumns.forEach((col) => {
+        const columnId = col.id ?? (col as any).accessorKey
+        if (!columnId) return
+
+        // Only hide columns that CAN be hidden
+        // Columns with enableHiding: false (checkbox, primary) stay visible
+        if (col.enableHiding !== false) {
+          hideAll[columnId] = false
+        }
+      })
+
+      setColumnVisibility(hideAll)
+    }
+    // Only run when view changes or on mount, not when columns change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentView?.id])
 
   // Note: Client-side filtering removed - filtering is now handled server-side
   // Data is passed through directly; useRecordList (Plan 06) handles server-side filtering

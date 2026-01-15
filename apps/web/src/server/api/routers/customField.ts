@@ -3,29 +3,8 @@
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { CustomFieldService } from '@auxx/lib/custom-fields'
-import {
-  ModelTypes,
-  ModelTypeValues,
-  fieldOptionsUnionSchema,
-  relationshipOptionsSchema,
-  type ModelType,
-} from '@auxx/types/custom-field'
+import { fieldOptionsUnionSchema, relationshipOptionsSchema } from '@auxx/types/custom-field'
 import { FieldType } from '@auxx/database/enums'
-import { isSystemResourceId } from '@auxx/lib/resources'
-
-// Zod schema for ModelType validation
-const modelTypeSchema = z.enum(ModelTypeValues)
-
-/**
- * Derive modelType from entityDefinitionId.
- * System resources use their ID as modelType, custom entities use 'entity'.
- */
-function deriveModelType(entityDefinitionId: string | undefined | null): ModelType {
-  if (!entityDefinitionId) return ModelTypes.CONTACT
-  return isSystemResourceId(entityDefinitionId)
-    ? (entityDefinitionId as ModelType)
-    : ModelTypes.ENTITY
-}
 
 export const customFieldRouter = createTRPCRouter({
   /**
@@ -39,19 +18,17 @@ export const customFieldRouter = createTRPCRouter({
         ctx.session.user.id,
         ctx.db
       )
-      return await service.getAllFields(ModelTypes.ENTITY, input.entityDefinitionId)
+      return await service.getAllFields(input.entityDefinitionId)
     }),
 
   /**
-   * Get all custom fields for an organization and model type.
-   * modelType is derived from entityDefinitionId if not provided.
+   * Get all custom fields for an organization by entity definition ID
    */
   getAll: protectedProcedure
     .input(
       z
         .object({
-          modelType: modelTypeSchema.optional(),
-          entityDefinitionId: z.string().optional(),
+          entityDefinitionId: z.string(),
         })
         .optional()
     )
@@ -61,13 +38,11 @@ export const customFieldRouter = createTRPCRouter({
         ctx.session.user.id,
         ctx.db
       )
-      const modelType = input?.modelType ?? deriveModelType(input?.entityDefinitionId)
-      return await service.getAllFields(modelType, input?.entityDefinitionId)
+      return await service.getAllFields(input?.entityDefinitionId ?? 'contact')
     }),
 
   /**
    * Create a new custom field.
-   * modelType is derived from entityDefinitionId if not provided.
    * For RELATIONSHIP type, pass relationship options to auto-create inverse field.
    */
   create: protectedProcedure
@@ -83,18 +58,15 @@ export const customFieldRouter = createTRPCRouter({
         addressComponents: z.array(z.string()).optional(),
         icon: z.string().optional(),
         isCustom: z.boolean().optional(),
-        modelType: modelTypeSchema.optional(),
-        entityDefinitionId: z.string().nullish(),
+        entityDefinitionId: z.string(),
         /** Relationship options - required when type is RELATIONSHIP */
         relationship: relationshipOptionsSchema.optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { modelType: inputModelType, ...fieldData } = input
-      const modelType = inputModelType ?? deriveModelType(input.entityDefinitionId)
       const { organizationId, userId } = ctx.session
       const service = new CustomFieldService(organizationId, userId, ctx.db)
-      return await service.createField(fieldData, modelType)
+      return await service.createField(input)
     }),
 
   /**

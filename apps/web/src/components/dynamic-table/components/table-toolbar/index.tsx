@@ -29,6 +29,7 @@ interface TableToolbarProps {
  */
 export function TableToolbar<TData = any>({ children, className }: TableToolbarProps = {}) {
   const {
+    table,
     views,
     currentView,
     tableId,
@@ -49,7 +50,6 @@ export function TableToolbar<TData = any>({ children, className }: TableToolbarP
     importHref,
     onRefresh,
     selectFields,
-    modelType,
     entityDefinitionId,
     resourceType,
   } = useTableContext<TData>()
@@ -101,11 +101,11 @@ export function TableToolbar<TData = any>({ children, className }: TableToolbarP
         onSave={saveCurrentView}
         onReset={resetViewChanges}
         selectFields={selectFields}
-        modelType={modelType}
         entityDefinitionId={entityDefinitionId}
         currentFilters={filters}
         openCreateDialog={isCreateDialogOpen}
         onCreateDialogChange={setIsCreateDialogOpen}
+        table={table}
       />
 
       {/* Filter Button - only shown when resourceType is available */}

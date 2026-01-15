@@ -642,7 +642,6 @@ export class UnifiedCrudHandler {
   ): Promise<void> {
     const fields = await getCustomFields({
       organizationId: this.organizationId,
-      modelType: ModelTypes.ENTITY,
       entityDefinitionId,
     })
 
@@ -675,7 +674,6 @@ export class UnifiedCrudHandler {
   ): Promise<CustomFieldEntity | null> {
     const fields = await getCustomFields({
       organizationId: this.organizationId,
-      modelType: ModelTypes.ENTITY,
       entityDefinitionId,
     })
 

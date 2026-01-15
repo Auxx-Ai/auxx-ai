@@ -5,7 +5,7 @@
 import { createContext, useContext, type ReactNode } from 'react'
 import type { Table } from '@tanstack/react-table'
 import type { TableView, BulkAction, DragDropConfig, ColumnFormatting, CustomField } from '../types'
-import type { ModelType, SelectOptionColor } from '@auxx/types/custom-field'
+import type { SelectOptionColor } from '@auxx/types/custom-field'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 
 /** Select field for kanban grouping */
@@ -47,10 +47,7 @@ interface TableContextValue<TData = any> {
   /** Callback when "New" button is clicked in primary column header */
   onAddNew?: () => void
 
-  /** Model type for creating new fields: 'contact', 'ticket', 'entity', etc. */
-  modelType?: ModelType
-
-  /** Entity definition ID - required only when modelType is 'entity' */
+  /** Entity definition ID for field creation */
   entityDefinitionId?: string
 
   /** Resource type ID for server-side filtering (e.g., 'contact', 'ticket', 'entity_abc123') */

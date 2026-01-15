@@ -12,6 +12,7 @@ import { FieldType } from '@auxx/database/enums'
 import { createCustomField } from '@auxx/services/custom-fields'
 import type { CreateCustomFieldInput } from '@auxx/services/custom-fields'
 import { ModelTypes, type ModelType } from '@auxx/services/custom-fields'
+import { DEFAULT_VIEW_CONFIGS } from './default-view-configs'
 
 const logger = createScopedLogger('entity-seeder')
 
@@ -311,6 +312,119 @@ export class EntitySeeder {
           ...fieldsToLink,
         })
       }
+
+      // Create default table view
+      const tableId = `entity-${createdDef.id}`
+      await this.createDefaultView(tx, entityType, createdDef.id, tableId)
     }) // End transaction
+  }
+
+  /**
+   * Create default table view for a system entity
+   */
+  private async createDefaultView(
+    tx: Database,
+    entityType: keyof typeof SYSTEM_ENTITY_REGISTRY,
+    entityDefinitionId: string,
+    tableId: string
+  ): Promise<void> {
+    const viewConfig = DEFAULT_VIEW_CONFIGS[entityType]
+
+    if (!viewConfig) {
+      logger.warn(`No default view config found for ${entityType}`)
+      return
+    }
+
+    // Resolve field IDs from systemAttributes
+    const customFields = await tx.query.CustomField.findMany({
+      where: eq(schema.CustomField.entityDefinitionId, entityDefinitionId),
+    })
+
+    // Build field mapping: systemAttribute -> customFieldId
+    const fieldIdMap = new Map<string, string>()
+    for (const field of customFields) {
+      if (field.systemAttribute) {
+        fieldIdMap.set(`field_${field.systemAttribute}`, field.id)
+      }
+    }
+
+    // Transform column visibility to use actual field IDs
+    const resolvedColumnVisibility: Record<string, boolean> = {}
+    for (const [columnId, visible] of Object.entries(viewConfig.config.columnVisibility)) {
+      const actualFieldId = fieldIdMap.get(columnId)
+      if (actualFieldId) {
+        resolvedColumnVisibility[`field_${actualFieldId}`] = visible
+      }
+    }
+
+    // Transform column order
+    const resolvedColumnOrder: string[] = []
+    for (const columnId of viewConfig.config.columnOrder) {
+      const actualFieldId = fieldIdMap.get(columnId)
+      if (actualFieldId) {
+        resolvedColumnOrder.push(`field_${actualFieldId}`)
+      }
+    }
+
+    // Transform column pinning
+    let resolvedColumnPinning: { left?: string[] } = {}
+    if (viewConfig.config.columnPinning?.left) {
+      const pinnedLeft: string[] = []
+      for (const columnId of viewConfig.config.columnPinning.left) {
+        if (columnId === '_checkbox') {
+          pinnedLeft.push('_checkbox')
+        } else {
+          const actualFieldId = fieldIdMap.get(columnId)
+          if (actualFieldId) {
+            pinnedLeft.push(`field_${actualFieldId}`)
+          }
+        }
+      }
+      resolvedColumnPinning = { left: pinnedLeft }
+    }
+
+    // Transform sorting
+    const resolvedSorting: Array<{ id: string; desc: boolean }> = []
+    if (viewConfig.config.sorting) {
+      for (const sort of viewConfig.config.sorting) {
+        const actualFieldId = fieldIdMap.get(sort.id)
+        if (actualFieldId) {
+          resolvedSorting.push({
+            id: `field_${actualFieldId}`,
+            desc: sort.desc,
+          })
+        }
+      }
+    }
+
+    // Create the view
+    const [createdView] = await tx
+      .insert(schema.TableView)
+      .values({
+        organizationId: this.organizationId,
+        tableId,
+        name: viewConfig.name,
+        description: viewConfig.description,
+        isDefault: true,
+        isShared: true,
+        config: {
+          ...viewConfig.config,
+          columnVisibility: resolvedColumnVisibility,
+          columnOrder: resolvedColumnOrder,
+          columnPinning: resolvedColumnPinning,
+          sorting: resolvedSorting,
+        },
+        updatedAt: new Date(),
+      })
+      .returning()
+
+    if (!createdView) {
+      throw new Error(`Failed to create default view for ${entityType}`)
+    }
+
+    logger.info(`Created default view for ${entityType}`, {
+      viewId: createdView.id,
+      tableId,
+    })
   }
 }

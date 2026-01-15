@@ -56,16 +56,29 @@ export function buildViewConfig(snapshot: ViewStateSnapshot): ViewConfig {
 
 /**
  * Compute the initial view configuration that should be used when a table has no saved view.
+ * Hides all columns by default except those that cannot be hidden (enableHiding: false)
  */
 export function computeInitialViewConfig(defaults: ViewDefaults): ViewConfig {
+  // Hide all columns by default when no view is selected
+  // EXCEPT columns that have enableHiding: false (checkbox, primary cells)
   const columnVisibility: VisibilityState = {}
 
   defaults.columns.forEach((column) => {
-    if (column.defaultVisible !== undefined) {
-      const columnId = resolveColumnId(column)
-      if (columnId) {
-        columnVisibility[columnId] = column.defaultVisible
-      }
+    const columnId = resolveColumnId(column)
+    if (!columnId) return
+
+    // Skip columns that cannot be hidden (checkbox, primary cells)
+    if (column.enableHiding === false) {
+      // Don't add to visibility - let TanStack use default (visible)
+      return
+    }
+
+    // For all other columns, check defaultVisible
+    if (column.defaultVisible === true) {
+      columnVisibility[columnId] = true
+    } else {
+      // Hide by default
+      columnVisibility[columnId] = false
     }
   })
 

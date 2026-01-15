@@ -5,7 +5,6 @@ import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure, adminProcedure } from '~/server/api/trpc'
 import { viewConfigSchema, type ViewConfig } from '@auxx/lib/conditions'
 import { CustomFieldService } from '@auxx/lib/custom-fields'
-import { ModelTypeValues } from '@auxx/types/custom-field'
 import {
   listViews,
   listAllViews,
@@ -16,9 +15,6 @@ import {
   deleteView,
   setDefaultView,
 } from '@auxx/services/table-view'
-
-/** Schema for model type validation */
-const modelTypeSchema = z.enum(ModelTypeValues)
 
 /**
  * Map service error codes to TRPCError
@@ -100,10 +96,8 @@ export const tableViewRouter = createTRPCRouter({
         newField: z
           .object({
             name: z.string().min(1).max(50),
-            /** Model type: 'contact', 'ticket', 'entity', etc. */
-            modelType: modelTypeSchema,
-            /** Entity definition ID - required only when modelType is 'entity' */
-            entityDefinitionId: z.string().nullish(),
+            /** Entity definition ID (e.g., 'contact', 'ticket', or custom entity ID) */
+            entityDefinitionId: z.string(),
           })
           .optional(),
       })
@@ -115,17 +109,13 @@ export const tableViewRouter = createTRPCRouter({
       // Handle new kanban field creation (stays in router - uses CustomFieldService)
       if (input.newField && input.config.viewType === 'kanban') {
         const fieldService = new CustomFieldService(organizationId, userId, ctx.db)
-        const createdField = await fieldService.createField(
-          {
-            name: input.newField.name,
-            type: 'SINGLE_SELECT',
-            entityDefinitionId:
-              input.newField.modelType === 'entity' ? input.newField.entityDefinitionId : undefined,
-            options: [],
-            isCustom: true,
-          },
-          input.newField.modelType
-        )
+        const createdField = await fieldService.createField({
+          name: input.newField.name,
+          type: 'SINGLE_SELECT',
+          entityDefinitionId: input.newField.entityDefinitionId,
+          options: [],
+          isCustom: true,
+        })
 
         finalConfig = {
           ...input.config,

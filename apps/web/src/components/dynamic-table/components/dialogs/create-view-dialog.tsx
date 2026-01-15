@@ -4,6 +4,13 @@
 
 import { useState } from 'react'
 import { Table2, LayoutGrid } from 'lucide-react'
+import type {
+  VisibilityState,
+  ColumnOrderState,
+  ColumnSizingState,
+  ColumnPinningState,
+  SortingState,
+} from '@tanstack/react-table'
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
 import {
@@ -26,7 +33,6 @@ import { RadioGroup, RadioGroupItemCard } from '@auxx/ui/components/radio-group'
 import { Combobox } from '@auxx/ui/components/combobox'
 import { incrementTitle } from '@auxx/utils'
 import type { TableView, ViewConfig } from '../../types'
-import type { ModelType } from '@auxx/types/custom-field'
 import { useViewMutations } from '../../hooks/use-view-mutations'
 
 /** Select field for kanban grouping */
@@ -43,14 +49,20 @@ export interface CreateViewDialogProps {
   views: TableView[]
   /** SINGLE_SELECT fields available for kanban grouping */
   selectFields?: SelectField[]
-  /** Model type for creating new fields: 'contact', 'ticket', 'entity', etc. */
-  modelType?: ModelType
-  /** Entity definition ID - required only when modelType is 'entity' */
+  /** Entity definition ID for field creation */
   entityDefinitionId?: string
   /** Current filters to pre-populate when creating a new view */
   currentFilters?: ViewConfig['filters']
   /** Callback when view is successfully created */
   onViewCreated?: (viewId: string) => void
+  /** Current table state to capture when creating view */
+  currentTableState?: {
+    columnVisibility: VisibilityState
+    columnOrder: ColumnOrderState
+    columnSizing: ColumnSizingState
+    columnPinning: ColumnPinningState
+    sorting: SortingState
+  }
 }
 
 /**
@@ -62,10 +74,10 @@ export function CreateViewDialog({
   tableId,
   views,
   selectFields,
-  modelType,
   entityDefinitionId,
   currentFilters,
   onViewCreated,
+  currentTableState,
 }: CreateViewDialogProps) {
   const [newViewName, setNewViewName] = useState('')
   const [viewType, setViewType] = useState<'table' | 'kanban'>('table')
@@ -87,10 +99,11 @@ export function CreateViewDialog({
 
     const config: ViewConfig = {
       filters: currentFilters ?? [],
-      sorting: [],
-      columnVisibility: {},
-      columnOrder: [],
-      columnSizing: {},
+      sorting: currentTableState?.sorting ?? [],
+      columnVisibility: currentTableState?.columnVisibility ?? {},
+      columnOrder: currentTableState?.columnOrder ?? [],
+      columnSizing: currentTableState?.columnSizing ?? {},
+      columnPinning: currentTableState?.columnPinning,
       viewType,
       ...(viewType === 'kanban' && {
         kanban: {
@@ -100,13 +113,12 @@ export function CreateViewDialog({
       }),
     }
 
-    // If creating new field, pass newField config with modelType
+    // If creating new field, pass newField config with entityDefinitionId
     const newField =
-      viewType === 'kanban' && !selectedFieldId && newFieldName.trim() && modelType
+      viewType === 'kanban' && !selectedFieldId && newFieldName.trim()
         ? {
             name: newFieldName.trim(),
-            modelType,
-            entityDefinitionId: modelType === 'entity' ? entityDefinitionId : null,
+            entityDefinitionId,
           }
         : undefined
 
@@ -236,17 +248,13 @@ export function CreateViewDialog({
                     setSelectedFieldId(value)
                     setNewFieldName('') // Clear any pending new field name
                   }}
-                  addAction={
-                    modelType // Show add action if we have a modelType
-                      ? {
-                          label: 'New Status Field',
-                          onAdd: () => {
-                            setIsCreatingField(true)
-                            setSelectedFieldId('') // Clear selected field when creating new
-                          },
-                        }
-                      : undefined
-                  }
+                  addAction={{
+                    label: 'New Status Field',
+                    onAdd: () => {
+                      setIsCreatingField(true)
+                      setSelectedFieldId('') // Clear selected field when creating new
+                    },
+                  }}
                 />
               )}
               {/* Show the new field name that will be created */}

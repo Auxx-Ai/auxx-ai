@@ -3,6 +3,13 @@
 'use client'
 
 import { useState } from 'react'
+import type {
+  VisibilityState,
+  ColumnOrderState,
+  ColumnSizingState,
+  ColumnPinningState,
+  SortingState,
+} from '@tanstack/react-table'
 import {
   ChevronDown,
   MoreHorizontal,
@@ -39,7 +46,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/pop
 import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 import type { TableView, ViewAction, ViewConfig } from '../../types'
 import { cn } from '@auxx/ui/lib/utils'
-import type { ModelType } from '@auxx/types/custom-field'
 import { useConfirm } from '~/hooks/use-confirm'
 import { Tooltip } from '~/components/global/tooltip'
 import { CreateViewDialog, RenameViewDialog } from '../dialogs'
@@ -63,9 +69,7 @@ interface ViewSelectorProps {
   onReset?: () => void
   /** SINGLE_SELECT fields available for kanban grouping */
   selectFields?: SelectField[]
-  /** Model type for creating new fields: 'contact', 'ticket', 'entity', etc. */
-  modelType?: ModelType
-  /** Entity definition ID - required only when modelType is 'entity' */
+  /** Entity definition ID for field creation */
   entityDefinitionId?: string
   /** Current filters to pre-populate when creating a new view */
   currentFilters?: ViewConfig['filters']
@@ -73,6 +77,8 @@ interface ViewSelectorProps {
   openCreateDialog?: boolean
   /** Callback when create dialog open state changes */
   onCreateDialogChange?: (open: boolean) => void
+  /** Table instance to capture state from when creating view */
+  table: import('@tanstack/react-table').Table<any>
 }
 
 /**
@@ -88,21 +94,45 @@ export function ViewSelector({
   onSave,
   onReset,
   selectFields,
-  modelType,
   entityDefinitionId,
   currentFilters,
   openCreateDialog,
   onCreateDialogChange,
+  table,
 }: ViewSelectorProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [showRenameDialog, setShowRenameDialog] = useState(false)
   const [open, setOpen] = useState(false)
+
+  // Capture table state only when dialog opens
+  const [capturedTableState, setCapturedTableState] = useState<{
+    columnVisibility: VisibilityState
+    columnOrder: ColumnOrderState
+    columnSizing: ColumnSizingState
+    columnPinning: ColumnPinningState
+    sorting: SortingState
+  } | undefined>(undefined)
   const [confirmDelete, ConfirmDeleteDialog] = useConfirm()
 
   // Sync external control with internal state
   const isCreateDialogOpen = openCreateDialog ?? showCreateDialog
   const handleCreateDialogChange = (open: boolean) => {
+    // Capture table state when opening dialog
+    if (open) {
+      const state = table.getState()
+      setCapturedTableState({
+        columnVisibility: state.columnVisibility,
+        columnOrder: state.columnOrder,
+        columnSizing: state.columnSizing,
+        columnPinning: state.columnPinning,
+        sorting: state.sorting,
+      })
+    } else {
+      // Clear captured state when closing
+      setCapturedTableState(undefined)
+    }
+
     setShowCreateDialog(open)
     onCreateDialogChange?.(open)
   }
@@ -337,10 +367,10 @@ export function ViewSelector({
         tableId={tableId}
         views={views}
         selectFields={selectFields}
-        modelType={modelType}
         entityDefinitionId={entityDefinitionId}
         currentFilters={currentFilters}
         onViewCreated={onViewSelect}
+        currentTableState={capturedTableState}
       />
 
       {/* Rename view dialog */}

@@ -39,15 +39,13 @@ export class CustomFieldService {
   }
 
   /**
-   * Get all custom fields for the organization for a specific model type
+   * Get all custom fields for the organization by entity definition ID
    *
-   * @param modelType - Type of model the fields belong to
-   * @param entityDefinitionId - Optional entity definition ID for custom entities
+   * @param entityDefinitionId - Entity definition ID (e.g., 'contact', 'ticket', or custom entity ID)
    */
-  async getAllFields(modelType: ModelType = ModelTypes.CONTACT, entityDefinitionId?: string) {
+  async getAllFields(entityDefinitionId: string) {
     const result = await getCustomFields({
       organizationId: this.organizationId,
-      modelType,
       entityDefinitionId,
     })
 
@@ -64,29 +62,24 @@ export class CustomFieldService {
    * For RELATIONSHIP type, automatically creates the inverse field
    *
    * @param input - Field data
-   * @param modelType - Type of model the field belongs to
    */
-  async createField(
-    input: {
-      name: string
-      type: FieldType
-      description?: string
-      required?: boolean
-      defaultValue?: string
-      options?: SelectOption[] | { file: FileOptions } | { currency: CurrencyOptions } | DisplayOptions
-      addressComponents?: string[]
-      icon?: string
-      isCustom?: boolean
-      entityDefinitionId?: string | null
-      relationship?: RelationshipOptions
-      isUnique?: boolean
-    },
-    modelType: ModelType = ModelTypes.CONTACT
-  ) {
+  async createField(input: {
+    name: string
+    type: FieldType
+    description?: string
+    required?: boolean
+    defaultValue?: string
+    options?: SelectOption[] | { file: FileOptions } | { currency: CurrencyOptions } | DisplayOptions
+    addressComponents?: string[]
+    icon?: string
+    isCustom?: boolean
+    entityDefinitionId: string
+    relationship?: RelationshipOptions
+    isUnique?: boolean
+  }) {
     const result = await createCustomField({
       ...input,
       organizationId: this.organizationId,
-      modelType,
     })
 
     if (result.isErr()) {
