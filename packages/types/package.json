@@ -6,6 +6,7 @@
   "exports": {
     ".": "./index.ts",
     "./custom-field": "./custom-field/index.ts",
+    "./field": "./field/index.ts",
     "./field-value": "./field-value/index.ts",
     "./pagination": "./pagination/index.ts",
     "./resource": "./resource/index.ts",

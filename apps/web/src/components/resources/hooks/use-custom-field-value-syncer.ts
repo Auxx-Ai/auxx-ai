@@ -12,6 +12,7 @@ import {
 import { parseResourceId, type ResourceId } from '@auxx/lib/resources/client'
 import type { VisibilityState } from '@tanstack/react-table'
 import { generateId } from '@auxx/utils/generateId'
+import { toFieldId, type FieldId } from '@auxx/types/field'
 
 interface UseCustomFieldValueSyncerOptions {
   /** ResourceIds for the entities being displayed */
@@ -35,10 +36,10 @@ interface SyncerResult {
   isFetching: boolean
 
   /** Get a value from the store (returns TypedFieldValue | TypedFieldValue[] | null) */
-  getValue: (resourceId: ResourceId, fieldId: string) => StoredFieldValue | undefined
+  getValue: (resourceId: ResourceId, fieldId: FieldId | string) => StoredFieldValue | undefined
 
   /** Check if a value is currently loading */
-  isValueLoading: (resourceId: ResourceId, fieldId: string) => boolean
+  isValueLoading: (resourceId: ResourceId, fieldId: FieldId | string) => boolean
 }
 
 /**
@@ -194,20 +195,22 @@ export function useCustomFieldValueSyncer(options: UseCustomFieldValueSyncerOpti
 
   // Get value accessor - reads directly from store via getState (stable function)
   const getValue = useCallback(
-    (resourceId: ResourceId, fieldId: string): StoredFieldValue | undefined => {
-      const key = buildFieldValueKey(resourceId, fieldId)
+    (resourceId: ResourceId, fieldId: FieldId | string): StoredFieldValue | undefined => {
+      const typedFieldId = typeof fieldId === 'string' ? toFieldId(fieldId) : fieldId
+      const key = buildFieldValueKey(resourceId, typedFieldId)
       return useCustomFieldValueStore.getState().values[key]
     },
-    []
+    [],
   )
 
   // Loading state accessor
   const isValueLoading = useCallback(
-    (resourceId: ResourceId, fieldId: string): boolean => {
-      const key = buildFieldValueKey(resourceId, fieldId)
+    (resourceId: ResourceId, fieldId: FieldId | string): boolean => {
+      const typedFieldId = typeof fieldId === 'string' ? toFieldId(fieldId) : fieldId
+      const key = buildFieldValueKey(resourceId, typedFieldId)
       return isKeyLoading(key)
     },
-    [isKeyLoading]
+    [isKeyLoading],
   )
 
   return {

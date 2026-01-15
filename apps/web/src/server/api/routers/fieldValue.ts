@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { FieldValueService } from '@auxx/lib/field-values'
 import type { ResourceId } from '@auxx/types/resource'
+import { fieldIdSchema } from '@auxx/types/field'
 
 /** Typed value input schema for multi-value fields */
 const typedValueInputSchema = z.object({
@@ -27,9 +28,9 @@ export const fieldValueRouter = createTRPCRouter({
     .input(
       z.object({
         resourceId: z.string(), // ResourceId format
-        fieldId: z.string(),
+        fieldId: fieldIdSchema,
         value: z.any().nullable(),
-      })
+      }),
     )
     .mutation(async ({ ctx, input }) => {
       const service = new FieldValueService(ctx.session.organizationId, ctx.session.user.id, ctx.db)
@@ -85,11 +86,11 @@ export const fieldValueRouter = createTRPCRouter({
         resourceIds: z.array(z.string()).min(1), // ResourceId format
         values: z.array(
           z.object({
-            fieldId: z.string(),
+            fieldId: fieldIdSchema,
             value: z.any().nullable(),
-          })
+          }),
         ),
-      })
+      }),
     )
     .mutation(async ({ ctx, input }) => {
       const service = new FieldValueService(ctx.session.organizationId, ctx.session.user.id, ctx.db)
@@ -110,8 +111,8 @@ export const fieldValueRouter = createTRPCRouter({
     .input(
       z.object({
         resourceId: z.string(), // ResourceId format
-        fieldId: z.string(),
-      })
+        fieldId: fieldIdSchema,
+      }),
     )
     .mutation(async ({ ctx, input }) => {
       const service = new FieldValueService(ctx.session.organizationId, ctx.session.user.id, ctx.db)
@@ -131,8 +132,8 @@ export const fieldValueRouter = createTRPCRouter({
     .input(
       z.object({
         resourceIds: z.array(z.string()).max(500), // ResourceId format
-        fieldIds: z.array(z.string()).max(50),
-      })
+        fieldIds: z.array(fieldIdSchema).max(50),
+      }),
     )
     .mutation(async ({ ctx, input }) => {
       const service = new FieldValueService(ctx.session.organizationId, ctx.session.user.id, ctx.db)
@@ -150,13 +151,13 @@ export const fieldValueRouter = createTRPCRouter({
     .input(
       z.object({
         resourceId: z.string(), // ResourceId format
-        fieldId: z.string(),
+        fieldId: fieldIdSchema,
         fieldType: z.string(),
         value: typedValueInputSchema,
         position: z
           .union([z.literal('start'), z.literal('end'), z.object({ after: z.string() })])
           .optional(),
-      })
+      }),
     )
     .mutation(async ({ ctx, input }) => {
       const service = new FieldValueService(ctx.session.organizationId, ctx.session.user.id, ctx.db)

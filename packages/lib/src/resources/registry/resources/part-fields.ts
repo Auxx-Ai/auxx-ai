@@ -2,6 +2,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { BaseType } from '../../types'
+import { toFieldId } from '@auxx/types/field'
 import type { ResourceField } from '../field-types'
 
 /**
@@ -9,7 +10,7 @@ import type { ResourceField } from '../field-types'
  */
 export const PART_FIELDS: Record<string, ResourceField> = {
   id: {
-    id: 'id',
+    id: toFieldId('id'),
     key: 'id',
     label: 'ID',
     type: BaseType.STRING,
@@ -32,7 +33,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
   },
 
   title: {
-    id: 'title',
+    id: toFieldId('title'),
     key: 'title',
     label: 'Title',
     type: BaseType.STRING,
@@ -53,7 +54,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
   },
 
   sku: {
-    id: 'sku',
+    id: toFieldId('sku'),
     key: 'sku',
     label: 'SKU',
     type: BaseType.STRING,
@@ -76,7 +77,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
   },
 
   description: {
-    id: 'description',
+    id: toFieldId('description'),
     key: 'description',
     label: 'Description',
     type: BaseType.STRING,
@@ -96,7 +97,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
   },
 
   category: {
-    id: 'category',
+    id: toFieldId('category'),
     key: 'category',
     label: 'Category',
     type: BaseType.STRING,
@@ -116,7 +117,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
   },
 
   cost: {
-    id: 'cost',
+    id: toFieldId('cost'),
     key: 'cost',
     label: 'Cost',
     type: BaseType.CURRENCY,
@@ -136,7 +137,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
   },
 
   hsCode: {
-    id: 'hsCode',
+    id: toFieldId('hsCode'),
     key: 'hsCode',
     label: 'HS Code',
     type: BaseType.STRING,
@@ -157,7 +158,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
   },
 
   shopifyProductLinkId: {
-    id: 'shopifyProductLinkId',
+    id: toFieldId('shopifyProductLinkId'),
     key: 'shopifyProductLinkId',
     label: 'Shopify Product',
     type: BaseType.STRING,
@@ -177,7 +178,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
   },
 
   createdAt: {
-    id: 'createdAt',
+    id: toFieldId('createdAt'),
     key: 'createdAt',
     label: 'Created',
     type: BaseType.DATETIME,
@@ -197,7 +198,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
   },
 
   updatedAt: {
-    id: 'updatedAt',
+    id: toFieldId('updatedAt'),
     key: 'updatedAt',
     label: 'Updated',
     type: BaseType.DATETIME,
@@ -217,7 +218,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
   },
 
   createdBy: {
-    id: 'createdBy',
+    id: toFieldId('createdBy'),
     key: 'createdBy',
     label: 'Created By',
     type: BaseType.RELATION,

@@ -6,9 +6,17 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import { useShallow } from 'zustand/react/shallow'
 import type { TypedFieldValue } from '@auxx/types/field-value'
 import { toResourceId, parseResourceId, type ResourceId } from '@auxx/lib/resources/client'
+import { toFieldId, type FieldId } from '@auxx/types/field'
 
-/** Branded string type for field value cache keys */
-export type FieldValueKey = string & { readonly __brand: 'FieldValueKey' }
+/**
+ * Composite key for field values.
+ * Format: `${resourceId}:${fieldId}` where:
+ * - resourceId = `${entityDefinitionId}:${entityInstanceId}`
+ * - fieldId = field identifier
+ *
+ * Full format: `${entityDefinitionId}:${entityInstanceId}:${fieldId}`
+ */
+export type FieldValueKey = `${ResourceId}:${FieldId}`
 
 /**
  * Stored value type - can be:
@@ -80,7 +88,7 @@ interface CustomFieldValueState {
   invalidateResource: (resourceId: ResourceId) => void
 
   /** Invalidate a specific field across all resources (after field definition change) */
-  invalidateField: (fieldId: string) => void
+  invalidateField: (fieldId: FieldId | string) => void
 
   /** Invalidate multiple resources (after bulk update) */
   invalidateResources: (resourceIds: ResourceId[]) => void
@@ -120,8 +128,9 @@ interface CustomFieldValueState {
  * Build a field value key from ResourceId and fieldId.
  * Format: `${entityDefinitionId}:${entityInstanceId}:${fieldId}`
  */
-export function buildFieldValueKey(resourceId: ResourceId, fieldId: string): FieldValueKey {
-  return `${resourceId}:${fieldId}` as FieldValueKey
+export function buildFieldValueKey(resourceId: ResourceId, fieldId: FieldId | string): FieldValueKey {
+  const typedFieldId = typeof fieldId === 'string' ? toFieldId(fieldId) : fieldId
+  return `${resourceId}:${typedFieldId}` as FieldValueKey
 }
 
 /**
@@ -143,22 +152,32 @@ export function buildFieldValueKeyFromParts(
  */
 export function parseFieldValueKey(key: FieldValueKey): {
   resourceId: ResourceId
-  fieldId: string
+  fieldId: FieldId
+  entityDefinitionId: string
+  entityInstanceId: string
 } {
   const parts = key.split(':')
   if (parts.length < 3) {
     console.error('[parseFieldValueKey] Malformed key:', key)
     return {
       resourceId: key as unknown as ResourceId,
-      fieldId: '',
+      fieldId: '' as FieldId,
+      entityDefinitionId: '',
+      entityInstanceId: '',
     }
   }
   const entityDefinitionId = parts[0]!
   const entityInstanceId = parts[1]!
-  const fieldId = parts.slice(2).join(':') // Handle fieldIds that might contain colons
+  const fieldId = parts.slice(2).join(':') as FieldId // Handle fieldIds that might contain colons
+  const { entityDefinitionId: parsedDefId, entityInstanceId: parsedInstId } = parseResourceId(
+    toResourceId(entityDefinitionId, entityInstanceId),
+  )
+
   return {
     resourceId: toResourceId(entityDefinitionId, entityInstanceId),
     fieldId,
+    entityDefinitionId: parsedDefId,
+    entityInstanceId: parsedInstId,
   }
 }
 
@@ -172,7 +191,7 @@ export function fieldValueKeyMatchesResource(key: FieldValueKey, resourceId: Res
 /**
  * Check if a key matches a specific field (on any resource).
  */
-export function fieldValueKeyMatchesField(key: FieldValueKey, fieldId: string): boolean {
+export function fieldValueKeyMatchesField(key: FieldValueKey, fieldId: FieldId | string): boolean {
   return key.endsWith(`:${fieldId}`)
 }
 
@@ -376,7 +395,7 @@ export const useCustomFieldValueStore = create<CustomFieldValueState>()(
  */
 export function useCustomFieldValue(
   resourceId: ResourceId,
-  fieldId: string
+  fieldId: FieldId | string,
 ): StoredFieldValue | undefined {
   const key = buildFieldValueKey(resourceId, fieldId)
   return useCustomFieldValueStore((state) => state.values[key])
@@ -385,7 +404,10 @@ export function useCustomFieldValue(
 /**
  * Subscribe to loading state for a specific value.
  */
-export function useCustomFieldValueLoading(resourceId: ResourceId, fieldId: string): boolean {
+export function useCustomFieldValueLoading(
+  resourceId: ResourceId,
+  fieldId: FieldId | string,
+): boolean {
   const key = buildFieldValueKey(resourceId, fieldId)
   return useCustomFieldValueStore((state) => state.isKeyLoading(key))
 }
@@ -396,7 +418,7 @@ export function useCustomFieldValueLoading(resourceId: ResourceId, fieldId: stri
  */
 export function useResourceFieldValues(
   resourceId: ResourceId,
-  fieldIds: string[]
+  fieldIds: (FieldId | string)[],
 ): Record<string, StoredFieldValue | undefined> {
   // Stabilize inputs - only change selector when actual content changes
   const fieldIdsKey = fieldIds.join(',')

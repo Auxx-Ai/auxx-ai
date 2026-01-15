@@ -2,6 +2,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { BaseType } from '../../workflow-engine/core/types'
+import { toFieldId } from '@auxx/types/field'
 import type { ResourceField } from './field-types'
 
 /**
@@ -11,7 +12,7 @@ import type { ResourceField } from './field-types'
  */
 export const ENTITY_INSTANCE_FIELDS: Record<string, ResourceField> = {
   id: {
-    id: 'id',
+    id: toFieldId('id'),
     key: 'id',
     label: 'Record ID',
     name: 'Record ID',
@@ -34,7 +35,7 @@ export const ENTITY_INSTANCE_FIELDS: Record<string, ResourceField> = {
     description: 'Unique record identifier',
   },
   createdAt: {
-    id: 'createdAt',
+    id: toFieldId('createdAt'),
     key: 'createdAt',
     label: 'Created',
     name: 'Created',
@@ -54,7 +55,7 @@ export const ENTITY_INSTANCE_FIELDS: Record<string, ResourceField> = {
     },
   },
   updatedAt: {
-    id: 'updatedAt',
+    id: toFieldId('updatedAt'),
     key: 'updatedAt',
     label: 'Updated',
     name: 'Updated',

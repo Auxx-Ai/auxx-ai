@@ -2,6 +2,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { BaseType } from '../../types'
+import { toFieldId } from '@auxx/types/field'
 import type { ResourceField } from '../field-types'
 import { ThreadStatus, ReadStatus, TagOperation } from '../enum-values'
 
@@ -16,7 +17,7 @@ import { ThreadStatus, ReadStatus, TagOperation } from '../enum-values'
  */
 export const THREAD_FIELDS: Record<string, ResourceField> = {
   id: {
-    id: 'id',
+    id: toFieldId('id'),
     key: 'id',
     label: 'ID',
     type: BaseType.STRING,
@@ -37,7 +38,7 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
   },
 
   externalId: {
-    id: 'externalId',
+    id: toFieldId('externalId'),
     key: 'externalId',
     label: 'External ID',
     type: BaseType.STRING,
@@ -60,7 +61,7 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
   // ============================================================================
 
   subject: {
-    id: 'subject',
+    id: toFieldId('subject'),
     key: 'subject',
     label: 'Subject',
     type: BaseType.STRING,
@@ -83,7 +84,7 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
   // Thread type is now derived from Integration.provider
 
   status: {
-    id: 'status',
+    id: toFieldId('status'),
     key: 'status',
     label: 'Status',
     type: BaseType.ENUM,
@@ -107,7 +108,7 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
   // Use helper function getMessageTypeFromProvider() to get message type
 
   messageCount: {
-    id: 'messageCount',
+    id: toFieldId('messageCount'),
     key: 'messageCount',
     label: 'Message Count',
     type: BaseType.NUMBER,
@@ -126,7 +127,7 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
   },
 
   firstMessageAt: {
-    id: 'firstMessageAt',
+    id: toFieldId('firstMessageAt'),
     key: 'firstMessageAt',
     label: 'First Message At',
     type: BaseType.DATETIME,
@@ -145,7 +146,7 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
   },
 
   lastMessageAt: {
-    id: 'lastMessageAt',
+    id: toFieldId('lastMessageAt'),
     key: 'lastMessageAt',
     label: 'Last Message',
     type: BaseType.DATETIME,
@@ -164,7 +165,7 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
   },
 
   closedAt: {
-    id: 'closedAt',
+    id: toFieldId('closedAt'),
     key: 'closedAt',
     label: 'Closed At',
     type: BaseType.DATETIME,
@@ -183,7 +184,7 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
   },
 
   createdAt: {
-    id: 'createdAt',
+    id: toFieldId('createdAt'),
     key: 'createdAt',
     label: 'Created',
     type: BaseType.DATETIME,
@@ -202,7 +203,7 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
   },
 
   assignee: {
-    id: 'assignee',
+    id: toFieldId('assignee'),
     key: 'assignee',
     label: 'Assignee',
     type: BaseType.RELATION,
@@ -227,7 +228,7 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
   },
 
   inbox: {
-    id: 'inbox',
+    id: toFieldId('inbox'),
     key: 'inbox',
     label: 'Inbox',
     type: BaseType.RELATION,
@@ -252,7 +253,7 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
   },
 
   messages: {
-    id: 'messages',
+    id: toFieldId('messages'),
     key: 'messages',
     label: 'Messages',
     type: BaseType.RELATION,
@@ -277,7 +278,7 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
   // ============================================================================
 
   readStatus: {
-    id: 'readStatus',
+    id: toFieldId('readStatus'),
     key: 'readStatus',
     label: 'Read Status',
     type: BaseType.ENUM,
@@ -297,7 +298,7 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
   },
 
   tags: {
-    id: 'tags',
+    id: toFieldId('tags'),
     key: 'tags',
     label: 'Tags',
     type: BaseType.TAGS,
@@ -318,7 +319,7 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
   },
 
   tagOperation: {
-    id: 'tagOperation',
+    id: toFieldId('tagOperation'),
     key: 'tagOperation',
     label: 'Tag Operation',
     type: BaseType.ENUM,

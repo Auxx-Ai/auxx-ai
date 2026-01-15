@@ -1,6 +1,6 @@
 // packages/lib/src/resources/registry/field-registry.ts
 
-import type { ResourceFieldRegistry, ResourceTableDefinition } from './field-types'
+import type { ResourceFieldRegistry, ResourceTableDefinition, ResourceField } from './field-types'
 import { TICKET_FIELDS } from './resources/ticket-fields'
 import { CONTACT_FIELDS } from './resources/contact-fields'
 import { USER_FIELDS } from './resources/user-fields'
@@ -11,6 +11,7 @@ import { MESSAGE_FIELDS } from './resources/message-fields'
 import { DATASET_FIELDS } from './resources/dataset-fields'
 import { PART_FIELDS } from './resources/part-fields'
 import { ModelTypeValues, ModelTypeMeta, type ModelType } from '@auxx/database/enums'
+import type { FieldId } from '@auxx/types/field'
 
 /**
  * Resource types to exclude from the registry
@@ -94,4 +95,16 @@ export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   message: MESSAGE_FIELDS,
   dataset: DATASET_FIELDS,
   part: PART_FIELDS,
+}
+
+/**
+ * Helper to get field by ID with type safety.
+ * Searches for a field in the registry by its FieldId.
+ */
+export function getFieldById(tableId: TableId, fieldId: FieldId): ResourceField | undefined {
+  const fields = RESOURCE_FIELD_REGISTRY[tableId]
+  if (!fields) return undefined
+
+  // Search by id
+  return Object.values(fields).find((f) => f.id === fieldId)
 }

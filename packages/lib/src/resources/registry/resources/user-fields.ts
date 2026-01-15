@@ -1,6 +1,7 @@
 // packages/lib/src/workflow-engine/resources/registry/resources/user-fields.ts
 
 import { BaseType } from '../../types'
+import { toFieldId } from '@auxx/types/field'
 import type { ResourceField } from '../field-types'
 
 /**
@@ -9,6 +10,7 @@ import type { ResourceField } from '../field-types'
  */
 export const USER_FIELDS: Record<string, ResourceField> = {
   id: {
+    id: toFieldId('id'),
     key: 'id',
     label: 'ID',
     type: BaseType.STRING,
@@ -20,11 +22,13 @@ export const USER_FIELDS: Record<string, ResourceField> = {
       sortable: false,
       creatable: false,
       updatable: false,
+      configurable: false,
     },
     description: 'Unique user identifier',
   },
 
   email: {
+    id: toFieldId('email'),
     key: 'email',
     label: 'Email',
     type: BaseType.EMAIL,
@@ -35,11 +39,13 @@ export const USER_FIELDS: Record<string, ResourceField> = {
       sortable: true,
       creatable: false,
       updatable: false,
+      configurable: false,
     },
     description: 'User email address',
   },
 
   name: {
+    id: toFieldId('name'),
     key: 'name',
     label: 'Name',
     type: BaseType.STRING,
@@ -50,12 +56,14 @@ export const USER_FIELDS: Record<string, ResourceField> = {
       sortable: true,
       creatable: false,
       updatable: false,
+      configurable: false,
     },
     description: 'User full name',
   },
 
   // Reverse relationship: assignedTickets (one-to-many)
   assignedTickets: {
+    id: toFieldId('assignedTickets'),
     key: 'assignedTickets',
     label: 'Assigned Tickets',
     type: BaseType.RELATION,
@@ -64,6 +72,7 @@ export const USER_FIELDS: Record<string, ResourceField> = {
       sortable: false,
       creatable: false,
       updatable: false,
+      configurable: false,
     },
     relationship: {
       relatedEntityDefinitionId: 'ticket',
@@ -73,6 +82,7 @@ export const USER_FIELDS: Record<string, ResourceField> = {
   },
 
   createdAt: {
+    id: toFieldId('createdAt'),
     key: 'createdAt',
     label: 'Created At',
     type: BaseType.DATETIME,
@@ -83,11 +93,13 @@ export const USER_FIELDS: Record<string, ResourceField> = {
       sortable: true,
       creatable: false,
       updatable: false,
+      configurable: false,
     },
     description: 'Automatically set when user is created',
   },
 
   updatedAt: {
+    id: toFieldId('updatedAt'),
     key: 'updatedAt',
     label: 'Updated At',
     type: BaseType.DATETIME,
@@ -98,6 +110,7 @@ export const USER_FIELDS: Record<string, ResourceField> = {
       sortable: true,
       creatable: false,
       updatable: false,
+      configurable: false,
     },
     description: 'Automatically updated when user is modified',
   },

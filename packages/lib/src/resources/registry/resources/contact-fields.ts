@@ -2,6 +2,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { BaseType } from '../../types'
+import { toFieldId } from '@auxx/types/field'
 
 import type { ResourceField } from '../field-types'
 import { ContactStatus } from '../enum-values'
@@ -12,7 +13,7 @@ import { ContactStatus } from '../enum-values'
  */
 export const CONTACT_FIELDS: Record<string, ResourceField> = {
   id: {
-    id: 'id',
+    id: toFieldId('id'),
     key: 'id',
     label: 'ID',
     type: BaseType.STRING,
@@ -35,7 +36,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
   },
 
   firstName: {
-    id: 'firstName',
+    id: toFieldId('firstName'),
     key: 'firstName',
     label: 'First Name',
     type: BaseType.STRING,
@@ -55,7 +56,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
   },
 
   lastName: {
-    id: 'lastName',
+    id: toFieldId('lastName'),
     key: 'lastName',
     label: 'Last Name',
     type: BaseType.STRING,
@@ -75,7 +76,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
   },
 
   name: {
-    id: 'name',
+    id: toFieldId('name'),
     key: 'name',
     label: 'Name',
     type: BaseType.STRING,
@@ -99,7 +100,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
   },
 
   email: {
-    id: 'email',
+    id: toFieldId('email'),
     key: 'email',
     label: 'Email',
     type: BaseType.EMAIL,
@@ -124,7 +125,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
   },
 
   phone: {
-    id: 'phone',
+    id: toFieldId('phone'),
     key: 'phone',
     label: 'Phone',
     type: BaseType.PHONE,
@@ -144,7 +145,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
   },
 
   status: {
-    id: 'status',
+    id: toFieldId('status'),
     key: 'status',
     label: 'Status',
     type: BaseType.ENUM,
@@ -166,7 +167,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
   },
 
   customerGroups: {
-    id: 'customerGroups',
+    id: toFieldId('customerGroups'),
     key: 'customerGroups',
     label: 'Groups',
     type: BaseType.ARRAY,
@@ -209,7 +210,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
   // },
 
   notes: {
-    id: 'notes',
+    id: toFieldId('notes'),
     key: 'notes',
     label: 'Notes',
     type: BaseType.STRING,
@@ -229,7 +230,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
   },
 
   createdAt: {
-    id: 'createdAt',
+    id: toFieldId('createdAt'),
     key: 'createdAt',
     label: 'Created',
     type: BaseType.DATETIME,
@@ -249,7 +250,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
   },
 
   updatedAt: {
-    id: 'updatedAt',
+    id: toFieldId('updatedAt'),
     key: 'updatedAt',
     label: 'Updated',
     type: BaseType.DATETIME,
@@ -270,7 +271,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
 
   // Reverse relationship: tickets (one-to-many)
   tickets: {
-    id: 'tickets',
+    id: toFieldId('tickets'),
     key: 'tickets',
     label: 'Tickets',
     type: BaseType.RELATION,

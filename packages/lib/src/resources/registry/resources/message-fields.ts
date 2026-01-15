@@ -1,6 +1,7 @@
 // packages/lib/src/workflow-engine/resources/registry/resources/message-fields.ts
 
 import { BaseType } from '../../types'
+import { toFieldId } from '@auxx/types/field'
 import type { ResourceField } from '../field-types'
 // Note: MessageType import removed - messageType field no longer exists in schema
 
@@ -10,6 +11,7 @@ import type { ResourceField } from '../field-types'
  */
 export const MESSAGE_FIELDS: Record<string, ResourceField> = {
   id: {
+    id: toFieldId('id'),
     key: 'id',
     label: 'ID',
     type: BaseType.STRING,
@@ -21,11 +23,13 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
       sortable: false,
       creatable: false,
       updatable: false,
+      configurable: false,
     },
     description: 'Unique message identifier',
   },
 
   externalId: {
+    id: toFieldId('externalId'),
     key: 'externalId',
     label: 'External ID',
     type: BaseType.STRING,
@@ -36,11 +40,13 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
       sortable: false,
       creatable: false,
       updatable: false,
+      configurable: false,
     },
     description: 'External provider message ID',
   },
 
   externalThreadId: {
+    id: toFieldId('externalThreadId'),
     key: 'externalThreadId',
     label: 'External Thread ID',
     type: BaseType.STRING,
@@ -51,11 +57,13 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
       sortable: false,
       creatable: false,
       updatable: false,
+      configurable: false,
     },
     description: 'External provider thread ID',
   },
 
   subject: {
+    id: toFieldId('subject'),
     key: 'subject',
     label: 'Subject',
     type: BaseType.STRING,
@@ -66,11 +74,13 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
       sortable: true,
       creatable: false,
       updatable: false,
+      configurable: false,
     },
     description: 'Message subject',
   },
 
   textHtml: {
+    id: toFieldId('textHtml'),
     key: 'textHtml',
     label: 'HTML Content',
     type: BaseType.STRING,
@@ -81,11 +91,13 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
       sortable: false,
       creatable: false,
       updatable: false,
+      configurable: false,
     },
     description: 'HTML content of message',
   },
 
   textPlain: {
+    id: toFieldId('textPlain'),
     key: 'textPlain',
     label: 'Plain Text',
     type: BaseType.STRING,
@@ -96,6 +108,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
       sortable: false,
       creatable: false,
       updatable: false,
+      configurable: false,
     },
     description: 'Plain text content of message',
   },
@@ -104,6 +117,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
   // Use helper function getMessageTypeFromProvider() to get message type
 
   isInbound: {
+    id: toFieldId('isInbound'),
     key: 'isInbound',
     label: 'Is Inbound',
     type: BaseType.BOOLEAN,
@@ -114,6 +128,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
       sortable: false,
       creatable: false,
       updatable: false,
+      configurable: false,
     },
     description: 'Whether message is inbound',
   },
@@ -121,6 +136,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
   // Note: isAutoReply removed - column no longer exists in database schema
 
   isFirstInThread: {
+    id: toFieldId('isFirstInThread'),
     key: 'isFirstInThread',
     label: 'Is First In Thread',
     type: BaseType.BOOLEAN,
@@ -131,11 +147,13 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
       sortable: false,
       creatable: false,
       updatable: false,
+      configurable: false,
     },
     description: 'Whether this is the first message in thread',
   },
 
   isReply: {
+    id: toFieldId('isReply'),
     key: 'isReply',
     label: 'Is Reply',
     type: BaseType.BOOLEAN,
@@ -146,11 +164,13 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
       sortable: false,
       creatable: false,
       updatable: false,
+      configurable: false,
     },
     description: 'Whether message is a reply',
   },
 
   sentAt: {
+    id: toFieldId('sentAt'),
     key: 'sentAt',
     label: 'Sent At',
     type: BaseType.DATETIME,
@@ -161,11 +181,13 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
       sortable: true,
       creatable: false,
       updatable: false,
+      configurable: false,
     },
     description: 'Timestamp when message was sent',
   },
 
   receivedAt: {
+    id: toFieldId('receivedAt'),
     key: 'receivedAt',
     label: 'Received At',
     type: BaseType.DATETIME,
@@ -176,11 +198,13 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
       sortable: true,
       creatable: false,
       updatable: false,
+      configurable: false,
     },
     description: 'Timestamp when message was received',
   },
 
   hasAttachments: {
+    id: toFieldId('hasAttachments'),
     key: 'hasAttachments',
     label: 'Has Attachments',
     type: BaseType.BOOLEAN,
@@ -191,11 +215,13 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
       sortable: false,
       creatable: false,
       updatable: false,
+      configurable: false,
     },
     description: 'Whether message has attachments',
   },
 
   thread: {
+    id: toFieldId('thread'),
     key: 'thread',
     label: 'Thread',
     type: BaseType.RELATION,
@@ -206,6 +232,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
       sortable: false,
       creatable: false,
       updatable: false,
+      configurable: false,
     },
     relationship: {
       relatedEntityDefinitionId: 'thread',
@@ -215,6 +242,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
   },
 
   createdBy: {
+    id: toFieldId('createdBy'),
     key: 'createdBy',
     label: 'Created By',
     type: BaseType.RELATION,
@@ -225,6 +253,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
       sortable: false,
       creatable: false,
       updatable: false,
+      configurable: false,
     },
     relationship: {
       relatedEntityDefinitionId: 'user',
@@ -234,6 +263,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
   },
 
   from: {
+    id: toFieldId('from'),
     key: 'from',
     label: 'From',
     type: BaseType.RELATION,
@@ -244,6 +274,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
       sortable: false,
       creatable: false,
       updatable: false,
+      configurable: false,
     },
     relationship: {
       relatedEntityDefinitionId: 'participant',
@@ -253,6 +284,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
   },
 
   replyTo: {
+    id: toFieldId('replyTo'),
     key: 'replyTo',
     label: 'Reply To',
     type: BaseType.RELATION,
@@ -263,6 +295,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
       sortable: false,
       creatable: false,
       updatable: false,
+      configurable: false,
     },
     relationship: {
       relatedEntityDefinitionId: 'participant',

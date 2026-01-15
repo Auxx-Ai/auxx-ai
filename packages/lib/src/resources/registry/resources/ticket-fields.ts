@@ -2,6 +2,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { BaseType } from '../../types'
+import { toFieldId } from '@auxx/types/field'
 import type { ResourceField } from '../field-types'
 import { TicketType, TicketStatus, TicketPriority } from '../enum-values'
 
@@ -11,7 +12,7 @@ import { TicketType, TicketStatus, TicketPriority } from '../enum-values'
  */
 export const TICKET_FIELDS: Record<string, ResourceField> = {
   id: {
-    id: 'id',
+    id: toFieldId('id'),
     key: 'id',
     label: 'ID',
     type: BaseType.STRING,
@@ -34,7 +35,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
   },
 
   number: {
-    id: 'number',
+    id: toFieldId('number'),
     key: 'number',
     label: 'Ticket #',
     type: BaseType.NUMBER,
@@ -55,7 +56,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
   },
 
   title: {
-    id: 'title',
+    id: toFieldId('title'),
     key: 'title',
     label: 'Title',
     type: BaseType.STRING,
@@ -80,7 +81,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
   },
 
   type: {
-    id: 'type',
+    id: toFieldId('type'),
     key: 'type',
     label: 'Type',
     type: BaseType.ENUM,
@@ -104,7 +105,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
   },
 
   status: {
-    id: 'status',
+    id: toFieldId('status'),
     key: 'status',
     label: 'Status',
     type: BaseType.ENUM,
@@ -126,7 +127,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
   },
 
   priority: {
-    id: 'priority',
+    id: toFieldId('priority'),
     key: 'priority',
     label: 'Priority',
     type: BaseType.ENUM,
@@ -148,7 +149,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
   },
 
   contact: {
-    id: 'contact',
+    id: toFieldId('contact'),
     key: 'contact',
     label: 'Contact',
     type: BaseType.RELATION,
@@ -181,7 +182,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
   },
 
   description: {
-    id: 'description',
+    id: toFieldId('description'),
     key: 'description',
     label: 'Description',
     type: BaseType.STRING,
@@ -201,7 +202,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
   },
 
   assignee: {
-    id: 'assignee',
+    id: toFieldId('assignee'),
     key: 'assignee',
     label: 'Assignee',
     type: BaseType.RELATION,
@@ -233,7 +234,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
   },
 
   parentTicket: {
-    id: 'parentTicket',
+    id: toFieldId('parentTicket'),
     key: 'parentTicket',
     label: 'Parent Ticket',
     type: BaseType.RELATION,
@@ -258,7 +259,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
 
   // Reverse relationship: childTickets (one-to-many)
   childTickets: {
-    id: 'childTickets',
+    id: toFieldId('childTickets'),
     key: 'childTickets',
     label: 'Child Tickets',
     type: BaseType.RELATION,
@@ -279,7 +280,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
   },
 
   dueDate: {
-    id: 'dueDate',
+    id: toFieldId('dueDate'),
     key: 'dueDate',
     label: 'Due Date',
     type: BaseType.DATE,
@@ -299,7 +300,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
   },
 
   createdAt: {
-    id: 'createdAt',
+    id: toFieldId('createdAt'),
     key: 'createdAt',
     label: 'Created',
     type: BaseType.DATETIME,
@@ -319,7 +320,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
   },
 
   updatedAt: {
-    id: 'updatedAt',
+    id: toFieldId('updatedAt'),
     key: 'updatedAt',
     label: 'Updated',
     type: BaseType.DATETIME,

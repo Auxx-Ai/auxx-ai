@@ -14,6 +14,7 @@ import type { ResourceField } from './field-types'
 import { mapFieldTypeToBaseType } from '../../workflow-engine/utils/field-type-mapper'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import { getEntityInstanceFields } from './entity-instance-fields'
+import { toFieldId, toResourceFieldId } from '@auxx/types/field'
 
 /** CustomField entity from database */
 type CustomFieldRecord = {
@@ -221,7 +222,7 @@ export class ResourceRegistryService {
       const fieldRegistry = RESOURCE_FIELD_REGISTRY[tableId]
       const staticFields = fieldRegistry ? Object.values(fieldRegistry) : []
       const orgCustomFields = fieldsByModelType.get(tableId) ?? []
-      const customResourceFields = this.mapCustomFieldsToResourceFields(orgCustomFields)
+      const customResourceFields = this.mapCustomFieldsToResourceFields(orgCustomFields, tableId)
 
       return {
         ...toSystemResourceBase(tableId),
@@ -235,7 +236,7 @@ export class ResourceRegistryService {
       ...toCustomResourceBase(def),
       fields: [
         ...getEntityInstanceFields(),
-        ...this.mapCustomFieldsToResourceFields(fieldsByEntityId.get(def.id) ?? []),
+        ...this.mapCustomFieldsToResourceFields(fieldsByEntityId.get(def.id) ?? [], def.id),
       ],
     }))
 
@@ -274,7 +275,7 @@ export class ResourceRegistryService {
       ...toCustomResourceBase(def),
       fields: [
         ...getEntityInstanceFields(),
-        ...this.mapCustomFieldsToResourceFields(def.customFields),
+        ...this.mapCustomFieldsToResourceFields(def.customFields, def.id),
       ],
     }))
   }
@@ -309,7 +310,8 @@ export class ResourceRegistryService {
       fields: [
         ...getEntityInstanceFields(),
         ...this.mapCustomFieldsToResourceFields(
-          (entityDef as EntityDefinitionWithFields).customFields
+          (entityDef as EntityDefinitionWithFields).customFields,
+          entityDef.id
         ),
       ],
     }
@@ -376,7 +378,8 @@ export class ResourceRegistryService {
       })
 
       const customResourceFields = this.mapCustomFieldsToResourceFields(
-        customFields as CustomFieldRecord[]
+        customFields as CustomFieldRecord[],
+        tableId
       )
 
       resource = {
@@ -410,7 +413,8 @@ export class ResourceRegistryService {
           fields: [
             ...getEntityInstanceFields(),
             ...this.mapCustomFieldsToResourceFields(
-              (entityDef as EntityDefinitionWithFields).customFields
+              (entityDef as EntityDefinitionWithFields).customFields,
+              resourceId
             ),
           ],
         }
@@ -475,7 +479,8 @@ export class ResourceRegistryService {
       })
 
       const customResourceFields = this.mapCustomFieldsToResourceFields(
-        customFields as CustomFieldRecord[]
+        customFields as CustomFieldRecord[],
+        resourceId
       )
 
       fields = [...staticFields, ...customResourceFields]
@@ -500,7 +505,10 @@ export class ResourceRegistryService {
         // Include implicit EntityInstance system fields before custom fields
         fields = [
           ...getEntityInstanceFields(),
-          ...this.mapCustomFieldsToResourceFields(entityDef.customFields as CustomFieldRecord[]),
+          ...this.mapCustomFieldsToResourceFields(
+            entityDef.customFields as CustomFieldRecord[],
+            resourceId
+          ),
         ]
       }
     }
@@ -532,9 +540,19 @@ export class ResourceRegistryService {
    * Map CustomField records to ResourceField format
    * Adds convenience properties and normalizes options for UI consumption
    * @param customFields - Array of CustomField records
+   * @param entityDefinitionId - Optional: Entity definition ID to populate resourceFieldId
    */
-  private mapCustomFieldsToResourceFields(customFields: CustomFieldRecord[]): ResourceField[] {
+  private mapCustomFieldsToResourceFields(
+    customFields: CustomFieldRecord[],
+    entityDefinitionId?: string
+  ): ResourceField[] {
     return customFields.map((field) => {
+      const fieldId = toFieldId(field.id)
+
+      // Build resourceFieldId if entityDefinitionId is available
+      const resourceFieldId = entityDefinitionId
+        ? toResourceFieldId(entityDefinitionId, fieldId)
+        : undefined
       const baseType = mapFieldTypeToBaseType(field.type)
 
       // Check if this is a select-type field
@@ -623,7 +641,8 @@ export class ResourceRegistryService {
 
       return {
         // Core identifiers
-        id: field.id,
+        id: fieldId,
+        resourceFieldId,
         key: field.name,
         label: field.name,
         type: baseType,

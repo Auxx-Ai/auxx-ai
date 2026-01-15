@@ -4,6 +4,7 @@ import { BaseType } from '../types'
 import type { TargetTimeInStatus } from '@auxx/services/custom-fields'
 import type { FieldType } from '@auxx/database/types'
 import type { FieldOptions } from '../../field-values/converters'
+import type { FieldId, ResourceFieldId } from '@auxx/types/field'
 
 /**
  * Enum value with UI metadata
@@ -90,11 +91,25 @@ export interface FieldValidation {
  */
 export interface ResourceField {
   /**
-   * Database field ID for custom entity fields.
-   * Used in CRUD operations and SQL queries against CustomFieldValue.fieldId.
-   * Only populated for custom entity fields; undefined for system resource fields.
+   * Unique field identifier (branded type).
+   *
+   * For custom fields: Database UUID from CustomField.id
+   * For system fields: Field key (e.g., 'email', 'firstName')
+   *
+   * Use this for field identification in stores, APIs, and data structures.
    */
-  id: string
+  id: FieldId
+
+  /**
+   * Composite identifier scoped to entity definition.
+   * Format: `${entityDefinitionId}:${fieldId}`
+   *
+   * Uniquely identifies this field across the entire system.
+   * Useful for global field lookups and caching.
+   *
+   * @optional - Can be computed via toResourceFieldId(entityDefinitionId, field.id)
+   */
+  resourceFieldId?: ResourceFieldId
 
   /** Field identifier for variable paths (e.g., 'title', 'status', 'Colors1') */
   key: string
