@@ -81,6 +81,7 @@ function toCustomResourceBase(
     apiSlug: def.apiSlug,
     type: resourceType as 'custom', // Type assertion for now - will be fixed when we update CustomResource type
     label: def.singular,
+    entityType: def.entityType ?? undefined,
     plural: def.plural,
     icon: def.icon,
     color: def.color ?? 'gray',
@@ -110,6 +111,7 @@ function toSystemResourceBase(tableId: TableId): Omit<SystemResource, 'fields'> 
     id: entry.id,
     entityDefinitionId: entry.id,
     type: 'system',
+    entityType: tableId,
     label: entry.label,
     plural: entry.plural,
     icon: entry.icon,
@@ -646,6 +648,7 @@ export class ResourceRegistryService {
         key: field.name,
         label: field.name,
         type: baseType,
+
         fieldType: field.type as any,
         description: field.description ?? undefined,
 

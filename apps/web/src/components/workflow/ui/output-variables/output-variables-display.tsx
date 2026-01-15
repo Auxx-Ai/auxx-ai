@@ -58,20 +58,6 @@ export const OutputVariablesDisplay: React.FC<OutputVariablesDisplayProps> = ({
   className,
 }) => {
   const variables = outputVariables
-  // Convert outputs to outputVariables if needed
-  // const variables = useMemo(() => {
-  //   // If outputVariables provided, use them (for built-in nodes)
-  //   if (outputVariables) {
-  //     return outputVariables
-  //   }
-
-  //   // If outputs provided, convert them to UnifiedVariables (for app blocks)
-  //   if (outputs && nodeId) {
-  //     return convertOutputFieldsToVariables(outputs, nodeId)
-  //   }
-
-  //   return []
-  // }, [outputVariables, outputs, nodeId])
 
   // Transform UnifiedVariables to DisplayVariables
   const displayVariables = useMemo(() => {

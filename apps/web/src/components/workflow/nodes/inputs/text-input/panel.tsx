@@ -3,10 +3,9 @@
 'use client'
 
 import React from 'react'
-import { TextInputNodeData } from './types'
+import { type TextInputNodeData } from './types'
 import { BasePanel } from '../../shared/base/base-panel'
 import { Input } from '@auxx/ui/components/input'
-import { Textarea } from '@auxx/ui/components/textarea'
 import { Label } from '@auxx/ui/components/label'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'

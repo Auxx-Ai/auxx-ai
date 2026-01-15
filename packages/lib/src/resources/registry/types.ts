@@ -25,6 +25,7 @@ interface BaseResource {
   color: string
   /** Field definitions for this resource */
   fields: ResourceField[]
+  entityType?: string
 }
 
 /** System resource with static display config */

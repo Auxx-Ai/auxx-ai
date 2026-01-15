@@ -199,3 +199,7 @@ export type {
   ResourceId,
   CustomResourceId,
 } from './types'
+
+// Re-export drawer configuration
+export { DRAWER_CONFIG_REGISTRY, getEntityDrawerConfig, hasDrawerConfig } from './drawer-config'
+export type { DrawerConfig, DrawerTabDefinition, DrawerActions, DrawerConfigRegistry } from './drawer-config-types'

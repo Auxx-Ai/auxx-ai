@@ -10,8 +10,8 @@ interface UseResourcesResult {
   customResources: CustomResource[]
   /** Loading state */
   isLoading: boolean
-  /** Get resource by ID */
-  getResourceById: (id: string) => Resource | undefined
+  /** Get resource by entityDefinitionId or apiSlug */
+  getResourceById: (entityDefinitionIdOrApiSlug: string) => Resource | undefined
 }
 
 /**

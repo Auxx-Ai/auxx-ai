@@ -4,7 +4,7 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import type { Resource, CustomResource } from '@auxx/lib/resources/client'
 import { isCustomResource } from '@auxx/lib/resources/client'
-import type { ResourceField } from '@auxx/lib/resources/registry/field-types'
+import type { ResourceField } from '@auxx/lib/resources/client'
 import type { ResourceFieldId } from '@auxx/types/field'
 import { toResourceFieldId } from '@auxx/types/field'
 import { shallowEqual, deepEqual } from '@auxx/utils/objects'
@@ -45,8 +45,8 @@ interface ResourceStoreState {
   /** Set loading state */
   setLoading: (isLoading: boolean) => void
 
-  /** Get resource by id or apiSlug (stable reference) */
-  getResourceById: (id: string) => Resource | undefined
+  /** Get resource by entityDefinitionId or apiSlug (stable reference) */
+  getResourceById: (entityDefinitionIdOrApiSlug: string) => Resource | undefined
 
   /** Reset store to initial state */
   reset: () => void
@@ -131,8 +131,7 @@ export const useResourceStore = create<ResourceStoreState>()(
       resources.forEach((resource) => {
         resource.fields.forEach((field) => {
           // Build ResourceFieldId (use existing or compute)
-          const resourceFieldId =
-            field.resourceFieldId || toResourceFieldId(resource.id, field.id)
+          const resourceFieldId = field.resourceFieldId || toResourceFieldId(resource.id, field.id)
 
           const prevField = prevFieldMap[resourceFieldId]
 
@@ -156,8 +155,8 @@ export const useResourceStore = create<ResourceStoreState>()(
       set({ isLoading })
     },
 
-    getResourceById: (id) => {
-      return get().resourceMap.get(id)
+    getResourceById: (entityDefinitionIdOrApiSlug) => {
+      return get().resourceMap.get(entityDefinitionIdOrApiSlug)
     },
 
     reset: () => {

@@ -18,8 +18,8 @@ interface WorkflowResourceContextValue {
   /** Loading state for resources */
   isLoadingResources: boolean
 
-  /** Get resource by ID */
-  getResourceById: (id: string) => Resource | undefined
+  /** Get resource by entityDefinitionId or apiSlug */
+  getResourceById: (entityDefinitionIdOrApiSlug: string) => Resource | undefined
 
   /** Refetch resources */
   refetch: () => void
