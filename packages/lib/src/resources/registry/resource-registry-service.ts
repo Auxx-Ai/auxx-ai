@@ -106,6 +106,19 @@ function toSystemResourceBase(tableId: TableId): Omit<SystemResource, 'fields'> 
   if (!entry) throw new Error(`Unknown system resource: ${tableId}`)
 
   const displayConfig = RESOURCE_DISPLAY_CONFIG[tableId]
+  const fieldRegistry = RESOURCE_FIELD_REGISTRY[tableId]
+
+  // Helper to create DisplayFieldConfig from field ID
+  const getDisplayFieldConfig = (fieldId: string | undefined): DisplayFieldConfig | null => {
+    if (!fieldId || !fieldRegistry) return null
+    const field = fieldRegistry[fieldId]
+    if (!field) return null
+    return {
+      id: field.id,
+      name: field.label || field.key,
+      type: field.fieldType,
+    }
+  }
 
   return {
     id: entry.id,
@@ -120,9 +133,9 @@ function toSystemResourceBase(tableId: TableId): Omit<SystemResource, 'fields'> 
     dbName: entry.dbName,
     display: {
       identifierField: displayConfig.identifierField,
-      displayNameField: displayConfig.displayNameField,
-      secondaryInfoField: displayConfig.secondaryInfoField,
-      avatarField: displayConfig.avatarField,
+      primaryDisplayField: getDisplayFieldConfig(displayConfig.primaryDisplayFieldId),
+      secondaryDisplayField: getDisplayFieldConfig(displayConfig.secondaryDisplayFieldId),
+      avatarField: getDisplayFieldConfig(displayConfig.avatarFieldId),
       searchFields: displayConfig.searchFields,
       defaultSortField: displayConfig.defaultSortField,
       defaultSortDirection: displayConfig.defaultSortDirection,

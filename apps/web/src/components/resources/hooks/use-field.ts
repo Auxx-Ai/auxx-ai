@@ -2,7 +2,29 @@
 
 import { useResourceStore } from '../store/resource-store'
 import type { ResourceFieldId } from '@auxx/types/field'
-import type { ResourceField } from '@auxx/lib/resources/registry/field-types'
+import type { ResourceField } from '@auxx/lib/resources/client'
+
+/**
+ * FIELD ACCESS PATTERNS - When to Use What
+ *
+ * 1. useField(resourceFieldId) - PREFERRED for single field access
+ *    - Use when: You need one field's definition
+ *    - Benefits: O(1) lookup, granular reactivity, only rerenders when THIS field changes
+ *    - Example: CustomFieldCell, KanbanCardField, inline editors
+ *
+ * 2. useFields([resourceFieldIds]) - For multiple specific fields
+ *    - Use when: You need several fields by ID
+ *    - Benefits: Batch lookup, granular reactivity for each field
+ *
+ * 3. useResource(entityDefinitionId) - For entire resource
+ *    - Use when: You need the full resource (metadata, display config, ALL fields)
+ *    - Drawback: Rerenders when ANY field changes
+ *    - Example: Building column definitions, resource-level operations
+ *
+ * 4. cellSelectionConfig.getFieldDefinition - For editing context
+ *    - Use when: In cell editing context where resourceFieldId not easily available
+ *    - Returns ResourceField | null from current column
+ */
 
 /**
  * Subscribe to a specific field definition.
@@ -22,7 +44,7 @@ import type { ResourceField } from '@auxx/lib/resources/registry/field-types'
  * const field = useField(someCondition ? resourceFieldId : null)
  */
 export function useField(
-  resourceFieldId: ResourceFieldId | null | undefined,
+  resourceFieldId: ResourceFieldId | null | undefined
 ): ResourceField | undefined {
   // Subscribe to specific field in fieldMap
   // Only re-renders when this specific field changes (due to reference stability)
@@ -48,7 +70,7 @@ export function useField(
  * ])
  */
 export function useFields(
-  resourceFieldIds: (ResourceFieldId | null | undefined)[],
+  resourceFieldIds: (ResourceFieldId | null | undefined)[]
 ): (ResourceField | undefined)[] {
   // Subscribe to specific fields
   const fields = useResourceStore((state) => {

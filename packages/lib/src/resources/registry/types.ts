@@ -38,9 +38,9 @@ export interface SystemResource extends BaseResource {
   dbName: string
   display: {
     identifierField: string
-    displayNameField: string | ((row: Record<string, unknown>) => string)
-    secondaryInfoField?: string | ((row: Record<string, unknown>) => string)
-    avatarField?: string
+    primaryDisplayField: DisplayFieldConfig | null
+    secondaryDisplayField: DisplayFieldConfig | null
+    avatarField: DisplayFieldConfig | null
     searchFields: string[]
     defaultSortField?: string
     defaultSortDirection?: 'asc' | 'desc'

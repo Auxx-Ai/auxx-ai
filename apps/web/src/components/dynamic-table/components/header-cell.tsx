@@ -9,7 +9,6 @@ import {
   Filter,
   EyeOff,
   ArrowUpDown,
-  GripVertical,
   Pin,
   PinOff,
   Pencil,

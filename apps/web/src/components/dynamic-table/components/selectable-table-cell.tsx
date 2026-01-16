@@ -55,6 +55,9 @@ function SelectableTableCellInner<TData>({
   const isInlineEditing = isEditing && editMode === 'inline'
   const isPopoverEditing = isEditing && editMode === 'popover'
 
+  // Check if field can be updated (respects computed, system field capabilities)
+  const isUpdatable = field?.capabilities.updatable !== false
+
   /** Handle single click - select cell */
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -68,11 +71,11 @@ function SelectableTableCellInner<TData>({
   /** Handle double click - start editing */
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
-      if (!cellSelectionConfig?.enabled || isSystemColumn) return
+      if (!cellSelectionConfig?.enabled || isSystemColumn || !isUpdatable) return
       e.stopPropagation()
       setEditingCell({ rowId, columnId })
     },
-    [cellSelectionConfig?.enabled, isSystemColumn, rowId, columnId, setEditingCell]
+    [cellSelectionConfig?.enabled, isSystemColumn, isUpdatable, rowId, columnId, setEditingCell]
   )
 
   /** Handle keyboard navigation */
@@ -84,6 +87,7 @@ function SelectableTableCellInner<TData>({
 
       switch (e.key) {
         case 'Enter':
+          if (!isUpdatable) return
           e.preventDefault()
           setEditingCell({ rowId, columnId })
           break
@@ -94,7 +98,7 @@ function SelectableTableCellInner<TData>({
         // Arrow key navigation handled at higher level via useCellNavigation
       }
     },
-    [isSelected, isEditing, rowId, columnId, setEditingCell, setSelectedCell]
+    [isSelected, isEditing, isUpdatable, rowId, columnId, setEditingCell, setSelectedCell]
   )
 
   /** Close editor callback */
@@ -111,6 +115,7 @@ function SelectableTableCellInner<TData>({
         'group/cell flex items-center h-full relative outline-none',
         isSelected && 'cell-selected',
         isEditing && 'cell-editing',
+        !isUpdatable && 'cursor-not-allowed opacity-60',
         className
       )}
       onClick={handleClick}
@@ -120,7 +125,8 @@ function SelectableTableCellInner<TData>({
       data-row-id={rowId}
       data-column-id={columnId}
       data-selected={isSelected}
-      data-editing={isEditing}>
+      data-editing={isEditing}
+      title={!isUpdatable ? 'This field is read-only' : undefined}>
       {/* Selection overlay - hidden when inline editing or when child has data-self-overlay */}
       {!isSystemColumn && !isInlineEditing && (
         <CellSelectionOverlay

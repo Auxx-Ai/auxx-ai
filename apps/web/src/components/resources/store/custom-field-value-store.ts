@@ -391,25 +391,35 @@ export const useCustomFieldValueStore = create<CustomFieldValueState>()(
 // ─────────────────────────────────────────────────────────────────
 
 /**
- * Subscribe to a single value. Component only re-renders when this specific value changes.
+ * Subscribe to a field value and its loading state.
+ * Component only re-renders when this specific value or loading state changes.
+ *
+ * Supports two call signatures:
+ * - useFieldValue(key: FieldValueKey)
+ * - useFieldValue(resourceId: ResourceId, fieldId: FieldId | string)
  */
-export function useCustomFieldValue(
-  resourceId: ResourceId,
-  fieldId: FieldId | string,
-): StoredFieldValue | undefined {
-  const key = buildFieldValueKey(resourceId, fieldId)
-  return useCustomFieldValueStore((state) => state.values[key])
-}
+export function useFieldValue(key: FieldValueKey): { value: StoredFieldValue | undefined; isLoading: boolean }
+export function useFieldValue(resourceId: ResourceId, fieldId: FieldId | string): { value: StoredFieldValue | undefined; isLoading: boolean }
+export function useFieldValue(
+  keyOrResourceId: FieldValueKey | ResourceId,
+  fieldId?: FieldId | string,
+): { value: StoredFieldValue | undefined; isLoading: boolean } {
+  // Determine the actual key based on arguments
+  const key = fieldId !== undefined
+    ? buildFieldValueKey(keyOrResourceId as ResourceId, fieldId)
+    : (keyOrResourceId as FieldValueKey)
 
-/**
- * Subscribe to loading state for a specific value.
- */
-export function useCustomFieldValueLoading(
-  resourceId: ResourceId,
-  fieldId: FieldId | string,
-): boolean {
-  const key = buildFieldValueKey(resourceId, fieldId)
-  return useCustomFieldValueStore((state) => state.isKeyLoading(key))
+  // Stable selector that subscribes to both value and loading state
+  const selector = useCallback(
+    (state: CustomFieldValueState) => ({
+      value: state.values[key],
+      isLoading: state.isKeyLoading(key),
+    }),
+    [key]
+  )
+
+  // Use shallow comparison to prevent unnecessary re-renders
+  return useCustomFieldValueStore(useShallow(selector))
 }
 
 /**

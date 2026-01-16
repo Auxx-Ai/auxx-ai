@@ -3,8 +3,7 @@
 
 import { memo, useState, useCallback, useRef } from 'react'
 import {
-  useCustomFieldValue,
-  useCustomFieldValueLoading,
+  useFieldValue,
   toResourceId,
 } from '~/components/resources/store/custom-field-value-store'
 import { renderCellValue, type CellConfig } from '~/components/dynamic-table'
@@ -49,15 +48,14 @@ export const KanbanCardField = memo(function KanbanCardField({
   const resourceId = toResourceId(entityDefinitionId, rowId)
 
   // Direct store subscription - triggers re-render when value changes
-  const value = useCustomFieldValue(resourceId, field.id)
-  const isLoading = useCustomFieldValueLoading(resourceId, field.id)
+  const { value, isLoading } = useFieldValue(resourceId, field.id)
 
   // Get cellSelectionConfig from context (same config used by table)
   const cellSelectionContext = useCellSelectionOptional()
   const cellSelectionConfig = cellSelectionContext?.cellSelectionConfig
 
-  // Editing is only available if config exists and editable is true
-  const canEdit = editable && !!cellSelectionConfig?.enabled
+  // Editing is only available if config exists, editable is true, and field is updatable
+  const canEdit = editable && !!cellSelectionConfig?.enabled && field.capabilities.updatable !== false
 
   // Editing state (local to this field - kanban doesn't use selection like table)
   const [isEditing, setIsEditing] = useState(false)
@@ -100,9 +98,11 @@ export const KanbanCardField = memo(function KanbanCardField({
         'relative flex items-center gap-1.5 ps-3 pe-2',
         isEmpty && 'text-muted-foreground',
         canEdit && 'cursor-pointer hover:bg-primary-100 rounded-lg',
+        !canEdit && field.capabilities.updatable === false && 'opacity-60',
         className
       )}
-      onClick={handleClick}>
+      onClick={handleClick}
+      title={field.capabilities.updatable === false ? 'This field is read-only' : undefined}>
       {/* Field type icon */}
       <EntityIcon iconId={iconId} variant="default" size="xs" className="text-muted-foreground" />
 

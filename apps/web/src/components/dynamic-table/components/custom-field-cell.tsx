@@ -6,11 +6,11 @@ import { memo, useMemo } from 'react'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { FormattedCell, CellPadding } from './formatted-cell'
 import {
-  useCustomFieldValue,
-  useCustomFieldValueLoading,
+  useFieldValue,
   toResourceId,
 } from '~/components/resources/store/custom-field-value-store'
-import { useResource } from '~/components/resources'
+import { useField } from '~/components/resources/hooks/use-field'
+import { toResourceFieldId, toFieldId } from '@auxx/types/field'
 
 interface CustomFieldCellProps {
   /** Entity definition ID (e.g., 'contact', 'ticket', or custom entity UUID) */
@@ -23,16 +23,17 @@ interface CustomFieldCellProps {
   fieldType: string
   /** Column ID for formatting lookup */
   columnId: string
-  /** @deprecated Field options - now fetched via useResource for reactivity */
+  /** @deprecated Field options - now fetched via useField hook for reactivity */
   options?: unknown
 }
 
 /**
  * Custom field cell that subscribes directly to:
  * 1. Value from Zustand store (for reactive value updates)
- * 2. Field options from ResourceProvider via useResource (for reactive option updates)
+ * 2. Field metadata from useField hook (O(1) lookup, granular reactivity)
  *
  * This bypasses row memoization issues by subscribing directly to data sources.
+ * Uses useField instead of useResource for efficient field-specific updates.
  */
 export const CustomFieldCell = memo(function CustomFieldCell({
   entityDefinitionId,
@@ -46,17 +47,15 @@ export const CustomFieldCell = memo(function CustomFieldCell({
   const resourceId = toResourceId(entityDefinitionId, rowId)
 
   // Direct store subscription - triggers re-render when value changes
-  const value = useCustomFieldValue(resourceId, fieldId)
-  const isLoading = useCustomFieldValueLoading(resourceId, fieldId)
+  const { value, isLoading } = useFieldValue(resourceId, fieldId)
 
-  // Direct resource subscription - triggers re-render when field options change
-  const { resource } = useResource(entityDefinitionId)
-
-  // Get field options from resource (reactive) with prop fallback
-  const options = useMemo(() => {
-    const field = resource?.fields.find((f) => f.id === fieldId)
-    return field?.options ?? propOptions
-  }, [resource?.fields, fieldId, propOptions])
+  // Granular field subscription - only rerenders when THIS field changes
+  const resourceFieldId = useMemo(
+    () => toResourceFieldId(entityDefinitionId, toFieldId(fieldId)),
+    [entityDefinitionId, fieldId]
+  )
+  const field = useField(resourceFieldId)
+  const options = field?.options ?? propOptions
 
   if (isLoading && value === undefined) {
     return (

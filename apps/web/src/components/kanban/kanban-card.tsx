@@ -12,7 +12,7 @@ import { formatToRawValue } from '@auxx/lib/field-values/client'
 import type { CustomField } from '~/components/dynamic-table/types'
 import { KanbanCardField } from './kanban-card-field'
 import {
-  useCustomFieldValue,
+  useFieldValue,
   toResourceId,
 } from '~/components/resources/store/custom-field-value-store'
 
@@ -69,7 +69,7 @@ export const KanbanCard = memo(function KanbanCard({
   const resourceId = toResourceId(entityDefinitionId, id)
 
   // Fetch title directly from store (same pattern as KanbanCardField)
-  const primaryValue = useCustomFieldValue(resourceId, primaryFieldId ?? '')
+  const { value: primaryValue } = useFieldValue(resourceId, primaryFieldId ?? '')
 
   // Format title for display
   const title =

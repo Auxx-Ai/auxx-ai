@@ -6,6 +6,7 @@ import type { ResourceId } from '@auxx/lib/resources/client'
 import type { TargetTimeInStatus } from '@auxx/types/custom-field'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import type { FieldType } from '@auxx/database/types'
+import type { FieldPath } from '@auxx/types/field'
 
 // Re-export TargetTimeInStatus for backward compatibility
 export type { TargetTimeInStatus }
@@ -31,7 +32,15 @@ export type {
 /**
  * Field types that support formatting
  */
-export const FORMATTABLE_FIELD_TYPES = ['CURRENCY', 'DATE', 'DATETIME', 'TIME', 'NUMBER', 'PHONE_INTL', 'CHECKBOX'] as const
+export const FORMATTABLE_FIELD_TYPES = [
+  'CURRENCY',
+  'DATE',
+  'DATETIME',
+  'TIME',
+  'NUMBER',
+  'PHONE_INTL',
+  'CHECKBOX',
+] as const
 export type FormattableFieldType = (typeof FORMATTABLE_FIELD_TYPES)[number]
 
 // ============================================================================
@@ -49,7 +58,7 @@ export interface CellSelectionConfig {
   /** Enable cell selection mode */
   enabled: boolean
   /** Get field definition for a column (for FieldInput) */
-  getFieldDefinition?: (columnId: string) => any
+  getFieldDefinition?: (columnId: string) => ResourceField | null
   /** Get cell value for editing */
   getCellValue?: (rowId: string, columnId: string) => any
   /** Get ResourceId for a row (required for optimistic updates) */
@@ -88,11 +97,12 @@ export type ExtendedColumnDef<TData = any> = ColumnDef<TData> & {
     isCustomField?: boolean
     /** Unprefixed field ID for custom fields */
     fieldId?: string
+    /** Field path for relationship fields */
+    fieldPath?: FieldPath
     /** Extensible for other metadata */
     [key: string]: any
   }
 }
-
 
 /**
  * Table view configuration
@@ -330,7 +340,6 @@ export interface DynamicTableProps<TData = any> {
   entityDefinitionId?: string
 }
 
-
 /**
  * Sort option configuration
  */
@@ -387,37 +396,44 @@ export type ExternalDropTarget = {
 export interface DragDropConfig<TData = any> {
   /** Enable drag-and-drop functionality */
   enabled: boolean
-  
+
   /** Determines if a row can be dragged */
   canDrag?: (row: TData) => boolean
-  
+
   /** Determines if a row can accept drops */
   canDrop?: (draggedItems: TData[], targetRow: TData) => boolean
-  
+
   /** Called when items are dropped */
-  onDrop?: (draggedItems: TData[], targetRow: TData, dropPosition: DropPosition) => Promise<void> | void
-  
+  onDrop?: (
+    draggedItems: TData[],
+    targetRow: TData,
+    dropPosition: DropPosition
+  ) => Promise<void> | void
+
   /** Custom drag preview component */
   dragPreview?: React.ComponentType<{ items: TData[]; isDragging: boolean }>
-  
+
   /** Visual feedback for drop zones */
   dropIndicator?: React.ComponentType<{ isActive: boolean; position: DropPosition }>
-  
+
   /** Function to get currently selected items for multi-select drag */
   getSelectedItems?: (currentRow: TData) => TData[]
-  
+
   /** NEW: run table DnD in a parent DndContext */
   externalDnd?: boolean
-  
+
   /** NEW: lifecycle hooks for cross-component coordination */
   onDragStart?: (items: TData[]) => void
   onDragMove?: (items: TData[]) => void
   onDragCancel?: () => void
-  onDragEnd?: (result: { items: TData[]; over?: ExternalDropTarget | { type: 'row'; item: TData } }) => void
-  
+  onDragEnd?: (result: {
+    items: TData[]
+    over?: ExternalDropTarget | { type: 'row'; item: TData }
+  }) => void
+
   /** NEW: handle drops outside the table (e.g., breadcrumbs) */
   onDropExternal?: (items: TData[], target: ExternalDropTarget) => Promise<void> | void
-  
+
   /** NEW: map dnd-kit's `over` to a target object your app understands */
   getExternalTargetData?: (over: import('@dnd-kit/core').Over) => ExternalDropTarget | null
 }

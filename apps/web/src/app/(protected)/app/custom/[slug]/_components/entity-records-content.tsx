@@ -345,8 +345,9 @@ export function EntityRecordsContent() {
         fieldType: field.fieldType as FieldType,
         defaultFormatting,
         icon: getIconForFieldType(field.fieldType!),
-        enableSorting: field.fieldType !== 'RELATIONSHIP',
-        enableFiltering: field.fieldType !== 'RELATIONSHIP',
+        enableSorting: field.fieldType !== 'RELATIONSHIP' && field.capabilities.sortable !== false,
+        enableFiltering:
+          field.fieldType !== 'RELATIONSHIP' && field.capabilities.filterable !== false,
         enableResizing: true,
         minSize: 100,
         size: field.fieldType === 'RELATIONSHIP' ? 180 : 150,
@@ -496,7 +497,7 @@ export function EntityRecordsContent() {
   const cellSelectionConfig: CellSelectionConfig = useMemo(
     () => ({
       enabled: true,
-      getFieldDefinition: (columnId: string) => {
+      getFieldDefinition: (columnId: string): ResourceField | null => {
         // Column IDs are formatted as `field_${fieldId}`
         const fieldId = columnId.replace('field_', '')
         return customFields.find((f) => f.id === fieldId) ?? null

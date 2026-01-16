@@ -17,6 +17,8 @@ import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
 import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button'
 import { BaseEntityDrawer } from '~/components/drawers/base-entity-drawer'
+import { useFieldValue } from '~/components/resources/store/custom-field-value-store'
+import { formatToDisplayValue } from '@auxx/lib/field-values/client'
 
 /** Props for EntityRecordDrawer */
 interface EntityRecordDrawerProps {
@@ -65,9 +67,71 @@ export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
     enabled: !!open && !!resourceId,
   })
 
-  // Display values come directly from the cached record
-  const displayName = (cachedRecord?.displayName as string) ?? null
-  const secondaryDisplay = (cachedRecord?.secondaryDisplayValue as string) ?? null
+  // Get display field configurations from resource
+  const primaryDisplayFieldId = resource?.display.primaryDisplayField?.id ?? null
+  const secondaryDisplayFieldId = resource?.display.secondaryDisplayField?.id ?? null
+
+  // Get field definitions from resource
+  const primaryField = React.useMemo(() => {
+    if (!primaryDisplayFieldId || !resource?.fields) return null
+    return resource.fields.find((f) => f.id === primaryDisplayFieldId)
+  }, [primaryDisplayFieldId, resource?.fields])
+
+  const secondaryField = React.useMemo(() => {
+    if (!secondaryDisplayFieldId || !resource?.fields) return null
+    return resource.fields.find((f) => f.id === secondaryDisplayFieldId)
+  }, [secondaryDisplayFieldId, resource?.fields])
+
+  // Subscribe to field values (reactive - updates when field values change)
+  const primaryFieldValue = useFieldValue(
+    resourceId ?? ('' as ResourceId),
+    primaryDisplayFieldId ?? ''
+  )
+  const secondaryFieldValue = useFieldValue(
+    resourceId ?? ('' as ResourceId),
+    secondaryDisplayFieldId ?? ''
+  )
+
+  // Format values for display
+  const displayName = React.useMemo(() => {
+    if (!resourceId || !primaryDisplayFieldId) {
+      return (cachedRecord?.displayName as string) ?? null
+    }
+
+    // Use field value if available and field type is known
+    if (primaryFieldValue.value && primaryField?.fieldType) {
+      return String(formatToDisplayValue(primaryFieldValue.value, primaryField.fieldType))
+    }
+
+    // Fall back to cached record
+    return (cachedRecord?.displayName as string) ?? null
+  }, [
+    resourceId,
+    primaryDisplayFieldId,
+    primaryFieldValue.value,
+    primaryField?.fieldType,
+    cachedRecord?.displayName,
+  ])
+
+  const secondaryDisplay = React.useMemo(() => {
+    if (!resourceId || !secondaryDisplayFieldId) {
+      return (cachedRecord?.secondaryDisplayValue as string) ?? null
+    }
+
+    // Use field value if available and field type is known
+    if (secondaryFieldValue.value && secondaryField?.fieldType) {
+      return String(formatToDisplayValue(secondaryFieldValue.value, secondaryField.fieldType))
+    }
+
+    // Fall back to cached record
+    return (cachedRecord?.secondaryDisplayValue as string) ?? null
+  }, [
+    resourceId,
+    secondaryDisplayFieldId,
+    secondaryFieldValue.value,
+    secondaryField?.fieldType,
+    cachedRecord?.secondaryDisplayValue,
+  ])
 
   // Counter for focusing comments composer
   const [focusComposerTrigger, setFocusComposerTrigger] = React.useState(0)

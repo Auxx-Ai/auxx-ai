@@ -9,7 +9,11 @@ import { Button } from '@auxx/ui/components/button'
 import { Loader2, AlertCircle } from 'lucide-react'
 import type { ResourceId } from '@auxx/lib/workflow-engine/client'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
-import { toResourceId, getInstanceId, type ResourceId as FieldResourceId } from '@auxx/lib/field-values/client'
+import {
+  toResourceId,
+  getInstanceId,
+  type ResourceId as FieldResourceId,
+} from '@auxx/lib/field-values/client'
 import { CodeEditor, CodeLanguage } from '~/components/workflow/ui/code-editor'
 import Field from '~/components/workflow/ui/field'
 import Section from '~/components/workflow/ui/section'
@@ -42,7 +46,7 @@ export function ResourceTestInput({
 
   // Get resource config from provider (supports both system and custom resources)
   const resource = getResourceById(resourceType)
-
+  console.log('ResourceTestInput render', { resourceType, resource, inputs })
   // Fetch resource data when user picks a resource
   const {
     data: selectedResource,
@@ -142,8 +146,16 @@ export function ResourceTestInput({
               <MultiRelationInput
                 className="flex-1"
                 entityDefinitionId={resourceType}
-                value={inputs.selectedResourceId ? [toResourceId(resourceType, inputs.selectedResourceId)] : []}
-                onChange={(resourceIds: FieldResourceId[]) => handleResourceSelect(resourceIds[0] ? { referenceId: getInstanceId(resourceIds[0]) } : null)}
+                value={
+                  inputs.selectedResourceId
+                    ? [toResourceId(resourceType, inputs.selectedResourceId)]
+                    : []
+                }
+                onChange={(resourceIds: FieldResourceId[]) =>
+                  handleResourceSelect(
+                    resourceIds[0] ? { referenceId: getInstanceId(resourceIds[0]) } : null
+                  )
+                }
                 multi={false}
               />
             </VarEditorFieldRow>

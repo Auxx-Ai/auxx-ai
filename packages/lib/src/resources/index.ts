@@ -63,6 +63,9 @@ export type {
 } from './registry'
 export type { ResourceDisplayConfig, OrgScopingStrategy, JoinScopingConfig } from './registry'
 
+// Field capability utilities
+export { canUpdateField, canSortField, canFilterField, canCreateField } from './capabilities/field-capabilities'
+
 // Resource types (system + custom)
 export {
   isSystemResource,

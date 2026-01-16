@@ -4,8 +4,7 @@
 import { memo, useMemo, type ReactNode } from 'react'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import {
-  useCustomFieldValue,
-  useCustomFieldValueLoading,
+  useFieldValue,
   toResourceId,
 } from '~/components/resources/store/custom-field-value-store'
 import { formatToDisplayValue } from '@auxx/lib/field-values/client'
@@ -32,7 +31,7 @@ interface PrimaryFieldCellProps {
 
 /**
  * Primary field cell that subscribes directly to the Zustand store.
- * Uses useCustomFieldValue for reactive value updates, ensuring the cell
+ * Uses useFieldValue for reactive value updates, ensuring the cell
  * re-renders when values are fetched or updated.
  *
  * This component wraps PrimaryCell with store subscription logic,
@@ -50,8 +49,7 @@ export const PrimaryFieldCell = memo(function PrimaryFieldCell({
   const resourceId = toResourceId(entityDefinitionId, rowId)
 
   // Direct store subscription - triggers re-render when value changes
-  const value = useCustomFieldValue(resourceId, fieldId)
-  const isLoading = useCustomFieldValueLoading(resourceId, fieldId)
+  const { value, isLoading } = useFieldValue(resourceId, fieldId)
 
   // Format value for display
   const displayValue: string | null = useMemo(() => {
