@@ -5,6 +5,8 @@ import { useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { api } from '~/trpc/react'
 import { Archive, Calculator, PackagePlus, Pencil, Plus, Settings, UserPlus } from 'lucide-react'
+import { useResources } from '~/components/resources/hooks'
+import type { CustomResource } from '@auxx/lib/resources/client'
 import {
   SidebarGroup,
   SidebarMenu,
@@ -22,14 +24,7 @@ import { useEntityDefinitionMutations } from '~/components/resources/hooks'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 
 /** Entity definition type for sidebar actions */
-interface EntityDefinition {
-  id: string
-  apiSlug: string
-  icon: string | null
-  color: string | null
-  singular: string
-  plural: string
-}
+type EntityDefinition = CustomResource
 
 /**
  * Sidebar navigation component for dynamic entity definitions.
@@ -60,33 +55,33 @@ export function EntitySidebarNav() {
     toggleGroup('records')
   }
 
-  // Fetch all entity definitions
-  const {
-    data: definitions,
-    isLoading,
-    refetch,
-  } = api.entityDefinition.getAll.useQuery(
-    { includeArchived: false },
-    { staleTime: 1000 * 60 * 5 } // Cache for 5 minutes
-  )
-
-  // Filter to only dynamic entities (no entityType or standardType)
-  // const dynamicEntities = definitions?.filter(
-  //   (def) => def.entityType === null && def.standardType === null
-  // )
-  const dynamicEntities = definitions
+  // Get custom entities from resource store
+  const { resources, isLoading } = useResources()
+  console.log('Resources in Sidebar:', resources)
+  const dynamicEntities = resources
 
   // console.log('Dynamic Entities:', dynamicEntities)
   /** Open dialog in edit mode */
   function handleEditEntity(entity: EntityDefinition) {
-    setEditingEntity(entity)
+    // Map CustomResource to EntityDefinitionEntity format expected by dialog
+    setEditingEntity({
+      id: entity.id,
+      apiSlug: entity.apiSlug,
+      icon: entity.icon,
+      color: entity.color,
+      singular: entity.label, // CustomResource uses 'label' instead of 'singular'
+      plural: entity.plural,
+      primaryDisplayFieldId: entity.display?.primaryDisplayField?.id ?? null,
+      secondaryDisplayFieldId: entity.display?.secondaryDisplayField?.id ?? null,
+      avatarFieldId: entity.display?.avatarField?.id ?? null,
+    })
     setDialogOpen(true)
   }
 
   /** Archive an entity definition */
   async function handleArchiveEntity(entity: EntityDefinition) {
     const confirmed = await confirm({
-      title: `Archive "${entity.singular}"?`,
+      title: `Archive "${entity.label}"?`,
       description:
         'This entity will be archived and hidden. You can restore it later from Settings.',
       confirmText: 'Archive',
@@ -98,7 +93,6 @@ export function EntitySidebarNav() {
       archiveEntity.mutate(
         { id: entity.id },
         {
-          onSuccess: () => refetch(),
           onError: (error) => {
             toastError({ title: 'Failed to archive entity', description: error.message })
           },
@@ -298,7 +292,6 @@ export function EntitySidebarNav() {
           open={dialogOpen}
           onOpenChange={setDialogOpen}
           editingEntity={editingEntity}
-          onSuccess={() => refetch()}
         />
       )}
 

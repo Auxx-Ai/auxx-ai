@@ -1,4 +1,4 @@
-// apps/web/src/components/dynamic-table/components/header-cell.tsx
+// apps/web/src/components/dynamic-table/components/header-cell-new.tsx
 
 'use client'
 
@@ -28,7 +28,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { getSortOptionsForFieldType, SORT_OPTIONS } from '../utils/constants'
 import { useTableConfig } from '../context/table-config-context'
 import { useViewMetadata } from '../context/view-metadata-context'
-import { useViewStore } from '../stores/view-store'
+import { useViewStore } from '../stores/view-store-new'
 import { useTableUIStore } from '../stores/table-ui-store'
 import { useFilterStore } from '../stores/filter-store'
 import {
@@ -39,7 +39,7 @@ import {
 } from '../hooks/use-table-selectors'
 import { useSetFilters } from '../hooks/use-table-actions'
 import { EditColumnLabelDialog } from './dialogs/edit-column-label-dialog'
-import { EditColumnFormattingDialog } from './dialogs/edit-column-formatting-dialog'
+import { EditColumnFormattingDialog } from './edit-column-formatting-dialog'
 import type { Header } from '@tanstack/react-table'
 import type { ExtendedColumnDef, ColumnFormatting, FormattableFieldType } from '../types'
 import { FORMATTABLE_FIELD_TYPES } from '../types'

@@ -46,8 +46,8 @@ import {
   useSetColumnFormatting,
 } from '../../hooks/use-table-actions'
 import { Tooltip } from '~/components/global/tooltip'
-import { EditColumnLabelDialog } from '../edit-column-label-dialog'
-import { EditColumnFormattingDialog } from '../edit-column-formatting-dialog'
+import { EditColumnLabelDialog } from '../dialogs/edit-column-label-dialog'
+import { EditColumnFormattingDialog } from '../dialogs/edit-column-formatting-dialog'
 import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
 import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
 import type { Column } from '@tanstack/react-table'

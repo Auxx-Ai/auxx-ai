@@ -63,7 +63,6 @@ function DynamicViewInner<TData extends object>({
   const { selectFields, selectedKanbanCardIds, onSelectedKanbanCardIdsChange } =
     useViewMetadata<TData>()
 
-  console.log('selectFields', selectFields)
   // View store state
   const isViewsLoaded = useViewStore((state) => state.initialized)
 
@@ -140,7 +139,6 @@ function DynamicViewInner<TData extends object>({
   // Unified initial loading state
   const isInitialLoading = !isViewsLoaded || (isLoading && !hasData)
 
-  console.log('DynamicViewInner render', { rowCount, selectedData })
   return (
     <div ref={scrollContainerRef} className="flex flex-col relative h-full flex-1 overflow-auto">
       {/* Toolbar */}

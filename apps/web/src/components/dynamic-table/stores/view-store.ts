@@ -374,16 +374,14 @@ export function useActiveViewConfig(tableId: string): ViewConfig | null {
   )
 
   // If view selected, get saved and pending separately to avoid creating new objects
-  const viewSavedConfig = useTableUIStore((state) =>
-    viewId ? state.viewConfigs[viewId] : null
-  )
+  const viewSavedConfig = useTableUIStore((state) => (viewId ? state.viewConfigs[viewId] : null))
   const viewPendingConfig = useTableUIStore((state) =>
     viewId ? state.pendingConfigs[viewId] : null
   )
   const viewFilters = useFilterStore((state) =>
     viewId ? (state.viewFilters[viewId] ?? EMPTY_FILTERS) : EMPTY_FILTERS
   )
-
+  console.log('useActiveViewConfig', { viewFilters, viewSavedConfig, viewPendingConfig })
   return useMemo(() => {
     if (!viewId) {
       // Session mode
