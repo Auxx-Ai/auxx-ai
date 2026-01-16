@@ -115,7 +115,9 @@ function DynamicViewInner<TData extends object>() {
   }, [isKanbanView, onSelectedKanbanCardIdsChange, table])
 
   // Show inline bulk action bar only for table view (kanban uses FloatingBulkActionBar only)
-  const showBulkActionsBar = Boolean(enableBulkActions && !isKanbanView && tableSelectedRows.length > 0)
+  const showBulkActionsBar = Boolean(
+    enableBulkActions && !isKanbanView && tableSelectedRows.length > 0
+  )
 
   // Determine if we have any data
   const rowCount = table.getRowModel().rows.length
@@ -256,8 +258,9 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
   const selectFields = useMemo(() => {
     if (!fields) return []
     return fields
-      .filter((f): f is ResourceField & { id: string } =>
-        !!f.id && f.fieldType === 'SINGLE_SELECT' && f.active !== false
+      .filter(
+        (f): f is ResourceField & { id: string } =>
+          !!f.id && f.fieldType === 'SINGLE_SELECT' && f.active !== false
       )
       .map((f) => ({
         id: f.id,
@@ -306,6 +309,8 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
     activeDragItems,
     setActiveDragItems,
   } = tableState
+
+  console.log('[DynamicView] Rendered with entityDefinitionId:', currentView, views)
 
   // Cell selection state - kept in DynamicView for CellSelectionContext
   const [selectedCell, setSelectedCell] = useState<CellSelectionState | null>(null)

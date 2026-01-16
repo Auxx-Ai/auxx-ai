@@ -1,6 +1,7 @@
 // apps/web/src/components/resources/hooks/use-field.ts
 
 import { useResourceStore } from '../store/resource-store'
+import { useShallow } from 'zustand/react/shallow'
 import type { ResourceFieldId } from '@auxx/types/field'
 import type { ResourceField } from '@auxx/lib/resources/client'
 
@@ -72,13 +73,17 @@ export function useField(
 export function useFields(
   resourceFieldIds: (ResourceFieldId | null | undefined)[]
 ): (ResourceField | undefined)[] {
-  // Subscribe to specific fields
-  const fields = useResourceStore((state) => {
-    return resourceFieldIds.map((rfId) => {
-      if (!rfId) return undefined
-      return state.fieldMap[rfId]
+  // Subscribe to specific fields with shallow comparison
+  // useShallow performs shallow comparison of the returned array
+  // This prevents re-renders when array contents haven't actually changed
+  const fields = useResourceStore(
+    useShallow((state) => {
+      return resourceFieldIds.map((rfId) => {
+        if (!rfId) return undefined
+        return state.fieldMap[rfId]
+      })
     })
-  })
+  )
 
   return fields
 }

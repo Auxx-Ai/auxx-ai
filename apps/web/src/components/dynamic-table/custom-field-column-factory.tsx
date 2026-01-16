@@ -24,6 +24,9 @@ import { CustomFieldCell } from './components/custom-field-cell'
 import type { ExtendedColumnDef } from './types'
 import type { ResourceField } from '@auxx/lib/resources/client'
 import { mapBaseTypeToFieldType } from '@auxx/lib/workflow-engine/client'
+import { toResourceId } from '~/components/resources'
+import type { FieldPath } from '@auxx/types/field'
+import { encodeDirectFieldColumnId, encodeFieldPathColumnId } from './utils/column-id'
 
 // ─────────────────────────────────────────────────────────────────
 // HELPER FUNCTIONS
@@ -85,76 +88,106 @@ export interface CustomFieldColumnOptions {
 // ─────────────────────────────────────────────────────────────────
 
 /**
- * Create columns for custom fields using cell-level store subscriptions.
- * Each cell subscribes directly to the Zustand store for its specific value,
- * ensuring automatic re-renders when values change.
+ * Create columns for custom fields and field paths using cell-level store subscriptions.
+ * Handles both direct fields (ResourceFieldId) and relationship traversal paths (FieldPath).
  *
- * @param fields - Array of ResourceField definitions
+ * @param fields - Array of ResourceField or field path definitions
  * @param options - entityDefinitionId for store subscription
  * @returns Array of ExtendedColumnDef columns
  *
  * @example
  * ```tsx
- * // Syncer triggers batch fetches for visible columns
- * useCustomFieldValueSyncer({
- *   resourceIds: contacts.map(c => toResourceId('contact', c.id)),
- *   columnVisibility,
- *   columnIds: fields.map(f => toResourceFieldId('contact', f.id)),
- *   enabled: fields.length > 0,
- * })
+ * // Direct fields
+ * const columns = createCustomFieldColumns<Contact>(
+ *   customFields,
+ *   { entityDefinitionId: 'contact' }
+ * )
  *
- * // Cells subscribe directly to store - no getValue/isValueLoading needed
- * const columns = createCustomFieldColumns<Contact>(fields, { entityDefinitionId: 'contact' })
+ * // With field paths
+ * const columns = createCustomFieldColumns<Product>([
+ *   ...customFields,
+ *   { fieldPath: ['product:vendor', 'vendor:name'] }
+ * ], { entityDefinitionId: 'product' })
  * ```
  */
 export function createCustomFieldColumns<T extends { id: string }>(
-  fields: ResourceField[],
+  fields: Array<ResourceField | { fieldPath: FieldPath }>,
   options: CustomFieldColumnOptions
 ): ExtendedColumnDef<T>[] {
   const { entityDefinitionId } = options
 
-  return fields
-    .filter((f) => f.id) // Only fields with IDs (custom fields)
-    .map((field) => {
-      const fieldType = mapBaseTypeToFieldType(field.type)
-      const columnId = `customField_${field.id}`
-      const fieldId = field.id!
+  return fields.map((item) => {
+    let columnId: string
+    let fieldType: string | undefined
+    let label: string
+    let isPath = false
+    let cellOptions: unknown = undefined
+    let canSort = true
+    let canFilter = true
+    let isCustomField = true
+    let fieldId: string | undefined = undefined
+
+    // Check if this is a field path or a direct field
+    if ('fieldPath' in item) {
+      // Field path - encode with :: separator
+      const fieldPath = item.fieldPath
+      columnId = encodeFieldPathColumnId(fieldPath)
+      isPath = true
+      // Label will be rendered as breadcrumb in HeaderCellWrapper
+      label = ''
+      fieldType = undefined
+      canSort = false // Disable sorting for paths (no backend support)
+      canFilter = false // Disable filtering for paths (no backend support)
+      isCustomField = false
+    } else {
+      // Direct field - use ResourceFieldId as columnId
+      const field = item
+      if (!field.id || !field.resourceFieldId) {
+        // Skip fields without IDs
+        return null as unknown as ExtendedColumnDef<T>
+      }
+
+      columnId = encodeDirectFieldColumnId(field.resourceFieldId)
+      fieldType = mapBaseTypeToFieldType(field.type)
+      label = field.label
 
       // Build options object for cell renderer
       // For SELECT fields: convert enumValues to options array format
       // For other fields: pass field.options directly (contains display options)
-      const cellOptions = field.enumValues
+      cellOptions = field.enumValues
         ? { options: field.enumValues.map((e) => ({ label: e.label, value: e.dbValue })) }
         : field.options
 
-      return {
-        id: columnId,
-        // accessorFn not used for display - cells read from store directly
-        accessorFn: () => undefined,
-        header: field.label,
-        fieldType,
-        icon: getIconForFieldType(fieldType),
-        enableSorting: field.capabilities?.sortable ?? true,
-        enableFiltering: field.capabilities?.filterable ?? true,
-        enableResizing: true,
-        enableReorder: true,
-        defaultVisible: false,
-        minSize: 100,
-        size: 150,
-        meta: {
-          isCustomField: true,
-          fieldId: fieldId,
-        },
-        cell: ({ row }) => (
-          <CustomFieldCell
-            entityDefinitionId={entityDefinitionId}
-            rowId={row.original.id}
-            fieldId={fieldId}
-            fieldType={fieldType}
-            columnId={columnId}
-            options={cellOptions}
-          />
-        ),
-      } satisfies ExtendedColumnDef<T>
-    })
+      canSort = field.capabilities?.sortable ?? true
+      canFilter = field.capabilities?.filterable ?? true
+      fieldId = field.id
+    }
+
+    return {
+      id: columnId,
+      // accessorFn not used for display - cells read from store directly
+      accessorFn: () => undefined,
+      header: label,
+      fieldType,
+      icon: fieldType ? getIconForFieldType(fieldType) : undefined,
+      enableSorting: canSort,
+      enableFiltering: canFilter,
+      enableResizing: true,
+      enableReorder: true,
+      defaultVisible: false,
+      minSize: 100,
+      size: 150,
+      meta: {
+        isCustomField,
+        fieldId,
+      },
+      cell: ({ row }) => (
+        <CustomFieldCell
+          resourceId={toResourceId(entityDefinitionId, row.original.id)}
+          columnId={columnId}
+          options={cellOptions}
+        />
+      ),
+    } satisfies ExtendedColumnDef<T>
+  }).filter((col): col is ExtendedColumnDef<T> => col !== null)
 }

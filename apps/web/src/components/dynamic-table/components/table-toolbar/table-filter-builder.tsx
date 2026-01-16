@@ -74,6 +74,7 @@ export function TableFilterBuilder({
         isDraftInitialized.current = true
       } else if (isDraftInitialized.current) {
         // Closing: commit draft to parent, filtering out empty groups
+
         const nonEmptyGroups = draftFilters.filter((g) => g.conditions.length > 0)
         onFiltersChange(nonEmptyGroups)
         isDraftInitialized.current = false

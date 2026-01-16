@@ -57,9 +57,11 @@ export function useDynamicTable<TData extends Record<string, any>>({
   // Compute enableCheckbox from bulkActions or onRowSelectionChange
   const enableCheckbox = Boolean(bulkActions?.length) || Boolean(onRowSelectionChange)
   const [urlState, setUrlState] = useQueryStates({
-    v: parseAsString,
     q: parseAsString,
   })
+
+  // View state is now managed locally instead of in URL
+  const [activeViewId, setActiveViewId] = useState<string | null>(null)
 
   // Get views from centralized store instead of React Query
   const views = useTableViews(tableId)
@@ -73,37 +75,35 @@ export function useDynamicTable<TData extends Record<string, any>>({
   const updateSessionView = useViewStore((state) => state.updateSessionView)
 
   const currentView = useMemo(() => {
-    if (!urlState.v) {
+    if (!activeViewId) {
       return null
     }
-    return views.find((view) => view.id === urlState.v) ?? null
-  }, [urlState.v, views])
+    return views.find((view) => view.id === activeViewId) ?? null
+  }, [activeViewId, views])
 
   // Find default view
   const defaultView = useMemo(() => {
     return views.find((view) => view.isDefault) ?? null
   }, [views])
 
-  // Auto-select default view on mount if no view in URL
+  // Auto-select default view on mount if no view selected
   useEffect(() => {
     // Only run when store is initialized and we have views
     if (!isStoreInitialized || views.length === 0) return
 
     // If no view selected and default view exists, auto-select it
-    if (!urlState.v && defaultView) {
-      startTransition(() => {
-        setUrlState({ v: defaultView.id })
-      })
+    if (!activeViewId && defaultView) {
+      setActiveViewId(defaultView.id)
     }
-  }, [isStoreInitialized, urlState.v, defaultView, views.length, setUrlState])
+  }, [isStoreInitialized, activeViewId, defaultView, views.length])
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // SYNC URL VIEW ID TO STORE
+  // SYNC VIEW ID TO STORE
   // This ensures useActiveViewConfig() returns the correct config
   // ═══════════════════════════════════════════════════════════════════════════
   useEffect(() => {
-    setActiveViewInStore(tableId, urlState.v ?? null)
-  }, [tableId, urlState.v, setActiveViewInStore])
+    setActiveViewInStore(tableId, activeViewId)
+  }, [tableId, activeViewId, setActiveViewInStore])
 
   // Initialize persistence (triggers auto-save on changes)
   useViewStorePersistence(currentView?.id ?? null, tableId)
@@ -490,12 +490,9 @@ export function useDynamicTable<TData extends Record<string, any>>({
   const hasUnsavedViewChanges = currentView?.id ? hasUnsavedChanges(currentView.id) : false
   const isSavingView = currentView?.id ? isSaving(currentView.id) : false
 
-  const setActiveView = useCallback(
-    (viewId: string | null) => {
-      setUrlState({ v: viewId })
-    },
-    [setUrlState]
-  )
+  const setActiveView = useCallback((viewId: string | null) => {
+    setActiveViewId(viewId)
+  }, [])
 
   const setSearchQuery = useCallback(
     (query: string) => {
@@ -506,6 +503,7 @@ export function useDynamicTable<TData extends Record<string, any>>({
   )
 
   const setFilters = useCallback((filters: ConditionGroup[]) => {
+    console.log('[useDynamicTable] Setting filters:', filters)
     setLocalFilters(filters)
   }, [])
 

@@ -182,55 +182,19 @@ export function EntityRecordsContent() {
   // View store integration - tableId must match DynamicView
   const tableId = `entity-${entityDefinitionId}`
   const viewConfig = useActiveViewConfig(tableId)
-
-  // Migrate legacy column visibility from field_{id} to ResourceFieldId format
-  const migratedViewConfig = useMemo(() => {
-    if (!viewConfig || !entityDefinitionId) return viewConfig
-
-    const columnVisibility = viewConfig.columnVisibility
-    if (!columnVisibility || Object.keys(columnVisibility).length === 0) return viewConfig
-
-    // Check if migration is needed (any keys starting with 'field_')
-    const needsMigration = Object.keys(columnVisibility).some((key) => key.startsWith('field_'))
-    if (!needsMigration) return viewConfig
-
-    // Migrate column visibility keys from field_{id} to ResourceFieldId format
-    const migratedVisibility: Record<string, boolean> = {}
-    for (const [columnId, visible] of Object.entries(columnVisibility)) {
-      if (columnId.startsWith('field_')) {
-        const bareFieldId = columnId.replace('field_', '')
-        const resourceFieldId = toResourceFieldId(entityDefinitionId, toFieldId(bareFieldId))
-        migratedVisibility[resourceFieldId] = visible
-      } else {
-        // Already migrated or system column
-        migratedVisibility[columnId] = visible
-      }
-    }
-
-    console.log('[Column Visibility Migration]', {
-      entityDefinitionId,
-      before: Object.keys(columnVisibility),
-      after: Object.keys(migratedVisibility),
-    })
-
-    return {
-      ...viewConfig,
-      columnVisibility: migratedVisibility,
-    }
-  }, [viewConfig, entityDefinitionId])
-
+  console.log('[EntityRecordsContent] columnVisibility', viewConfig)
   // Build page-level filters with stable IDs
   // Note: Search is handled by DynamicView internally, but we include for future use
   const pageFilters = useMemo(() => buildPageFilters({}), [])
 
   // Merge view filters with page filters
-  const combinedFilters = useCombinedFilters({ viewConfig: migratedViewConfig, pageFilters })
+  const combinedFilters = useCombinedFilters({ viewConfig, pageFilters })
 
   // Get sorting from view config (already merged saved + pending)
   const viewSorting = useMemo(() => {
-    const sorting = migratedViewConfig?.sorting
+    const sorting = viewConfig?.sorting
     return sorting?.length ? sorting : undefined
-  }, [migratedViewConfig?.sorting])
+  }, [viewConfig?.sorting])
 
   // ══════════════════════════════════════════════════════════════════════════
   // DATA FETCHING
@@ -250,7 +214,7 @@ export function EntityRecordsContent() {
     filters: combinedFilters,
     sorting: viewSorting,
     limit: PAGE_SIZE,
-    enabled: !!entityDefinitionId,
+    enabled: !!entityDefinitionId && viewConfig?.columnOrder.length > 1,
   })
 
   // Handle scroll to bottom - load more data
