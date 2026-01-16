@@ -8,12 +8,14 @@ import { useResourceIdFromField } from '../hooks/use-resource-id-from-field'
 import {
   extractRelationshipResourceIds,
   getInstanceId,
+  isMultiRelationship,
   parseResourceId,
   type ResourceId,
 } from '@auxx/lib/field-values/client'
 import { api } from '~/trpc/react'
 import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
 import { ResourcePicker } from '~/components/pickers/resource-picker'
+import { isSingleValueRelationship } from '@auxx/utils'
 
 /**
  * Input component for RELATIONSHIP field type.
@@ -29,8 +31,8 @@ export function RelationshipInputField() {
   const nav = useFieldNavigationOptional()
 
   const relationship = field.options?.relationship
-  const isSingleSelect =
-    relationship?.relationshipType === 'belongs_to' || relationship?.relationshipType === 'has_one'
+  const isSingleSelect = isSingleValueRelationship(relationship?.relationshipType)
+  // relationship?.relationshipType === 'belongs_to' || relationship?.relationshipType === 'has_one'
 
   // Get relatedEntityDefinitionId for storing with values
   // relatedEntityDefinitionId is the unified ID for both system and custom resources

@@ -1,6 +1,10 @@
 // packages/lib/src/field-values/relationship-field.ts
 
-import type { RelationshipFieldValue, RelationshipFieldValueInput, TypedFieldValue } from '@auxx/types/field-value'
+import type {
+  RelationshipFieldValue,
+  RelationshipFieldValueInput,
+  TypedFieldValue,
+} from '@auxx/types/field-value'
 import type { ResourceId } from '@auxx/types/resource'
 import type { RelationshipType } from '@auxx/types/custom-field'
 import { toResourceId, getInstanceId } from '../resources/resource-id'
@@ -196,7 +200,11 @@ export function convertRawToRelationshipInput(
             relatedEntityDefinitionId: rel.relatedEntityDefinitionId ?? '',
           }
         }
-        return { type: 'relationship' as const, relatedEntityId: String(item), relatedEntityDefinitionId: '' }
+        return {
+          type: 'relationship' as const,
+          relatedEntityId: String(item),
+          relatedEntityDefinitionId: '',
+        }
       })
       .filter((item) => item.relatedEntityId)
   }
@@ -240,7 +248,9 @@ export function validateRelationshipValue(value: unknown): boolean {
     return value.every((item) => {
       if (typeof item === 'string' && item.trim()) return true
       if (typeof item === 'object' && item !== null && 'relatedEntityId' in item) {
-        return typeof (item as any).relatedEntityId === 'string' && (item as any).relatedEntityId.trim()
+        return (
+          typeof (item as any).relatedEntityId === 'string' && (item as any).relatedEntityId.trim()
+        )
       }
       return false
     })
@@ -249,7 +259,9 @@ export function validateRelationshipValue(value: unknown): boolean {
   // Single string or object
   if (typeof value === 'string' && value.trim()) return true
   if (typeof value === 'object' && value !== null && 'relatedEntityId' in value) {
-    return typeof (value as any).relatedEntityId === 'string' && (value as any).relatedEntityId.trim()
+    return (
+      typeof (value as any).relatedEntityId === 'string' && (value as any).relatedEntityId.trim()
+    )
   }
 
   return false
@@ -293,12 +305,28 @@ export function isMultiRelationship(relationshipType?: RelationshipType | string
 }
 
 /**
+ * Determine if a relationship type allows multiple selections.
+ *
+ * @param relationshipType - The relationship cardinality type
+ * @returns true if has_many or many_to_many, false for belongs_to/has_one/undefined
+ *
+ * @example
+ * const single = isSingleRelationship(field.options?.relationship?.relationshipType)
+ */
+export function isSingleRelationship(relationshipType?: RelationshipType | string): boolean {
+  return relationshipType === 'belongs_to' || relationshipType === 'has_one'
+}
+
+/**
  * Create a single ResourceId from entityDefinitionId and entityInstanceId.
  *
  * @example
  * const resourceId = toResourceIdFromParts('ticket', ticketId)
  */
-export function toResourceIdFromParts(entityDefinitionId: string, entityInstanceId: string): ResourceId {
+export function toResourceIdFromParts(
+  entityDefinitionId: string,
+  entityInstanceId: string
+): ResourceId {
   return toResourceId(entityDefinitionId, entityInstanceId)
 }
 
@@ -329,4 +357,11 @@ export function toResourceIdFromId(
 }
 
 // Re-export from resource-id for convenience
-export { toResourceId, parseResourceId, isResourceId, toResourceIds, getInstanceId, getDefinitionId } from '../resources/resource-id'
+export {
+  toResourceId,
+  parseResourceId,
+  isResourceId,
+  toResourceIds,
+  getInstanceId,
+  getDefinitionId,
+} from '../resources/resource-id'

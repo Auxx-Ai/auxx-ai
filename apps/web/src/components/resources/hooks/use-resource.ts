@@ -14,7 +14,7 @@ interface UseResourceResult {
  * Hook for getting a single resource by ID
  * @param resourceId - Can be entityDefinitionId, apiSlug, or systemType (e.g. "contacts")
  */
-export function useResource(resourceId: string | null): UseResourceResult {
+export function useResource(resourceId: string | null | undefined): UseResourceResult {
   // Subscribe directly to the resource data from the map - triggers re-render when resource changes
   const resource = useResourceStore((s) => (resourceId ? s.resourceMap.get(resourceId) : undefined))
   const isQueryLoading = useResourceStore((s) => s.isLoading)

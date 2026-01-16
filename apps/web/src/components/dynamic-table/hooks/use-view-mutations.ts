@@ -3,10 +3,15 @@
 import { api } from '~/trpc/react'
 import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 import { useViewStore } from '../stores/view-store'
+import { useTableUIStore } from '../stores/table-ui-store'
+import { useFilterStore } from '../stores/filter-store'
+import { extractUIConfig } from '../utils/extract-ui-config'
 import type { TableView } from '../types'
 
 /**
- * Hook that provides all view-related mutations with store synchronization
+ * Hook that provides all view-related mutations with store synchronization.
+ * Syncs changes across all stores: view-store, table-ui-store, and filter-store.
+ *
  * @param tableId - The table ID for the mutations
  * @param onViewSelect - Optional callback when a view needs to be selected (e.g., after delete)
  */
@@ -23,8 +28,18 @@ export function useViewMutations(tableId: string, onViewSelect?: (viewId: string
   const createView = api.tableView.create.useMutation({
     onSuccess: (newView) => {
       toastSuccess({ title: 'View created successfully' })
-      // Add to store immediately
+
+      // 1. Add to view-store (metadata)
       addViewToStore(newView as TableView)
+
+      // 2. Initialize table-ui-store (UI config)
+      const uiConfig = extractUIConfig(newView.config)
+      useTableUIStore.getState().setViewConfig(newView.id, uiConfig)
+
+      // 3. Initialize filter-store (filters)
+      const filters = newView.config.filters ?? []
+      useFilterStore.getState().setViewFilters(newView.id, filters)
+
       // Also invalidate for backward compatibility
       utils.tableView.list.invalidate({ tableId })
     },
@@ -63,8 +78,18 @@ export function useViewMutations(tableId: string, onViewSelect?: (viewId: string
   const duplicateView = api.tableView.duplicate.useMutation({
     onSuccess: (newView) => {
       toastSuccess({ title: 'View duplicated successfully' })
-      // Add duplicated view to store
+
+      // 1. Add to view-store (metadata)
       addViewToStore(newView as TableView)
+
+      // 2. Initialize table-ui-store (UI config)
+      const uiConfig = extractUIConfig(newView.config)
+      useTableUIStore.getState().setViewConfig(newView.id, uiConfig)
+
+      // 3. Initialize filter-store (filters)
+      const filters = newView.config.filters ?? []
+      useFilterStore.getState().setViewFilters(newView.id, filters)
+
       utils.tableView.list.invalidate({ tableId })
     },
     onError: (error) => {
@@ -75,10 +100,27 @@ export function useViewMutations(tableId: string, onViewSelect?: (viewId: string
   /** Set a view as default */
   const setDefaultView = api.tableView.setDefault.useMutation({
     onSuccess: async () => {
-      // Refetch to get updated isDefault flags and update store
+      // Refetch to get updated isDefault flags and update all stores
       const result = await utils.tableView.list.fetch({ tableId })
       if (result) {
-        setTableViews(tableId, result as TableView[])
+        const views = result as TableView[]
+
+        // 1. Update view-store (metadata)
+        setTableViews(tableId, views)
+
+        // 2. Update table-ui-store (UI config)
+        const tableUIStore = useTableUIStore.getState()
+        for (const view of views) {
+          const uiConfig = extractUIConfig(view.config)
+          tableUIStore.setViewConfig(view.id, uiConfig)
+        }
+
+        // 3. Update filter-store (filters)
+        const filterStore = useFilterStore.getState()
+        for (const view of views) {
+          const filters = view.config.filters ?? []
+          filterStore.setViewFilters(view.id, filters)
+        }
       }
     },
     onError: (error) => {

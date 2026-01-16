@@ -31,8 +31,8 @@ export type { ConditionGroup } from '@auxx/lib/conditions/client'
 export { viewConfigSchema } from '@auxx/lib/conditions'
 
 // DynamicView is the single entry point - DynamicTable is an alias for backwards compatibility
-export { DynamicView } from './dynamic-view'
-export { DynamicView as DynamicTable } from './dynamic-view'
+export { DynamicView } from './dynamic-view-new'
+export { DynamicView as DynamicTable } from './dynamic-view-new'
 
 export {
   SORT_OPTIONS,
@@ -44,24 +44,24 @@ export {
   DEFAULT_COLUMN_WIDTHS,
 } from './utils/constants'
 
-export { useDynamicTable } from './hooks/use-dynamic-table'
+export { useDynamicTable } from './hooks/use-dynamic-table-new'
 export { useCombinedFilters } from './hooks/use-combined-filters'
-export { useTableContext } from './context/table-context'
-export { useCellSelection } from './context/cell-selection-context'
-export { DynamicTableFooter, DefaultFooterContent } from './components/dynamic-table-footer'
-export { BulkActionBar } from './components/bulk-action-bar'
-export { TableToolbar } from './components/table-toolbar'
+export { useDynamicTableContext as useTableContext } from './context/table-context-new'
+export { useCellSelection } from './context/cell-selection-context-new'
+export { DynamicTableFooter, DefaultFooterContent } from './components/dynamic-table-footer-new'
+export { BulkActionBar } from './components/bulk-action-bar-new'
+export { TableToolbar } from './components/table-toolbar/table-toolbar-new'
 export { DropIndicator } from './components/drop-indicator'
 export { DragPreview } from './components/drag-preview'
-export { FormattedCell, CellPadding, type CellConfig } from './components/formatted-cell'
+export { FormattedCell, CellPadding, type CellConfig } from './components/formatted-cell-new'
 export { CustomFieldCell } from './components/custom-field-cell'
 export { CopyableLinkCell } from './components/copyable-link-cell'
 export { PrimaryCell, type PrimaryCellProps } from './cells/primary-cell'
 export { PrimaryFieldCell } from './cells/primary-field-cell'
 
 // New components from the refactor
-export { TableBody } from './components/table-body'
-export { KanbanViewBody } from './components/kanban-view-body'
+export { TableBodyNew as TableBody } from './components/table-body-new'
+export { KanbanViewBodyNew as KanbanViewBody } from './components/kanban-view-body-new'
 export { TableContentSkeleton } from './components/table-content-skeleton'
 export { ToolbarSkeleton } from './components/toolbar-skeleton'
 

@@ -216,7 +216,7 @@ export const fieldTypeOptions: Record<FieldType, FieldTypeOption> = {
     label: 'Relationship',
     iconId: 'link-2',
     description: 'Link to another entity (contact, company, or custom entity)',
-    minWidth: 320,
+    minWidth: 200,
   },
 }
 /**

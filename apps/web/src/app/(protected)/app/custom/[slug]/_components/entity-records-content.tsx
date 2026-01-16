@@ -52,7 +52,7 @@ import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-t
 import { MergeDialog } from '~/components/merge'
 import { useCustomFieldValueSyncer } from '~/components/resources/hooks/use-custom-field-value-syncer'
 import { useCombinedFilters } from '~/components/dynamic-table/hooks/use-combined-filters'
-import { useActiveViewConfig } from '~/components/dynamic-table/stores/view-store'
+import { useActiveViewConfig } from '~/components/dynamic-table/stores/view-store-new'
 import { useRecordList, useResource, toResourceId, type RecordMeta } from '~/components/resources'
 import { isCustomResource, type ResourceField, type ResourceId } from '@auxx/lib/resources/client'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
