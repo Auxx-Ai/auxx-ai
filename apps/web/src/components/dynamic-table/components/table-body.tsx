@@ -11,6 +11,7 @@ import { ColumnDndProvider } from './column-dnd-provider'
 import { RowDndProvider } from './row-dnd-provider'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
+import { sanitizeColumnId } from '../utils/sanitize-column-id'
 
 /**
  * Props for TableBody component
@@ -48,14 +49,14 @@ export function TableBody<TData extends object>({
     if (!containerRef.current) return
     const style = containerRef.current.style
     table.getVisibleLeafColumns().forEach((col) => {
-      style.setProperty(`--col-${col.id}-w`, `${col.getSize()}px`)
+      style.setProperty(`--col-${sanitizeColumnId(col.id)}-w`, `${col.getSize()}px`)
     })
   }, [columnSizing, columnIds, table])
   const columnStyleRules = useMemo(() => {
     return visibleColumns
       .map(
         (c) =>
-          `[data-col="${c.id}"] { width: var(--col-${c.id}-w); min-width: var(--col-${c.id}-w); }`
+          `[data-col="${sanitizeColumnId(c.id)}"] { width: var(--col-${sanitizeColumnId(c.id)}-w); min-width: var(--col-${sanitizeColumnId(c.id)}-w); }`
       )
       .join('\n')
   }, [columnIds])

@@ -2,25 +2,21 @@
 
 'use client'
 
-import React, { useCallback, useEffect } from 'react'
-import { api } from '~/trpc/react'
+import React, { useCallback, useEffect, useMemo } from 'react'
 import { Button } from '@auxx/ui/components/button'
 
 import { Loader2, AlertCircle } from 'lucide-react'
 import type { ResourceId } from '@auxx/lib/workflow-engine/client'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
-import {
-  toResourceId,
-  getInstanceId,
-  type ResourceId as FieldResourceId,
-} from '@auxx/lib/field-values/client'
+import { toResourceId, getInstanceId } from '@auxx/lib/resources/client'
+import type { ResourceId as ResourceIdType } from '@auxx/lib/resources/client'
 import { CodeEditor, CodeLanguage } from '~/components/workflow/ui/code-editor'
 import Field from '~/components/workflow/ui/field'
 import Section from '~/components/workflow/ui/section'
 import { toastError } from '@auxx/ui/components/toast'
 import { VarEditorFieldRow, VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
 import { BaseType } from '~/components/workflow/types'
-import { useResourceStore } from '~/components/resources'
+import { useResource, useRecord } from '~/components/resources'
 
 interface ResourceTestInputProps {
   resourceType: ResourceId
@@ -41,27 +37,27 @@ export function ResourceTestInput({
   errors,
   onChange,
 }: ResourceTestInputProps) {
-  const getResourceById = useResourceStore((s) => s.getResourceById)
-  const isLoadingResources = useResourceStore((s) => s.isLoading)
-
   // Get resource config from provider (supports both system and custom resources)
-  const resource = getResourceById(resourceType)
+  const { resource, isLoading: isLoadingResources } = useResource(resourceType)
+
   console.log('ResourceTestInput render', { resourceType, resource, inputs })
-  // Fetch resource data when user picks a resource
-  const {
-    data: selectedResource,
-    isLoading: isLoadingResource,
-    error: fetchError,
-  } = api.resource.getById.useQuery(
-    {
-      entityDefinitionId: resourceType,
-      id: inputs.selectedResourceId || '',
-    },
-    {
-      enabled: !!inputs.selectedResourceId && !!resource,
-      retry: 1,
-    }
+
+  // Construct ResourceId from entityDefinitionId and entityInstanceId
+  // Note: inputs.selectedResourceId is the entityInstanceId (string), not a full ResourceId
+  const selectedResourceId = useMemo(
+    () => (inputs.selectedResourceId ? toResourceId(resourceType, inputs.selectedResourceId) : null),
+    [resourceType, inputs.selectedResourceId]
   )
+
+  // Fetch resource data when user picks a resource (uses batching system)
+  const {
+    record: selectedResource,
+    isLoading: isLoadingResource,
+    isNotFound,
+  } = useRecord({
+    resourceId: selectedResourceId,
+    enabled: !!inputs.selectedResourceId && !!resource,
+  })
 
   // Memoize onChange wrapper to prevent unnecessary re-renders
   const handleChange = useCallback(
@@ -89,21 +85,21 @@ export function ResourceTestInput({
   // Update resourceData when selected resource loads
   useEffect(() => {
     if (selectedResource) {
-      // Extract the actual resource data from the picker item wrapper
+      // Record from useRecord has direct data property
       handleChange('resourceData', selectedResource.data)
     }
   }, [selectedResource, handleChange])
 
-  // Show error toast if resource fetch fails
+  // Show error toast if resource not found
   useEffect(() => {
-    if (fetchError) {
+    if (isNotFound && inputs.selectedResourceId) {
       toastError({
-        title: 'Failed to load resource',
-        description: fetchError.message || 'The selected resource could not be loaded',
+        title: 'Resource not found',
+        description: 'The selected resource could not be found. It may have been deleted.',
       })
       handleChange('selectedResourceId', null)
     }
-  }, [fetchError, handleChange])
+  }, [isNotFound, inputs.selectedResourceId, handleChange])
 
   // Show loading state while resources load
   if (isLoadingResources) {
@@ -143,21 +139,24 @@ export function ResourceTestInput({
               isRequired
               validationError={errors.resourceData}
               validationType={errors.resourceData ? 'error' : undefined}>
-              <MultiRelationInput
-                className="flex-1"
-                entityDefinitionId={resourceType}
-                value={
-                  inputs.selectedResourceId
-                    ? [toResourceId(resourceType, inputs.selectedResourceId)]
-                    : []
-                }
-                onChange={(resourceIds: FieldResourceId[]) =>
-                  handleResourceSelect(
-                    resourceIds[0] ? { referenceId: getInstanceId(resourceIds[0]) } : null
-                  )
-                }
-                multi={false}
-              />
+              <div className="flex items-center gap-2 flex-1">
+                <MultiRelationInput
+                  className="flex-1"
+                  entityDefinitionId={resourceType}
+                  value={selectedResourceId ? [selectedResourceId] : []}
+                  onChange={(resourceIds: ResourceIdType[]) =>
+                    handleResourceSelect(
+                      resourceIds[0] ? { referenceId: getInstanceId(resourceIds[0]) } : null
+                    )
+                  }
+                  multi={false}
+                />
+                {selectedResourceId && (
+                  <Button variant="ghost" size="sm" onClick={() => handleResourceSelect(null)}>
+                    Clear
+                  </Button>
+                )}
+              </div>
             </VarEditorFieldRow>
           </VarEditorField>
           {/* Loading indicator */}
@@ -165,20 +164,6 @@ export function ResourceTestInput({
             <div className="flex items-center gap-2 text-sm text-muted-foreground px-4">
               <Loader2 className="h-3 w-3 animate-spin" />
               Loading resource data...
-            </div>
-          )}
-          {/* Resource preview */}
-          {selectedResource && !isLoadingResource && (
-            <div className="rounded-md border border-border bg-muted/50 p-3">
-              <div className="flex items-center justify-between">
-                <div className="text-sm font-medium">Selected: {resource.label}</div>
-                <Button variant="ghost" size="sm" onClick={() => handleResourceSelect(null)}>
-                  Clear
-                </Button>
-              </div>
-              <pre className="mt-2 text-xs text-muted-foreground max-h-32 overflow-auto">
-                {JSON.stringify(selectedResource, null, 2)}
-              </pre>
             </div>
           )}
           {/* Operation-specific fields */}

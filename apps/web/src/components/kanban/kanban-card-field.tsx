@@ -15,6 +15,7 @@ import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
 import type { FieldType } from '@auxx/database/types'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import type { CustomField } from '~/components/dynamic-table/types'
+import { toResourceFieldId, toFieldId } from '@auxx/types/field'
 
 /**
  * Props for KanbanCardField component
@@ -61,8 +62,8 @@ export const KanbanCardField = memo(function KanbanCardField({
   const [isEditing, setIsEditing] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Column ID format matches table convention: field_${fieldId}
-  const columnId = `field_${field.id}`
+  // Column ID in ResourceFieldId format (entityDefinitionId:fieldId)
+  const columnId = toResourceFieldId(entityDefinitionId, toFieldId(field.id))
 
   // Get iconId for field type
   const iconId = fieldTypeOptions[field.fieldType as FieldType]?.iconId ?? 'circle'

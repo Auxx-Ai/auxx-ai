@@ -57,11 +57,17 @@ export function BulkUpdateEntityInstanceDialog({
       .sort((a, b) => (a.sortOrder ?? '').localeCompare(b.sortOrder ?? ''))
   }, [resource])
 
+  // Build column IDs in ResourceFieldId format
+  const columnIds = useMemo(
+    () => editableFields.map((field) => field.resourceFieldId!),
+    [editableFields]
+  )
+
   const { getValue } = useCustomFieldValueSyncer({
     resourceIds,
-    fieldIds: editableFields.map((f) => f.id),
+    columnIds, // Now ResourceFieldId format
     columnVisibility: {},
-    enabled: resourceIds.length > 0 && editableFields.length > 0,
+    enabled: resourceIds.length > 0 && columnIds.length > 0,
   })
 
   // Field metadata provider for relationship sync

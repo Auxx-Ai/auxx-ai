@@ -67,11 +67,17 @@ export function EntityInstanceDialog({
   // ResourceIds for syncer
   const resourceIds = useMemo(() => (resourceId ? [resourceId] : []), [resourceId])
 
+  // Build column IDs in ResourceFieldId format
+  const columnIds = useMemo(
+    () => editableFields.map((field) => field.resourceFieldId!),
+    [editableFields]
+  )
+
   const { getValue } = useCustomFieldValueSyncer({
     resourceIds,
-    fieldIds: editableFields.map((f) => f.id),
+    columnIds, // Now ResourceFieldId format
     columnVisibility: {},
-    enabled: !!resourceId && editableFields.length > 0,
+    enabled: !!resourceId && columnIds.length > 0,
   })
 
   // Field values state: { fieldId: value }

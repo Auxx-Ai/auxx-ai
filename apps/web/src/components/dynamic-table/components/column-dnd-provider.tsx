@@ -49,7 +49,6 @@ export function ColumnDndProvider<TData>({
 
   // Get column IDs from visible columns - always in sync
   const orderedColumnIds = visibleColumns.map((col) => col.id)
-  console.log('orderedColumnIds', orderedColumnIds)
   // Handle column drag start
   const handleColumnDragStart = useCallback((event: DragStartEvent) => {
     setActiveColumnId(event.active.id as string)

@@ -46,8 +46,8 @@ export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
   onDeleteInstance,
   onMutationSuccess,
 }: EntityRecordDrawerProps) {
-  const params = useParams<{ slug: string }>()
-  const entitySlug = params.slug
+  // const params = useParams<{ slug: string }>()
+  // const entitySlug = params.slug
 
   const isDocked = useEffectiveDockState()
   const dockedWidth = useDockStore((state) => state.dockedWidth)

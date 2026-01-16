@@ -3,26 +3,22 @@
 
 import { memo, useMemo, type ReactNode } from 'react'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import {
-  useFieldValue,
-  toResourceId,
-} from '~/components/resources/store/custom-field-value-store'
+import { useFieldValue } from '~/components/resources/store/custom-field-value-store'
 import { formatToDisplayValue } from '@auxx/lib/field-values/client'
 import type { TypedFieldValue } from '@auxx/types/field-value'
 import { PrimaryCell } from './primary-cell'
+import { parseResourceFieldId } from '@auxx/types/field'
+import { useField } from '~/components/resources/hooks/use-field'
+import type { ResourceId } from '@auxx/lib/resources/client'
 
 /**
  * Props for PrimaryFieldCell component
  */
 interface PrimaryFieldCellProps {
-  /** Entity definition ID (e.g., 'contact', 'ticket', or custom entity UUID) */
-  entityDefinitionId: string
-  /** Row ID to look up value */
-  rowId: string
-  /** Field ID to look up value */
-  fieldId: string
-  /** Field type for formatting */
-  fieldType: string
+  /** Resource ID (entityDefinitionId:rowId) */
+  resourceId: ResourceId
+  /** Column ID in ResourceFieldId format (entityDefinitionId:fieldId) */
+  columnId: string
   /** Click handler for the title */
   onTitleClick: () => void
   /** Dropdown menu items passed as children */
@@ -38,22 +34,28 @@ interface PrimaryFieldCellProps {
  * following the same pattern as CustomFieldCell.
  */
 export const PrimaryFieldCell = memo(function PrimaryFieldCell({
-  entityDefinitionId,
-  rowId,
-  fieldId,
-  fieldType,
+  resourceId,
+  columnId, // Now in ResourceFieldId format
   onTitleClick,
   children,
 }: PrimaryFieldCellProps) {
-  // Build resourceId for store lookups
-  const resourceId = toResourceId(entityDefinitionId, rowId)
+  // Extract fieldId from ResourceFieldId format (columnId)
+  const fieldId = useMemo(() => {
+    const { fieldId } = parseResourceFieldId(columnId)
+    return fieldId
+  }, [columnId])
 
   // Direct store subscription - triggers re-render when value changes
   const { value, isLoading } = useFieldValue(resourceId, fieldId)
 
+  // Get field metadata
+  const field = useField(columnId)
+  const fieldType = field?.fieldType
+
   // Format value for display
   const displayValue: string | null = useMemo(() => {
     if (value == null) return null
+    if (!fieldType) return String(value)
     // Handle TypedFieldValue from store using centralized formatter
     if (typeof value === 'object' && 'type' in value) {
       const formatted = formatToDisplayValue(value as TypedFieldValue, fieldType)

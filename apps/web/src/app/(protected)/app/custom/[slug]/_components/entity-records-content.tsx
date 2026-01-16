@@ -56,6 +56,7 @@ import { useActiveViewConfig } from '~/components/dynamic-table/stores/view-stor
 import { useRecordList, useResource, toResourceId, type RecordMeta } from '~/components/resources'
 import { isCustomResource, type ResourceField, type ResourceId } from '@auxx/lib/resources/client'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import { toResourceFieldId, toFieldId, parseResourceFieldId } from '@auxx/types/field'
 
 /** Stable filter ID to prevent reference changes */
 const SEARCH_FILTER_ID = 'entity-page-search-filter'
@@ -182,18 +183,54 @@ export function EntityRecordsContent() {
   const tableId = `entity-${entityDefinitionId}`
   const viewConfig = useActiveViewConfig(tableId)
 
+  // Migrate legacy column visibility from field_{id} to ResourceFieldId format
+  const migratedViewConfig = useMemo(() => {
+    if (!viewConfig || !entityDefinitionId) return viewConfig
+
+    const columnVisibility = viewConfig.columnVisibility
+    if (!columnVisibility || Object.keys(columnVisibility).length === 0) return viewConfig
+
+    // Check if migration is needed (any keys starting with 'field_')
+    const needsMigration = Object.keys(columnVisibility).some((key) => key.startsWith('field_'))
+    if (!needsMigration) return viewConfig
+
+    // Migrate column visibility keys from field_{id} to ResourceFieldId format
+    const migratedVisibility: Record<string, boolean> = {}
+    for (const [columnId, visible] of Object.entries(columnVisibility)) {
+      if (columnId.startsWith('field_')) {
+        const bareFieldId = columnId.replace('field_', '')
+        const resourceFieldId = toResourceFieldId(entityDefinitionId, toFieldId(bareFieldId))
+        migratedVisibility[resourceFieldId] = visible
+      } else {
+        // Already migrated or system column
+        migratedVisibility[columnId] = visible
+      }
+    }
+
+    console.log('[Column Visibility Migration]', {
+      entityDefinitionId,
+      before: Object.keys(columnVisibility),
+      after: Object.keys(migratedVisibility),
+    })
+
+    return {
+      ...viewConfig,
+      columnVisibility: migratedVisibility,
+    }
+  }, [viewConfig, entityDefinitionId])
+
   // Build page-level filters with stable IDs
   // Note: Search is handled by DynamicView internally, but we include for future use
   const pageFilters = useMemo(() => buildPageFilters({}), [])
 
   // Merge view filters with page filters
-  const combinedFilters = useCombinedFilters({ viewConfig, pageFilters })
+  const combinedFilters = useCombinedFilters({ viewConfig: migratedViewConfig, pageFilters })
 
   // Get sorting from view config (already merged saved + pending)
   const viewSorting = useMemo(() => {
-    const sorting = viewConfig?.sorting
+    const sorting = migratedViewConfig?.sorting
     return sorting?.length ? sorting : undefined
-  }, [viewConfig?.sorting])
+  }, [migratedViewConfig?.sorting])
 
   // ══════════════════════════════════════════════════════════════════════════
   // DATA FETCHING
@@ -259,12 +296,18 @@ export function EntityRecordsContent() {
     [items, entityDefinitionId]
   )
 
+  // Build column IDs in ResourceFieldId format
+  const columnIds = useMemo(
+    () => customFields.map((field) => field.resourceFieldId!),
+    [customFields]
+  )
+
   // Custom field value syncer - reads from store for reactive updates
   const { getValue, isValueLoading } = useCustomFieldValueSyncer({
     resourceIds,
     columnVisibility,
-    fieldIds: customFields.map((f) => f.id),
-    enabled: !!entityDefinitionId && customFields.length > 0,
+    columnIds, // Now ResourceFieldId format
+    enabled: !!entityDefinitionId && columnIds.length > 0,
   })
 
   // Note: Store hydration is handled by useCustomFieldValueSyncer
@@ -329,7 +372,9 @@ export function EntityRecordsContent() {
    */
   const createEntityFieldColumn = useCallback(
     (field: (typeof customFields)[0]): ExtendedColumnDef<EntityRow> => {
-      const columnId = `field_${field.id}`
+      // Generate ResourceFieldId format: entityDefinitionId:fieldId
+      const resourceFieldId = toResourceFieldId(entityDefinitionId!, toFieldId(field.id))
+      const columnId = resourceFieldId // Use ResourceFieldId as column ID directly
 
       // Build default formatting from field options for CURRENCY type
       const fieldOptions = field.options as { currency?: Record<string, unknown> } | undefined
@@ -353,12 +398,8 @@ export function EntityRecordsContent() {
         size: field.fieldType === 'RELATIONSHIP' ? 180 : 150,
         cell: ({ row }) => (
           <CustomFieldCell
-            entityDefinitionId={entityDefinitionId!}
-            rowId={row.original.id}
-            fieldId={field.id}
-            fieldType={field.fieldType!}
+            resourceId={toResourceId(entityDefinitionId!, row.original.id)}
             columnId={columnId}
-            options={field.options}
           />
         ),
       }
@@ -387,7 +428,7 @@ export function EntityRecordsContent() {
     // Uses PrimaryFieldCell for reactive store subscription
     const primaryColumn: ExtendedColumnDef<EntityRow> | null = primaryField
       ? {
-          id: `field_${primaryField.id}`,
+          id: toResourceFieldId(entityDefinitionId!, toFieldId(primaryField.id)),
           accessorFn: () => undefined, // Not used - PrimaryFieldCell reads from store
           header: primaryField.name ?? primaryField.label,
           primaryCell: true,
@@ -400,10 +441,8 @@ export function EntityRecordsContent() {
           size: 300,
           cell: ({ row }) => (
             <PrimaryFieldCell
-              entityDefinitionId={entityDefinitionId!}
-              rowId={row.original.id}
-              fieldId={primaryField.id}
-              fieldType={primaryField.fieldType!}
+              resourceId={toResourceId(entityDefinitionId!, row.original.id)}
+              columnId={toResourceFieldId(entityDefinitionId!, toFieldId(primaryField.id))}
               onTitleClick={() => handleOpenDrawer(row.original)}>
               <DropdownMenuItem onClick={() => handleOpenEditDialog(row.original)}>
                 <SquarePen />
@@ -498,12 +537,18 @@ export function EntityRecordsContent() {
     () => ({
       enabled: true,
       getFieldDefinition: (columnId: string): ResourceField | null => {
-        // Column IDs are formatted as `field_${fieldId}`
-        const fieldId = columnId.replace('field_', '')
+        // System columns (like _checkbox) don't have field definitions
+        if (columnId.startsWith('_')) return null
+
+        // Column IDs are now in ResourceFieldId format (e.g., "contact:email")
+        const { fieldId } = parseResourceFieldId(columnId)
         return customFields.find((f) => f.id === fieldId) ?? null
       },
       getCellValue: (rowId: string, columnId: string) => {
-        const fieldId = columnId.replace('field_', '')
+        // System columns don't have values in the store
+        if (columnId.startsWith('_')) return undefined
+
+        const { fieldId } = parseResourceFieldId(columnId)
         if (!entityDefinitionId) return undefined
         return getValue(toResourceId(entityDefinitionId, rowId), fieldId)
       },

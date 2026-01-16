@@ -8,6 +8,7 @@ import { HeaderCell } from './header-cell'
 import type { ExtendedColumnDef } from '../types'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { sanitizeColumnId } from '../utils/sanitize-column-id'
 
 interface HeaderCellWrapperProps<TData> {
   header: Header<TData, unknown>
@@ -32,7 +33,7 @@ export function HeaderCellWrapper<TData>({ header }: HeaderCellWrapperProps<TDat
   return (
     <div
       ref={setNodeRef}
-      data-col={header.column.id}
+      data-col={sanitizeColumnId(header.column.id)}
       style={{
         ...dragStyle,
         minWidth: columnDef.minSize,

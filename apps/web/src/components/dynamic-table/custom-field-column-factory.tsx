@@ -99,7 +99,7 @@ export interface CustomFieldColumnOptions {
  * useCustomFieldValueSyncer({
  *   resourceIds: contacts.map(c => toResourceId('contact', c.id)),
  *   columnVisibility,
- *   fieldIds: fields.map(f => f.id),
+ *   columnIds: fields.map(f => toResourceFieldId('contact', f.id)),
  *   enabled: fields.length > 0,
  * })
  *

@@ -13,6 +13,7 @@ import { createCustomField } from '@auxx/services/custom-fields'
 import type { CreateCustomFieldInput } from '@auxx/services/custom-fields'
 import { ModelTypes, type ModelType } from '@auxx/services/custom-fields'
 import { DEFAULT_VIEW_CONFIGS } from './default-view-configs'
+import { toResourceFieldId, toFieldId } from '@auxx/types/field'
 
 const logger = createScopedLogger('entity-seeder')
 
@@ -348,25 +349,27 @@ export class EntitySeeder {
       }
     }
 
-    // Transform column visibility to use actual field IDs
+    // Transform column visibility to use ResourceFieldId format
     const resolvedColumnVisibility: Record<string, boolean> = {}
     for (const [columnId, visible] of Object.entries(viewConfig.config.columnVisibility)) {
       const actualFieldId = fieldIdMap.get(columnId)
       if (actualFieldId) {
-        resolvedColumnVisibility[`field_${actualFieldId}`] = visible
+        const resourceFieldId = toResourceFieldId(entityDefinitionId, toFieldId(actualFieldId))
+        resolvedColumnVisibility[resourceFieldId] = visible
       }
     }
 
-    // Transform column order
+    // Transform column order to use ResourceFieldId format
     const resolvedColumnOrder: string[] = []
     for (const columnId of viewConfig.config.columnOrder) {
       const actualFieldId = fieldIdMap.get(columnId)
       if (actualFieldId) {
-        resolvedColumnOrder.push(`field_${actualFieldId}`)
+        const resourceFieldId = toResourceFieldId(entityDefinitionId, toFieldId(actualFieldId))
+        resolvedColumnOrder.push(resourceFieldId)
       }
     }
 
-    // Transform column pinning
+    // Transform column pinning to use ResourceFieldId format
     let resolvedColumnPinning: { left?: string[] } = {}
     if (viewConfig.config.columnPinning?.left) {
       const pinnedLeft: string[] = []
@@ -376,21 +379,23 @@ export class EntitySeeder {
         } else {
           const actualFieldId = fieldIdMap.get(columnId)
           if (actualFieldId) {
-            pinnedLeft.push(`field_${actualFieldId}`)
+            const resourceFieldId = toResourceFieldId(entityDefinitionId, toFieldId(actualFieldId))
+            pinnedLeft.push(resourceFieldId)
           }
         }
       }
       resolvedColumnPinning = { left: pinnedLeft }
     }
 
-    // Transform sorting
+    // Transform sorting to use ResourceFieldId format
     const resolvedSorting: Array<{ id: string; desc: boolean }> = []
     if (viewConfig.config.sorting) {
       for (const sort of viewConfig.config.sorting) {
         const actualFieldId = fieldIdMap.get(sort.id)
         if (actualFieldId) {
+          const resourceFieldId = toResourceFieldId(entityDefinitionId, toFieldId(actualFieldId))
           resolvedSorting.push({
-            id: `field_${actualFieldId}`,
+            id: resourceFieldId,
             desc: sort.desc,
           })
         }

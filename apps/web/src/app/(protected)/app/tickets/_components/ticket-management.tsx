@@ -147,13 +147,19 @@ export function TicketManagement({
   // Convert to ResourceIds for syncer
   const resourceIds = useMemo(() => tickets.map((t) => toResourceId('ticket', t.id)), [tickets])
 
+  // Build column IDs in ResourceFieldId format
+  const columnIds = useMemo(
+    () => customFields.map((field) => field.resourceFieldId!),
+    [customFields]
+  )
+
   // Custom field value syncer - triggers batch fetches for visible columns
   // Cells subscribe directly to store via CustomFieldCell
   useCustomFieldValueSyncer({
     resourceIds,
     columnVisibility,
-    fieldIds: customFields.map((f) => f.id),
-    enabled: customFields.length > 0,
+    columnIds, // Now ResourceFieldId format
+    enabled: columnIds.length > 0,
   })
 
   // Handle ticket actions

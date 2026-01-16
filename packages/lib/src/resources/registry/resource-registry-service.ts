@@ -150,12 +150,19 @@ function toSystemResourceBase(tableId: TableId): Omit<SystemResource, 'fields'> 
  * Used for synchronous access when custom fields are not needed
  */
 function toSystemResource(tableId: TableId): SystemResource {
+  const systemResourceBase = toSystemResourceBase(tableId)
   const fieldRegistry = RESOURCE_FIELD_REGISTRY[tableId]
-  const fields: ResourceField[] = fieldRegistry ? Object.values(fieldRegistry) : []
+  const systemFields: ResourceField[] = fieldRegistry ? Object.values(fieldRegistry) : []
+
+  // Add resourceFieldId to system fields
+  const hydratedFields = systemFields.map((field) => ({
+    ...field,
+    resourceFieldId: toResourceFieldId(systemResourceBase.entityDefinitionId, field.id),
+  }))
 
   return {
-    ...toSystemResourceBase(tableId),
-    fields,
+    ...systemResourceBase,
+    fields: hydratedFields,
   }
 }
 
@@ -234,26 +241,39 @@ export class ResourceRegistryService {
     // System resources with merged fields (static registry + organization custom fields)
     const systemResources: SystemResource[] = RESOURCE_TABLE_REGISTRY.map((r) => {
       const tableId = r.id as TableId
+      const systemResourceBase = toSystemResourceBase(tableId)
       const fieldRegistry = RESOURCE_FIELD_REGISTRY[tableId]
       const staticFields = fieldRegistry ? Object.values(fieldRegistry) : []
+
+      // Add resourceFieldId to system fields
+      const hydratedSystemFields = this.mapSystemFieldsToResourceFields(
+        staticFields,
+        systemResourceBase.entityDefinitionId
+      )
+
       const orgCustomFields = fieldsByModelType.get(tableId) ?? []
       const customResourceFields = this.mapCustomFieldsToResourceFields(orgCustomFields, tableId)
 
       return {
-        ...toSystemResourceBase(tableId),
-        fields: [...staticFields, ...customResourceFields],
+        ...systemResourceBase,
+        fields: [...hydratedSystemFields, ...customResourceFields],
       }
     })
 
     // Custom resources with fields from grouped map
     // Include implicit EntityInstance system fields (id, createdAt, updatedAt) before custom fields
-    const customResources: CustomResource[] = entityDefinitions.map((def) => ({
-      ...toCustomResourceBase(def),
-      fields: [
-        ...getEntityInstanceFields(),
-        ...this.mapCustomFieldsToResourceFields(fieldsByEntityId.get(def.id) ?? [], def.id),
-      ],
-    }))
+    const customResources: CustomResource[] = entityDefinitions.map((def) => {
+      const instanceFields = getEntityInstanceFields()
+      const hydratedInstanceFields = this.mapSystemFieldsToResourceFields(instanceFields, def.id)
+
+      return {
+        ...toCustomResourceBase(def),
+        fields: [
+          ...hydratedInstanceFields,
+          ...this.mapCustomFieldsToResourceFields(fieldsByEntityId.get(def.id) ?? [], def.id),
+        ],
+      }
+    })
 
     return [...systemResources, ...customResources]
   }
@@ -286,13 +306,18 @@ export class ResourceRegistryService {
     })
 
     // Include implicit EntityInstance system fields (id, createdAt, updatedAt) before custom fields
-    return (entityDefinitions as EntityDefinitionWithFields[]).map((def) => ({
-      ...toCustomResourceBase(def),
-      fields: [
-        ...getEntityInstanceFields(),
-        ...this.mapCustomFieldsToResourceFields(def.customFields, def.id),
-      ],
-    }))
+    return (entityDefinitions as EntityDefinitionWithFields[]).map((def) => {
+      const instanceFields = getEntityInstanceFields()
+      const hydratedInstanceFields = this.mapSystemFieldsToResourceFields(instanceFields, def.id)
+
+      return {
+        ...toCustomResourceBase(def),
+        fields: [
+          ...hydratedInstanceFields,
+          ...this.mapCustomFieldsToResourceFields(def.customFields, def.id),
+        ],
+      }
+    })
   }
 
   /**
@@ -320,10 +345,16 @@ export class ResourceRegistryService {
     if (!entityDef) return null
 
     // Include implicit EntityInstance system fields (id, createdAt, updatedAt) before custom fields
+    const instanceFields = getEntityInstanceFields()
+    const hydratedInstanceFields = this.mapSystemFieldsToResourceFields(
+      instanceFields,
+      entityDef.id
+    )
+
     return {
       ...toCustomResourceBase(entityDef as EntityDefinitionWithFields),
       fields: [
-        ...getEntityInstanceFields(),
+        ...hydratedInstanceFields,
         ...this.mapCustomFieldsToResourceFields(
           (entityDef as EntityDefinitionWithFields).customFields,
           entityDef.id
@@ -375,10 +406,17 @@ export class ResourceRegistryService {
     const systemEntry = RESOURCE_TABLE_REGISTRY.find((r) => r.id === resourceId)
     if (systemEntry) {
       const tableId = systemEntry.id as TableId
+      const systemResourceBase = toSystemResourceBase(tableId)
 
       // Get static fields from registry
       const fieldRegistry = RESOURCE_FIELD_REGISTRY[tableId]
       const staticFields = fieldRegistry ? Object.values(fieldRegistry) : []
+
+      // Add resourceFieldId to system fields
+      const hydratedSystemFields = this.mapSystemFieldsToResourceFields(
+        staticFields,
+        systemResourceBase.entityDefinitionId
+      )
 
       // Get custom fields from database
       const customFields = await this.db.query.CustomField.findMany({
@@ -398,8 +436,8 @@ export class ResourceRegistryService {
       )
 
       resource = {
-        ...toSystemResourceBase(tableId),
-        fields: [...staticFields, ...customResourceFields],
+        ...systemResourceBase,
+        fields: [...hydratedSystemFields, ...customResourceFields],
       }
     } else {
       // Custom entity - treat as EntityDefinitionId (UUID) - no entity_ prefix needed
@@ -423,10 +461,16 @@ export class ResourceRegistryService {
 
       if (entityDef) {
         // Include implicit EntityInstance system fields before custom fields
+        const instanceFields = getEntityInstanceFields()
+        const hydratedInstanceFields = this.mapSystemFieldsToResourceFields(
+          instanceFields,
+          resourceId
+        )
+
         resource = {
           ...toCustomResourceBase(entityDef as EntityDefinitionWithFields),
           fields: [
-            ...getEntityInstanceFields(),
+            ...hydratedInstanceFields,
             ...this.mapCustomFieldsToResourceFields(
               (entityDef as EntityDefinitionWithFields).customFields,
               resourceId
@@ -481,6 +525,9 @@ export class ResourceRegistryService {
       const fieldRegistry = RESOURCE_FIELD_REGISTRY[resourceId]
       const staticFields = fieldRegistry ? Object.values(fieldRegistry) : []
 
+      // Add resourceFieldId to system fields
+      const hydratedSystemFields = this.mapSystemFieldsToResourceFields(staticFields, resourceId)
+
       // Custom fields from database (where modelType matches and entityDefinitionId is null)
       const customFields = await this.db.query.CustomField.findMany({
         where: (f, { eq, and, isNull }) =>
@@ -498,7 +545,7 @@ export class ResourceRegistryService {
         resourceId
       )
 
-      fields = [...staticFields, ...customResourceFields]
+      fields = [...hydratedSystemFields, ...customResourceFields]
     } else if (this.isCustomResource(resourceId)) {
       // resourceId is now EntityDefinitionId (UUID) directly
       const entityDef = await this.db.query.EntityDefinition.findFirst({
@@ -518,8 +565,14 @@ export class ResourceRegistryService {
 
       if (entityDef) {
         // Include implicit EntityInstance system fields before custom fields
+        const instanceFields = getEntityInstanceFields()
+        const hydratedInstanceFields = this.mapSystemFieldsToResourceFields(
+          instanceFields,
+          resourceId
+        )
+
         fields = [
-          ...getEntityInstanceFields(),
+          ...hydratedInstanceFields,
           ...this.mapCustomFieldsToResourceFields(
             entityDef.customFields as CustomFieldRecord[],
             resourceId
@@ -549,6 +602,24 @@ export class ResourceRegistryService {
   getDefaultIdentifierField(resource: Resource): ResourceField | undefined {
     const identifiers = this.getIdentifierFields(resource)
     return identifiers[0]
+  }
+
+  /**
+   * Map system fields from registry to ResourceField format with resourceFieldId.
+   * Similar to mapCustomFieldsToResourceFields but for static system fields.
+   *
+   * @param systemFields - Fields from field registry (CONTACT_FIELDS, etc.)
+   * @param entityDefinitionId - Entity ID to construct resourceFieldId
+   * @returns Hydrated ResourceField[] with resourceFieldId included
+   */
+  private mapSystemFieldsToResourceFields(
+    systemFields: ResourceField[],
+    entityDefinitionId: string
+  ): ResourceField[] {
+    return systemFields.map((field) => ({
+      ...field,
+      resourceFieldId: toResourceFieldId(entityDefinitionId, field.id),
+    }))
   }
 
   /**

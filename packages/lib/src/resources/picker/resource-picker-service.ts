@@ -459,18 +459,13 @@ export class ResourcePickerService {
 
     const entityInstanceId = row[displayConfig.identifierField]
 
-    const displayName =
-      typeof displayConfig.displayNameField === 'string'
-        ? row[displayConfig.displayNameField]
-        : displayConfig.displayNameField(row)
+    const displayName = row[displayConfig.primaryDisplayFieldId]
 
-    const secondaryInfo = displayConfig.secondaryInfoField
-      ? typeof displayConfig.secondaryInfoField === 'string'
-        ? row[displayConfig.secondaryInfoField]
-        : displayConfig.secondaryInfoField(row)
+    const secondaryInfo = displayConfig.secondaryDisplayFieldId
+      ? row[displayConfig.secondaryDisplayFieldId]
       : undefined
 
-    const avatarUrl = displayConfig.avatarField ? row[displayConfig.avatarField] : undefined
+    const avatarUrl = displayConfig.avatarFieldId ? row[displayConfig.avatarFieldId] : undefined
 
     return {
       id: row.id,

@@ -5,6 +5,7 @@
 import { memo, useEffect, useRef } from 'react'
 import { flexRender, type Cell } from '@tanstack/react-table'
 import { cn } from '@auxx/ui/lib/utils'
+import { sanitizeColumnId } from '../utils/sanitize-column-id'
 
 interface VirtualTableCellProps<TData> {
   cell: Cell<TData, unknown>
@@ -43,7 +44,7 @@ function VirtualTableCellInner<TData>({ cell, columnId, className }: VirtualTabl
   // })
 
   return (
-    <div ref={ref} data-col={columnId} className={cn('flex items-center h-full', className)}>
+    <div ref={ref} data-col={sanitizeColumnId(columnId)} className={cn('flex items-center h-full', className)}>
       {flexRender(cell.column.columnDef.cell, cell.getContext())}
     </div>
   )

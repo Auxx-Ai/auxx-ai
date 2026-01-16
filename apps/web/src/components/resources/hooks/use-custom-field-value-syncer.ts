@@ -12,7 +12,7 @@ import {
 import { parseResourceId, type ResourceId } from '@auxx/lib/resources/client'
 import type { VisibilityState } from '@tanstack/react-table'
 import { generateId } from '@auxx/utils/generateId'
-import { toFieldId, type FieldId } from '@auxx/types/field'
+import { toFieldId, parseResourceFieldId, type FieldId } from '@auxx/types/field'
 
 interface UseCustomFieldValueSyncerOptions {
   /** ResourceIds for the entities being displayed */
@@ -21,8 +21,8 @@ interface UseCustomFieldValueSyncerOptions {
   /** Column visibility state from DynamicTable */
   columnVisibility: VisibilityState
 
-  /** Raw field IDs (e.g., ['abc', 'xyz']) */
-  fieldIds: string[]
+  /** Column IDs in ResourceFieldId format (e.g., ['contact:email', 'contact:abc']) */
+  columnIds: string[]
 
   /** Whether syncing is enabled */
   enabled?: boolean
@@ -48,11 +48,11 @@ interface SyncerResult {
  *
  * @example
  * ```tsx
- * // Pass raw field IDs - syncer handles prefixing internally
+ * // Pass column IDs in ResourceFieldId format
  * useCustomFieldValueSyncer({
  *   resourceIds,
  *   columnVisibility,
- *   fieldIds: customFields.map(f => f.id),
+ *   columnIds: customFields.map(f => toResourceFieldId(entityDefinitionId, f.id)),
  *   enabled: customFields.length > 0,
  * })
  * ```
@@ -61,7 +61,7 @@ export function useCustomFieldValueSyncer(options: UseCustomFieldValueSyncerOpti
   const {
     resourceIds,
     columnVisibility,
-    fieldIds,
+    columnIds,
     enabled = true,
     debounceMs = 150,
   } = options
@@ -75,11 +75,15 @@ export function useCustomFieldValueSyncer(options: UseCustomFieldValueSyncerOpti
 
   const pendingFetchRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Extract field IDs from visible custom field columns
-  // Build prefixed column IDs internally for visibility check
+  // Extract field IDs from ResourceFieldIds and filter by visibility
   const visibleFieldIds = useMemo(() => {
-    return fieldIds.filter((fieldId) => columnVisibility[`customField_${fieldId}`] !== false)
-  }, [fieldIds, columnVisibility])
+    return columnIds
+      .filter((columnId) => columnVisibility[columnId] !== false)
+      .map((columnId) => {
+        const { fieldId } = parseResourceFieldId(columnId)
+        return fieldId
+      })
+  }, [columnIds, columnVisibility])
 
   // Helper to check if a key is loading (uses getState, not subscription)
   const isKeyLoading = useCallback((key: FieldValueKey) => {

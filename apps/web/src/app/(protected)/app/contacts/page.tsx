@@ -153,7 +153,6 @@ export default function CustomerListPage() {
     () => buildPageFilters({ search: debouncedSearch, status }),
     [debouncedSearch, status]
   )
-
   // Merge view filters with page filters
   const combinedFilters = useCombinedFilters({ viewConfig, pageFilters })
 
@@ -209,13 +208,19 @@ export default function CustomerListPage() {
   // Convert to ResourceIds for syncer
   const resourceIds = useMemo(() => items.map((c) => toResourceId('contact', c.id)), [items])
 
+  // Build column IDs in ResourceFieldId format
+  const columnIds = useMemo(
+    () => customFields.map((field) => field.resourceFieldId!),
+    [customFields]
+  )
+
   // Custom field value syncer - triggers batch fetches for visible columns
   // Cells subscribe directly to store via CustomFieldCell
   useCustomFieldValueSyncer({
     resourceIds,
     columnVisibility,
-    fieldIds: customFields.map((f) => f.id),
-    enabled: customFields.length > 0,
+    columnIds, // Now ResourceFieldId format
+    enabled: columnIds.length > 0,
   })
 
   // Query groups for filter dropdown
@@ -419,7 +424,7 @@ export default function CustomerListPage() {
             <DynamicTable
               data={items}
               className="h-full flex-1"
-              resourceType="contact"
+              entityDefinitionId="contact"
               tableId={TABLE_ID}
               entityLabel="Contact"
               bulkActions={bulkActions}

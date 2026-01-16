@@ -9,7 +9,7 @@ import Section from '~/components/workflow/ui/section'
 import type { ResourceId } from '@auxx/lib/workflow-engine/client'
 import type { TriggerInputProps } from '../trigger-registry'
 import { ResourceTestInput } from '~/components/workflow/panels/run/tabs/resource-test-input'
-import { useResourceStore } from '~/components/resources'
+import { useResource } from '~/components/resources'
 
 /**
  * Resource trigger input component for test mode
@@ -18,8 +18,6 @@ import { useResourceStore } from '~/components/resources'
  */
 export function ResourceTriggerInput({ inputs, errors, onChange }: TriggerInputProps) {
   const store = useStoreApi()
-  const getResourceById = useResourceStore((s) => s.getResourceById)
-  const isLoadingResources = useResourceStore((s) => s.isLoading)
 
   // Get the current workflow state to determine the trigger node
   const workflowState = store.getState()
@@ -53,6 +51,9 @@ export function ResourceTriggerInput({ inputs, errors, onChange }: TriggerInputP
     )
   }
 
+  // Get resource config from provider (supports both system and custom resources)
+  const { resource, isLoading: isLoadingResources } = useResource(resourceType)
+
   // Show loading state while resources are being fetched
   if (isLoadingResources) {
     return (
@@ -66,7 +67,6 @@ export function ResourceTriggerInput({ inputs, errors, onChange }: TriggerInputP
   }
 
   // Validate resource type using ResourceProvider (supports both system and custom resources)
-  const resource = getResourceById(resourceType)
   if (!resource) {
     return (
       <Section title="Resource Trigger" initialOpen>

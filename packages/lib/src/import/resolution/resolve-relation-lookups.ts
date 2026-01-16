@@ -123,9 +123,7 @@ async function resolveLookupsForTable(
   // Determine default match field from resource display config
   const defaultMatchField =
     resource.type === 'system'
-      ? typeof resource.display.displayNameField === 'string'
-        ? resource.display.displayNameField
-        : 'id'
+      ? resource.display.primaryDisplayField?.id ?? 'id'
       : resource.display.primaryDisplayField?.name ?? 'id'
 
   // Group lookups by match field (most will use the same field)

@@ -16,7 +16,7 @@ export interface GetResourcesInput {
   /** Cursor for pagination (composite: sortField|id) */
   cursor?: string | null
 
-  /** Search query (matches displayNameField and searchFields) */
+  /** Search query (matches primaryDisplayField and searchFields) */
   search?: string
 
   /** Optional field-level filters (field key → value) */
@@ -36,7 +36,7 @@ export interface ResourcePickerItem {
   /** Full ResourceId in format "entityDefinitionId:entityInstanceId" */
   resourceId: ResourceId
 
-  /** Display name (from displayNameField) */
+  /** Display name (from primaryDisplayField) */
   displayName: string
 
   /** Optional secondary info (subtitle in picker) */

@@ -5,6 +5,7 @@
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import type { Header } from '@tanstack/react-table'
 import { useTableContext } from '../context/table-context'
+import { sanitizeColumnId } from '../utils/sanitize-column-id'
 
 interface CheckboxHeaderCellProps<TData> {
   header: Header<TData, unknown>
@@ -20,7 +21,7 @@ export function CheckboxHeaderCell<TData>({ header }: CheckboxHeaderCellProps<TD
 
   return (
     <div
-      data-col={header.column.id}
+      data-col={sanitizeColumnId(header.column.id)}
       style={{
         minWidth: header.column.columnDef.minSize,
         maxWidth: header.column.columnDef.maxSize,

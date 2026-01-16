@@ -40,6 +40,7 @@ import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-di
 import type { Column } from '@tanstack/react-table'
 import type { ExtendedColumnDef, ColumnFormatting, FormattableFieldType } from '../../types'
 import { FORMATTABLE_FIELD_TYPES } from '../../types'
+import { toResourceFieldId, toFieldId } from '@auxx/types/field'
 
 /** Navigation item type for column manager */
 interface ColumnNavigationItem extends NavigationItem {
@@ -416,7 +417,7 @@ export function ColumnManager<TData = any>() {
 
         // AUTO-ADD: Automatically show new field in table
         if (newField?.id) {
-          const fieldColumnId = `field_${newField.id}`
+          const fieldColumnId = toResourceFieldId(entityDefinitionId, toFieldId(newField.id))
           const currentVisibility = viewConfig?.columnVisibility ?? {}
           const currentOrder = viewConfig?.columnOrder ?? []
 

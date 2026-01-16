@@ -5,23 +5,15 @@
 import { memo, useMemo } from 'react'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { FormattedCell, CellPadding } from './formatted-cell'
-import {
-  useFieldValue,
-  toResourceId,
-} from '~/components/resources/store/custom-field-value-store'
+import { useFieldValue } from '~/components/resources/store/custom-field-value-store'
 import { useField } from '~/components/resources/hooks/use-field'
-import { toResourceFieldId, toFieldId } from '@auxx/types/field'
+import { parseResourceFieldId } from '@auxx/types/field'
+import type { ResourceId } from '@auxx/lib/resources/client'
 
 interface CustomFieldCellProps {
-  /** Entity definition ID (e.g., 'contact', 'ticket', or custom entity UUID) */
-  entityDefinitionId: string
-  /** Row ID to look up value */
-  rowId: string
-  /** Field ID to look up value */
-  fieldId: string
-  /** Field type for rendering */
-  fieldType: string
-  /** Column ID for formatting lookup */
+  /** Resource ID (entityDefinitionId:rowId) */
+  resourceId: ResourceId
+  /** Column ID in ResourceFieldId format (entityDefinitionId:fieldId) */
   columnId: string
   /** @deprecated Field options - now fetched via useField hook for reactivity */
   options?: unknown
@@ -36,26 +28,24 @@ interface CustomFieldCellProps {
  * Uses useField instead of useResource for efficient field-specific updates.
  */
 export const CustomFieldCell = memo(function CustomFieldCell({
-  entityDefinitionId,
-  rowId,
-  fieldId,
-  fieldType,
-  columnId,
+  resourceId,
+  columnId, // Now in ResourceFieldId format
   options: propOptions,
 }: CustomFieldCellProps) {
-  // Build resourceId for store lookups
-  const resourceId = toResourceId(entityDefinitionId, rowId)
+  // Extract fieldId from ResourceFieldId format (columnId)
+  const fieldId = useMemo(() => {
+    const { fieldId } = parseResourceFieldId(columnId)
+    return fieldId
+  }, [columnId])
 
   // Direct store subscription - triggers re-render when value changes
   const { value, isLoading } = useFieldValue(resourceId, fieldId)
 
   // Granular field subscription - only rerenders when THIS field changes
-  const resourceFieldId = useMemo(
-    () => toResourceFieldId(entityDefinitionId, toFieldId(fieldId)),
-    [entityDefinitionId, fieldId]
-  )
-  const field = useField(resourceFieldId)
+  // columnId is already in ResourceFieldId format
+  const field = useField(columnId)
   const options = field?.options ?? propOptions
+  const fieldType = field?.fieldType
 
   if (isLoading && value === undefined) {
     return (
@@ -65,5 +55,7 @@ export const CustomFieldCell = memo(function CustomFieldCell({
     )
   }
 
-  return <FormattedCell value={value} fieldType={fieldType} columnId={columnId} options={options} />
+  return (
+    <FormattedCell value={value} fieldType={fieldType} columnId={columnId} options={options} />
+  )
 })

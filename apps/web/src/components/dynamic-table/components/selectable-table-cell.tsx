@@ -10,6 +10,7 @@ import { CellFieldEditor } from './cell-field-editor'
 import { InlineCellEditor } from './inline-cell-editor'
 import { getEditModeForFieldType } from '../utils/edit-mode'
 import { useCallback, useRef } from 'react'
+import { sanitizeColumnId } from '../utils/sanitize-column-id'
 
 interface SelectableTableCellProps<TData> {
   cell: Cell<TData, unknown>
@@ -110,7 +111,7 @@ function SelectableTableCellInner<TData>({
   return (
     <div
       ref={cellRef}
-      data-col={columnId}
+      data-col={sanitizeColumnId(columnId)}
       className={cn(
         'group/cell flex items-center h-full relative outline-none',
         isSelected && 'cell-selected',
