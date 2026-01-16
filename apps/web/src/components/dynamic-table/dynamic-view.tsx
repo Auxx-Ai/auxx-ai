@@ -14,7 +14,7 @@ import { TableConfigProvider, useTableConfig } from './context/table-config-cont
 import { TableInstanceProvider, useTableInstance } from './context/table-instance-context'
 import { ViewMetadataProvider, useViewMetadata } from './context/view-metadata-context'
 import { CellSelectionConfigProvider, useCellSelection } from './context/cell-selection-context'
-import { useViewStore } from './stores/view-store'
+import { useDynamicTableStore } from './stores/dynamic-table-store'
 import { cn } from '@auxx/ui/lib/utils'
 import type {
   DynamicTableProps,
@@ -64,7 +64,7 @@ function DynamicViewInner<TData extends object>({
     useViewMetadata<TData>()
 
   // View store state
-  const isViewsLoaded = useViewStore((state) => state.initialized)
+  const isViewsLoaded = useDynamicTableStore((state) => state.initialized)
 
   // Cell selection from separate context
   const { selectedCell, setSelectedCell, editingCell, setEditingCell, cellSelectionConfig } =
@@ -84,7 +84,7 @@ function DynamicViewInner<TData extends object>({
   })
 
   // Get current view from store
-  const currentView = useViewStore((state) => {
+  const currentView = useDynamicTableStore((state) => {
     const activeViewId = state.activeViewIds[tableId]
     if (!activeViewId) return null
     const views = state.viewsByTableId[tableId] ?? []

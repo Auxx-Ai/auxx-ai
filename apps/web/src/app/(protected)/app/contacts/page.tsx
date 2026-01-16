@@ -18,7 +18,7 @@ import {
   createCustomFieldColumns,
 } from '~/components/dynamic-table'
 import { useCombinedFilters } from '~/components/dynamic-table/hooks/use-combined-filters'
-import { useActiveViewConfig } from '~/components/dynamic-table/stores/view-store'
+import { useActiveViewConfig } from '~/components/dynamic-table/stores/store-selectors'
 import type { ExtendedColumnDef } from '~/components/dynamic-table'
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
 import { EmptyState } from '~/components/global/empty-state'

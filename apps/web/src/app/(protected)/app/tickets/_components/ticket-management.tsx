@@ -11,7 +11,7 @@ import {
   createCustomFieldColumns,
   useCombinedFilters,
 } from '~/components/dynamic-table'
-import { useActiveViewConfig } from '~/components/dynamic-table/stores/view-store'
+import { useActiveViewConfig } from '~/components/dynamic-table/stores/store-selectors'
 import type { ExtendedColumnDef } from '~/components/dynamic-table'
 import type { VisibilityState } from '@tanstack/react-table'
 import { EmptyState } from '~/components/global/empty-state'

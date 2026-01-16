@@ -54,8 +54,7 @@ import type { Column } from '@tanstack/react-table'
 import type { ExtendedColumnDef, ColumnFormatting, FormattableFieldType } from '../../types'
 import { FORMATTABLE_FIELD_TYPES } from '../../types'
 import { toResourceFieldId, toFieldId } from '@auxx/types/field'
-import { useViewStore } from '../../stores/view-store'
-import { useTableUIStore } from '../../stores/table-ui-store'
+import { useDynamicTableStore } from '../../stores/dynamic-table-store'
 
 /** Navigation item type for column manager */
 interface ColumnNavigationItem extends NavigationItem {

@@ -8,7 +8,7 @@ import { useTableInstance } from '../context/table-instance-context'
 import { useViewMetadata } from '../context/view-metadata-context'
 import { useActiveView } from '../hooks/use-table-selectors'
 import type { ViewConfig, KanbanViewConfig, KanbanRow } from '../types'
-import { useTableUIStore } from '../stores/table-ui-store'
+import { useDynamicTableStore } from '../stores/dynamic-table-store'
 import { useResource } from '~/components/resources'
 import type { FieldType } from '@auxx/database/types'
 /**
@@ -36,7 +36,7 @@ export function KanbanViewBody<TData extends KanbanRow>() {
   // Get resource for primaryFieldId derivation
   const { resource } = useResource(entityDefinitionId)
 
-  const updateKanbanConfig = useTableUIStore((state) => state.updateKanbanConfig)
+  const updateKanbanConfig = useDynamicTableStore((state) => state.updateKanbanConfig)
 
   // Get kanban config from current view
   const kanbanConfig = useMemo(() => {

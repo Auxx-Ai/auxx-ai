@@ -83,8 +83,8 @@ export class CustomFieldService {
     })
 
     if (result.isErr()) {
-      // Preserve the cause for better error debugging
-      throw new Error(result.error.message, { cause: result.error.cause })
+      // Preserve code and cause for frontend error handling
+      throw new Error(result.error.message, { cause: { code: result.error.code } })
     }
 
     return result.value

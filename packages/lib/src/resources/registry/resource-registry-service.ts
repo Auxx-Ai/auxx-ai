@@ -79,7 +79,7 @@ function toCustomResourceBase(
   return {
     id: def.id as CustomResourceId,
     apiSlug: def.apiSlug,
-    type: resourceType as 'custom', // Type assertion for now - will be fixed when we update CustomResource type
+    type: 'custom', // Type assertion for now - will be fixed when we update CustomResource type
     label: def.singular,
     entityType: def.entityType ?? undefined,
     plural: def.plural,

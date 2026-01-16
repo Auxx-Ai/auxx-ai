@@ -88,7 +88,19 @@ const t = initTRPC.context<typeof createTRPCContext>().create({
       }
     }
 
-    // If it wasn’t a ZodError, just return the default shape.
+    // Check for custom error codes from service layer
+    const cause = error.cause as { code?: string } | undefined
+    if (cause?.code) {
+      return {
+        ...shape,
+        data: {
+          ...shape.data,
+          code: cause.code,
+        },
+      }
+    }
+
+    // If it wasn't a ZodError or custom error, just return the default shape.
     return shape
   },
   // errorFormatter({ shape, error }) {

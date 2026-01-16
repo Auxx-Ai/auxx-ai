@@ -51,15 +51,14 @@ import { useDockStore } from '~/stores/dock-store'
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
 import { MergeDialog } from '~/components/merge'
 import { useCustomFieldValueSyncer } from '~/components/resources/hooks/use-custom-field-value-syncer'
-import { useCombinedFilters } from '~/components/dynamic-table/hooks/use-combined-filters'
-import { useActiveViewConfig } from '~/components/dynamic-table/stores/view-store'
+import {
+  useTableFilters,
+  useTableSorting,
+  useColumnOrder,
+} from '~/components/dynamic-table/stores/store-selectors'
 import { useRecordList, useResource, toResourceId, type RecordMeta } from '~/components/resources'
 import { isCustomResource, type ResourceField, type ResourceId } from '@auxx/lib/resources/client'
-import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { toResourceFieldId, toFieldId, parseResourceFieldId } from '@auxx/types/field'
-
-/** Stable filter ID to prevent reference changes */
-const SEARCH_FILTER_ID = 'entity-page-search-filter'
 
 /** Page size for infinite query */
 const PAGE_SIZE = 100
@@ -70,28 +69,6 @@ const PAGE_SIZE = 100
 export interface EntityRow extends RecordMeta {
   entityDefinitionId: string
   archivedAt: string | null
-}
-
-/**
- * Build page-level filters (search).
- * Returns undefined if no filters (not empty array) for useRecordList compatibility.
- */
-function buildPageFilters(params: { search?: string }): ConditionGroup[] | undefined {
-  if (!params.search) return undefined
-  return [
-    {
-      id: SEARCH_FILTER_ID,
-      logicalOperator: 'OR',
-      conditions: [
-        {
-          id: `${SEARCH_FILTER_ID}-0`,
-          fieldId: '_displayValue',
-          operator: 'contains',
-          value: params.search,
-        },
-      ],
-    },
-  ]
 }
 
 /**
@@ -181,25 +158,20 @@ export function EntityRecordsContent() {
 
   // View store integration - tableId must match DynamicView
   const tableId = `entity-${entityDefinitionId}`
-  const viewConfig = useActiveViewConfig(tableId)
-  console.log('[EntityRecordsContent] columnVisibility', viewConfig)
-  // Build page-level filters with stable IDs
-  // Note: Search is handled by DynamicView internally, but we include for future use
-  const pageFilters = useMemo(() => buildPageFilters({}), [])
 
-  // Merge view filters with page filters
-  const combinedFilters = useCombinedFilters({ viewConfig, pageFilters })
+  // Get filters and sorting directly from store (already merged saved + pending)
+  const viewFilters = useTableFilters(tableId)
+  const viewSorting = useTableSorting(tableId)
+  const columnOrder = useColumnOrder(tableId)
 
-  // Get sorting from view config (already merged saved + pending)
-  const viewSorting = useMemo(() => {
-    const sorting = viewConfig?.sorting
-    return sorting?.length ? sorting : undefined
-  }, [viewConfig?.sorting])
+  // Convert to formats expected by useRecordList
+  const filtersForQuery = viewFilters.length > 0 ? viewFilters : undefined
+  const sortingForQuery = viewSorting.length > 0 ? viewSorting : undefined
 
   // ══════════════════════════════════════════════════════════════════════════
   // DATA FETCHING
   // ══════════════════════════════════════════════════════════════════════════
-
+  console.log(viewFilters, viewSorting, columnOrder)
   // Query entity instances using unified record list
   const {
     items,
@@ -211,10 +183,10 @@ export function EntityRecordsContent() {
     refresh,
   } = useRecordList<EntityRow>({
     entityDefinitionId: entityDefinitionId ?? '',
-    filters: combinedFilters,
-    sorting: viewSorting,
+    filters: filtersForQuery,
+    sorting: sortingForQuery,
     limit: PAGE_SIZE,
-    enabled: !!entityDefinitionId && viewConfig?.columnOrder.length > 1,
+    enabled: !!entityDefinitionId && columnOrder.length > 0,
   })
 
   // Handle scroll to bottom - load more data

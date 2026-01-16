@@ -5,9 +5,7 @@ import { useMemo, useCallback, type ReactNode } from 'react'
 import { useTableConfig } from './table-config-context'
 import { useTableInstance } from './table-instance-context'
 import { useViewMetadata } from './view-metadata-context'
-import { useViewStore } from '../stores/view-store'
-import { useTableUIStore } from '../stores/table-ui-store'
-import { useFilterStore } from '../stores/filter-store'
+import { useDynamicTableStore } from '../stores/dynamic-table-store'
 import type { Table } from '@tanstack/react-table'
 import type { TableView, BulkAction, DragDropConfig, ColumnFormatting, CustomField } from '../types'
 import type { SelectOptionColor } from '@auxx/types/custom-field'
@@ -167,11 +165,11 @@ export function useDynamicTableContext<TData = any>(
   const { table } = useTableInstance<TData>()
   const metadata = useViewMetadata<TData>()
 
-  // ─── VIEW STORE ─────────────────────────────────────────────────────────────
-  const views = useViewStore((state) => state.viewsByTableId[config.tableId] ?? EMPTY_VIEWS)
-  const activeViewId = useViewStore((state) => state.activeViewIds[config.tableId])
-  const setActiveView = useViewStore((state) => state.setActiveView)
-  const isLoadingViews = !useViewStore((state) => state.initialized)
+  // ─── UNIFIED STORE (views, UI, filters) ────────────────────────────────────
+  const views = useDynamicTableStore((state) => state.viewsByTableId[config.tableId] ?? EMPTY_VIEWS)
+  const activeViewId = useDynamicTableStore((state) => state.activeViewIds[config.tableId])
+  const setActiveView = useDynamicTableStore((state) => state.setActiveView)
+  const isLoadingViews = !useDynamicTableStore((state) => state.initialized)
 
   // Get current view
   const currentView = useMemo(() => {
@@ -179,12 +177,11 @@ export function useDynamicTableContext<TData = any>(
     return views.find((v) => v.id === activeViewId) ?? null
   }, [activeViewId, views])
 
-  // ─── TABLE UI STORE ─────────────────────────────────────────────────────────
   // Get saved and pending configs separately
-  const savedUIConfig = useTableUIStore((state) =>
+  const savedUIConfig = useDynamicTableStore((state) =>
     activeViewId ? state.viewConfigs[activeViewId] : state.sessionConfigs[config.tableId]
   )
-  const pendingUIConfig = useTableUIStore((state) =>
+  const pendingUIConfig = useDynamicTableStore((state) =>
     activeViewId ? state.pendingConfigs[activeViewId] : undefined
   )
 
@@ -195,21 +192,21 @@ export function useDynamicTableContext<TData = any>(
     return { ...savedUIConfig, ...pendingUIConfig }
   }, [savedUIConfig, pendingUIConfig])
 
-  const updateViewConfig = useTableUIStore((state) => state.updateViewConfig)
-  const updateSessionConfig = useTableUIStore((state) => state.updateSessionConfig)
-  const resetToSaved = useTableUIStore((state) => state.resetToSaved)
-  const markClean = useTableUIStore((state) => state.markClean)
+  const updateViewConfig = useDynamicTableStore((state) => state.updateViewConfig)
+  const updateSessionConfig = useDynamicTableStore((state) => state.updateSessionConfig)
+  const resetToSaved = useDynamicTableStore((state) => state.resetToSaved)
+  const markClean = useDynamicTableStore((state) => state.markClean)
 
   // Extract UI config values with stable references
   const columnLabels = uiConfig?.columnLabels ?? EMPTY_COLUMN_LABELS
   const columnFormatting = uiConfig?.columnFormatting ?? EMPTY_COLUMN_FORMATTING
   const pinnedColumnId = uiConfig?.columnPinning?.left?.[0] ?? null
 
-  // ─── FILTER STORE ───────────────────────────────────────────────────────────
-  const filters = useFilterStore((state) =>
+  // Get filters from unified store
+  const filters = useDynamicTableStore((state) =>
     activeViewId ? (state.viewFilters[activeViewId] ?? EMPTY_FILTERS) : (state.sessionFilters[config.tableId] ?? EMPTY_FILTERS)
   )
-  const setFiltersInStore = useFilterStore((state) => state.setFilters)
+  const setFiltersInStore = useDynamicTableStore((state) => state.setViewFilters)
 
   // ─── STABLE CALLBACKS ───────────────────────────────────────────────────────
   const handleSetActiveView = useCallback(

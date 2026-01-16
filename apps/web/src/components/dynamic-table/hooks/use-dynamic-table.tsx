@@ -1,4 +1,4 @@
-// apps/web/src/components/dynamic-table/hooks/use-dynamic-table.ts
+// apps/web/src/components/dynamic-table/hooks/use-dynamic-table.tsx
 
 'use client'
 
@@ -20,13 +20,10 @@ import {
 import { useQueryStates, parseAsString } from 'nuqs'
 import { useCallback, useEffect, useMemo, useRef, useState, startTransition } from 'react'
 import type { DynamicTableProps, ColumnFormatting } from '../types'
-import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { CheckboxCell } from '../components/checkbox-cell'
 import { CheckboxHeaderCell } from '../components/checkbox-header-cell'
-import { computeInitialViewConfig, normalizeViewConfig } from '../utils/view-config'
-import { useViewStore } from '../stores/view-store'
-import { useTableUIStore } from '../stores/table-ui-store'
-import { useFilterStore } from '../stores/filter-store'
+import { computeInitialViewConfig } from '../utils/view-config'
+import { useDynamicTableStore } from '../stores/dynamic-table-store'
 import { useSelectionStore } from '../stores/selection-store'
 import {
   useTableViews,
@@ -53,13 +50,12 @@ import {
   useSetColumnFormatting,
   useSetRowSelection,
   useSetActiveDragItems,
-  useSetActiveView,
 } from '../hooks/use-table-actions'
 import { useViewStorePersistence } from './use-view-store-persistence'
 
 /**
  * Main hook for managing dynamic table state.
- * REFACTORED: Now uses Zustand stores directly instead of local state + sync effects.
+ * REFACTORED: Now uses unified DynamicTableStore with slices.
  */
 export function useDynamicTable<TData extends Record<string, any>>({
   data,
@@ -85,13 +81,13 @@ export function useDynamicTable<TData extends Record<string, any>>({
   // View state is now managed locally instead of in URL
   const [activeViewId, setActiveViewId] = useState<string | null>(null)
 
-  // Get views from centralized store
+  // Get views from unified store
   const views = useTableViews(tableId)
-  const isStoreInitialized = useViewStore((state) => state.initialized)
+  const isStoreInitialized = useDynamicTableStore((state) => state.initialized)
   const isLoadingViews = !isStoreInitialized
-  const hasUnsavedChanges = useViewStore((state) => state.hasUnsavedChanges)
-  const isSaving = useViewStore((state) => state.isSaving)
-  const setActiveViewInStore = useViewStore((state) => state.setActiveView)
+  const hasUnsavedChanges = useDynamicTableStore((state) => state.hasUnsavedChanges)
+  const isSaving = useDynamicTableStore((state) => state.isSaving)
+  const setActiveViewInStore = useDynamicTableStore((state) => state.setActiveView)
 
   // Get current view
   const currentView = useActiveView(tableId)
@@ -218,7 +214,8 @@ export function useDynamicTable<TData extends Record<string, any>>({
       lastAppliedViewIdRef.current = null
 
       // Initialize session config if needed
-      const sessionConfig = useTableUIStore.getState().getSessionConfig(tableId)
+      const store = useDynamicTableStore.getState()
+      const sessionConfig = store.getSessionConfig(tableId)
       if (Object.keys(sessionConfig.columnVisibility).length === 0) {
         // Initialize with default config
         const defaultConfig = computeInitialViewConfig({
@@ -226,11 +223,11 @@ export function useDynamicTable<TData extends Record<string, any>>({
           enableCheckbox,
           filters: [],
         })
-        useTableUIStore.getState().updateSessionConfig(tableId, defaultConfig)
+        store.updateSessionConfig(tableId, defaultConfig)
       }
 
       // Clear session filters
-      useFilterStore.getState().setSessionFilters(tableId, [])
+      store.setSessionFilters(tableId, [])
       return
     }
 
@@ -396,9 +393,9 @@ export function useDynamicTable<TData extends Record<string, any>>({
 
   const setColumnLabel = useCallback(
     (columnId: string, label: string | null) => {
-      // Get current labels from store (not from closure)
-      const viewId = useViewStore.getState().activeViewIds[tableId]
-      const store = useTableUIStore.getState()
+      // Get current labels from unified store (not from closure)
+      const store = useDynamicTableStore.getState()
+      const viewId = store.activeViewIds[tableId]
       const currentLabels = viewId
         ? store.viewConfigs[viewId]?.columnLabels ?? {}
         : store.sessionConfigs[tableId]?.columnLabels ?? {}
@@ -416,9 +413,9 @@ export function useDynamicTable<TData extends Record<string, any>>({
 
   const setColumnFormatting = useCallback(
     (columnId: string, formatting: ColumnFormatting | null) => {
-      // Get current formatting from store (not from closure)
-      const viewId = useViewStore.getState().activeViewIds[tableId]
-      const store = useTableUIStore.getState()
+      // Get current formatting from unified store (not from closure)
+      const store = useDynamicTableStore.getState()
+      const viewId = store.activeViewIds[tableId]
       const currentFormatting = viewId
         ? store.viewConfigs[viewId]?.columnFormatting ?? {}
         : store.sessionConfigs[tableId]?.columnFormatting ?? {}
@@ -487,8 +484,6 @@ export function useDynamicTable<TData extends Record<string, any>>({
     [tableId]
   )
 
-  // tableRef is already defined earlier in the component (after table creation)
-
   const toggleRowSelection = useCallback(
     (rowId: string, event: React.MouseEvent) => {
       const t = tableRef.current
@@ -534,12 +529,8 @@ export function useDynamicTable<TData extends Record<string, any>>({
   const resetViewChanges = useCallback(() => {
     if (!currentView?.id) return
 
-    // Reset store to saved state
-    useTableUIStore.getState().resetToSaved(currentView.id)
-
-    // Filters are managed separately - reset them too
-    const savedFilters = currentView.config.filters ?? []
-    useFilterStore.getState().setViewFilters(currentView.id, savedFilters)
+    // Reset store to saved state using unified store
+    useDynamicTableStore.getState().resetViewChanges(currentView.id)
   }, [currentView])
 
   // saveCurrentView is now handled by useViewStorePersistence automatically

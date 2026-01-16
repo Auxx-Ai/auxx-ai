@@ -27,8 +27,7 @@ import {
 } from '@auxx/ui/components/command'
 import { useTableConfig } from '../../context/table-config-context'
 import { useViewMetadata } from '../../context/view-metadata-context'
-import { useViewStore } from '../../stores/view-store'
-import { useTableUIStore } from '../../stores/table-ui-store'
+import { useDynamicTableStore } from '../../stores/dynamic-table-store'
 import { Tooltip } from '~/components/global/tooltip'
 import type { ViewConfig } from '../../types'
 import { getColorSwatch } from '@auxx/lib/custom-fields/client'
@@ -59,14 +58,14 @@ function RootStack() {
   const { customFields, selectFields } = useViewMetadata()
 
   // Get current view and kanban config from stores
-  const activeViewId = useViewStore((state) => state.activeViewIds[tableId])
-  const currentView = useViewStore((state) => {
+  const activeViewId = useDynamicTableStore((state) => state.activeViewIds[tableId])
+  const currentView = useDynamicTableStore((state) => {
     if (!activeViewId) return null
     const views = state.viewsByTableId[tableId] ?? []
     return views.find((v) => v.id === activeViewId) ?? null
   })
 
-  const updateKanbanConfig = useTableUIStore((state) => state.updateKanbanConfig)
+  const updateKanbanConfig = useDynamicTableStore((state) => state.updateKanbanConfig)
 
   const kanbanConfig = (currentView?.config as ViewConfig)?.kanban
   const cardFields = kanbanConfig?.cardFields ?? []
@@ -183,14 +182,14 @@ function PipelineSelectionStack() {
   const { selectFields } = useViewMetadata()
 
   // Get current view from store
-  const activeViewId = useViewStore((state) => state.activeViewIds[tableId])
-  const currentView = useViewStore((state) => {
+  const activeViewId = useDynamicTableStore((state) => state.activeViewIds[tableId])
+  const currentView = useDynamicTableStore((state) => {
     if (!activeViewId) return null
     const views = state.viewsByTableId[tableId] ?? []
     return views.find((v) => v.id === activeViewId) ?? null
   })
 
-  const updateKanbanConfig = useTableUIStore((state) => state.updateKanbanConfig)
+  const updateKanbanConfig = useDynamicTableStore((state) => state.updateKanbanConfig)
   const kanbanConfig = (currentView?.config as ViewConfig)?.kanban
 
   /** Handle selecting a field */
@@ -241,14 +240,14 @@ function VisibleColumnsStack() {
   const { selectFields } = useViewMetadata()
 
   // Get current view from store
-  const activeViewId = useViewStore((state) => state.activeViewIds[tableId])
-  const currentView = useViewStore((state) => {
+  const activeViewId = useDynamicTableStore((state) => state.activeViewIds[tableId])
+  const currentView = useDynamicTableStore((state) => {
     if (!activeViewId) return null
     const views = state.viewsByTableId[tableId] ?? []
     return views.find((v) => v.id === activeViewId) ?? null
   })
 
-  const updateKanbanConfig = useTableUIStore((state) => state.updateKanbanConfig)
+  const updateKanbanConfig = useDynamicTableStore((state) => state.updateKanbanConfig)
   const kanbanConfig = (currentView?.config as ViewConfig)?.kanban
 
   /** Get the groupBy field and its options (stages) */
@@ -321,14 +320,14 @@ function AddCardFieldStack() {
   const { customFields } = useViewMetadata()
 
   // Get current view from store
-  const activeViewId = useViewStore((state) => state.activeViewIds[tableId])
-  const currentView = useViewStore((state) => {
+  const activeViewId = useDynamicTableStore((state) => state.activeViewIds[tableId])
+  const currentView = useDynamicTableStore((state) => {
     if (!activeViewId) return null
     const views = state.viewsByTableId[tableId] ?? []
     return views.find((v) => v.id === activeViewId) ?? null
   })
 
-  const updateKanbanConfig = useTableUIStore((state) => state.updateKanbanConfig)
+  const updateKanbanConfig = useDynamicTableStore((state) => state.updateKanbanConfig)
   const kanbanConfig = (currentView?.config as ViewConfig)?.kanban
   const [search, setSearch] = useState('')
 

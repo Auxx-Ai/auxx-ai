@@ -10,8 +10,30 @@ import {
   ArrowUp,
   ArrowDown,
 } from 'lucide-react'
-import type { SortOption } from '../types'
+import type {
+  SortingState,
+  VisibilityState,
+  ColumnOrderState,
+  ColumnSizingState,
+  RowSelectionState,
+} from '@tanstack/react-table'
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import type { SortOption, TableView, ColumnFormatting } from '../types'
 import type { FieldType } from '@auxx/database/types'
+
+// ============================================================================
+// STABLE EMPTY REFERENCES (prevent re-renders)
+// ============================================================================
+
+export const EMPTY_VIEWS: TableView[] = []
+export const EMPTY_FILTERS: ConditionGroup[] = []
+export const EMPTY_SORTING: SortingState = []
+export const EMPTY_COLUMN_ORDER: ColumnOrderState = []
+export const EMPTY_COLUMN_VISIBILITY: VisibilityState = {}
+export const EMPTY_COLUMN_SIZING: ColumnSizingState = {}
+export const EMPTY_COLUMN_LABELS: Record<string, string> = {}
+export const EMPTY_COLUMN_FORMATTING: Record<string, ColumnFormatting> = {}
+export const EMPTY_ROW_SELECTION: RowSelectionState = {}
 
 /** Text-like sort options (A-Z) */
 const TEXT_SORT: SortOption[] = [

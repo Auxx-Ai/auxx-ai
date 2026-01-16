@@ -38,7 +38,12 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
       })
     },
     onError: (error) => {
-      toastError({ title: 'Error creating custom field', description: error.message })
+      const code = (error.data as { code?: string } | undefined)?.code
+      if (code === 'DUPLICATE_FIELD_NAME') {
+        toastError({ title: 'Field already exists', description: 'A field with this name already exists on this entity.' })
+      } else {
+        toastError({ title: 'Error creating custom field', description: error.message })
+      }
     },
   })
 

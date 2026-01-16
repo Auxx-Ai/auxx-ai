@@ -28,9 +28,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { getSortOptionsForFieldType, SORT_OPTIONS } from '../utils/constants'
 import { useTableConfig } from '../context/table-config-context'
 import { useViewMetadata } from '../context/view-metadata-context'
-import { useViewStore } from '../stores/view-store'
-import { useTableUIStore } from '../stores/table-ui-store'
-import { useFilterStore } from '../stores/filter-store'
+import { useDynamicTableStore } from '../stores/dynamic-table-store'
 import {
   useTableFilters,
   useColumnLabels,
@@ -270,17 +268,17 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
   const filters = useTableFilters(tableId)
 
   // Get action setters from store
-  const updateViewConfig = useTableUIStore((state) => state.updateViewConfig)
-  const updateSessionConfig = useTableUIStore((state) => state.updateSessionConfig)
+  const updateViewConfig = useDynamicTableStore((state) => state.updateViewConfig)
+  const updateSessionConfig = useDynamicTableStore((state) => state.updateSessionConfig)
 
   // ─── ACTIONS ────────────────────────────────────────────────────────────────
   const setFilters = useSetFilters(tableId)
 
   const setColumnLabel = useCallback(
     (columnId: string, label: string | null) => {
-      // Get current labels from store (not from closure)
-      const viewId = useViewStore.getState().activeViewIds[tableId]
-      const store = useTableUIStore.getState()
+      // Get current labels from unified store (not from closure)
+      const store = useDynamicTableStore.getState()
+      const viewId = store.activeViewIds[tableId]
       const currentLabels = viewId
         ? (store.viewConfigs[viewId]?.columnLabels ?? {})
         : (store.sessionConfigs[tableId]?.columnLabels ?? {})
@@ -303,9 +301,9 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
 
   const setColumnFormatting = useCallback(
     (columnId: string, formatting: ColumnFormatting | null) => {
-      // Get current formatting from store (not from closure)
-      const viewId = useViewStore.getState().activeViewIds[tableId]
-      const store = useTableUIStore.getState()
+      // Get current formatting from unified store (not from closure)
+      const store = useDynamicTableStore.getState()
+      const viewId = store.activeViewIds[tableId]
       const currentFormatting = viewId
         ? (store.viewConfigs[viewId]?.columnFormatting ?? {})
         : (store.sessionConfigs[tableId]?.columnFormatting ?? {})
@@ -328,7 +326,8 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
 
   const setPinnedColumn = useCallback(
     (columnId: string | null) => {
-      const viewId = useViewStore.getState().activeViewIds[tableId]
+      const store = useDynamicTableStore.getState()
+      const viewId = store.activeViewIds[tableId]
       const updates = {
         columnPinning: columnId ? { left: [columnId] } : undefined,
       }

@@ -17,7 +17,7 @@ import { useTableInstance } from '../../context/table-instance-context'
 import { useViewMetadata } from '../../context/view-metadata-context'
 import { useTableViews, useActiveView, useTableFilters } from '../../hooks/use-table-selectors'
 import { useSetFilters } from '../../hooks/use-table-actions'
-import { useViewStore } from '../../stores/view-store'
+import { useDynamicTableStore } from '../../stores/dynamic-table-store'
 import type { ReactNode } from 'react'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { Tooltip } from '~/components/global/tooltip'
@@ -76,7 +76,7 @@ export function TableToolbar<TData = any>({
   const currentView = useActiveView(tableId)
   const filters = useTableFilters(tableId)
   const setFilters = useSetFilters(tableId)
-  const setActiveView = useViewStore((state) => state.setActiveView)
+  const setActiveView = useDynamicTableStore((state) => state.setActiveView)
 
   // Get filterable fields from resource system
   const { filterableFields } = useResourceFields(entityDefinitionId ?? null)

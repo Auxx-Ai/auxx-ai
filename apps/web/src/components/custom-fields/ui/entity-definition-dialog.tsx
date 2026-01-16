@@ -280,7 +280,16 @@ export function EntityDefinitionDialog({
     useEntityDefinitionMutations()
 
   // Custom field mutation (used after entity creation)
-  const createCustomField = api.customField.create.useMutation()
+  const createCustomField = api.customField.create.useMutation({
+    onError: (error) => {
+      const code = (error.data as { code?: string } | undefined)?.code
+      if (code === 'DUPLICATE_FIELD_NAME') {
+        toastError({ title: 'Field already exists', description: 'A field with this name already exists on this entity.' })
+      } else {
+        toastError({ title: 'Error creating field', description: error.message })
+      }
+    },
+  })
 
   /** Handle create success - open custom field dialog */
   const handleCreateSuccess = (data: { id: string }) => {

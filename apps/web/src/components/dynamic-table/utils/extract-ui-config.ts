@@ -1,11 +1,11 @@
 // apps/web/src/components/dynamic-table/utils/extract-ui-config.ts
 
 import type { ViewConfig } from '../types'
-import type { TableUIConfig } from '../stores/table-ui-store'
+import type { TableUIConfig } from '../stores/store-types'
 
 /**
  * Extract TableUIConfig from ViewConfig by removing filters.
- * Filters are managed separately in filter-store.
+ * Filters are managed separately in the filter slice.
  */
 export function extractUIConfig(viewConfig: ViewConfig): TableUIConfig {
   const { filters: _filters, ...uiConfig } = viewConfig

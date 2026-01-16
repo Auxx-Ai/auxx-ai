@@ -112,6 +112,25 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
   const modelType = entityDefinitionId ? getModelType(entityDefinitionId) : ModelTypes.CONTACT
   const dbModelType = modelType
 
+  // Check for existing field with same name
+  const existingField = await db.query.CustomField.findFirst({
+    where: and(
+      eq(schema.CustomField.name, name),
+      eq(schema.CustomField.organizationId, organizationId),
+      eq(schema.CustomField.modelType, dbModelType as any),
+      entityDefinitionId
+        ? eq(schema.CustomField.entityDefinitionId, entityDefinitionId)
+        : isNull(schema.CustomField.entityDefinitionId)
+    ),
+  })
+
+  if (existingField) {
+    return err({
+      code: 'DUPLICATE_FIELD_NAME' as const,
+      message: `A field named "${name}" already exists`,
+    })
+  }
+
   // Validate isUnique is only set for allowed types
   if (isUnique) {
     const relationshipType = relationship?.relationshipType
