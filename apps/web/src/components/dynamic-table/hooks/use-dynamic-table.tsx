@@ -19,25 +19,47 @@ import {
 } from '@tanstack/react-table'
 import { useQueryStates, parseAsString } from 'nuqs'
 import { useCallback, useEffect, useMemo, useRef, useState, startTransition } from 'react'
-import type { DynamicTableProps, ViewConfig, ExtendedColumnDef, ColumnFormatting } from '../types'
+import type { DynamicTableProps, ColumnFormatting } from '../types'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { CheckboxCell } from '../components/checkbox-cell'
 import { CheckboxHeaderCell } from '../components/checkbox-header-cell'
-import {
-  computeInitialViewConfig,
-  normalizeViewConfig,
-  buildViewConfig,
-} from '../utils/view-config'
+import { computeInitialViewConfig, normalizeViewConfig } from '../utils/view-config'
+import { useViewStore } from '../stores/view-store'
+import { useTableUIStore } from '../stores/table-ui-store'
+import { useFilterStore } from '../stores/filter-store'
+import { useSelectionStore } from '../stores/selection-store'
 import {
   useTableViews,
-  useViewStore,
-  useViewStoreInitialized,
-  useActiveViewConfig,
-} from '../stores/view-store'
+  useActiveView,
+  useTableFilters,
+  useTableSorting,
+  useColumnVisibility,
+  useColumnOrder,
+  useColumnSizing,
+  useColumnPinning,
+  useColumnLabels,
+  useColumnFormatting,
+  useRowSelection,
+  useActiveDragItems,
+} from '../hooks/use-table-selectors'
+import {
+  useSetFilters,
+  useSetSorting,
+  useSetColumnVisibility,
+  useSetColumnOrder,
+  useSetColumnSizing,
+  useSetColumnPinning,
+  useSetColumnLabels,
+  useSetColumnFormatting,
+  useSetRowSelection,
+  useSetActiveDragItems,
+  useSetActiveView,
+} from '../hooks/use-table-actions'
 import { useViewStorePersistence } from './use-view-store-persistence'
 
 /**
  * Main hook for managing dynamic table state.
+ * REFACTORED: Now uses Zustand stores directly instead of local state + sync effects.
  */
 export function useDynamicTable<TData extends Record<string, any>>({
   data,
@@ -63,23 +85,16 @@ export function useDynamicTable<TData extends Record<string, any>>({
   // View state is now managed locally instead of in URL
   const [activeViewId, setActiveViewId] = useState<string | null>(null)
 
-  // Get views from centralized store instead of React Query
+  // Get views from centralized store
   const views = useTableViews(tableId)
-  const isStoreInitialized = useViewStoreInitialized()
+  const isStoreInitialized = useViewStore((state) => state.initialized)
   const isLoadingViews = !isStoreInitialized
-  const updateViewConfig = useViewStore((state) => state.updateViewConfig)
   const hasUnsavedChanges = useViewStore((state) => state.hasUnsavedChanges)
   const isSaving = useViewStore((state) => state.isSaving)
-  const resetToSaved = useViewStore((state) => state.resetToSaved)
   const setActiveViewInStore = useViewStore((state) => state.setActiveView)
-  const updateSessionView = useViewStore((state) => state.updateSessionView)
 
-  const currentView = useMemo(() => {
-    if (!activeViewId) {
-      return null
-    }
-    return views.find((view) => view.id === activeViewId) ?? null
-  }, [activeViewId, views])
+  // Get current view
+  const currentView = useActiveView(tableId)
 
   // Find default view
   const defaultView = useMemo(() => {
@@ -97,10 +112,7 @@ export function useDynamicTable<TData extends Record<string, any>>({
     }
   }, [isStoreInitialized, activeViewId, defaultView, views.length])
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // SYNC VIEW ID TO STORE
-  // This ensures useActiveViewConfig() returns the correct config
-  // ═══════════════════════════════════════════════════════════════════════════
+  // Sync view ID to store
   useEffect(() => {
     setActiveViewInStore(tableId, activeViewId)
   }, [tableId, activeViewId, setActiveViewInStore])
@@ -108,20 +120,46 @@ export function useDynamicTable<TData extends Record<string, any>>({
   // Initialize persistence (triggers auto-save on changes)
   useViewStorePersistence(currentView?.id ?? null, tableId)
 
-  // Get active view config (includes pending changes and session view)
-  const activeViewConfig = useActiveViewConfig(tableId)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // READ STATE FROM ZUSTAND STORES (NO LOCAL STATE!)
+  // ═══════════════════════════════════════════════════════════════════════════
 
-  const baseViewConfig = useMemo(() => {
-    if (currentView) {
-      return normalizeViewConfig(currentView.config)
-    }
+  const filters = useTableFilters(tableId)
+  const sorting = useTableSorting(tableId)
+  const columnVisibility = useColumnVisibility(tableId)
+  const columnOrder = useColumnOrder(tableId)
+  const columnSizing = useColumnSizing(tableId)
+  const columnPinning = useColumnPinning(tableId)
+  const columnLabels = useColumnLabels(tableId) ?? {}
+  const columnFormatting = useColumnFormatting(tableId) ?? {}
+  const rowSelection = useRowSelection(tableId)
+  const activeDragItems = useActiveDragItems(tableId)
 
-    return computeInitialViewConfig({
-      columns,
-      enableCheckbox,
-      filters: [],
-    })
-  }, [columns, currentView, enableCheckbox])
+  // ═══════════════════════════════════════════════════════════════════════════
+  // WRITE ACTIONS (USE ACTION HOOKS)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const setFilters = useSetFilters(tableId)
+  const setSorting = useSetSorting(tableId)
+  const setColumnVisibility = useSetColumnVisibility(tableId)
+  const setColumnOrder = useSetColumnOrder(tableId)
+  const setColumnSizing = useSetColumnSizing(tableId)
+  const setColumnPinning = useSetColumnPinning(tableId)
+  const setColumnLabelsAction = useSetColumnLabels(tableId)
+  const setColumnFormattingAction = useSetColumnFormatting(tableId)
+  const setRowSelection = useSetRowSelection(tableId)
+  const setActiveDragItems = useSetActiveDragItems(tableId)
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // URL STATE & SEARCH
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const [globalFilter, setGlobalFilter] = useState(urlState.q ?? '')
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SPECIAL COLUMN HANDLING
+  // ═══════════════════════════════════════════════════════════════════════════
 
   const applySpecialColumnOrder = useCallback(
     (order: ColumnOrderState | undefined): ColumnOrderState => {
@@ -148,118 +186,25 @@ export function useDynamicTable<TData extends Record<string, any>>({
     [enableCheckbox]
   )
 
-  const [localFilters, setLocalFilters] = useState<ConditionGroup[]>(() => baseViewConfig.filters)
-  const [activeDragItems, setActiveDragItems] = useState<TData[] | null>(null)
-
-  // Use refs for values that shouldn't trigger re-renders when changed
-  const lastSelectedIndexRef = useRef<number | null>(null)
-  const lastClickedRowIdRef = useRef<string | null>(null)
-
-  // Stable getter/setter functions that don't trigger re-renders
-  const getLastSelectedIndex = useCallback(() => lastSelectedIndexRef.current, [])
-  const setLastSelectedIndex = useCallback((index: number | null) => {
-    lastSelectedIndexRef.current = index
-  }, [])
-
-  const getLastClickedRowId = useCallback(() => lastClickedRowIdRef.current, [])
-  const setLastClickedRowId = useCallback((id: string | null) => {
-    lastClickedRowIdRef.current = id
-  }, [])
-
-  const [sorting, setSorting] = useState<SortingState>(baseViewConfig.sorting)
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
-    baseViewConfig.columnVisibility
-  )
-  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(() =>
-    applySpecialColumnOrder(baseViewConfig.columnOrder)
-  )
-  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(baseViewConfig.columnSizing)
-  const [columnPinning, setColumnPinning] = useState<ColumnPinningState>(() =>
-    resolveColumnPinning(baseViewConfig.columnPinning)
-  )
-  const [columnLabels, setColumnLabels] = useState<Record<string, string>>(
-    () => baseViewConfig.columnLabels ?? {}
-  )
-  const [columnFormatting, setColumnFormattingState] = useState<Record<string, ColumnFormatting>>(
-    () => baseViewConfig.columnFormatting ?? {}
+  // Apply special column order when it changes
+  const displayColumnOrder = useMemo(
+    () => applySpecialColumnOrder(columnOrder),
+    [columnOrder, applySpecialColumnOrder]
   )
 
-  const initialRowSelection = useMemo(() => {
-    if (!controlledRowSelection) {
-      return {}
-    }
-    const selection: RowSelectionState = {}
-    controlledRowSelection.forEach((id) => {
-      selection[id] = true
-    })
-    return selection
-  }, [controlledRowSelection])
-
-  const [rowSelection, setRowSelection] = useState<RowSelectionState>(initialRowSelection)
-  const [globalFilter, setGlobalFilter] = useState(urlState.q ?? '')
-
-  useEffect(() => {
-    setRowSelection(initialRowSelection)
-  }, [initialRowSelection])
-
-  useEffect(() => {
-    setColumnOrder((prev) => applySpecialColumnOrder(prev))
-  }, [applySpecialColumnOrder])
-
-  useEffect(() => {
-    setColumnPinning((prev) => resolveColumnPinning(prev))
-  }, [resolveColumnPinning])
-
-  // Update pinning when baseViewConfig changes (handles async column loading with primaryCell)
-  // Only applies when there's no saved view to avoid overriding user's saved pinning
-  useEffect(() => {
-    if (!currentView && baseViewConfig.columnPinning) {
-      setColumnPinning(resolveColumnPinning(baseViewConfig.columnPinning))
-    }
-  }, [baseViewConfig.columnPinning, currentView, resolveColumnPinning])
-
-  const applyViewConfig = useCallback(
-    (config: ViewConfig, options: { applyFilters?: boolean } = {}) => {
-      setSorting(config.sorting)
-      setColumnVisibility(config.columnVisibility)
-      setColumnOrder(applySpecialColumnOrder(config.columnOrder))
-      setColumnSizing(config.columnSizing)
-      setColumnPinning(resolveColumnPinning(config.columnPinning))
-      setColumnLabels(config.columnLabels ?? {})
-      setColumnFormattingState(config.columnFormatting ?? {})
-      if (options.applyFilters !== false) {
-        setLocalFilters(config.filters ?? [])
-      }
-    },
-    [applySpecialColumnOrder, resolveColumnPinning]
+  // Apply special column pinning
+  const displayColumnPinning = useMemo(
+    () => resolveColumnPinning(columnPinning),
+    [columnPinning, resolveColumnPinning]
   )
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // VIEW SWITCHING
+  // ═══════════════════════════════════════════════════════════════════════════
 
   const lastAppliedViewIdRef = useRef<string | null>(currentView?.id ?? null)
 
-  // Sync external changes from store to local state (for column-manager)
-  // Only sync columnVisibility and columnOrder to avoid infinite loops
-  useEffect(() => {
-    if (!activeViewConfig) return
-
-    const storeVisibility = activeViewConfig.columnVisibility ?? {}
-    const storeOrder = activeViewConfig.columnOrder ?? []
-
-    // Only update if different (avoid infinite loop)
-    setColumnVisibility((current) => {
-      const currentStr = JSON.stringify(current)
-      const storeStr = JSON.stringify(storeVisibility)
-      return currentStr !== storeStr ? storeVisibility : current
-    })
-
-    setColumnOrder((current) => {
-      const currentStr = JSON.stringify(current)
-      const storeOrderWithSpecial = applySpecialColumnOrder(storeOrder)
-      const storeStr = JSON.stringify(storeOrderWithSpecial)
-      return currentStr !== storeStr ? storeOrderWithSpecial : current
-    })
-  }, [activeViewConfig, applySpecialColumnOrder])
-
+  // Initialize store with proper config when view changes
   useEffect(() => {
     const viewId = currentView?.id ?? null
 
@@ -268,20 +213,35 @@ export function useDynamicTable<TData extends Record<string, any>>({
       return
     }
 
-    // Switching to "All rows" (no view) - reset filters to empty
+    // Switching to "All rows" (no view) - filters already cleared by store
     if (!viewId) {
       lastAppliedViewIdRef.current = null
-      setLocalFilters([])
+
+      // Initialize session config if needed
+      const sessionConfig = useTableUIStore.getState().getSessionConfig(tableId)
+      if (Object.keys(sessionConfig.columnVisibility).length === 0) {
+        // Initialize with default config
+        const defaultConfig = computeInitialViewConfig({
+          columns,
+          enableCheckbox,
+          filters: [],
+        })
+        useTableUIStore.getState().updateSessionConfig(tableId, defaultConfig)
+      }
+
+      // Clear session filters
+      useFilterStore.getState().setSessionFilters(tableId, [])
       return
     }
 
-    // Switching to a view - apply its config including filters
-    // Also clear session view since we're now using view filters
-    const nextConfig = normalizeViewConfig(currentView.config)
-    applyViewConfig(nextConfig)
-    updateSessionView(tableId, { filters: [] })
+    // Switching to a view - config already loaded in store
+    // Just mark that we've applied this view
     lastAppliedViewIdRef.current = viewId
-  }, [applyViewConfig, currentView, tableId, updateSessionView])
+  }, [currentView, tableId, columns, enableCheckbox])
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CHECKBOX COLUMN
+  // ═══════════════════════════════════════════════════════════════════════════
 
   const checkboxColumn: ColumnDef<TData> = useMemo(
     () => ({
@@ -307,44 +267,26 @@ export function useDynamicTable<TData extends Record<string, any>>({
     return nextColumns
   }, [checkboxColumn, columns, enableCheckbox])
 
-  // Handle saved views with empty columnVisibility (legacy bug fix)
-  // If a view was saved with empty columnVisibility, hide all hideable columns
-  useEffect(() => {
-    const config = baseViewConfig.columnVisibility
-
-    // Only apply this fix for saved views with empty columnVisibility
-    if (Object.keys(config).length === 0 && currentView) {
-      const hideAll: VisibilityState = {}
-
-      enhancedColumns.forEach((col) => {
-        const columnId = col.id ?? (col as any).accessorKey
-        if (!columnId) return
-
-        // Only hide columns that CAN be hidden
-        // Columns with enableHiding: false (checkbox, primary) stay visible
-        if (col.enableHiding !== false) {
-          hideAll[columnId] = false
-        }
-      })
-
-      setColumnVisibility(hideAll)
-    }
-    // Only run when view changes or on mount, not when columns change
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentView?.id])
-
-  // Note: Client-side filtering removed - filtering is now handled server-side
-  // Data is passed through directly; useRecordList (Plan 06) handles server-side filtering
+  // ═══════════════════════════════════════════════════════════════════════════
+  // COLUMN ORDER HANDLER WITH CHECKBOX PRESERVATION
+  // ═══════════════════════════════════════════════════════════════════════════
 
   const handleColumnOrderChange = useCallback(
     (updater: ColumnOrderState | ((old: ColumnOrderState) => ColumnOrderState)) => {
-      setColumnOrder((previousOrder) => {
-        const nextOrder = typeof updater === 'function' ? updater(previousOrder) : updater
-        return applySpecialColumnOrder(nextOrder)
-      })
+      const previousOrder = displayColumnOrder
+      const nextOrder = typeof updater === 'function' ? updater(previousOrder) : updater
+      const finalOrder = applySpecialColumnOrder(nextOrder)
+
+      // Remove special columns before saving to store
+      const orderWithoutSpecial = finalOrder.filter((id) => id !== '_checkbox')
+      setColumnOrder(orderWithoutSpecial)
     },
-    [applySpecialColumnOrder]
+    [displayColumnOrder, applySpecialColumnOrder, setColumnOrder]
   )
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // TANSTACK TABLE INSTANCE
+  // ═══════════════════════════════════════════════════════════════════════════
 
   const table = useReactTable({
     data,
@@ -357,9 +299,9 @@ export function useDynamicTable<TData extends Record<string, any>>({
       sorting,
       columnFilters,
       columnVisibility,
-      columnOrder,
+      columnOrder: displayColumnOrder,
       columnSizing,
-      columnPinning,
+      columnPinning: displayColumnPinning,
       rowSelection,
       globalFilter,
     },
@@ -382,17 +324,35 @@ export function useDynamicTable<TData extends Record<string, any>>({
     pageCount: props.pageCount,
   })
 
+  // Ref to maintain stable reference to table for callbacks
+  const tableRef = useRef(table)
+  useEffect(() => {
+    tableRef.current = table
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CONTROLLED ROW SELECTION
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const initialRowSelection = useMemo(() => {
+    if (!controlledRowSelection) {
+      return {}
+    }
+    const selection: RowSelectionState = {}
+    controlledRowSelection.forEach((id) => {
+      selection[id] = true
+    })
+    return selection
+  }, [controlledRowSelection])
+
   useEffect(() => {
     if (!controlledRowSelection) {
       return
     }
-    const newSelection: RowSelectionState = {}
-    controlledRowSelection.forEach((id) => {
-      newSelection[id] = true
-    })
-    setRowSelection(newSelection)
-  }, [controlledRowSelection])
+    setRowSelection(initialRowSelection)
+  }, [initialRowSelection, controlledRowSelection, setRowSelection])
 
+  // Notify parent of row selection changes
   useEffect(() => {
     if (!onRowSelectionChange || !enableCheckbox || controlledRowSelection) {
       return
@@ -401,94 +361,26 @@ export function useDynamicTable<TData extends Record<string, any>>({
     onRowSelectionChange(selectedRows)
   }, [controlledRowSelection, enableCheckbox, onRowSelectionChange, rowSelection])
 
-  // Notify parent of column visibility changes (for custom field value syncer)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // COLUMN VISIBILITY CALLBACK
+  // ═══════════════════════════════════════════════════════════════════════════
+
   useEffect(() => {
     if (onColumnVisibilityChange) {
       onColumnVisibilityChange(columnVisibility)
     }
   }, [columnVisibility, onColumnVisibilityChange])
 
-  // Track whether we've done the initial sync to avoid triggering save on mount
-  const hasMountedRef = useRef(false)
-  const lastSyncedConfigRef = useRef<string | null>(null)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // COMPUTED STATE
+  // ═══════════════════════════════════════════════════════════════════════════
 
-  // Build current table config for dirty checking and saving
-  const currentTableConfig = useMemo(
-    () =>
-      buildViewConfig({
-        sorting,
-        columnVisibility,
-        columnOrder,
-        columnSizing,
-        columnPinning,
-        columnLabels,
-        columnFormatting,
-        filters: localFilters,
-      }),
-    [
-      sorting,
-      columnVisibility,
-      columnOrder,
-      columnSizing,
-      columnPinning,
-      columnLabels,
-      columnFormatting,
-      localFilters,
-    ]
-  )
-
-  // Sync table config changes to store (for table-level config, not kanban)
-  // Skip initial mount to avoid triggering save on page load
-  // Note: Filters are synced to pending config for useActiveViewConfig,
-  // but excluded from DB save by the persistence hook
-  useEffect(() => {
-    if (!currentView?.id) {
-      hasMountedRef.current = false
-      lastSyncedConfigRef.current = null
-      return
-    }
-
-    // Skip the first render - just record the initial config
-    if (!hasMountedRef.current) {
-      hasMountedRef.current = true
-      lastSyncedConfigRef.current = JSON.stringify(currentTableConfig)
-      return
-    }
-
-    // Serialize to check if actually changed
-    const serialized = JSON.stringify(currentTableConfig)
-    if (serialized === lastSyncedConfigRef.current) return
-
-    // Update store with table config changes (preserves kanban config via deepMerge)
-    // Filters are included here for useActiveViewConfig to work,
-    // but the persistence hook will exclude them from DB save
-    updateViewConfig(currentView.id, {
-      sorting: currentTableConfig.sorting,
-      columnVisibility: currentTableConfig.columnVisibility,
-      columnOrder: currentTableConfig.columnOrder,
-      columnSizing: currentTableConfig.columnSizing,
-      columnPinning: currentTableConfig.columnPinning,
-      columnLabels: currentTableConfig.columnLabels,
-      columnFormatting: currentTableConfig.columnFormatting,
-      filters: currentTableConfig.filters,
-    })
-
-    lastSyncedConfigRef.current = serialized
-  }, [currentView?.id, currentTableConfig, updateViewConfig])
-
-  // Sync session filters to store when no view is selected
-  // This enables filtering without a view
-  useEffect(() => {
-    // Only sync when NO view is selected
-    if (currentView?.id) return
-
-    // Sync filters to session view store
-    updateSessionView(tableId, { filters: localFilters })
-  }, [currentView?.id, tableId, localFilters, updateSessionView])
-
-  // Compute dirty/saving state from store
   const hasUnsavedViewChanges = currentView?.id ? hasUnsavedChanges(currentView.id) : false
   const isSavingView = currentView?.id ? isSaving(currentView.id) : false
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ACTIONS
+  // ═══════════════════════════════════════════════════════════════════════════
 
   const setActiveView = useCallback((viewId: string | null) => {
     setActiveViewId(viewId)
@@ -502,32 +394,44 @@ export function useDynamicTable<TData extends Record<string, any>>({
     [setUrlState]
   )
 
-  const setFilters = useCallback((filters: ConditionGroup[]) => {
-    console.log('[useDynamicTable] Setting filters:', filters)
-    setLocalFilters(filters)
-  }, [])
+  const setColumnLabel = useCallback(
+    (columnId: string, label: string | null) => {
+      // Get current labels from store (not from closure)
+      const viewId = useViewStore.getState().activeViewIds[tableId]
+      const store = useTableUIStore.getState()
+      const currentLabels = viewId
+        ? store.viewConfigs[viewId]?.columnLabels ?? {}
+        : store.sessionConfigs[tableId]?.columnLabels ?? {}
 
-  const setColumnLabel = useCallback((columnId: string, label: string | null) => {
-    setColumnLabels((prev) => {
+      const newLabels = { ...currentLabels }
       if (label === null) {
-        const { [columnId]: _, ...rest } = prev
-        return rest
+        delete newLabels[columnId]
+      } else {
+        newLabels[columnId] = label
       }
-      return { ...prev, [columnId]: label }
-    })
-  }, [])
+      setColumnLabelsAction(newLabels)
+    },
+    [tableId, setColumnLabelsAction]
+  )
 
   const setColumnFormatting = useCallback(
     (columnId: string, formatting: ColumnFormatting | null) => {
-      setColumnFormattingState((prev) => {
-        if (formatting === null) {
-          const { [columnId]: _, ...rest } = prev
-          return rest
-        }
-        return { ...prev, [columnId]: formatting }
-      })
+      // Get current formatting from store (not from closure)
+      const viewId = useViewStore.getState().activeViewIds[tableId]
+      const store = useTableUIStore.getState()
+      const currentFormatting = viewId
+        ? store.viewConfigs[viewId]?.columnFormatting ?? {}
+        : store.sessionConfigs[tableId]?.columnFormatting ?? {}
+
+      const newFormatting = { ...currentFormatting }
+      if (formatting === null) {
+        delete newFormatting[columnId]
+      } else {
+        newFormatting[columnId] = formatting
+      }
+      setColumnFormattingAction(newFormatting)
     },
-    []
+    [tableId, setColumnFormattingAction]
   )
 
   const setPinnedColumn = useCallback(
@@ -537,7 +441,7 @@ export function useDynamicTable<TData extends Record<string, any>>({
         return
       }
 
-      const allColumns = table.getAllLeafColumns()
+      const allColumns = tableRef.current.getAllLeafColumns()
       const targetIndex = allColumns.findIndex((column) => column.id === columnId)
       if (targetIndex === -1) {
         return
@@ -546,11 +450,11 @@ export function useDynamicTable<TData extends Record<string, any>>({
       const leftColumns = allColumns.slice(0, targetIndex + 1).map((column) => column.id)
       setColumnPinning({ left: leftColumns })
     },
-    [resolveColumnPinning, table]
+    [resolveColumnPinning, setColumnPinning]
   )
 
   const pinnedColumnId = useMemo(() => {
-    const leftPinned = columnPinning.left ?? []
+    const leftPinned = displayColumnPinning.left ?? []
     if (leftPinned.length === 0) {
       return null
     }
@@ -558,11 +462,32 @@ export function useDynamicTable<TData extends Record<string, any>>({
     return userPinned.length > 0
       ? userPinned[userPinned.length - 1]
       : leftPinned[leftPinned.length - 1]
-  }, [columnPinning])
+  }, [displayColumnPinning])
 
-  // Use ref for table to make toggleRowSelection stable
-  const tableRef = useRef(table)
-  tableRef.current = table
+  // Use selection store for last selected index and clicked row
+  const getLastSelectedIndex = useCallback(() => {
+    return useSelectionStore.getState().tables[tableId]?.lastSelectedIndex ?? null
+  }, [tableId])
+
+  const setLastSelectedIndex = useCallback(
+    (index: number | null) => {
+      useSelectionStore.getState().setLastSelectedIndex(tableId, index)
+    },
+    [tableId]
+  )
+
+  const getLastClickedRowId = useCallback(() => {
+    return useSelectionStore.getState().tables[tableId]?.lastClickedRowId ?? null
+  }, [tableId])
+
+  const setLastClickedRowId = useCallback(
+    (id: string | null) => {
+      useSelectionStore.getState().setLastClickedRowId(tableId, id)
+    },
+    [tableId]
+  )
+
+  // tableRef is already defined earlier in the component (after table creation)
 
   const toggleRowSelection = useCallback(
     (rowId: string, event: React.MouseEvent) => {
@@ -596,44 +521,30 @@ export function useDynamicTable<TData extends Record<string, any>>({
             }
           }
 
-          t.setRowSelection(newSelection)
+          setRowSelection(newSelection)
         })
       } else {
         row.toggleSelected(checked)
         setLastSelectedIndex(rowIndex)
       }
     },
-    [getLastSelectedIndex, setLastSelectedIndex]
+    [getLastSelectedIndex, setLastSelectedIndex, setRowSelection]
   )
 
   const resetViewChanges = useCallback(() => {
     if (!currentView?.id) return
 
     // Reset store to saved state
-    resetToSaved(currentView.id)
+    useTableUIStore.getState().resetToSaved(currentView.id)
 
-    // Re-apply config from the saved view
-    const savedConfig = normalizeViewConfig(currentView.config)
-    applyViewConfig(savedConfig)
-    lastSyncedConfigRef.current = JSON.stringify(
-      buildViewConfig({
-        sorting: savedConfig.sorting,
-        columnVisibility: savedConfig.columnVisibility,
-        columnOrder: savedConfig.columnOrder,
-        columnSizing: savedConfig.columnSizing,
-        columnPinning: savedConfig.columnPinning,
-        columnLabels: savedConfig.columnLabels,
-        columnFormatting: savedConfig.columnFormatting,
-        filters: savedConfig.filters,
-      })
-    )
-  }, [applyViewConfig, currentView, resetToSaved])
+    // Filters are managed separately - reset them too
+    const savedFilters = currentView.config.filters ?? []
+    useFilterStore.getState().setViewFilters(currentView.id, savedFilters)
+  }, [currentView])
 
   // saveCurrentView is now handled by useViewStorePersistence automatically
-  // This is a no-op for backward compatibility (auto-save handles it)
   const saveCurrentView = useCallback(async () => {
     // The store persistence hook handles saving automatically
-    // This function exists for API compatibility
   }, [])
 
   // markViewClean is now handled by the store
@@ -656,7 +567,7 @@ export function useDynamicTable<TData extends Record<string, any>>({
     searchQuery: globalFilter,
     setSearchQuery,
     setActiveView,
-    filters: localFilters,
+    filters,
     setFilters,
     columnLabels,
     setColumnLabel,

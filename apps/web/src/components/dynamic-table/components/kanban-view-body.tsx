@@ -3,35 +3,40 @@
 
 import { useCallback, useMemo, useState, useEffect } from 'react'
 import { KanbanView } from '../../kanban'
-import { useTableContext } from '../context/table-context'
+import { useTableConfig } from '../context/table-config-context'
+import { useTableInstance } from '../context/table-instance-context'
+import { useViewMetadata } from '../context/view-metadata-context'
+import { useActiveView } from '../hooks/use-table-selectors'
 import type { ViewConfig, KanbanViewConfig, KanbanRow } from '../types'
-import { useViewStore } from '../stores/view-store'
+import { useTableUIStore } from '../stores/table-ui-store'
 import { useResource } from '~/components/resources'
-
+import type { FieldType } from '@auxx/database/types'
 /**
- * Kanban view body that integrates with TableContext.
+ * Kanban view body that integrates with focused contexts.
  * Handles view-level config mutations (column reorder, visibility).
- * Uses the same data as the table view through context.
+ * NEW VERSION - Uses focused contexts instead of useTableContext.
  */
 export function KanbanViewBody<TData extends KanbanRow>() {
+  // Get config from focused contexts
+  const { tableId, isLoading, entityDefinitionId } = useTableConfig<TData>()
+  const { table } = useTableInstance<TData>()
   const {
-    table,
-    currentView,
     selectFields,
     customFields,
     entityLabel,
     onCardClick,
     onAddCard,
-    isLoading,
-    entityDefinitionId,
     selectedKanbanCardIds,
     onSelectedKanbanCardIdsChange,
-  } = useTableContext<TData>()
+  } = useViewMetadata<TData>()
+
+  // Get current view
+  const currentView = useActiveView(tableId)
 
   // Get resource for primaryFieldId derivation
-  const { resource } = useResource(entityDefinitionId || null)
+  const { resource } = useResource(entityDefinitionId)
 
-  const updateKanbanConfig = useViewStore((state) => state.updateKanbanConfig)
+  const updateKanbanConfig = useTableUIStore((state) => state.updateKanbanConfig)
 
   // Get kanban config from current view
   const kanbanConfig = useMemo(() => {
@@ -114,27 +119,27 @@ export function KanbanViewBody<TData extends KanbanRow>() {
   const data = table.getRowModel().rows.map((row) => row.original) as TData[]
 
   // Convert selectField to format expected by KanbanView (CustomField type)
-  const groupByFieldForKanban = useMemo(
-    () => ({
-      id: groupByField.id,
-      key: groupByField.id,
-      label: groupByField.name,
-      name: groupByField.name,
-      type: 'enum' as const,
-      fieldType: (groupByField.type ?? 'SINGLE_SELECT') as import('@auxx/database/types').FieldType,
-      options: groupByField.options,
-      sortOrder: '0',
-      active: true,
-      capabilities: { filterable: true, sortable: true, creatable: true, updatable: true },
-    }),
-    [groupByField]
-  )
+  // const groupByFieldForKanban = useMemo(
+  //   () => ({
+  //     id: groupByField.id,
+  //     key: groupByField.id,
+  //     label: groupByField.name,
+  //     name: groupByField.name,
+  //     type: 'enum' as const,
+  //     fieldType: (groupByField.type ?? 'SINGLE_SELECT'),
+  //     options: groupByField.options,
+  //     sortOrder: '0',
+  //     active: true,
+  //     capabilities: { filterable: true, sortable: true, creatable: true, updatable: true },
+  //   }),
+  //   [groupByField]
+  // )
 
   return (
     <KanbanView
       data={data}
       config={effectiveConfig}
-      groupByField={groupByFieldForKanban}
+      groupByField={groupByField}
       customFields={customFields ?? []}
       primaryFieldId={primaryFieldId}
       entityLabel={entityLabel}

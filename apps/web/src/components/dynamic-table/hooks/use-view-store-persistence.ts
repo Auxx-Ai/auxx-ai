@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { api } from '~/trpc/react'
 import { useViewStore } from '../stores/view-store'
+import { useTableUIStore } from '../stores/table-ui-store'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
 import { toastError } from '@auxx/ui/components/toast'
 
@@ -14,19 +15,29 @@ const SAVE_DEBOUNCE_MS = 300
  * Hook that manages persistence between view store and API.
  * Call this hook in components that need to save view changes.
  *
+ * Migrated to use new store architecture:
+ * - ViewStore: Metadata and coordination
+ * - TableUIStore: UI configuration (columns, sorting, etc.)
+ * - FilterStore: Filters (saved to DB)
+ *
  * @param viewId - The view ID to manage
  * @param tableId - The table ID (for cache invalidation)
  */
 export function useViewStorePersistence(viewId: string | null, tableId: string) {
   const utils = api.useUtils()
 
+  // ─── STORE METHODS ──────────────────────────────────────────────────────────
   const getMergedConfig = useViewStore((state) => state.getMergedConfig)
   const hasUnsavedChanges = useViewStore((state) => state.hasUnsavedChanges)
   const startSaving = useViewStore((state) => state.startSaving)
   const finishSaving = useViewStore((state) => state.finishSaving)
   const confirmSave = useViewStore((state) => state.confirmSave)
-  const dirtyViewIds = useViewStore((state) => state.dirtyViewIds)
 
+  // ─── DIRTY TRACKING ─────────────────────────────────────────────────────────
+  // Subscribe to TableUIStore's dirty state for auto-save trigger
+  const isDirty = useTableUIStore((state) => (viewId ? state.dirtyViewIds.has(viewId) : false))
+
+  // ─── MUTATION ───────────────────────────────────────────────────────────────
   const updateMutation = api.tableView.update.useMutation()
 
   // Track the last saved config to detect actual changes
@@ -40,13 +51,13 @@ export function useViewStorePersistence(viewId: string | null, tableId: string) 
     const mergedConfig = getMergedConfig(viewId)
     if (!mergedConfig) return
 
-    // Get the original saved filters to preserve them (don't overwrite with session filters)
-    // Session filters live in pending config but should NOT be persisted to DB
-    const savedFilters = useViewStore.getState().savedConfigs[viewId]?.filters ?? []
-
-    // Build config to save: use merged config but preserve original saved filters
-    const { filters: _sessionFilters, ...restConfig } = mergedConfig
-    const configToSave = { ...restConfig, filters: savedFilters }
+    // In the new architecture, filters are cleanly separated:
+    // - viewFilters[viewId] = saved filters (persisted to DB)
+    // - sessionFilters[tableId] = session filters (NOT persisted)
+    //
+    // getMergedConfig already returns the correct saved filters from FilterStore,
+    // so we don't need to manually preserve them like in the old hook.
+    const configToSave = mergedConfig
 
     // Serialize to check if actually changed
     const serialized = JSON.stringify(configToSave)
@@ -88,13 +99,14 @@ export function useViewStorePersistence(viewId: string | null, tableId: string) 
   /** Debounced save - called automatically when config changes */
   const debouncedSave = useDebouncedCallback(saveView, SAVE_DEBOUNCE_MS)
 
+  // ─── AUTO-SAVE TRIGGER ──────────────────────────────────────────────────────
   // Auto-save when dirty state changes
   useEffect(() => {
     if (!viewId) return
-    if (dirtyViewIds.has(viewId)) {
+    if (isDirty) {
       debouncedSave()
     }
-  }, [viewId, dirtyViewIds, debouncedSave])
+  }, [viewId, isDirty, debouncedSave])
 
   // Cleanup debounced callback on unmount
   useEffect(() => {

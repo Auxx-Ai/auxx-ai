@@ -2,7 +2,7 @@
 
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import {
   ChevronDown,
   ChevronUp,
@@ -26,7 +26,18 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { cn } from '@auxx/ui/lib/utils'
 import { getSortOptionsForFieldType, SORT_OPTIONS } from '../utils/constants'
-import { useTableContext } from '../context/table-context'
+import { useTableConfig } from '../context/table-config-context'
+import { useViewMetadata } from '../context/view-metadata-context'
+import { useViewStore } from '../stores/view-store'
+import { useTableUIStore } from '../stores/table-ui-store'
+import { useFilterStore } from '../stores/filter-store'
+import {
+  useTableFilters,
+  useColumnLabels,
+  useColumnFormatting,
+  useColumnPinning,
+} from '../hooks/use-table-selectors'
+import { useSetFilters } from '../hooks/use-table-actions'
 import { EditColumnLabelDialog } from './edit-column-label-dialog'
 import { EditColumnFormattingDialog } from './edit-column-formatting-dialog'
 import type { Header } from '@tanstack/react-table'
@@ -43,6 +54,7 @@ interface HeaderCellProps<TData> {
 
 /**
  * Dropdown menu for header cell options (sorting, filtering, hiding)
+ * Migrated to use split contexts and stores
  */
 function HeaderCellOptionsDropdown<TData>({
   column,
@@ -60,6 +72,8 @@ function HeaderCellOptionsDropdown<TData>({
   setColumnLabel,
   columnFormatting,
   setColumnFormatting,
+  pinnedColumnId,
+  setPinnedColumn,
 }: {
   column: Header<TData, unknown>['column']
   columnDef: ExtendedColumnDef<TData>
@@ -76,8 +90,9 @@ function HeaderCellOptionsDropdown<TData>({
   setColumnLabel: (columnId: string, label: string | null) => void
   columnFormatting: Record<string, ColumnFormatting>
   setColumnFormatting: (columnId: string, formatting: ColumnFormatting | null) => void
+  pinnedColumnId: string | null
+  setPinnedColumn: (columnId: string | null) => void
 }) {
-  const { pinnedColumnId, setPinnedColumn } = useTableContext<TData>()
   const [showLabelDialog, setShowLabelDialog] = useState(false)
   const [showFormattingDialog, setShowFormattingDialog] = useState(false)
 
@@ -235,21 +250,99 @@ function HeaderCellOptionsDropdown<TData>({
 
 /**
  * Table header cell with sorting menu and column actions
+ * Migrated to use split contexts and stores instead of monolithic TableContext
  */
 export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProps<TData>) {
   const column = header.column
   const columnDef = header.column.columnDef as ExtendedColumnDef<TData>
-  const {
-    filters,
-    setFilters,
-    columnLabels,
-    setColumnLabel,
-    columnFormatting,
-    setColumnFormatting,
-    onAddNew,
-    entityLabel,
-  } = useTableContext<TData>()
 
+  // ─── CONTEXTS & STORES ──────────────────────────────────────────────────────
+  const { tableId } = useTableConfig<TData>()
+  const { onAddNew, entityLabel } = useViewMetadata<TData>()
+
+  // Use granular selectors instead of getMergedConfig
+  const columnLabels = useColumnLabels(tableId)
+  const columnFormatting = useColumnFormatting(tableId)
+  const columnPinning = useColumnPinning(tableId)
+  const pinnedColumnId = columnPinning?.left?.[0] ?? null
+
+  // Get filters using granular selector
+  const filters = useTableFilters(tableId)
+
+  // Get action setters from store
+  const updateViewConfig = useTableUIStore((state) => state.updateViewConfig)
+  const updateSessionConfig = useTableUIStore((state) => state.updateSessionConfig)
+
+  // ─── ACTIONS ────────────────────────────────────────────────────────────────
+  const setFilters = useSetFilters(tableId)
+
+  const setColumnLabel = useCallback(
+    (columnId: string, label: string | null) => {
+      // Get current labels from store (not from closure)
+      const viewId = useViewStore.getState().activeViewIds[tableId]
+      const store = useTableUIStore.getState()
+      const currentLabels = viewId
+        ? store.viewConfigs[viewId]?.columnLabels ?? {}
+        : store.sessionConfigs[tableId]?.columnLabels ?? {}
+
+      const updates = label
+        ? { columnLabels: { ...currentLabels, [columnId]: label } }
+        : (() => {
+            const { [columnId]: _, ...rest } = currentLabels
+            return { columnLabels: rest }
+          })()
+
+      if (viewId) {
+        updateViewConfig(viewId, updates)
+      } else {
+        updateSessionConfig(tableId, updates)
+      }
+    },
+    [tableId, updateViewConfig, updateSessionConfig]
+  )
+
+  const setColumnFormatting = useCallback(
+    (columnId: string, formatting: ColumnFormatting | null) => {
+      // Get current formatting from store (not from closure)
+      const viewId = useViewStore.getState().activeViewIds[tableId]
+      const store = useTableUIStore.getState()
+      const currentFormatting = viewId
+        ? store.viewConfigs[viewId]?.columnFormatting ?? {}
+        : store.sessionConfigs[tableId]?.columnFormatting ?? {}
+
+      const updates = formatting
+        ? { columnFormatting: { ...currentFormatting, [columnId]: formatting } }
+        : (() => {
+            const { [columnId]: _, ...rest } = currentFormatting
+            return { columnFormatting: rest }
+          })()
+
+      if (viewId) {
+        updateViewConfig(viewId, updates)
+      } else {
+        updateSessionConfig(tableId, updates)
+      }
+    },
+    [tableId, updateViewConfig, updateSessionConfig]
+  )
+
+  const setPinnedColumn = useCallback(
+    (columnId: string | null) => {
+      const viewId = useViewStore.getState().activeViewIds[tableId]
+      const updates = {
+        columnPinning: columnId ? { left: [columnId] } : undefined,
+      }
+
+      if (viewId) {
+        updateViewConfig(viewId, updates)
+      } else {
+        updateSessionConfig(tableId, updates)
+      }
+    },
+    [tableId, updateViewConfig, updateSessionConfig]
+  )
+
+  // ─── DERIVED STATE ──────────────────────────────────────────────────────────
   const sortOptions = getSortOptionsForFieldType(columnDef.fieldType)
   const Icon = columnDef.icon
 
@@ -292,6 +385,8 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
             setColumnLabel={setColumnLabel}
             columnFormatting={columnFormatting}
             setColumnFormatting={setColumnFormatting}
+            pinnedColumnId={pinnedColumnId}
+            setPinnedColumn={setPinnedColumn}
           />
         </div>
       )}

@@ -4,7 +4,7 @@
 
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import type { Header } from '@tanstack/react-table'
-import { useTableContext } from '../context/table-context'
+import { useTableInstance } from '../context/table-instance-context'
 import { sanitizeColumnId } from '../utils/sanitize-column-id'
 
 interface CheckboxHeaderCellProps<TData> {
@@ -13,9 +13,10 @@ interface CheckboxHeaderCellProps<TData> {
 
 /**
  * Header checkbox for select all functionality
+ * Migrated to use split contexts instead of monolithic TableContext
  */
 export function CheckboxHeaderCell<TData>({ header }: CheckboxHeaderCellProps<TData>) {
-  const { table } = useTableContext<TData>()
+  const { table } = useTableInstance<TData>()
 
   const isPinned = header.column.getIsPinned() === 'left'
 

@@ -4,7 +4,7 @@
 import { memo } from 'react'
 import { flexRender, type Cell } from '@tanstack/react-table'
 import { cn } from '@auxx/ui/lib/utils'
-import { useCellSelection } from '../context/cell-selection-context-new'
+import { useCellSelection } from '../context/cell-selection-context'
 import { CellSelectionOverlay } from './cell-selection-overlay'
 import { CellFieldEditor } from './cell-field-editor'
 import { InlineCellEditor } from './inline-cell-editor'

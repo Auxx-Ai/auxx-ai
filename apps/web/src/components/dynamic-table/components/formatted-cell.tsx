@@ -4,11 +4,13 @@
 
 import { memo } from 'react'
 import { cn } from '@auxx/ui/lib/utils'
-import { useTableContext } from '../context/table-context'
+import { useTableConfig } from '../context/table-config-context'
+import { useColumnFormatting } from '../hooks/use-table-selectors'
 import { renderCellValue } from '../utils/cell-renderers'
 import { ExpandableCell } from './expandable-cell'
 import type { ColumnFormatting } from '../types'
 import type { CurrencyDisplayOptions } from '@auxx/utils'
+
 /**
  * Config for field-specific data passed to renderers.
  * Display options (decimals, format, displayAs, etc.) are read from the
@@ -53,6 +55,8 @@ interface FormattedCellProps extends CellConfig {
  *
  * Memoized to prevent unnecessary re-renders when parent cell updates.
  *
+ * Migrated to use split contexts and stores instead of monolithic TableContext
+ *
  * Usage:
  * ```tsx
  * // Standard fields
@@ -78,14 +82,17 @@ export const FormattedCell = memo(function FormattedCell({
   className,
   ...config
 }: FormattedCellProps) {
-  // Get formatting from context if available, explicit formatting takes precedence
+  // Get formatting from store if available, explicit formatting takes precedence
   let formatting: ColumnFormatting | undefined = explicitFormatting
 
-  if (!formatting) {
+  if (!formatting && columnId) {
     try {
-      const context = useTableContext()
-      if (columnId && context.columnFormatting?.[columnId]) {
-        formatting = context.columnFormatting[columnId]
+      // Try to get tableId from config context and use granular selector
+      const { tableId } = useTableConfig()
+      const columnFormatting = useColumnFormatting(tableId)
+
+      if (columnFormatting?.[columnId]) {
+        formatting = columnFormatting[columnId]
       }
     } catch {
       // Context not available (e.g., in tests or outside table), use defaults

@@ -2,9 +2,12 @@
 'use client'
 
 import { useMemo } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { Button } from '@auxx/ui/components/button'
 import { X } from 'lucide-react'
-import { useTableContext } from '../context/table-context'
+import { useTableInstance } from '../context/table-instance-context'
+import { useTableConfig } from '../context/table-config-context'
+import { useRowSelection as useRowSelectionHook } from '../hooks/use-table-selectors'
 import type { ReactNode } from 'react'
 
 interface BulkActionBarProps {
@@ -14,19 +17,20 @@ interface BulkActionBarProps {
 /**
  * Bulk action bar component for DynamicTable
  * Can be used as a child of DynamicTable to provide custom bulk actions
+ *
+ * Migrated to use split contexts instead of monolithic TableContext
  */
 export function BulkActionBar({ children }: BulkActionBarProps) {
-  const { table, bulkActions = [], enableBulkActions } = useTableContext()
+  const { table } = useTableInstance()
+  const { tableId, bulkActions = [], enableBulkActions } = useTableConfig()
 
-  // Get stable reference to selection state for memoization
-  const rowSelectionState = table.getState().rowSelection
-  const rowSelectionKeys = Object.keys(rowSelectionState).join(',')
+  // Use proper Zustand selector with useShallow for stable reference
+  const rowSelectionState = useRowSelectionHook(tableId)
 
   // Memoize the selected rows to avoid recalculating on every render
   const selectedRows = useMemo(
     () => table.getFilteredSelectedRowModel().rows,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rowSelectionKeys, table]
+    [rowSelectionState, table]
   )
 
   const selectedCount = selectedRows.length

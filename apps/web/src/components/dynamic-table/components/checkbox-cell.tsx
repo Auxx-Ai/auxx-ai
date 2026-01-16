@@ -2,9 +2,9 @@
 
 'use client'
 
-import { memo, useCallback, startTransition } from 'react'
+import { memo, useCallback, useRef, useEffect, startTransition } from 'react'
 import { Checkbox } from '@auxx/ui/components/checkbox'
-import { useTableContext } from '../context/table-context'
+import { useTableConfig } from '../context/table-config-context'
 import { useRowSelection } from '../context/row-selection-context'
 import type { CellContext } from '@tanstack/react-table'
 import { cn } from '@auxx/ui/lib/utils'
@@ -13,9 +13,11 @@ import { cn } from '@auxx/ui/lib/utils'
  * Checkbox cell component that shows row number by default and checkbox on hover.
  * Clicking anywhere on the cell toggles selection. The checkbox is display-only.
  * Memoized to prevent unnecessary re-renders when other rows change.
+ *
+ * Migrated to use split contexts instead of monolithic TableContext
  */
 function CheckboxCellInner<TData>({ row, table }: CellContext<TData, unknown>) {
-  const { showRowNumbers } = useTableContext<TData>()
+  const { showRowNumbers } = useTableConfig<TData>()
   const { getLastSelectedIndex, setLastSelectedIndex, getIsBulkMode } = useRowSelection<TData>()
   const rowIndex = row.index
   const isSelected = row.getIsSelected()
@@ -24,9 +26,18 @@ function CheckboxCellInner<TData>({ row, table }: CellContext<TData, unknown>) {
   const isBulkMode = getIsBulkMode()
   const shouldShowRowNumbers = showRowNumbers && !isBulkMode
 
+  // Use refs to maintain stable references to row and table objects
+  const rowRef = useRef(row)
+  const tableRef = useRef(table)
+  useEffect(() => {
+    rowRef.current = row
+    tableRef.current = table
+  })
+
   /** Handle cell click - toggles selection with shift-click support */
   const handleCellClick = useCallback(
     (event: React.MouseEvent) => {
+      console.log('[CheckboxCell] handleCellClick called:', { rowIndex, isSelected })
       event.stopPropagation()
       const newChecked = !isSelected
 
@@ -36,8 +47,8 @@ function CheckboxCellInner<TData>({ row, table }: CellContext<TData, unknown>) {
         startTransition(() => {
           const start = Math.min(lastIndex, rowIndex)
           const end = Math.max(lastIndex, rowIndex)
-          const allRows = table.getRowModel().rows
-          const newSelection: Record<string, boolean> = { ...table.getState().rowSelection }
+          const allRows = tableRef.current.getRowModel().rows
+          const newSelection: Record<string, boolean> = { ...tableRef.current.getState().rowSelection }
 
           for (let i = start; i <= end; i++) {
             const rowId = allRows[i]?.id
@@ -50,14 +61,14 @@ function CheckboxCellInner<TData>({ row, table }: CellContext<TData, unknown>) {
             }
           }
 
-          table.setRowSelection(newSelection)
+          tableRef.current.setRowSelection(newSelection)
         })
       } else {
-        row.toggleSelected(newChecked)
+        rowRef.current.toggleSelected(newChecked)
         setLastSelectedIndex(rowIndex)
       }
     },
-    [row, rowIndex, isSelected, setLastSelectedIndex, table, getLastSelectedIndex]
+    [rowIndex, isSelected, setLastSelectedIndex, getLastSelectedIndex]
   )
 
   return (

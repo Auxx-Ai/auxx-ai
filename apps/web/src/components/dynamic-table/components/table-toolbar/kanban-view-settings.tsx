@@ -25,7 +25,10 @@ import {
   useCommandNavigation,
   type NavigationItem,
 } from '@auxx/ui/components/command'
-import { useTableContext } from '../../context/table-context'
+import { useTableConfig } from '../../context/table-config-context'
+import { useViewMetadata } from '../../context/view-metadata-context'
+import { useViewStore } from '../../stores/view-store'
+import { useTableUIStore } from '../../stores/table-ui-store'
 import { Tooltip } from '~/components/global/tooltip'
 import type { ViewConfig } from '../../types'
 import { getColorSwatch } from '@auxx/lib/custom-fields/client'
@@ -33,7 +36,6 @@ import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
 import type { FieldType } from '@auxx/database/types'
 import { cn } from '@auxx/ui/lib/utils'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import { useViewStore } from '../../stores/view-store'
 
 /** Navigation item type for KanbanViewSettings */
 interface SettingsNavigationItem extends NavigationItem {
@@ -49,11 +51,22 @@ interface KanbanViewSettingsProps {
 
 /**
  * Root stack component - main menu with settings and card fields
+ * Migrated to use split contexts and stores
  */
 function RootStack() {
   const { push } = useCommandNavigation<SettingsNavigationItem>()
-  const { currentView, customFields, selectFields } = useTableContext()
-  const updateKanbanConfig = useViewStore((state) => state.updateKanbanConfig)
+  const { tableId } = useTableConfig()
+  const { customFields, selectFields } = useViewMetadata()
+
+  // Get current view and kanban config from stores
+  const activeViewId = useViewStore((state) => state.activeViewIds[tableId])
+  const currentView = useViewStore((state) => {
+    if (!activeViewId) return null
+    const views = state.viewsByTableId[tableId] ?? []
+    return views.find((v) => v.id === activeViewId) ?? null
+  })
+
+  const updateKanbanConfig = useTableUIStore((state) => state.updateKanbanConfig)
 
   const kanbanConfig = (currentView?.config as ViewConfig)?.kanban
   const cardFields = kanbanConfig?.cardFields ?? []
@@ -163,10 +176,21 @@ function RootStack() {
 
 /**
  * Pipeline selection stack - select which field to group by
+ * Migrated to use split contexts and stores
  */
 function PipelineSelectionStack() {
-  const { currentView, selectFields } = useTableContext()
-  const updateKanbanConfig = useViewStore((state) => state.updateKanbanConfig)
+  const { tableId } = useTableConfig()
+  const { selectFields } = useViewMetadata()
+
+  // Get current view from store
+  const activeViewId = useViewStore((state) => state.activeViewIds[tableId])
+  const currentView = useViewStore((state) => {
+    if (!activeViewId) return null
+    const views = state.viewsByTableId[tableId] ?? []
+    return views.find((v) => v.id === activeViewId) ?? null
+  })
+
+  const updateKanbanConfig = useTableUIStore((state) => state.updateKanbanConfig)
   const kanbanConfig = (currentView?.config as ViewConfig)?.kanban
 
   /** Handle selecting a field */
@@ -210,10 +234,21 @@ function PipelineSelectionStack() {
 
 /**
  * Visible columns stack - toggle column visibility
+ * Migrated to use split contexts and stores
  */
 function VisibleColumnsStack() {
-  const { currentView, selectFields } = useTableContext()
-  const updateKanbanConfig = useViewStore((state) => state.updateKanbanConfig)
+  const { tableId } = useTableConfig()
+  const { selectFields } = useViewMetadata()
+
+  // Get current view from store
+  const activeViewId = useViewStore((state) => state.activeViewIds[tableId])
+  const currentView = useViewStore((state) => {
+    if (!activeViewId) return null
+    const views = state.viewsByTableId[tableId] ?? []
+    return views.find((v) => v.id === activeViewId) ?? null
+  })
+
+  const updateKanbanConfig = useTableUIStore((state) => state.updateKanbanConfig)
   const kanbanConfig = (currentView?.config as ViewConfig)?.kanban
 
   /** Get the groupBy field and its options (stages) */
@@ -279,10 +314,21 @@ function VisibleColumnsStack() {
 
 /**
  * Add card field stack - search and add fields to cards
+ * Migrated to use split contexts and stores
  */
 function AddCardFieldStack() {
-  const { currentView, customFields } = useTableContext()
-  const updateKanbanConfig = useViewStore((state) => state.updateKanbanConfig)
+  const { tableId } = useTableConfig()
+  const { customFields } = useViewMetadata()
+
+  // Get current view from store
+  const activeViewId = useViewStore((state) => state.activeViewIds[tableId])
+  const currentView = useViewStore((state) => {
+    if (!activeViewId) return null
+    const views = state.viewsByTableId[tableId] ?? []
+    return views.find((v) => v.id === activeViewId) ?? null
+  })
+
+  const updateKanbanConfig = useTableUIStore((state) => state.updateKanbanConfig)
   const kanbanConfig = (currentView?.config as ViewConfig)?.kanban
   const [search, setSearch] = useState('')
 
@@ -365,6 +411,8 @@ function KanbanViewSettingsContent() {
 /**
  * KanbanViewSettings component
  * Manages kanban-specific view settings like pipeline selection, column visibility, and card fields
+ *
+ * Migrated to use split contexts and stores instead of monolithic TableContext
  */
 export function KanbanViewSettings({ className }: KanbanViewSettingsProps) {
   const [isOpen, setIsOpen] = useState(false)

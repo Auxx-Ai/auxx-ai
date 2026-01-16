@@ -3,7 +3,7 @@
 
 import { useEffect } from 'react'
 import { api } from '~/trpc/react'
-import { useViewStore } from '../stores/view-store-new'
+import { useViewStore } from '../stores/view-store'
 import { useTableUIStore } from '../stores/table-ui-store'
 import { useFilterStore } from '../stores/filter-store'
 import { extractUIConfig } from '../utils/extract-ui-config'

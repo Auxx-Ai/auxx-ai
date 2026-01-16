@@ -30,8 +30,21 @@ import {
   type NavigationItem,
 } from '@auxx/ui/components/command'
 
-import { useTableContext } from '../../context/table-context'
-import { useViewStore, useActiveViewConfig } from '../../stores/view-store'
+import { useTableConfig } from '../../context/table-config-context'
+import { useTableInstance } from '../../context/table-instance-context'
+import {
+  useActiveView,
+  useColumnLabels,
+  useColumnVisibility,
+  useColumnOrder,
+  useColumnFormatting,
+} from '../../hooks/use-table-selectors'
+import {
+  useSetColumnVisibility,
+  useSetColumnOrder,
+  useSetColumnLabels,
+  useSetColumnFormatting,
+} from '../../hooks/use-table-actions'
 import { Tooltip } from '~/components/global/tooltip'
 import { EditColumnLabelDialog } from '../edit-column-label-dialog'
 import { EditColumnFormattingDialog } from '../edit-column-formatting-dialog'
@@ -41,6 +54,8 @@ import type { Column } from '@tanstack/react-table'
 import type { ExtendedColumnDef, ColumnFormatting, FormattableFieldType } from '../../types'
 import { FORMATTABLE_FIELD_TYPES } from '../../types'
 import { toResourceFieldId, toFieldId } from '@auxx/types/field'
+import { useViewStore } from '../../stores/view-store'
+import { useTableUIStore } from '../../stores/table-ui-store'
 
 /** Navigation item type for column manager */
 interface ColumnNavigationItem extends NavigationItem {
@@ -54,10 +69,14 @@ interface ColumnNavigationItem extends NavigationItem {
  */
 function RootStack<TData = any>() {
   const { push } = useCommandNavigation<ColumnNavigationItem>()
-  const { currentView, table, columnLabels, tableId } = useTableContext<TData>()
-  const updateViewConfig = useViewStore((state) => state.updateViewConfig)
-  const updateSessionView = useViewStore((state) => state.updateSessionView)
-  const viewConfig = useActiveViewConfig(tableId)
+  const { tableId } = useTableConfig()
+  const { table } = useTableInstance<TData>()
+  const currentView = useActiveView(tableId)
+  const columnLabels = useColumnLabels(tableId)
+  const columnVisibility = useColumnVisibility(tableId)
+  const columnOrder = useColumnOrder(tableId)
+  const setColumnOrder = useSetColumnOrder(tableId)
+  const setColumnVisibility = useSetColumnVisibility(tableId)
 
   // Get visible columns (ordered)
   const visibleColumns = useMemo(() => {
@@ -68,12 +87,11 @@ function RootStack<TData = any>() {
 
     // Filter to visible only
     const visible = allColumns.filter((col) => {
-      const visibility = viewConfig?.columnVisibility?.[col.id]
+      const visibility = columnVisibility?.[col.id]
       return visibility !== false // undefined or true = visible
     })
 
     // Apply column order if exists
-    const columnOrder = viewConfig?.columnOrder ?? []
     if (columnOrder.length === 0) {
       return visible // No order defined, use natural order
     }
@@ -86,42 +104,25 @@ function RootStack<TData = any>() {
     const unordered = visible.filter((col) => !columnOrder.includes(col.id))
 
     return [...ordered, ...unordered]
-  }, [table, viewConfig])
+  }, [table, columnVisibility, columnOrder])
 
   // Handle column reorder
   const handleReorder = useCallback(
     (newOrder: string[]) => {
-      if (currentView?.id) {
-        // Saved view mode - update via view store
-        updateViewConfig(currentView.id, { columnOrder: newOrder })
-      } else {
-        // Session mode - update session view
-        updateSessionView(tableId, { columnOrder: newOrder })
-      }
+      setColumnOrder(newOrder)
     },
-    [currentView?.id, tableId, updateViewConfig, updateSessionView]
+    [setColumnOrder]
   )
 
   // Handle remove column
   const handleRemoveColumn = useCallback(
     (columnId: string) => {
-      const currentVisibility = viewConfig?.columnVisibility ?? {}
-      const changes = {
-        columnVisibility: {
-          ...currentVisibility,
-          [columnId]: false,
-        },
-      }
-
-      if (currentView?.id) {
-        // Saved view mode
-        updateViewConfig(currentView.id, changes)
-      } else {
-        // Session mode
-        updateSessionView(tableId, changes)
-      }
+      setColumnVisibility({
+        ...columnVisibility,
+        [columnId]: false,
+      })
     },
-    [currentView?.id, tableId, viewConfig?.columnVisibility, updateViewConfig, updateSessionView]
+    [columnVisibility, setColumnVisibility]
   )
 
   // Get column name
@@ -187,8 +188,25 @@ function ColumnOptionsDropdown<TData = any>({
   column: Column<TData, unknown>
   onRemove: () => void
 }) {
-  const { columnLabels, setColumnLabel, columnFormatting, setColumnFormatting } =
-    useTableContext<TData>()
+  const { tableId } = useTableConfig()
+  const columnLabels = useColumnLabels(tableId)
+  const columnFormatting = useColumnFormatting(tableId)
+  const setColumnLabels = useSetColumnLabels(tableId)
+  const setColumnFormatting = useSetColumnFormatting(tableId)
+
+  // Wrapper to set a single column label
+  const setColumnLabel = useCallback(
+    (columnId: string, label: string | null) => {
+      const newLabels = { ...columnLabels }
+      if (label === null) {
+        delete newLabels[columnId]
+      } else {
+        newLabels[columnId] = label
+      }
+      setColumnLabels(newLabels)
+    },
+    [columnLabels, setColumnLabels]
+  )
   const [showLabelDialog, setShowLabelDialog] = useState(false)
   const [showFormattingDialog, setShowFormattingDialog] = useState(false)
 
@@ -266,10 +284,13 @@ function ColumnOptionsDropdown<TData = any>({
  * AddColumnStack - Shows hidden columns (searchable, addable)
  */
 function AddColumnStack<TData = any>({ onCreateField }: { onCreateField: () => void }) {
-  const { currentView, table, columnLabels, tableId, entityDefinitionId } = useTableContext<TData>()
-  const updateViewConfig = useViewStore((state) => state.updateViewConfig)
-  const updateSessionView = useViewStore((state) => state.updateSessionView)
-  const viewConfig = useActiveViewConfig(tableId)
+  const { tableId, entityDefinitionId } = useTableConfig()
+  const { table } = useTableInstance<TData>()
+  const columnLabels = useColumnLabels(tableId)
+  const columnVisibility = useColumnVisibility(tableId)
+  const columnOrder = useColumnOrder(tableId)
+  const setColumnVisibility = useSetColumnVisibility(tableId)
+  const setColumnOrder = useSetColumnOrder(tableId)
   const [search, setSearch] = useState('')
 
   // Get hidden columns
@@ -281,10 +302,10 @@ function AddColumnStack<TData = any>({ onCreateField }: { onCreateField: () => v
 
     // Filter to hidden only
     return allColumns.filter((col) => {
-      const visibility = viewConfig?.columnVisibility?.[col.id]
+      const visibility = columnVisibility?.[col.id]
       return visibility === false // Explicitly hidden
     })
-  }, [table, viewConfig])
+  }, [table, columnVisibility])
 
   // Get column name
   const getColumnName = useCallback(
@@ -313,26 +334,17 @@ function AddColumnStack<TData = any>({ onCreateField }: { onCreateField: () => v
   // Handle add column
   const handleAddColumn = useCallback(
     (columnId: string) => {
-      const currentVisibility = viewConfig?.columnVisibility ?? {}
-      const currentOrder = viewConfig?.columnOrder ?? []
+      setColumnVisibility({
+        ...columnVisibility,
+        [columnId]: true,
+      })
 
-      const changes = {
-        columnVisibility: {
-          ...currentVisibility,
-          [columnId]: true,
-        },
-        columnOrder: currentOrder.includes(columnId) ? currentOrder : [...currentOrder, columnId], // Append to end
-      }
-
-      if (currentView?.id) {
-        // Saved view mode
-        updateViewConfig(currentView.id, changes)
-      } else {
-        // Session mode
-        updateSessionView(tableId, changes)
+      // Add to column order if not already there
+      if (!columnOrder.includes(columnId)) {
+        setColumnOrder([...columnOrder, columnId])
       }
     },
-    [currentView?.id, tableId, viewConfig, updateViewConfig, updateSessionView]
+    [columnVisibility, columnOrder, setColumnVisibility, setColumnOrder]
   )
 
   return (
@@ -391,17 +403,18 @@ function ColumnManagerContent<TData = any>({ onCreateField }: { onCreateField: (
 }
 
 /**
- * Column manager component for managing column visibility and order
+ * Column manager component for managing column visibility and order.
+ * NEW VERSION - Uses new hooks instead of useTableContext.
  */
 export function ColumnManager<TData = any>() {
   const [isOpen, setIsOpen] = useState(false)
   const [isFieldDialogOpen, setIsFieldDialogOpen] = useState(false)
-  const { currentView, entityDefinitionId, tableId } = useTableContext<TData>()
-
-  // View store hooks for auto-showing new field
-  const updateViewConfig = useViewStore((state) => state.updateViewConfig)
-  const updateSessionView = useViewStore((state) => state.updateSessionView)
-  const viewConfig = useActiveViewConfig(tableId)
+  const { tableId, entityDefinitionId } = useTableConfig()
+  const currentView = useActiveView(tableId)
+  const columnVisibility = useColumnVisibility(tableId)
+  const columnOrder = useColumnOrder(tableId)
+  const setColumnVisibility = useSetColumnVisibility(tableId)
+  const setColumnOrder = useSetColumnOrder(tableId)
 
   // Custom field mutations hook (handles invalidation & toasts automatically)
   const { create: createField, isPending } = useCustomFieldMutations({ entityDefinitionId })
@@ -418,23 +431,16 @@ export function ColumnManager<TData = any>() {
         // AUTO-ADD: Automatically show new field in table
         if (newField?.id) {
           const fieldColumnId = toResourceFieldId(entityDefinitionId, toFieldId(newField.id))
-          const currentVisibility = viewConfig?.columnVisibility ?? {}
-          const currentOrder = viewConfig?.columnOrder ?? []
 
-          const changes = {
-            columnVisibility: {
-              ...currentVisibility,
-              [fieldColumnId]: true, // Show the new field
-            },
-            columnOrder: currentOrder.includes(fieldColumnId)
-              ? currentOrder
-              : [...currentOrder, fieldColumnId], // Add to end
-          }
+          // Update visibility
+          setColumnVisibility({
+            ...columnVisibility,
+            [fieldColumnId]: true, // Show the new field
+          })
 
-          if (currentView?.id) {
-            updateViewConfig(currentView.id, changes)
-          } else {
-            updateSessionView(tableId, changes)
+          // Add to column order if not already there
+          if (!columnOrder.includes(fieldColumnId)) {
+            setColumnOrder([...columnOrder, fieldColumnId])
           }
         }
 
@@ -449,11 +455,10 @@ export function ColumnManager<TData = any>() {
     [
       createField,
       entityDefinitionId,
-      viewConfig,
-      currentView,
-      updateViewConfig,
-      updateSessionView,
-      tableId,
+      columnVisibility,
+      columnOrder,
+      setColumnVisibility,
+      setColumnOrder,
     ]
   )
 

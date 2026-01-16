@@ -6,7 +6,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { type Table } from '@tanstack/react-table'
 import { VirtualTableRow } from './virtual-table-row'
 import { DragDropRow } from './drag-drop-row'
-import { useTableContext } from '../context/table-context'
+import { useTableConfig } from '../context/table-config-context'
 import { useRowSelection } from '../context/row-selection-context'
 import { ROW_HEIGHT } from '../utils/constants'
 import { useInView } from 'react-intersection-observer'
@@ -16,8 +16,8 @@ import { cn } from '@auxx/ui/lib/utils'
 
 interface VirtualTableBodyProps<TData> {
   table: Table<TData>
-  containerRef: React.RefObject<HTMLDivElement>
-  scrollContainerRef: React.RefObject<HTMLDivElement>
+  containerRef: React.RefObject<HTMLDivElement | null>
+  scrollContainerRef: React.RefObject<HTMLDivElement | null>
   dragDropConfig?: DragDropConfig<TData>
   /** Whether cell selection is enabled - passed as prop to avoid context re-renders */
   cellSelectionEnabled?: boolean
@@ -25,6 +25,8 @@ interface VirtualTableBodyProps<TData> {
 
 /**
  * Virtualized table body component for performance with large datasets
+ *
+ * Migrated to use split contexts instead of monolithic TableContext
  */
 export function VirtualTableBody<TData>({
   table,
@@ -33,7 +35,7 @@ export function VirtualTableBody<TData>({
   dragDropConfig,
   cellSelectionEnabled = false,
 }: VirtualTableBodyProps<TData>) {
-  const { onRowClick, rowClassName, onScrollToBottom } = useTableContext<TData>()
+  const { onRowClick, rowClassName, onScrollToBottom } = useTableConfig<TData>()
   const {
     getLastClickedRowId,
     setLastClickedRowId,
@@ -44,22 +46,23 @@ export function VirtualTableBody<TData>({
 
   const { rows } = table.getRowModel()
 
+  // Extract state values once at component level to avoid new object references
+  const tableState = table.getState()
+  const columnPinning = tableState.columnPinning
+  const columnVisibility = tableState.columnVisibility
+  const columnOrder = tableState.columnOrder
+  const visibleColumns = table.getVisibleLeafColumns()
+  const visibleColumnIds = visibleColumns.map((c) => c.id).join(',')
+
   // Compute column signature - changes when column config changes
   const columnSignature = useMemo(() => {
-    const { columnPinning, columnVisibility, columnOrder } = table.getState()
-    const visibleColumnIds = table.getVisibleLeafColumns().map((c) => c.id)
     return JSON.stringify({
       pinning: columnPinning,
       visibility: columnVisibility,
       order: columnOrder,
       ids: visibleColumnIds,
     })
-  }, [
-    table.getState().columnPinning,
-    table.getState().columnVisibility,
-    table.getState().columnOrder,
-    table.getVisibleLeafColumns().length,
-  ])
+  }, [columnPinning, columnVisibility, columnOrder, visibleColumnIds])
 
   // Intersection observer for bottom detection
   const { ref: bottomRef, inView } = useInView({ threshold: 0, rootMargin: '500px' })

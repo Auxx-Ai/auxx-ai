@@ -11,7 +11,7 @@ import type {
 } from '@tanstack/react-table'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import type { CellSelectionState, ColumnFormatting, KanbanViewConfig } from '../types'
-import { useViewStore } from '../stores/view-store-new'
+import { useViewStore } from '../stores/view-store'
 import { useTableUIStore } from '../stores/table-ui-store'
 import { useFilterStore } from '../stores/filter-store'
 import { useSelectionStore } from '../stores/selection-store'
@@ -228,7 +228,7 @@ export function useActiveDragItems(tableId: string): any[] | null {
 }
 
 // ============================================================================
-// VIEW METADATA SELECTORS (re-exported from view-store-new)
+// VIEW METADATA SELECTORS (re-exported from view-store)
 // ============================================================================
 
-export { useTableViews, useActiveView, useActiveViewConfig } from '../stores/view-store-new'
+export { useTableViews, useActiveView, useActiveViewConfig } from '../stores/view-store'

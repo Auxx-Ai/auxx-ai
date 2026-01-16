@@ -4,7 +4,7 @@
 
 import { type Header } from '@tanstack/react-table'
 import { cn } from '@auxx/ui/lib/utils'
-import { HeaderCell } from './header-cell-new'
+import { HeaderCell } from './header-cell'
 import type { ExtendedColumnDef } from '../types'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'

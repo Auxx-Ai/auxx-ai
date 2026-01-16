@@ -2,8 +2,10 @@
 'use client'
 
 import { useRef, useEffect, useMemo } from 'react'
-import { useTableContext } from '../context/table-context'
+import { useTableConfig } from '../context/table-config-context'
+import { useTableInstance } from '../context/table-instance-context'
 import { useCellSelection } from '../context/cell-selection-context'
+import { useViewStore } from '../stores/view-store'
 import { VirtualTableBody } from './virtual-table-body'
 import { HeaderCellWrapper } from './header-cell-wrapper'
 import { CheckboxHeaderCell } from './checkbox-header-cell'
@@ -20,21 +22,24 @@ interface TableBodyProps {
   /** Hide toolbar - affects sticky header positioning */
   hideToolbar?: boolean
   /** Reference to the scroll container (for virtualization and cell navigation) */
-  scrollContainerRef: React.RefObject<HTMLDivElement>
+  scrollContainerRef: React.RefObject<HTMLDivElement | null>
 }
 
 /**
  * Table body component - renders header and virtualized rows.
- * Expects to be wrapped in TableProvider and CellSelectionProvider contexts.
+ * NEW VERSION - Uses focused contexts instead of useTableContext.
  */
 export function TableBody<TData extends object>({
   hideToolbar,
   scrollContainerRef,
 }: TableBodyProps) {
-  const { table, isLoadingViews, isLoading, headerActions, dragDropConfig, emptyState } =
-    useTableContext<TData>()
-
+  // Get config from focused contexts
+  const { isLoading, headerActions, dragDropConfig, emptyState } = useTableConfig<TData>()
+  const { table } = useTableInstance<TData>()
   const { cellSelectionConfig } = useCellSelection()
+
+  // Get view loading state from store
+  const isLoadingViews = useViewStore((state) => !state.initialized)
 
   // Container ref for virtualization AND CSS variables
   const containerRef = useRef<HTMLDivElement>(null)

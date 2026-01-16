@@ -5,7 +5,7 @@
 import { useCallback, useMemo } from 'react'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { VirtualTableRow } from './virtual-table-row'
-import { useTableContext } from '../context/table-context'
+import { useViewMetadata } from '../context/view-metadata-context'
 import type { DragDropConfig } from '../types'
 import type { Row } from '@tanstack/react-table'
 import type { VirtualItem, Virtualizer } from '@tanstack/react-virtual'
@@ -28,6 +28,8 @@ interface DragDropRowProps<TData> {
 
 /**
  * Enhanced table row with drag and drop functionality
+ *
+ * Migrated to use split contexts instead of monolithic TableContext
  */
 export function DragDropRow<TData>({
   row,
@@ -44,7 +46,7 @@ export function DragDropRow<TData>({
   cellSelectionEnabled = false,
   columnSignature,
 }: DragDropRowProps<TData>) {
-  const { activeDragItems } = useTableContext<TData>()
+  const { activeDragItems } = useViewMetadata<TData>()
 
   const canDragThis = dragDropConfig.canDrag?.(row.original) ?? true
   const isCurrentlyDragging = activeDragItems?.some((item: any) => item.id === row.id) ?? false

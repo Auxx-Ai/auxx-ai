@@ -4,29 +4,56 @@
 import { useMemo } from 'react'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
-import { deepMerge } from '@auxx/utils'
-import type { TableView, ViewConfig, KanbanViewConfig } from '../types'
+import { produce } from 'immer'
+import type { TableView, ViewConfig } from '../types'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import { useTableUIStore, type TableUIConfig } from './table-ui-store'
+import { useFilterStore } from './filter-store'
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+/** Stable empty array to prevent unnecessary re-renders */
+const EMPTY_FILTERS: ConditionGroup[] = []
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+/** Convert ViewConfig to TableUIConfig (strips filters) */
+function toTableUIConfig(config: ViewConfig): TableUIConfig {
+  const { filters: _, ...uiConfig } = config
+  return uiConfig as TableUIConfig
+}
+
+/** Extract filters from ViewConfig */
+function extractFilters(config: ViewConfig): ConditionGroup[] {
+  return config.filters ?? []
+}
+
+/** Merge TableUIConfig and filters back into ViewConfig */
+function toViewConfig(uiConfig: TableUIConfig, filters: ConditionGroup[]): ViewConfig {
+  return {
+    ...uiConfig,
+    filters,
+  } as ViewConfig
+}
+
+// ============================================================================
+// STORE INTERFACE
+// ============================================================================
 
 interface ViewStoreState {
   // ═══════════════════════════════════════════════════════════════════════════
   // STATE
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /** All views keyed by tableId */
+  /** All views keyed by tableId (metadata only) */
   viewsByTableId: Record<string, TableView[]>
 
   /** Active view ID per table */
   activeViewIds: Record<string, string | null>
-
-  /** Pending (unsaved) config changes per viewId */
-  pendingConfigs: Record<string, Partial<ViewConfig>>
-
-  /** Last confirmed server state per viewId */
-  savedConfigs: Record<string, ViewConfig>
-
-  /** View IDs with unsaved changes */
-  dirtyViewIds: Set<string>
 
   /** View IDs currently being saved */
   savingViewIds: Set<string>
@@ -36,9 +63,6 @@ interface ViewStoreState {
 
   /** Last error */
   error: Error | null
-
-  /** Session views per tableId (full ViewConfig for session mode) */
-  sessionViews: Record<string, ViewConfig>
 
   // ═══════════════════════════════════════════════════════════════════════════
   // INITIALIZATION
@@ -66,40 +90,9 @@ interface ViewStoreState {
   /** Get active view ID for a table */
   getActiveViewId: (tableId: string) => string | null
 
-  /** Update session view (for when no view is selected) */
-  updateSessionView: (tableId: string, changes: Partial<ViewConfig>) => void
-
-  /** Get session view */
-  getSessionView: (tableId: string) => ViewConfig | null
-
-  /** @deprecated Use updateSessionView instead - kept for backward compatibility */
-  setSessionFilters: (tableId: string, filters: ConditionGroup[]) => void
-
-  /** @deprecated Use getSessionView instead - kept for backward compatibility */
-  getSessionFilters: (tableId: string) => ConditionGroup[]
-
   // ═══════════════════════════════════════════════════════════════════════════
-  // CONFIG UPDATES (OPTIMISTIC)
+  // PERSISTENCE (delegates to table-ui-store and filter-store)
   // ═══════════════════════════════════════════════════════════════════════════
-
-  /** Update view config (partial, optimistic) */
-  updateViewConfig: (viewId: string, changes: Partial<ViewConfig>) => void
-
-  /** Update kanban-specific config (convenience helper) */
-  updateKanbanConfig: (viewId: string, changes: Partial<KanbanViewConfig>) => void
-
-  /** Mark a view as dirty (has pending changes) */
-  markDirty: (viewId: string) => void
-
-  /** Mark a view as clean (saved) */
-  markClean: (viewId: string) => void
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // PERSISTENCE
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  /** Confirm save succeeded - update savedConfigs, clear pending */
-  confirmSave: (viewId: string, savedConfig: ViewConfig) => void
 
   /** Mark save as started */
   startSaving: (viewId: string) => void
@@ -107,8 +100,11 @@ interface ViewStoreState {
   /** Mark save as finished */
   finishSaving: (viewId: string) => void
 
-  /** Reset view to last saved state */
-  resetToSaved: (viewId: string) => void
+  /** Check if view is currently saving */
+  isSaving: (viewId: string) => boolean
+
+  /** Confirm save succeeded - updates both UI and filter stores */
+  confirmSave: (viewId: string, savedConfig: ViewConfig) => void
 
   // ═══════════════════════════════════════════════════════════════════════════
   // CRUD OPERATIONS
@@ -127,17 +123,14 @@ interface ViewStoreState {
   ) => void
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // SELECTORS
+  // SELECTORS (for backward compatibility)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /** Get merged config (saved + pending) */
+  /** Get merged config (reads from table-ui-store and filter-store) */
   getMergedConfig: (viewId: string) => ViewConfig | null
 
-  /** Check if view has unsaved changes */
+  /** Check if view has unsaved changes (delegates to table-ui-store) */
   hasUnsavedChanges: (viewId: string) => boolean
-
-  /** Check if view is currently saving */
-  isSaving: (viewId: string) => boolean
 
   // ═══════════════════════════════════════════════════════════════════════════
   // CLEANUP
@@ -147,45 +140,57 @@ interface ViewStoreState {
   clearAll: () => void
 }
 
+// ============================================================================
+// STORE IMPLEMENTATION
+// ============================================================================
+
 export const useViewStore = create<ViewStoreState>()(
   subscribeWithSelector((set, get) => ({
     // ─── INITIAL STATE ─────────────────────────────────────────────────────────
     viewsByTableId: {},
     activeViewIds: {},
-    pendingConfigs: {},
-    savedConfigs: {},
-    dirtyViewIds: new Set(),
     savingViewIds: new Set(),
     initialized: false,
     error: null,
-    sessionViews: {},
 
     // ─── INITIALIZATION ────────────────────────────────────────────────────────
     setAllViews: (views) => {
       const byTable: Record<string, TableView[]> = {}
-      const savedConfigs: Record<string, ViewConfig> = {}
 
+      // Group views by table and initialize both stores
       for (const view of views) {
         if (!byTable[view.tableId]) {
           byTable[view.tableId] = []
         }
         byTable[view.tableId].push(view)
-        savedConfigs[view.id] = view.config as ViewConfig
+
+        // Initialize table-ui-store with UI config
+        const uiConfig = toTableUIConfig(view.config as ViewConfig)
+        useTableUIStore.getState().setViewConfig(view.id, uiConfig)
+
+        // Initialize filter-store with filters
+        const filters = extractFilters(view.config as ViewConfig)
+        useFilterStore.getState().setViewFilters(view.id, filters)
       }
 
-      set({ viewsByTableId: byTable, savedConfigs })
+      set({ viewsByTableId: byTable })
     },
 
     setTableViews: (tableId, views) => {
       set((state) => {
-        const savedConfigs = { ...state.savedConfigs }
+        // Initialize stores for each view
         for (const view of views) {
-          savedConfigs[view.id] = view.config as ViewConfig
+          const uiConfig = toTableUIConfig(view.config as ViewConfig)
+          useTableUIStore.getState().setViewConfig(view.id, uiConfig)
+
+          const filters = extractFilters(view.config as ViewConfig)
+          useFilterStore.getState().setViewFilters(view.id, filters)
         }
-        return {
-          viewsByTableId: { ...state.viewsByTableId, [tableId]: views },
-          savedConfigs,
-        }
+
+        // Use produce for structural sharing
+        return produce(state, (draft) => {
+          draft.viewsByTableId[tableId] = views
+        })
       })
     },
 
@@ -195,120 +200,20 @@ export const useViewStore = create<ViewStoreState>()(
 
     // ─── VIEW SELECTION ────────────────────────────────────────────────────────
     setActiveView: (tableId, viewId) => {
-      set((state) => ({
-        activeViewIds: { ...state.activeViewIds, [tableId]: viewId },
-      }))
+      set((state) => {
+        // Early exit if value hasn't changed
+        if (state.activeViewIds[tableId] === viewId) return state
+
+        // Use produce for structural sharing
+        return produce(state, (draft) => {
+          draft.activeViewIds[tableId] = viewId
+        })
+      })
     },
 
     getActiveViewId: (tableId) => get().activeViewIds[tableId] ?? null,
 
-    updateSessionView: (tableId, changes) => {
-      set((state) => {
-        const current = state.sessionViews[tableId] ?? {
-          filters: [],
-          sorting: [],
-          columnVisibility: {},
-          columnOrder: [],
-          columnSizing: {},
-          viewType: 'table' as const,
-        }
-
-        return {
-          sessionViews: {
-            ...state.sessionViews,
-            [tableId]: deepMerge(
-              current as Record<string, unknown>,
-              changes as Record<string, unknown>
-            ) as ViewConfig,
-          },
-        }
-      })
-    },
-
-    getSessionView: (tableId) => get().sessionViews[tableId] ?? null,
-
-    // Backward compat wrappers
-    setSessionFilters: (tableId, filters) => {
-      get().updateSessionView(tableId, { filters })
-    },
-
-    getSessionFilters: (tableId) => {
-      return get().sessionViews[tableId]?.filters ?? []
-    },
-
-    // ─── CONFIG UPDATES ────────────────────────────────────────────────────────
-    updateViewConfig: (viewId, changes) => {
-      set((state) => {
-        const currentPending = state.pendingConfigs[viewId] ?? {}
-        const merged = deepMerge(
-          currentPending as Record<string, unknown>,
-          changes as Record<string, unknown>
-        ) as Partial<ViewConfig>
-
-        const newDirty = new Set(state.dirtyViewIds)
-        newDirty.add(viewId)
-
-        return {
-          pendingConfigs: { ...state.pendingConfigs, [viewId]: merged },
-          dirtyViewIds: newDirty,
-        }
-      })
-    },
-
-    updateKanbanConfig: (viewId, changes) => {
-      const { updateViewConfig, getMergedConfig } = get()
-      const current = getMergedConfig(viewId)
-      if (!current) return
-
-      const currentKanban = current.kanban ?? {}
-      updateViewConfig(viewId, {
-        kanban: deepMerge(
-          currentKanban as Record<string, unknown>,
-          changes as Record<string, unknown>
-        ) as KanbanViewConfig,
-      })
-    },
-
-    markDirty: (viewId) => {
-      set((state) => {
-        const newDirty = new Set(state.dirtyViewIds)
-        newDirty.add(viewId)
-        return { dirtyViewIds: newDirty }
-      })
-    },
-
-    markClean: (viewId) => {
-      set((state) => {
-        const newDirty = new Set(state.dirtyViewIds)
-        newDirty.delete(viewId)
-        return { dirtyViewIds: newDirty }
-      })
-    },
-
     // ─── PERSISTENCE ───────────────────────────────────────────────────────────
-    confirmSave: (viewId, savedConfig) => {
-      set((state) => {
-        const { [viewId]: _, ...restPending } = state.pendingConfigs
-        const newDirty = new Set(state.dirtyViewIds)
-        newDirty.delete(viewId)
-
-        // Also update the view in viewsByTableId
-        const newViewsByTableId = { ...state.viewsByTableId }
-        for (const tableId of Object.keys(newViewsByTableId)) {
-          newViewsByTableId[tableId] = newViewsByTableId[tableId].map((v) =>
-            v.id === viewId ? { ...v, config: savedConfig } : v
-          )
-        }
-
-        return {
-          savedConfigs: { ...state.savedConfigs, [viewId]: savedConfig },
-          pendingConfigs: restPending,
-          dirtyViewIds: newDirty,
-          viewsByTableId: newViewsByTableId,
-        }
-      })
-    },
-
     startSaving: (viewId) => {
       set((state) => {
         const newSaving = new Set(state.savingViewIds)
@@ -325,111 +230,117 @@ export const useViewStore = create<ViewStoreState>()(
       })
     },
 
-    resetToSaved: (viewId) => {
-      set((state) => {
-        const { [viewId]: _, ...restPending } = state.pendingConfigs
-        const newDirty = new Set(state.dirtyViewIds)
-        newDirty.delete(viewId)
-        return {
-          pendingConfigs: restPending,
-          dirtyViewIds: newDirty,
-        }
-      })
+    isSaving: (viewId) => get().savingViewIds.has(viewId),
+
+    confirmSave: (viewId, savedConfig) => {
+      // Update table-ui-store
+      const uiConfig = toTableUIConfig(savedConfig)
+      useTableUIStore.getState().confirmSave(viewId, uiConfig)
+
+      // Update filter-store
+      const filters = extractFilters(savedConfig)
+      useFilterStore.getState().setViewFilters(viewId, filters)
+
+      // Update view metadata
+      set((state) =>
+        produce(state, (draft) => {
+          for (const tableId of Object.keys(draft.viewsByTableId)) {
+            draft.viewsByTableId[tableId] = draft.viewsByTableId[tableId].map((v) =>
+              v.id === viewId ? { ...v, config: savedConfig } : v
+            )
+          }
+        })
+      )
     },
 
     // ─── CRUD ──────────────────────────────────────────────────────────────────
     addView: (view) => {
       set((state) => {
-        const tableViews = state.viewsByTableId[view.tableId] ?? []
-        return {
-          viewsByTableId: {
-            ...state.viewsByTableId,
-            [view.tableId]: [...tableViews, view],
-          },
-          savedConfigs: {
-            ...state.savedConfigs,
-            [view.id]: view.config as ViewConfig,
-          },
-        }
+        // Initialize stores for the new view
+        const uiConfig = toTableUIConfig(view.config as ViewConfig)
+        useTableUIStore.getState().setViewConfig(view.id, uiConfig)
+
+        const filters = extractFilters(view.config as ViewConfig)
+        useFilterStore.getState().setViewFilters(view.id, filters)
+
+        // Use produce for structural sharing
+        return produce(state, (draft) => {
+          const tableViews = draft.viewsByTableId[view.tableId] ?? []
+          draft.viewsByTableId[view.tableId] = [...tableViews, view]
+        })
       })
     },
 
     removeView: (viewId, tableId) => {
       set((state) => {
-        const tableViews = state.viewsByTableId[tableId] ?? []
-        const { [viewId]: _saved, ...restSaved } = state.savedConfigs
-        const { [viewId]: _pending, ...restPending } = state.pendingConfigs
+        // Note: We intentionally don't clean up table-ui-store and filter-store
+        // to allow undo operations. Cleanup happens on logout/org switch.
 
-        const newDirty = new Set(state.dirtyViewIds)
-        newDirty.delete(viewId)
-
-        const newSaving = new Set(state.savingViewIds)
-        newSaving.delete(viewId)
-
-        return {
-          viewsByTableId: {
-            ...state.viewsByTableId,
-            [tableId]: tableViews.filter((v) => v.id !== viewId),
-          },
-          savedConfigs: restSaved,
-          pendingConfigs: restPending,
-          dirtyViewIds: newDirty,
-          savingViewIds: newSaving,
-        }
+        // Use produce for structural sharing
+        return produce(state, (draft) => {
+          const tableViews = draft.viewsByTableId[tableId] ?? []
+          draft.viewsByTableId[tableId] = tableViews.filter((v) => v.id !== viewId)
+        })
       })
     },
 
     updateViewMeta: (viewId, meta) => {
-      set((state) => {
-        const newViewsByTableId = { ...state.viewsByTableId }
-        for (const tableId of Object.keys(newViewsByTableId)) {
-          newViewsByTableId[tableId] = newViewsByTableId[tableId].map((v) =>
-            v.id === viewId ? { ...v, ...meta } : v
-          )
-        }
-        return { viewsByTableId: newViewsByTableId }
-      })
+      set((state) =>
+        produce(state, (draft) => {
+          for (const tableId of Object.keys(draft.viewsByTableId)) {
+            draft.viewsByTableId[tableId] = draft.viewsByTableId[tableId].map((v) =>
+              v.id === viewId ? { ...v, ...meta } : v
+            )
+          }
+        })
+      )
     },
 
     // ─── SELECTORS ─────────────────────────────────────────────────────────────
     getMergedConfig: (viewId) => {
-      const { savedConfigs, pendingConfigs } = get()
-      const saved = savedConfigs[viewId]
-      if (!saved) return null
+      // Get UI config parts from table-ui-store
+      const configParts = useTableUIStore.getState().getMergedConfig(viewId)
+      if (!configParts) return null
 
-      const pending = pendingConfigs[viewId]
-      if (!pending) return saved
+      // Merge saved and pending configs if both exist
+      const uiConfig =
+        configParts.pending && configParts.saved
+          ? { ...configParts.saved, ...configParts.pending }
+          : configParts.saved
 
-      return deepMerge(
-        saved as Record<string, unknown>,
-        pending as Record<string, unknown>
-      ) as ViewConfig
+      if (!uiConfig) return null
+
+      // Get filters from filter-store
+      const filters = useFilterStore.getState().getViewFilters(viewId)
+
+      // Merge them back into ViewConfig
+      return toViewConfig(uiConfig, filters)
     },
 
-    hasUnsavedChanges: (viewId) => get().dirtyViewIds.has(viewId),
-
-    isSaving: (viewId) => get().savingViewIds.has(viewId),
+    hasUnsavedChanges: (viewId) => {
+      return useTableUIStore.getState().isDirty(viewId)
+    },
 
     // ─── CLEANUP ───────────────────────────────────────────────────────────────
     clearAll: () => {
       set({
         viewsByTableId: {},
         activeViewIds: {},
-        pendingConfigs: {},
-        savedConfigs: {},
-        dirtyViewIds: new Set(),
         savingViewIds: new Set(),
         initialized: false,
         error: null,
-        sessionViews: {},
       })
+
+      // Also clear the other stores
+      useTableUIStore.getState().clearAll()
+      useFilterStore.getState().clearAll()
     },
   }))
 )
 
-// ═══════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
 // SELECTOR HOOKS
-// ═══════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
 
 /** Stable empty array to avoid infinite loops with selectors */
 const EMPTY_VIEWS: TableView[] = []
@@ -449,62 +360,54 @@ export function useActiveView(tableId: string): TableView | null {
   })
 }
 
-/** Get merged config for active view - use primitive dependencies for stable results */
+/** Get merged config for active view - delegates to table-ui-store and filter-store */
 export function useActiveViewConfig(tableId: string): ViewConfig | null {
-  // Subscribe to primitive values that indicate when config changes
+  // Get active view ID
   const viewId = useViewStore((state) => state.activeViewIds[tableId] ?? null)
-  const savedConfig = useViewStore((state) => (viewId ? state.savedConfigs[viewId] : null))
-  const pendingConfig = useViewStore((state) => (viewId ? state.pendingConfigs[viewId] : null))
-  const sessionView = useViewStore((state) => state.sessionViews[tableId] ?? null)
 
-  // Memoize the merged result - only recompute when saved/pending actually changes
+  // If no view selected, get session config
+  const sessionUIConfig = useTableUIStore((state) =>
+    viewId ? null : (state.sessionConfigs[tableId] ?? null)
+  )
+  const sessionFilters = useFilterStore((state) =>
+    viewId ? EMPTY_FILTERS : (state.sessionFilters[tableId] ?? EMPTY_FILTERS)
+  )
+
+  // If view selected, get saved and pending separately to avoid creating new objects
+  const viewSavedConfig = useTableUIStore((state) =>
+    viewId ? state.viewConfigs[viewId] : null
+  )
+  const viewPendingConfig = useTableUIStore((state) =>
+    viewId ? state.pendingConfigs[viewId] : null
+  )
+  const viewFilters = useFilterStore((state) =>
+    viewId ? (state.viewFilters[viewId] ?? EMPTY_FILTERS) : EMPTY_FILTERS
+  )
+
   return useMemo(() => {
-    // If no view is selected, return session view
     if (!viewId) {
-      return (
-        sessionView ?? {
-          filters: [],
-          sorting: [],
-          columnVisibility: {},
-          columnOrder: [],
-          columnSizing: {},
-          viewType: 'table' as const,
-        }
-      )
+      // Session mode
+      if (!sessionUIConfig) return null
+      return toViewConfig(sessionUIConfig, sessionFilters)
     }
 
-    // Merge saved + pending for active view
-    if (!savedConfig) return null
-    if (!pendingConfig) return savedConfig
+    // View mode - merge saved and pending configs
+    if (!viewSavedConfig && !viewPendingConfig) return null
 
-    return deepMerge(
-      savedConfig as Record<string, unknown>,
-      pendingConfig as Record<string, unknown>
-    ) as ViewConfig
-  }, [viewId, savedConfig, pendingConfig, sessionView])
-}
+    // If no pending changes, return saved config directly (no merge needed)
+    if (!viewPendingConfig) {
+      return toViewConfig(viewSavedConfig!, viewFilters)
+    }
 
-/** Get kanban config for active view */
-export function useActiveKanbanConfig(tableId: string): KanbanViewConfig | null {
-  // Subscribe to the specific kanban parts to avoid unnecessary re-renders
-  const viewId = useViewStore((state) => state.activeViewIds[tableId] ?? null)
-  const savedKanban = useViewStore((state) =>
-    viewId ? (state.savedConfigs[viewId]?.kanban ?? null) : null
-  )
-  const pendingKanban = useViewStore((state) =>
-    viewId ? (state.pendingConfigs[viewId]?.kanban ?? null) : null
-  )
+    // If no saved config, return pending config directly
+    if (!viewSavedConfig) {
+      return toViewConfig(viewPendingConfig as TableUIConfig, viewFilters)
+    }
 
-  // Memoize the merged result
-  return useMemo(() => {
-    if (!viewId || !savedKanban) return null
-    if (!pendingKanban) return savedKanban
-
-    return deepMerge(
-      savedKanban as Record<string, unknown>,
-      pendingKanban as Record<string, unknown>
-    ) as KanbanViewConfig
-  }, [viewId, savedKanban, pendingKanban])
+    // Merge saved + pending
+    const mergedConfig = { ...viewSavedConfig, ...viewPendingConfig }
+    return toViewConfig(mergedConfig, viewFilters)
+  }, [viewId, sessionUIConfig, sessionFilters, viewSavedConfig, viewPendingConfig, viewFilters])
 }
 
 /** Check if active view has unsaved changes */
@@ -512,7 +415,7 @@ export function useHasUnsavedChanges(tableId: string): boolean {
   return useViewStore((state) => {
     const viewId = state.activeViewIds[tableId]
     if (!viewId) return false
-    return state.dirtyViewIds.has(viewId)
+    return state.hasUnsavedChanges(viewId)
   })
 }
 

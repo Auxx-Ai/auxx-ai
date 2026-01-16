@@ -1,12 +1,31 @@
 // apps/web/src/components/dynamic-table/context/table-context.tsx
-
 'use client'
 
-import { createContext, useContext, type ReactNode } from 'react'
+import { useMemo, useCallback, type ReactNode } from 'react'
+import { useTableConfig } from './table-config-context'
+import { useTableInstance } from './table-instance-context'
+import { useViewMetadata } from './view-metadata-context'
+import { useViewStore } from '../stores/view-store'
+import { useTableUIStore } from '../stores/table-ui-store'
+import { useFilterStore } from '../stores/filter-store'
 import type { Table } from '@tanstack/react-table'
 import type { TableView, BulkAction, DragDropConfig, ColumnFormatting, CustomField } from '../types'
 import type { SelectOptionColor } from '@auxx/types/custom-field'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+/** Stable empty references to prevent unnecessary re-renders */
+const EMPTY_VIEWS: TableView[] = []
+const EMPTY_FILTERS: ConditionGroup[] = []
+const EMPTY_COLUMN_LABELS: Record<string, string> = {}
+const EMPTY_COLUMN_FORMATTING: Record<string, ColumnFormatting> = {}
+
+// ============================================================================
+// TYPES
+// ============================================================================
 
 /** Select field for kanban grouping */
 interface SelectField {
@@ -16,7 +35,7 @@ interface SelectField {
   options?: { options?: Array<{ value: string; label: string; color?: SelectOptionColor }> }
 }
 
-interface TableContextValue<TData = any> {
+interface DynamicTableContextValue<TData = any> {
   // Table instance
   table: Table<TData>
 
@@ -119,29 +138,268 @@ interface TableContextValue<TData = any> {
   }
 }
 
-const TableContext = createContext<TableContextValue | undefined>(undefined)
-
-interface TableProviderProps<TData = any> {
-  children: ReactNode
-  value: TableContextValue<TData>
-}
+// ============================================================================
+// HOOKS
+// ============================================================================
 
 /**
- * Provider for DynamicTable context
+ * Unified hook that combines all split contexts and stores
+ * Provides the same API as the old useTableContext for backwards compatibility
+ *
+ * This replaces the monolithic React Context with a composition of:
+ * - TableConfigContext (static config)
+ * - TableInstanceContext (TanStack table)
+ * - ViewMetadataContext (metadata for rendering)
+ * - ViewStore (views, currentView)
+ * - TableUIStore (columnLabels, formatting, pinned column)
+ * - FilterStore (filters)
  */
-export function TableProvider<TData = any>({ children, value }: TableProviderProps<TData>) {
-  return (
-    <TableContext.Provider value={value as TableContextValue}>{children}</TableContext.Provider>
+export function useDynamicTableContext<TData = any>(
+  searchQuery?: string,
+  setSearchQuery?: (query: string) => void,
+  isSavingView?: boolean,
+  hasUnsavedViewChanges?: boolean,
+  saveCurrentView?: () => Promise<void>,
+  resetViewChanges?: () => void
+): DynamicTableContextValue<TData> {
+  // ─── SPLIT CONTEXTS ─────────────────────────────────────────────────────────
+  const config = useTableConfig<TData>()
+  const { table } = useTableInstance<TData>()
+  const metadata = useViewMetadata<TData>()
+
+  // ─── VIEW STORE ─────────────────────────────────────────────────────────────
+  const views = useViewStore((state) => state.viewsByTableId[config.tableId] ?? EMPTY_VIEWS)
+  const activeViewId = useViewStore((state) => state.activeViewIds[config.tableId])
+  const setActiveView = useViewStore((state) => state.setActiveView)
+  const isLoadingViews = !useViewStore((state) => state.initialized)
+
+  // Get current view
+  const currentView = useMemo(() => {
+    if (!activeViewId) return null
+    return views.find((v) => v.id === activeViewId) ?? null
+  }, [activeViewId, views])
+
+  // ─── TABLE UI STORE ─────────────────────────────────────────────────────────
+  // Get saved and pending configs separately
+  const savedUIConfig = useTableUIStore((state) =>
+    activeViewId ? state.viewConfigs[activeViewId] : state.sessionConfigs[config.tableId]
   )
-}
+  const pendingUIConfig = useTableUIStore((state) =>
+    activeViewId ? state.pendingConfigs[activeViewId] : undefined
+  )
 
-/**
- * Hook to access table context
- */
-export function useTableContext<TData = any>() {
-  const context = useContext(TableContext)
-  if (!context) {
-    throw new Error('useTableContext must be used within a TableProvider')
-  }
-  return context as TableContextValue<TData>
+  // Merge configs in useMemo
+  const uiConfig = useMemo(() => {
+    if (!savedUIConfig) return null
+    if (!pendingUIConfig) return savedUIConfig
+    return { ...savedUIConfig, ...pendingUIConfig }
+  }, [savedUIConfig, pendingUIConfig])
+
+  const updateViewConfig = useTableUIStore((state) => state.updateViewConfig)
+  const updateSessionConfig = useTableUIStore((state) => state.updateSessionConfig)
+  const resetToSaved = useTableUIStore((state) => state.resetToSaved)
+  const markClean = useTableUIStore((state) => state.markClean)
+
+  // Extract UI config values with stable references
+  const columnLabels = uiConfig?.columnLabels ?? EMPTY_COLUMN_LABELS
+  const columnFormatting = uiConfig?.columnFormatting ?? EMPTY_COLUMN_FORMATTING
+  const pinnedColumnId = uiConfig?.columnPinning?.left?.[0] ?? null
+
+  // ─── FILTER STORE ───────────────────────────────────────────────────────────
+  const filters = useFilterStore((state) =>
+    activeViewId ? (state.viewFilters[activeViewId] ?? EMPTY_FILTERS) : (state.sessionFilters[config.tableId] ?? EMPTY_FILTERS)
+  )
+  const setFiltersInStore = useFilterStore((state) => state.setFilters)
+
+  // ─── STABLE CALLBACKS ───────────────────────────────────────────────────────
+  const handleSetActiveView = useCallback(
+    (viewId: string | null) => {
+      setActiveView(config.tableId, viewId)
+    },
+    [setActiveView, config.tableId]
+  )
+
+  const handleSetFilters = useCallback(
+    (newFilters: ConditionGroup[]) => {
+      if (activeViewId) {
+        setFiltersInStore(activeViewId, newFilters)
+      }
+    },
+    [activeViewId, setFiltersInStore]
+  )
+
+  const handleSetColumnLabel = useCallback(
+    (columnId: string, label: string | null) => {
+      const updates = label ? { columnLabels: { ...columnLabels, [columnId]: label } } : (() => {
+        const { [columnId]: _, ...rest } = columnLabels
+        return { columnLabels: rest }
+      })()
+
+      if (activeViewId) {
+        updateViewConfig(activeViewId, updates)
+      } else {
+        updateSessionConfig(config.tableId, updates)
+      }
+    },
+    [activeViewId, columnLabels, config.tableId, updateViewConfig, updateSessionConfig]
+  )
+
+  const handleSetColumnFormatting = useCallback(
+    (columnId: string, formatting: ColumnFormatting | null) => {
+      const updates = formatting
+        ? { columnFormatting: { ...columnFormatting, [columnId]: formatting } }
+        : (() => {
+            const { [columnId]: _, ...rest } = columnFormatting
+            return { columnFormatting: rest }
+          })()
+
+      if (activeViewId) {
+        updateViewConfig(activeViewId, updates)
+      } else {
+        updateSessionConfig(config.tableId, updates)
+      }
+    },
+    [activeViewId, columnFormatting, config.tableId, updateViewConfig, updateSessionConfig]
+  )
+
+  const handleSetPinnedColumn = useCallback(
+    (columnId: string | null) => {
+      const updates = {
+        columnPinning: columnId ? { left: [columnId] } : undefined,
+      }
+
+      if (activeViewId) {
+        updateViewConfig(activeViewId, updates)
+      } else {
+        updateSessionConfig(config.tableId, updates)
+      }
+    },
+    [activeViewId, config.tableId, updateViewConfig, updateSessionConfig]
+  )
+
+  const handleResetViewChanges = useCallback(() => {
+    if (activeViewId) {
+      resetToSaved(activeViewId)
+    }
+    if (resetViewChanges) {
+      resetViewChanges()
+    }
+  }, [activeViewId, resetToSaved, resetViewChanges])
+
+  const handleMarkViewClean = useCallback(() => {
+    if (activeViewId) {
+      markClean(activeViewId)
+    }
+  }, [activeViewId, markClean])
+
+  // ─── RETURN VALUE ───────────────────────────────────────────────────────────
+  return useMemo(
+    () => ({
+      // Table instance
+      table,
+
+      // Config
+      tableId: config.tableId,
+      enableFiltering: config.enableFiltering,
+      enableSorting: config.enableSorting,
+      enableSearch: config.enableSearch,
+      enableBulkActions: config.enableBulkActions,
+      enableImport: config.enableImport,
+      showFooter: config.showFooter,
+      hideToolbar: config.hideToolbar,
+      enableCheckbox: config.enableCheckbox,
+      showRowNumbers: config.showRowNumbers,
+      entityDefinitionId: config.entityDefinitionId,
+
+      // Metadata
+      selectFields: metadata.selectFields as SelectField[],
+      customFields: metadata.customFields,
+      entityLabel: metadata.entityLabel,
+      onAddNew: metadata.onAddNew,
+
+      // Kanban
+      onCardClick: metadata.onCardClick,
+      onAddCard: metadata.onAddCard,
+      selectedKanbanCardIds: metadata.selectedKanbanCardIds,
+      onSelectedKanbanCardIdsChange: metadata.onSelectedKanbanCardIdsChange,
+
+      // State
+      views,
+      currentView,
+      isLoadingViews,
+      isSavingView: isSavingView ?? false,
+      hasUnsavedViewChanges: hasUnsavedViewChanges ?? false,
+      saveCurrentView: saveCurrentView ?? (async () => {}),
+      resetViewChanges: handleResetViewChanges,
+      markViewClean: handleMarkViewClean,
+      isLoading: config.isLoading,
+      searchQuery: searchQuery ?? '',
+      filters,
+      columnLabels,
+      columnFormatting,
+      pinnedColumnId,
+
+      // Actions
+      setSearchQuery: setSearchQuery ?? (() => {}),
+      setActiveView: handleSetActiveView,
+      setFilters: handleSetFilters,
+      setColumnLabel: handleSetColumnLabel,
+      setColumnFormatting: handleSetColumnFormatting,
+      setPinnedColumn: handleSetPinnedColumn,
+
+      // Callbacks
+      onRowClick: config.onRowClick,
+      onImport: config.onImport,
+      importHref: config.importHref,
+      onRefresh: config.onRefresh,
+      onScrollToBottom: config.onScrollToBottom,
+      bulkActions: config.bulkActions,
+
+      // Utilities
+      rowClassName: config.rowClassName,
+
+      // Footer
+      footerElement: config.footerElement,
+
+      // Custom components
+      bulkActionBarElement: config.bulkActionBarElement,
+      tableToolbarElement: config.tableToolbarElement,
+      customFilter: config.customFilter,
+      headerActions: config.headerActions,
+
+      emptyState: config.emptyState,
+
+      // Drag and drop
+      dragDropConfig: config.dragDropConfig,
+      activeDragItems: metadata.activeDragItems,
+      setActiveDragItems: metadata.setActiveDragItems,
+
+      // Debug
+      debug: config.debug,
+    }),
+    [
+      table,
+      config,
+      metadata,
+      views,
+      currentView,
+      isLoadingViews,
+      isSavingView,
+      hasUnsavedViewChanges,
+      saveCurrentView,
+      handleResetViewChanges,
+      handleMarkViewClean,
+      searchQuery,
+      setSearchQuery,
+      filters,
+      columnLabels,
+      columnFormatting,
+      pinnedColumnId,
+      handleSetActiveView,
+      handleSetFilters,
+      handleSetColumnLabel,
+      handleSetColumnFormatting,
+      handleSetPinnedColumn,
+    ]
+  )
 }

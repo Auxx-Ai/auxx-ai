@@ -17,7 +17,9 @@ import {
 } from '@dnd-kit/core'
 import { snapCenterToCursor } from '@dnd-kit/modifiers'
 import { DndDebugOverlay } from './dnd-debug-overlay'
-import { useTableContext } from '../context/table-context'
+import { useTableInstance } from '../context/table-instance-context'
+import { useTableConfig } from '../context/table-config-context'
+import { useViewMetadata } from '../context/view-metadata-context'
 
 interface RowDndProviderProps<TData> {
   children: React.ReactNode
@@ -26,10 +28,13 @@ interface RowDndProviderProps<TData> {
 /**
  * DndContext specifically for row drag-and-drop functionality
  * Supports both standalone and monitor modes for external contexts
+ *
+ * Migrated to use split contexts instead of monolithic TableContext
  */
 export function RowDndProvider<TData>({ children }: RowDndProviderProps<TData>) {
-  const { dragDropConfig, activeDragItems, setActiveDragItems, debug, table } =
-    useTableContext<TData>()
+  const { table } = useTableInstance<TData>()
+  const { dragDropConfig, debug } = useTableConfig<TData>()
+  const { activeDragItems, setActiveDragItems } = useViewMetadata<TData>()
 
   const external = !!dragDropConfig?.externalDnd
 

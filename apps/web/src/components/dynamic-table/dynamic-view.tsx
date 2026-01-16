@@ -10,10 +10,11 @@ import { KanbanViewBody } from './components/kanban-view-body'
 import { FloatingBulkActionBar } from './components/floating-bulk-action-bar'
 import { TableContentSkeleton } from './components/table-content-skeleton'
 import { ToolbarSkeleton } from './components/toolbar-skeleton'
-import { TableProvider, useTableContext } from './context/table-context'
-import { CellSelectionProvider, useCellSelection } from './context/cell-selection-context'
-import { RowSelectionProvider } from './context/row-selection-context'
-import { useViewStoreInitialized } from './stores/view-store'
+import { TableConfigProvider, useTableConfig } from './context/table-config-context'
+import { TableInstanceProvider, useTableInstance } from './context/table-instance-context'
+import { ViewMetadataProvider, useViewMetadata } from './context/view-metadata-context'
+import { CellSelectionConfigProvider, useCellSelection } from './context/cell-selection-context'
+import { useViewStore } from './stores/view-store'
 import { cn } from '@auxx/ui/lib/utils'
 import type {
   DynamicTableProps,
@@ -24,39 +25,49 @@ import type {
   ResourceField,
   CustomField,
 } from './types'
-import { Button } from '@auxx/ui/components/button'
-import { X } from 'lucide-react'
 import { useResourceFields } from '~/components/resources/hooks'
 import './styles/table.css'
 
 /**
  * Inner component that renders toolbar + view body.
- * Uses context for all state and determines view type.
+ * Uses focused contexts for state access.
  */
-function DynamicViewInner<TData extends object>() {
+function DynamicViewInner<TData extends object>({
+  searchQuery,
+  setSearchQuery,
+  isSavingView,
+  hasUnsavedViewChanges,
+  saveCurrentView,
+  resetViewChanges,
+}: {
+  searchQuery: string
+  setSearchQuery: (query: string) => void
+  isSavingView: boolean
+  hasUnsavedViewChanges: boolean
+  saveCurrentView?: () => void
+  resetViewChanges?: () => void
+}) {
+  // Access focused contexts
   const {
-    table,
-    isLoadingViews,
-    isLoading,
-    showFooter = false,
-    hideToolbar = false,
-    enableBulkActions,
+    tableId,
     enableCheckbox,
     enableSearch,
     bulkActions = [],
     footerElement,
-    bulkActionBarElement,
-    tableToolbarElement,
-    currentView,
-    selectFields,
-    selectedKanbanCardIds,
-    onSelectedKanbanCardIdsChange,
-  } = useTableContext<TData>()
+    isLoading,
+    hideToolbar = false,
+  } = useTableConfig<TData>()
 
-  // View store initialization state
-  const isViewsLoaded = useViewStoreInitialized()
+  const { table } = useTableInstance<TData>()
 
-  // Cell selection from separate context for performance
+  const { selectFields, selectedKanbanCardIds, onSelectedKanbanCardIdsChange } =
+    useViewMetadata<TData>()
+
+  console.log('selectFields', selectFields)
+  // View store state
+  const isViewsLoaded = useViewStore((state) => state.initialized)
+
+  // Cell selection from separate context
   const { selectedCell, setSelectedCell, editingCell, setEditingCell, cellSelectionConfig } =
     useCellSelection()
 
@@ -73,7 +84,15 @@ function DynamicViewInner<TData extends object>() {
     scrollContainerRef,
   })
 
-  // Determine view type from current view config
+  // Get current view from store
+  const currentView = useViewStore((state) => {
+    const activeViewId = state.activeViewIds[tableId]
+    if (!activeViewId) return null
+    const views = state.viewsByTableId[tableId] ?? []
+    return views.find((v) => v.id === activeViewId) ?? null
+  })
+
+  // Determine view type
   const viewType: ViewType = (currentView?.config as ViewConfig)?.viewType ?? 'table'
   const kanbanConfig: KanbanViewConfig | undefined = (currentView?.config as ViewConfig)?.kanban
 
@@ -83,24 +102,24 @@ function DynamicViewInner<TData extends object>() {
     return selectFields.find((f) => f.id === kanbanConfig.groupByFieldId) ?? null
   }, [kanbanConfig?.groupByFieldId, selectFields])
 
-  // Check if kanban view is valid (has required config)
+  // Check if kanban view is valid
   const isKanbanView = viewType === 'kanban' && !!groupByField
 
-  // Table-selected rows (for table view and inline bulk action bar)
+  // Table-selected rows (for table view)
   const tableState = table.getState()
   const tableSelectedRows = useMemo(
     () => table.getFilteredSelectedRowModel().rows,
     [table, tableState.columnFilters, tableState.globalFilter, tableState.rowSelection]
   )
 
-  // Kanban-selected data (for kanban view)
+  // Kanban-selected data
   const kanbanSelectedData = useMemo(() => {
     if (!selectedKanbanCardIds || selectedKanbanCardIds.size === 0) return []
     const allData = table.getRowModel().rows.map((r) => r.original)
     return allData.filter((item) => selectedKanbanCardIds.has((item as { id: string }).id))
   }, [selectedKanbanCardIds, table])
 
-  // Unified selected data based on view type (for FloatingBulkActionBar)
+  // Unified selected data based on view type
   const selectedData = useMemo(() => {
     return isKanbanView ? kanbanSelectedData : tableSelectedRows.map((r) => r.original)
   }, [isKanbanView, kanbanSelectedData, tableSelectedRows])
@@ -114,74 +133,35 @@ function DynamicViewInner<TData extends object>() {
     }
   }, [isKanbanView, onSelectedKanbanCardIdsChange, table])
 
-  // Show inline bulk action bar only for table view (kanban uses FloatingBulkActionBar only)
-  const showBulkActionsBar = Boolean(
-    enableBulkActions && !isKanbanView && tableSelectedRows.length > 0
-  )
-
   // Determine if we have any data
   const rowCount = table.getRowModel().rows.length
   const hasData = rowCount > 0
 
-  // Unified initial loading state:
-  // - Views not loaded yet, OR
-  // - Loading data AND no existing data to show
+  // Unified initial loading state
   const isInitialLoading = !isViewsLoaded || (isLoading && !hasData)
 
+  console.log('DynamicViewInner render', { rowCount, selectedData })
   return (
     <div ref={scrollContainerRef} className="flex flex-col relative h-full flex-1 overflow-auto">
-      {/* Toolbar - always renders structure, content may be skeleton */}
+      {/* Toolbar */}
       {!hideToolbar && (
         <div className="sticky top-0 z-20 bg-background left-0">
-          {showBulkActionsBar ? (
-            bulkActionBarElement || (
-              <div className="">
-                <div className="flex @container/controls items-row items-center gap-1.5 py-2 px-3 bg-background overflow-hidden">
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="info"
-                      size="sm"
-                      onClick={() => table.toggleAllRowsSelected(false)}>
-                      <X />
-                      {tableSelectedRows.length} selected
-                    </Button>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {bulkActions.map((action) => {
-                      const Icon = action.icon
-                      const isDisabled = action.disabled?.(tableSelectedRows.map((r) => r.original))
-                      const isHidden = action.hidden?.(tableSelectedRows.map((r) => r.original))
-
-                      if (isHidden) return null
-
-                      return (
-                        <Button
-                          key={action.label}
-                          onClick={() => action.action(tableSelectedRows.map((r) => r.original))}
-                          disabled={isDisabled}
-                          size="sm"
-                          variant={action.variant || 'default'}>
-                          {Icon && <Icon />}
-                          {action.label}
-                        </Button>
-                      )
-                    })}
-                    <Button variant="outline" size="sm" onClick={() => table.resetRowSelection()}>
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )
-          ) : isViewsLoaded ? (
-            tableToolbarElement || <TableToolbar />
+          {isViewsLoaded ? (
+            <TableToolbar
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              isSavingView={isSavingView}
+              hasUnsavedViewChanges={hasUnsavedViewChanges}
+              saveCurrentView={saveCurrentView}
+              resetViewChanges={resetViewChanges}
+            />
           ) : (
             <ToolbarSkeleton showSearch={enableSearch} />
           )}
         </div>
       )}
 
-      {/* Content - skeleton or real table */}
+      {/* Content */}
       {isInitialLoading ? (
         <TableContentSkeleton rowCount={12} showCheckbox={enableCheckbox} columnCount={5} />
       ) : isKanbanView ? (
@@ -193,7 +173,7 @@ function DynamicViewInner<TData extends object>() {
         </>
       )}
 
-      {/* Inline loading indicator for subsequent loads (filter changes, etc.) */}
+      {/* Inline loading indicator */}
       {!isInitialLoading && isLoading && hasData && (
         <div className="absolute inset-0 bg-background/50 flex items-center justify-center pointer-events-none z-10">
           <div className="flex items-center gap-2 text-sm text-muted-foreground bg-background px-3 py-2 rounded-md shadow-sm">
@@ -203,11 +183,11 @@ function DynamicViewInner<TData extends object>() {
         </div>
       )}
 
-      {/* Footer - only show when loaded */}
+      {/* Footer */}
       {!isInitialLoading && !isKanbanView && footerElement}
 
-      {/* Floating Bulk Action Bar - works for both table and kanban views */}
-      {bulkActions.length > 0 && !bulkActionBarElement && (
+      {/* Floating Bulk Action Bar */}
+      {bulkActions.length > 0 && (
         <FloatingBulkActionBar
           selectedData={selectedData}
           bulkActions={bulkActions}
@@ -219,11 +199,8 @@ function DynamicViewInner<TData extends object>() {
 }
 
 /**
- * DynamicView - Unified component for table and kanban views.
- * Single entry point that handles context setup and view switching.
- *
- * This component replaces both DynamicTable and the old DynamicView.
- * The toolbar is always rendered and works for both views.
+ * DynamicView - NEW IMPLEMENTATION using focused contexts.
+ * Replaces the massive 60+ property context with 3 focused contexts.
  */
 export function DynamicView<TData extends object = object>(props: DynamicTableProps<TData>) {
   const {
@@ -253,7 +230,7 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
   const enableBulkActions = Boolean(bulkActions.length)
 
   // Derive selectFields and customFields from entityDefinitionId
-  const { fields } = useResourceFields(entityDefinitionId || '')
+  const { fields } = useResourceFields(entityDefinitionId)
 
   const selectFields = useMemo(() => {
     if (!fields) return []
@@ -274,49 +251,27 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
     return fields.filter((f): f is CustomField => !!f.id)
   }, [fields])
 
-  // Get table state from hook
+  // Get table state from NEW hook
   const tableState = useDynamicTable({ ...tableProps, bulkActions })
 
   const {
     table: tableInstance,
-    views,
-    currentView,
-    isLoadingViews,
     isSavingView,
     hasUnsavedViewChanges,
     saveCurrentView,
     resetViewChanges,
-    markViewClean,
     searchQuery,
     setSearchQuery,
-    setActiveView,
-    filters,
-    setFilters,
-    columnLabels,
-    setColumnLabel,
-    columnFormatting,
-    setColumnFormatting,
-    pinnedColumnId,
-    setPinnedColumn,
-    getLastSelectedIndex,
-    setLastSelectedIndex,
-    getLastClickedRowId,
-    setLastClickedRowId,
     enableCheckbox,
     showRowNumbers,
-    isBulkMode,
-    toggleRowSelection,
     activeDragItems,
     setActiveDragItems,
   } = tableState
 
-  console.log('[DynamicView] Rendered with entityDefinitionId:', currentView, views)
+  // Cell selection state - now managed by Zustand store via useCellSelection hook
+  // Remove local state, as the new architecture uses selection-store
 
-  // Cell selection state - kept in DynamicView for CellSelectionContext
-  const [selectedCell, setSelectedCell] = useState<CellSelectionState | null>(null)
-  const [editingCell, setEditingCell] = useState<CellSelectionState | null>(null)
-
-  // Internal kanban selection state (used when not controlled)
+  // Internal kanban selection state
   const [internalSelectedCardIds, setInternalSelectedCardIds] = useState<Set<string>>(new Set())
   const selectedKanbanCardIds = controlledSelectedCardIds ?? internalSelectedCardIds
   const setSelectedKanbanCardIds = onSelectedKanbanCardIdsChange ?? setInternalSelectedCardIds
@@ -324,8 +279,6 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
   // Extract specific components from children
   let footerElement: React.ReactNode = null
   let hasFooter = false
-  let bulkActionBarElement: React.ReactNode = null
-  let tableToolbarElement: React.ReactNode = null
 
   Children.forEach(children, (child) => {
     if (isValidElement(child) && child.type) {
@@ -334,193 +287,131 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
       if (displayName === 'DynamicTableFooter') {
         footerElement = child
         hasFooter = true
-      } else if (displayName === 'BulkActionBar') {
-        bulkActionBarElement = child
-      } else if (displayName === 'TableToolbar') {
-        tableToolbarElement = child
       }
     }
   })
 
-  // Getter for isBulkMode - uses ref pattern for truly stable reference
-  const isBulkModeRef = useRef(isBulkMode)
-  isBulkModeRef.current = isBulkMode
-  const getIsBulkMode = useCallback(() => isBulkModeRef.current, [])
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BUILD FOCUSED CONTEXT VALUES (3 contexts instead of 1 massive context)
+  // ═══════════════════════════════════════════════════════════════════════════
 
-  // Build context value with all props including kanban
-  const contextValue = useMemo(
+  // 1. CONFIG CONTEXT - Static configuration (~15 props, rarely changes)
+  const configValue = useMemo(
     () => ({
-      table: tableInstance,
-      views,
-      currentView: currentView ?? null,
-      isLoadingViews,
-      isSavingView,
-      hasUnsavedViewChanges,
-      saveCurrentView,
-      resetViewChanges,
-      markViewClean,
       tableId: tableProps.tableId,
+      entityDefinitionId,
       enableFiltering: tableProps.enableFiltering,
       enableSorting: tableProps.enableSorting,
       enableSearch: tableProps.enableSearch,
+      enableCheckbox,
+      showRowNumbers,
       enableBulkActions,
       enableImport: Boolean(tableProps.onImport) || Boolean(tableProps.importHref),
       importHref: tableProps.importHref,
       showFooter: hasFooter || showFooter,
       hideToolbar,
-      enableCheckbox,
-      showRowNumbers,
       bulkActions,
       onRowClick,
       onImport: tableProps.onImport,
       onRefresh: tableProps.onRefresh,
       onScrollToBottom: tableProps.onScrollToBottom,
+      onRowSelectionChange: tableProps.onRowSelectionChange,
       rowClassName,
       isLoading,
-      searchQuery,
-      setSearchQuery,
-      setActiveView,
-      filters,
-      setFilters,
-      columnLabels,
-      setColumnLabel,
-      columnFormatting,
-      setColumnFormatting,
-      pinnedColumnId,
-      setPinnedColumn,
-      footerElement,
-      bulkActionBarElement,
-      tableToolbarElement,
       customFilter,
       emptyState,
       headerActions,
       dragDropConfig: props.dragDrop,
-      activeDragItems,
-      setActiveDragItems,
       debug: props.debug,
-      // Kanban-specific props
-      selectFields,
-      customFields,
-      entityLabel,
-      onAddNew,
-      onCardClick,
-      onAddCard,
-      entityDefinitionId,
-      selectedKanbanCardIds,
-      onSelectedKanbanCardIdsChange: setSelectedKanbanCardIds,
+      footerElement,
     }),
     [
-      tableInstance,
-      views,
-      currentView,
-      isLoadingViews,
-      isSavingView,
-      hasUnsavedViewChanges,
-      saveCurrentView,
-      resetViewChanges,
-      markViewClean,
       tableProps.tableId,
+      entityDefinitionId,
       tableProps.enableFiltering,
       tableProps.enableSorting,
       tableProps.enableSearch,
+      enableCheckbox,
+      showRowNumbers,
       enableBulkActions,
       tableProps.onImport,
       tableProps.importHref,
       hasFooter,
       showFooter,
       hideToolbar,
-      enableCheckbox,
-      showRowNumbers,
       bulkActions,
       onRowClick,
       tableProps.onRefresh,
-      tableProps.onRowSelectionChange,
       tableProps.onScrollToBottom,
+      tableProps.onRowSelectionChange,
       rowClassName,
       isLoading,
-      searchQuery,
-      setSearchQuery,
-      setActiveView,
-      filters,
-      setFilters,
-      columnLabels,
-      setColumnLabel,
-      columnFormatting,
-      setColumnFormatting,
-      pinnedColumnId,
-      setPinnedColumn,
-      footerElement,
-      bulkActionBarElement,
-      tableToolbarElement,
       customFilter,
       emptyState,
       headerActions,
       props.dragDrop,
-      activeDragItems,
-      setActiveDragItems,
       props.debug,
-      // Kanban deps
+      footerElement,
+    ]
+  )
+
+  // 2. INSTANCE CONTEXT - Table instance (1 prop, changes when data changes)
+  const instanceValue = useMemo(
+    () => ({
+      table: tableInstance,
+    }),
+    [tableInstance]
+  )
+
+  // 3. METADATA CONTEXT - View/kanban metadata (changes with view switch)
+  const metadataValue = useMemo(
+    () => ({
       selectFields,
       customFields,
       entityLabel,
       onAddNew,
       onCardClick,
       onAddCard,
-      entityDefinitionId,
       selectedKanbanCardIds,
-      setSelectedKanbanCardIds,
-    ]
-  )
-
-  // Cell selection context value - separate for performance
-  const cellSelectionContextValue = useMemo(
-    () => ({
-      selectedCell,
-      setSelectedCell,
-      editingCell,
-      setEditingCell,
-      cellSelectionConfig: cellSelection,
-    }),
-    [selectedCell, setSelectedCell, editingCell, setEditingCell, cellSelection]
-  )
-
-  // Row selection context value - separate for performance
-  const rowSelectionContextValue = useMemo(
-    () => ({
-      enableCheckbox,
-      isBulkMode,
-      getIsBulkMode,
-      toggleRowSelection,
-      getLastSelectedIndex,
-      setLastSelectedIndex,
-      getLastClickedRowId,
-      setLastClickedRowId,
-      bulkActions,
-      onRowSelectionChange: tableProps.onRowSelectionChange,
+      onSelectedKanbanCardIdsChange: setSelectedKanbanCardIds,
+      activeDragItems,
+      setActiveDragItems,
     }),
     [
-      enableCheckbox,
-      isBulkMode,
-      getIsBulkMode,
-      toggleRowSelection,
-      getLastSelectedIndex,
-      setLastSelectedIndex,
-      getLastClickedRowId,
-      setLastClickedRowId,
-      bulkActions,
-      tableProps.onRowSelectionChange,
+      selectFields,
+      customFields,
+      entityLabel,
+      onAddNew,
+      onCardClick,
+      onAddCard,
+      selectedKanbanCardIds,
+      setSelectedKanbanCardIds,
+      activeDragItems,
+      setActiveDragItems,
     ]
   )
 
+  // Cell selection config - only static config, state managed by Zustand
+  // The useCellSelection() hook in child components will connect to the store
+
   return (
-    <TableProvider value={contextValue}>
-      <RowSelectionProvider value={rowSelectionContextValue}>
-        <CellSelectionProvider value={cellSelectionContextValue}>
-          <div className={cn('flex-1', className)}>
-            <DynamicViewInner<TData> />
-          </div>
-        </CellSelectionProvider>
-      </RowSelectionProvider>
-    </TableProvider>
+    <TableConfigProvider value={configValue}>
+      <TableInstanceProvider value={instanceValue}>
+        <ViewMetadataProvider value={metadataValue}>
+          <CellSelectionConfigProvider config={cellSelection}>
+            <div className={cn('flex-1', className)}>
+              <DynamicViewInner<TData>
+                searchQuery={searchQuery}
+                setSearchQuery={setSearchQuery}
+                isSavingView={isSavingView}
+                hasUnsavedViewChanges={hasUnsavedViewChanges}
+                saveCurrentView={saveCurrentView}
+                resetViewChanges={resetViewChanges}
+              />
+            </div>
+          </CellSelectionConfigProvider>
+        </ViewMetadataProvider>
+      </TableInstanceProvider>
+    </TableConfigProvider>
   )
 }

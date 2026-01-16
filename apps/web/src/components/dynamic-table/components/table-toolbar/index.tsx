@@ -1,4 +1,4 @@
-// apps/web/src/components/dynamic-table/components/table-toolbar/index.tsx
+// apps/web/src/components/dynamic-table/components/table-toolbar/table-toolbar.tsx
 
 'use client'
 
@@ -12,7 +12,12 @@ import { ColumnManager } from './column-manager'
 import { KanbanViewSettings } from './kanban-view-settings'
 import type { ViewConfig, ViewType } from '../../types'
 import { useDebounce } from '~/hooks/use-debounced-value'
-import { useTableContext } from '../../context/table-context'
+import { useTableConfig } from '../../context/table-config-context'
+import { useTableInstance } from '../../context/table-instance-context'
+import { useViewMetadata } from '../../context/view-metadata-context'
+import { useTableViews, useActiveView, useTableFilters } from '../../hooks/use-table-selectors'
+import { useSetFilters } from '../../hooks/use-table-actions'
+import { useViewStore } from '../../stores/view-store'
 import type { ReactNode } from 'react'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { Tooltip } from '~/components/global/tooltip'
@@ -22,36 +27,56 @@ import { useResourceFields } from '~/components/resources/hooks'
 interface TableToolbarProps {
   children?: ReactNode
   className?: string
+  /** Search query from URL state */
+  searchQuery: string
+  /** Set search query in URL state */
+  setSearchQuery: (query: string) => void
+  /** Is view currently saving? */
+  isSavingView?: boolean
+  /** Does view have unsaved changes? */
+  hasUnsavedViewChanges?: boolean
+  /** Save current view callback */
+  saveCurrentView?: () => void
+  /** Reset view changes callback */
+  resetViewChanges?: () => void
 }
 
 /**
- * Table toolbar with filters, search, and view management
+ * Table toolbar with filters, search, and view management.
+ * NEW VERSION - Uses new hooks instead of useTableContext.
  */
-export function TableToolbar<TData = any>({ children, className }: TableToolbarProps = {}) {
+export function TableToolbar<TData = any>({
+  children,
+  className,
+  searchQuery,
+  setSearchQuery,
+  isSavingView = false,
+  hasUnsavedViewChanges = false,
+  saveCurrentView,
+  resetViewChanges,
+}: TableToolbarProps) {
+  // Config from focused contexts
   const {
-    table,
-    views,
-    currentView,
     tableId,
-    filters,
+    entityDefinitionId,
     enableFiltering = true,
     enableSearch = true,
     enableImport = false,
-    searchQuery,
-    isSavingView = false,
-    hasUnsavedViewChanges = false,
-    customFilter,
-    setActiveView,
-    setSearchQuery,
-    setFilters,
-    saveCurrentView,
-    resetViewChanges,
     onImport,
     importHref,
     onRefresh,
-    selectFields,
-    entityDefinitionId,
-  } = useTableContext<TData>()
+    customFilter,
+  } = useTableConfig()
+
+  const { table } = useTableInstance<TData>()
+  const { selectFields } = useViewMetadata()
+
+  // View state from stores
+  const views = useTableViews(tableId)
+  const currentView = useActiveView(tableId)
+  const filters = useTableFilters(tableId)
+  const setFilters = useSetFilters(tableId)
+  const setActiveView = useViewStore((state) => state.setActiveView)
 
   // Get filterable fields from resource system
   const { filterableFields } = useResourceFields(entityDefinitionId ?? null)
@@ -94,7 +119,7 @@ export function TableToolbar<TData = any>({ children, className }: TableToolbarP
         views={views}
         activeView={currentView}
         tableId={tableId}
-        onViewSelect={setActiveView}
+        onViewSelect={(viewId) => setActiveView(tableId, viewId)}
         isSaving={isSavingView}
         hasUnsavedChanges={hasUnsavedViewChanges}
         onSave={saveCurrentView}
