@@ -52,7 +52,7 @@ export function RelationshipFieldEditor({
   onNameChange,
 }: RelationshipFieldEditorProps) {
   // Fetch all available resources (system + custom entities)
-  const { data: resources, isLoading } = api.resource.getAllResourceTypes.useQuery()
+  const { data: resources, isLoading } = api.resource.list.useQuery()
 
   /** Update a single option field */
   const updateOption = <K extends keyof RelationshipOptions>(

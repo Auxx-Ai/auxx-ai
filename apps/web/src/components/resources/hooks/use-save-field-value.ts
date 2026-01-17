@@ -3,11 +3,11 @@
 import { useCallback } from 'react'
 import { api } from '~/trpc/react'
 import {
-  useCustomFieldValueStore,
+  useFieldValueStore,
   buildFieldValueKey,
   type FieldValueKey,
   type StoredFieldValue,
-} from '~/components/resources/store/custom-field-value-store'
+} from '~/components/resources/store/field-value-store'
 import { parseResourceId, type ResourceId } from '@auxx/lib/resources/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { formatToTypedInput, isArrayReturnFieldType } from '@auxx/lib/field-values/client'
@@ -56,7 +56,7 @@ function prepareOptimisticUpdate(
   getFieldMetadata?: (fieldId: string) => FieldMetadata | undefined
 ): OptimisticUpdatePrep {
   const key = buildFieldValueKey(resourceId, fieldId)
-  const store = useCustomFieldValueStore.getState()
+  const store = useFieldValueStore.getState()
 
   // Capture old value for relationship sync rollback
   const oldValue = store.values[key]
@@ -92,7 +92,14 @@ function prepareOptimisticUpdate(
     }
   }
 
-  return { key, mutationVersion, typedValue, inverseInfo, oldRelatedResourceIds, newRelatedResourceIds }
+  return {
+    key,
+    mutationVersion,
+    typedValue,
+    inverseInfo,
+    oldRelatedResourceIds,
+    newRelatedResourceIds,
+  }
 }
 
 /** Handle mutation success - apply server result to store */
@@ -102,7 +109,7 @@ function handleMutationSuccess(
   result: { values?: Array<{ id?: string }> } | undefined,
   fieldType: FieldType
 ): boolean {
-  const store = useCustomFieldValueStore.getState()
+  const store = useFieldValueStore.getState()
   const currentVersion = store.getMutationVersion(key)
 
   if (mutationVersion < currentVersion) return false // Stale
@@ -137,7 +144,7 @@ function handleMutationError(
   }) => void,
   error: Error | unknown
 ): void {
-  const store = useCustomFieldValueStore.getState()
+  const store = useFieldValueStore.getState()
   const currentVersion = store.getMutationVersion(key)
 
   if (mutationVersion < currentVersion) return // Superseded
@@ -184,7 +191,12 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
    * @param fieldType - The field type for proper value extraction
    */
   const saveFieldValue = useCallback(
-    (resourceId: ResourceId, fieldId: string, value: StoredFieldValue | unknown, fieldType: FieldType): void => {
+    (
+      resourceId: ResourceId,
+      fieldId: string,
+      value: StoredFieldValue | unknown,
+      fieldType: FieldType
+    ): void => {
       const prep = prepareOptimisticUpdate(resourceId, fieldId, value, fieldType, getFieldMetadata)
 
       // Sync relationship cache
@@ -207,7 +219,14 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
             }
           },
           onError: (error) => {
-            handleMutationError(prep.key, prep.mutationVersion, prep, resourceId, syncInverseCache, error)
+            handleMutationError(
+              prep.key,
+              prep.mutationVersion,
+              prep,
+              resourceId,
+              syncInverseCache,
+              error
+            )
           },
         }
       )
@@ -246,7 +265,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
         const result = await mutation.mutateAsync({ resourceId, fieldId, value })
 
         // Check if stale (a newer mutation was fired)
-        const store = useCustomFieldValueStore.getState()
+        const store = useFieldValueStore.getState()
         if (prep.mutationVersion < store.getMutationVersion(prep.key)) {
           return { success: true }
         }
@@ -258,12 +277,19 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
         return { success: true, id: firstValueId }
       } catch (error: unknown) {
         // Check if superseded
-        const store = useCustomFieldValueStore.getState()
+        const store = useFieldValueStore.getState()
         if (prep.mutationVersion < store.getMutationVersion(prep.key)) {
           return undefined
         }
 
-        handleMutationError(prep.key, prep.mutationVersion, prep, resourceId, syncInverseCache, error)
+        handleMutationError(
+          prep.key,
+          prep.mutationVersion,
+          prep,
+          resourceId,
+          syncInverseCache,
+          error
+        )
         return undefined
       }
     },
@@ -280,7 +306,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       resourceId: ResourceId,
       fieldValues: Array<{ fieldId: string; value: unknown; fieldType: FieldType }>
     ): Promise<boolean> => {
-      const store = useCustomFieldValueStore.getState()
+      const store = useFieldValueStore.getState()
 
       // Build keys, capture versions, and apply optimistic updates
       const keyVersions: Array<{ key: string; version: number }> = []
@@ -298,7 +324,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       try {
         await bulkMutation.mutateAsync({ resourceIds: [resourceId], values: apiValues })
 
-        const currentStore = useCustomFieldValueStore.getState()
+        const currentStore = useFieldValueStore.getState()
         for (const { key, version } of keyVersions) {
           if (version >= currentStore.getMutationVersion(key)) {
             currentStore.confirmOptimistic(key)
@@ -307,7 +333,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
         onSuccess?.()
         return true
       } catch (error: unknown) {
-        const currentStore = useCustomFieldValueStore.getState()
+        const currentStore = useFieldValueStore.getState()
         for (const { key, version } of keyVersions) {
           if (version >= currentStore.getMutationVersion(key)) {
             currentStore.rollbackOptimistic(key)
@@ -335,7 +361,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       value: StoredFieldValue | unknown,
       fieldType: FieldType
     ): void => {
-      const store = useCustomFieldValueStore.getState()
+      const store = useFieldValueStore.getState()
 
       // Build keys, capture versions, and apply optimistic updates
       const keyVersions: Array<{ key: FieldValueKey; version: number }> = []
@@ -353,7 +379,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
         { resourceIds, values: [{ fieldId, value }] },
         {
           onSuccess: () => {
-            const currentStore = useCustomFieldValueStore.getState()
+            const currentStore = useFieldValueStore.getState()
             for (const { key, version } of keyVersions) {
               if (version >= currentStore.getMutationVersion(key)) {
                 currentStore.confirmOptimistic(key)
@@ -362,7 +388,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
             onSuccess?.()
           },
           onError: (error) => {
-            const currentStore = useCustomFieldValueStore.getState()
+            const currentStore = useFieldValueStore.getState()
             for (const { key, version } of keyVersions) {
               if (version >= currentStore.getMutationVersion(key)) {
                 currentStore.rollbackOptimistic(key)
@@ -389,7 +415,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       resourceIds: ResourceId[],
       fieldValues: Array<{ fieldId: string; value: unknown; fieldType: FieldType }>
     ): void => {
-      const store = useCustomFieldValueStore.getState()
+      const store = useFieldValueStore.getState()
 
       // Build all keys, capture versions, and apply optimistic updates
       const keyVersions: Array<{ key: string; version: number }> = []
@@ -411,7 +437,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
         { resourceIds, values: apiValues },
         {
           onSuccess: () => {
-            const currentStore = useCustomFieldValueStore.getState()
+            const currentStore = useFieldValueStore.getState()
             for (const { key, version } of keyVersions) {
               if (version >= currentStore.getMutationVersion(key)) {
                 currentStore.confirmOptimistic(key)
@@ -420,7 +446,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
             onSuccess?.()
           },
           onError: (error) => {
-            const currentStore = useCustomFieldValueStore.getState()
+            const currentStore = useFieldValueStore.getState()
             for (const { key, version } of keyVersions) {
               if (version >= currentStore.getMutationVersion(key)) {
                 currentStore.rollbackOptimistic(key)

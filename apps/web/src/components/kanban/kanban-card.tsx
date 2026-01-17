@@ -11,10 +11,7 @@ import { formatRelativeTime } from '@auxx/utils/date'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
 import type { CustomField } from '~/components/dynamic-table/types'
 import { KanbanCardField } from './kanban-card-field'
-import {
-  useFieldValue,
-  toResourceId,
-} from '~/components/resources/store/custom-field-value-store'
+import { useFieldValue, toResourceId } from '~/components/resources/store/field-value-store'
 
 /** Props for KanbanCard component */
 interface KanbanCardProps {

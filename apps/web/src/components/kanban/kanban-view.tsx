@@ -37,10 +37,10 @@ import type {
   ModelType,
 } from '@auxx/types/custom-field'
 import {
-  useCustomFieldValueStore,
+  useFieldValueStore,
   buildFieldValueKeyFromParts,
   type FieldValueKey,
-} from '~/components/resources/store/custom-field-value-store'
+} from '~/components/resources/store/field-value-store'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { getModelType, toResourceId } from '@auxx/lib/resources/client'
 import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
@@ -222,7 +222,7 @@ export function KanbanView<TData extends KanbanRow>({
   const [pendingOptions, setPendingOptions] = useState<RawSelectOption[]>([])
 
   // Subscribe to store values - this IS reactive (component re-renders when groupBy values change)
-  const storeValues = useCustomFieldValueStore((s) => s.values)
+  const storeValues = useFieldValueStore((s) => s.values)
 
   // Create reactive getValue from store
   const getValue = useCallback(

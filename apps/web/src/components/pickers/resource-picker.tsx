@@ -201,7 +201,7 @@ export function ResourcePicker({
   }, [entityDefinitionId, entityDefinitionIds, search])
 
   // Search query
-  const { data: searchResults, isLoading: isSearching } = api.resource.search.useQuery(
+  const { data: searchResults, isLoading: isSearching } = api.record.search.useQuery(
     searchParams,
     {
       enabled: true,

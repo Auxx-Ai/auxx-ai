@@ -3,12 +3,12 @@
 import { useEffect, useMemo, useRef, useCallback } from 'react'
 import { api } from '~/trpc/react'
 import {
-  useCustomFieldValueStore,
+  useFieldValueStore,
   buildFieldValueKey,
   parseFieldValueKey,
   type FieldValueKey,
   type StoredFieldValue,
-} from '~/components/resources/store/custom-field-value-store'
+} from '~/components/resources/store/field-value-store'
 import { parseResourceId, type ResourceId } from '@auxx/lib/resources/client'
 import type { VisibilityState } from '@tanstack/react-table'
 import { generateId } from '@auxx/utils/generateId'
@@ -58,18 +58,12 @@ interface SyncerResult {
  * ```
  */
 export function useCustomFieldValueSyncer(options: UseCustomFieldValueSyncerOptions): SyncerResult {
-  const {
-    resourceIds,
-    columnVisibility,
-    columnIds,
-    enabled = true,
-    debounceMs = 150,
-  } = options
+  const { resourceIds, columnVisibility, columnIds, enabled = true, debounceMs = 150 } = options
 
   // Get store actions (stable references)
-  const setValues = useCustomFieldValueStore((s) => s.setValues)
-  const startLoading = useCustomFieldValueStore((s) => s.startLoading)
-  const finishLoading = useCustomFieldValueStore((s) => s.finishLoading)
+  const setValues = useFieldValueStore((s) => s.setValues)
+  const startLoading = useFieldValueStore((s) => s.startLoading)
+  const finishLoading = useFieldValueStore((s) => s.finishLoading)
   // NOTE: Don't subscribe to values/loadingBatches - use getState() imperatively
   // Subscribing would cause re-renders on every value change
 
@@ -87,7 +81,7 @@ export function useCustomFieldValueSyncer(options: UseCustomFieldValueSyncerOpti
 
   // Helper to check if a key is loading (uses getState, not subscription)
   const isKeyLoading = useCallback((key: FieldValueKey) => {
-    const { loadingBatches } = useCustomFieldValueStore.getState()
+    const { loadingBatches } = useFieldValueStore.getState()
     for (const batch of Object.values(loadingBatches)) {
       if (batch.keys.has(key)) return true
     }
@@ -100,7 +94,7 @@ export function useCustomFieldValueSyncer(options: UseCustomFieldValueSyncerOpti
       return []
     }
 
-    const { values } = useCustomFieldValueStore.getState()
+    const { values } = useFieldValueStore.getState()
     const keys: FieldValueKey[] = []
 
     for (const resourceId of resourceIds) {
@@ -212,9 +206,9 @@ export function useCustomFieldValueSyncer(options: UseCustomFieldValueSyncerOpti
     (resourceId: ResourceId, fieldId: FieldId | string): StoredFieldValue | undefined => {
       const typedFieldId = typeof fieldId === 'string' ? toFieldId(fieldId) : fieldId
       const key = buildFieldValueKey(resourceId, typedFieldId)
-      return useCustomFieldValueStore.getState().values[key]
+      return useFieldValueStore.getState().values[key]
     },
-    [],
+    []
   )
 
   // Loading state accessor
@@ -224,7 +218,7 @@ export function useCustomFieldValueSyncer(options: UseCustomFieldValueSyncerOpti
       const key = buildFieldValueKey(resourceId, typedFieldId)
       return isKeyLoading(key)
     },
-    [isKeyLoading],
+    [isKeyLoading]
   )
 
   return {

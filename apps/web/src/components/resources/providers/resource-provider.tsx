@@ -32,7 +32,7 @@ const MAX_RELATIONSHIP_BATCH = 100
  */
 export function ResourceProvider({ children }: { children: React.ReactNode }) {
   // === PRELOADED: RESOURCES (with fields embedded) ===
-  const resourcesQuery = api.resource.getAllResourceTypes.useQuery(undefined, {
+  const resourcesQuery = api.resource.list.useQuery(undefined, {
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   })
@@ -65,7 +65,7 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
     return () => clearTimeout(timeout)
   }, [relationshipPendingSize, relationshipBatch.length])
 
-  const { data: relationshipData, error: relationshipError } = api.resource.getByIds.useQuery(
+  const { data: relationshipData, error: relationshipError } = api.record.getByIds.useQuery(
     { items: relationshipBatch },
     { enabled: relationshipBatch.length > 0, staleTime: Infinity, refetchOnWindowFocus: false }
   )

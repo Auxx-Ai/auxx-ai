@@ -1,10 +1,6 @@
 // apps/web/src/stores/hydrate-field-values.ts
 
-import {
-  useCustomFieldValueStore,
-  buildFieldValueKey,
-  type StoredFieldValue,
-} from './custom-field-value-store'
+import { useFieldValueStore, buildFieldValueKey, type StoredFieldValue } from './field-value-store'
 import { formatToTypedInput } from '@auxx/lib/field-values/client'
 import { isComputedField, type Resource, type ResourceId } from '@auxx/lib/resources/client'
 import type { FieldType } from '@auxx/database/types'
@@ -71,7 +67,7 @@ export function hydrateFieldValues({ resource, resourceId, recordData }: Hydrati
 
   // Batch update store
   if (entries.length > 0) {
-    useCustomFieldValueStore.getState().setValues(entries)
+    useFieldValueStore.getState().setValues(entries)
   }
 }
 
@@ -124,6 +120,6 @@ export function hydrateMultipleRecords(
   }
 
   if (allEntries.length > 0) {
-    useCustomFieldValueStore.getState().setValues(allEntries)
+    useFieldValueStore.getState().setValues(allEntries)
   }
 }

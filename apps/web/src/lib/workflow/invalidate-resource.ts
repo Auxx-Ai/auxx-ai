@@ -53,9 +53,9 @@ export function invalidateResource(resourceType: ResourceType, resourceId: strin
         queryKey: getQueryKey(api.ticket.list),
         exact: false,
       })
-      // Invalidate resource.search for picker dialogs
+      // Invalidate record.search for picker dialogs
       queryClient.invalidateQueries({
-        queryKey: getQueryKey(api.resource.search),
+        queryKey: getQueryKey(api.record.search),
         exact: false,
       })
       break
@@ -133,9 +133,9 @@ export function invalidateBatchResources(resourceType: ResourceType, resourceIds
         queryKey: getQueryKey(api.ticket.list),
         exact: false,
       })
-      // Invalidate resource.search for picker dialogs
+      // Invalidate record.search for picker dialogs
       queryClient.invalidateQueries({
-        queryKey: getQueryKey(api.resource.search),
+        queryKey: getQueryKey(api.record.search),
         exact: false,
       })
       break

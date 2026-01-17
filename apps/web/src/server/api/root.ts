@@ -61,6 +61,7 @@ import { adminRouter } from './routers/admin'
 import { timelineRouter } from './routers/timeline'
 import { appsRouter } from './routers/apps'
 import { resourceRouter } from './routers/resource'
+import { recordRouter } from './routers/record'
 import { attachmentRouter } from './routers/attachment'
 import { mediaAssetRouter } from './routers/mediaAsset'
 import { entityDefinitionRouter } from './routers/entityDefinition'
@@ -120,6 +121,7 @@ export const appRouter = createTRPCRouter({
   organization: organizationRouter,
   part: partRouter,
   product: productRouter,
+  record: recordRouter,
   resource: resourceRouter,
   search: searchRouter,
   setting: settingsRouter,

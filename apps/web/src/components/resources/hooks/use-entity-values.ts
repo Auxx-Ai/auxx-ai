@@ -6,7 +6,7 @@ import {
   type StoredFieldValue,
   parseResourceId,
   type ResourceId,
-} from '~/components/resources/store/custom-field-value-store'
+} from '~/components/resources/store/field-value-store'
 import { useResourceFields } from './use-resource-fields'
 
 /** Stable empty array */
@@ -38,9 +38,7 @@ interface UseEntityValuesResult {
  * Gets field definitions automatically via useResourceFields.
  * Returns values in the format expected by EntityFields.preloadedValues.
  */
-export function useEntityValues({
-  resourceId,
-}: UseEntityValuesOptions): UseEntityValuesResult {
+export function useEntityValues({ resourceId }: UseEntityValuesOptions): UseEntityValuesResult {
   // Parse resourceId to get components
   const { entityDefinitionId, entityInstanceId } = resourceId
     ? parseResourceId(resourceId)
@@ -62,10 +60,7 @@ export function useEntityValues({
   }, [fieldIdsKey])
 
   // Get field values from store using ResourceId directly
-  const rawFieldValues = useResourceFieldValues(
-    resourceId ?? ('' as ResourceId),
-    activeFieldIds
-  )
+  const rawFieldValues = useResourceFieldValues(resourceId ?? ('' as ResourceId), activeFieldIds)
 
   // Stabilize fieldValues - only change when actual content changes
   const fieldValuesKey = JSON.stringify(rawFieldValues)

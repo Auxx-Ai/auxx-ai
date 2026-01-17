@@ -2,20 +2,20 @@
 
 import { useCallback } from 'react'
 import {
-  useCustomFieldValueStore,
+  useFieldValueStore,
   toResourceId,
   type ResourceId,
-} from '~/components/resources/store/custom-field-value-store'
+} from '~/components/resources/store/field-value-store'
 
 /**
  * Hook providing invalidation methods for custom field values.
  * Use this after mutations to keep the store in sync.
  */
 export function useCustomFieldInvalidation() {
-  const invalidateResource = useCustomFieldValueStore((s) => s.invalidateResource)
-  const invalidateResources = useCustomFieldValueStore((s) => s.invalidateResources)
-  const invalidateField = useCustomFieldValueStore((s) => s.invalidateField)
-  const invalidateByDefinition = useCustomFieldValueStore((s) => s.invalidateByDefinition)
+  const invalidateResource = useFieldValueStore((s) => s.invalidateResource)
+  const invalidateResources = useFieldValueStore((s) => s.invalidateResources)
+  const invalidateField = useFieldValueStore((s) => s.invalidateField)
+  const invalidateByDefinition = useFieldValueStore((s) => s.invalidateByDefinition)
 
   /**
    * Invalidate after updating a single entity's field values.

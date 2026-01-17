@@ -2,11 +2,11 @@
 
 import { useCallback } from 'react'
 import {
-  useCustomFieldValueStore,
+  useFieldValueStore,
   buildFieldValueKey,
   type FieldValueKey,
   type StoredFieldValue,
-} from '~/components/resources/store/custom-field-value-store'
+} from '~/components/resources/store/field-value-store'
 import { parseResourceId, toResourceId, type ResourceId } from '@auxx/lib/resources/client'
 import { isSingleValueRelationship, type RelationshipType } from '@auxx/utils'
 import type { RelationshipFieldValue } from '@auxx/types/field-value'
@@ -45,7 +45,7 @@ const LOG_PREFIX = '[RelSync]'
  * Call this when saving a relationship field to update both sides optimistically.
  */
 export function useRelationshipSync() {
-  const setValueOptimistic = useCustomFieldValueStore((s) => s.setValueOptimistic)
+  const setValueOptimistic = useFieldValueStore((s) => s.setValueOptimistic)
 
   /**
    * Sync inverse relationships in the cache.
@@ -80,7 +80,7 @@ export function useRelationshipSync() {
       const isSingleValue = isSingleValueRelationship(inverseRelationshipType)
 
       // Get current state (need to access store directly for current values)
-      const currentValues = useCustomFieldValueStore.getState().values
+      const currentValues = useFieldValueStore.getState().values
 
       // ═══ Remove source from entities that were unlinked ═══
       for (const targetResourceId of removedResourceIds) {

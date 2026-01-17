@@ -4,9 +4,9 @@
 import { useMemo } from 'react'
 import { mergeFieldValue } from '@auxx/lib/resources/merge/client'
 import {
-  useCustomFieldValueStore,
+  useFieldValueStore,
   buildFieldValueKey,
-} from '~/components/resources/store/custom-field-value-store'
+} from '~/components/resources/store/field-value-store'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
 import type { ResourceId } from '@auxx/lib/resources/client'
 import type { FieldType } from '@auxx/database/types'
@@ -30,7 +30,7 @@ export function useMergePreview({
     isSystem?: boolean
   }>
 }) {
-  const storeValues = useCustomFieldValueStore((state) => state.values)
+  const storeValues = useFieldValueStore((state) => state.values)
 
   return useMemo(() => {
     const mergedFields: Record<string, { value: unknown; wasModified: boolean }> = {}
@@ -57,10 +57,12 @@ export function useMergePreview({
       })
 
       // Skip fields that have no data in target or any sources
-      const hasTargetData = targetValue != null && targetValue !== '' &&
+      const hasTargetData =
+        targetValue != null &&
+        targetValue !== '' &&
         (Array.isArray(targetValue) ? targetValue.length > 0 : true)
-      const hasSourceData = sourceValues.some(val =>
-        val != null && val !== '' && (Array.isArray(val) ? val.length > 0 : true)
+      const hasSourceData = sourceValues.some(
+        (val) => val != null && val !== '' && (Array.isArray(val) ? val.length > 0 : true)
       )
       if (!hasTargetData && !hasSourceData) continue
 

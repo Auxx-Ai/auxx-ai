@@ -5,7 +5,7 @@
 import { memo, useMemo } from 'react'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { FormattedCell, CellPadding } from './formatted-cell'
-import { useFieldValue } from '~/components/resources/store/custom-field-value-store'
+import { useFieldValue } from '~/components/resources/store/field-value-store'
 import { useField } from '~/components/resources/hooks/use-field'
 import { parseResourceFieldId } from '@auxx/types/field'
 import type { ResourceId } from '@auxx/lib/resources/client'
@@ -55,7 +55,5 @@ export const CustomFieldCell = memo(function CustomFieldCell({
     )
   }
 
-  return (
-    <FormattedCell value={value} fieldType={fieldType} columnId={columnId} options={options} />
-  )
+  return <FormattedCell value={value} fieldType={fieldType} columnId={columnId} options={options} />
 })

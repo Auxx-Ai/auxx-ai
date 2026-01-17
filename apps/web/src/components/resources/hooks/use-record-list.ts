@@ -121,7 +121,7 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
     hasNextPage,
     fetchNextPage: fetchNextPageRaw,
     refetch,
-  } = api.resource.listFiltered.useInfiniteQuery(queryInput, {
+  } = api.record.listFiltered.useInfiniteQuery(queryInput, {
     enabled: shouldFetch,
     staleTime: 30_000,
     getNextPageParam: (lastPage, allPages) => {

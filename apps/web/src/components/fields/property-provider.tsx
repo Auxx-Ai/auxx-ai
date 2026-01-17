@@ -10,11 +10,11 @@ import {
   useRef,
 } from 'react'
 import {
-  useCustomFieldValueStore,
+  useFieldValueStore,
   buildFieldValueKey,
   type FieldValueKey,
   type StoredFieldValue,
-} from '~/components/resources/store/custom-field-value-store'
+} from '~/components/resources/store/field-value-store'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
 import type { ResourceId } from '@auxx/lib/resources/client'
@@ -205,7 +205,7 @@ export function PropertyProvider({
   // ─── Store Integration ───
   // Get value from store using ResourceId directly
   const storeKey = buildFieldValueKey(resourceId, field.id)
-  const storeValue = useCustomFieldValueStore((s) => s.values[storeKey])
+  const storeValue = useFieldValueStore((s) => s.values[storeKey])
 
   // Field metadata provider for relationship sync
   // The field object already contains options.relationship from the registry

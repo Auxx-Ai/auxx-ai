@@ -46,8 +46,8 @@ export function useRecordBatchFetcher() {
     return currentBatch.length > 0 ? currentBatch : EMPTY_ITEMS
   }, [currentBatch])
 
-  // Fetch using existing resource.getByIds endpoint (handles mixed types)
-  const { data, error } = api.resource.getByIds.useQuery(
+  // Fetch using existing record.getByIds endpoint (handles mixed types)
+  const { data, error } = api.record.getByIds.useQuery(
     { items: queryItems },
     {
       enabled: queryItems.length > 0,

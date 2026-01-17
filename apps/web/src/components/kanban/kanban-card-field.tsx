@@ -2,10 +2,7 @@
 'use client'
 
 import { memo, useState, useCallback, useRef } from 'react'
-import {
-  useFieldValue,
-  toResourceId,
-} from '~/components/resources/store/custom-field-value-store'
+import { useFieldValue, toResourceId } from '~/components/resources/store/field-value-store'
 import { renderCellValue, type CellConfig } from '~/components/dynamic-table'
 import { CellFieldEditor } from '~/components/dynamic-table/components/cell-field-editor'
 import { useCellSelectionOptional } from '~/components/dynamic-table/context/cell-selection-context'
@@ -56,7 +53,8 @@ export const KanbanCardField = memo(function KanbanCardField({
   const cellSelectionConfig = cellSelectionContext?.cellSelectionConfig
 
   // Editing is only available if config exists, editable is true, and field is updatable
-  const canEdit = editable && !!cellSelectionConfig?.enabled && field.capabilities.updatable !== false
+  const canEdit =
+    editable && !!cellSelectionConfig?.enabled && field.capabilities.updatable !== false
 
   // Editing state (local to this field - kanban doesn't use selection like table)
   const [isEditing, setIsEditing] = useState(false)

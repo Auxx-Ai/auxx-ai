@@ -17,7 +17,7 @@ import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
 import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button'
 import { BaseEntityDrawer } from '~/components/drawers/base-entity-drawer'
-import { useFieldValue } from '~/components/resources/store/custom-field-value-store'
+import { useFieldValue } from '~/components/resources/store/field-value-store'
 import { formatToDisplayValue } from '@auxx/lib/field-values/client'
 
 /** Props for EntityRecordDrawer */

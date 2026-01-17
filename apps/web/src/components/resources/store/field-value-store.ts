@@ -128,7 +128,10 @@ interface CustomFieldValueState {
  * Build a field value key from ResourceId and fieldId.
  * Format: `${entityDefinitionId}:${entityInstanceId}:${fieldId}`
  */
-export function buildFieldValueKey(resourceId: ResourceId, fieldId: FieldId | string): FieldValueKey {
+export function buildFieldValueKey(
+  resourceId: ResourceId,
+  fieldId: FieldId | string
+): FieldValueKey {
   const typedFieldId = typeof fieldId === 'string' ? toFieldId(fieldId) : fieldId
   return `${resourceId}:${typedFieldId}` as FieldValueKey
 }
@@ -170,7 +173,7 @@ export function parseFieldValueKey(key: FieldValueKey): {
   const entityInstanceId = parts[1]!
   const fieldId = parts.slice(2).join(':') as FieldId // Handle fieldIds that might contain colons
   const { entityDefinitionId: parsedDefId, entityInstanceId: parsedInstId } = parseResourceId(
-    toResourceId(entityDefinitionId, entityInstanceId),
+    toResourceId(entityDefinitionId, entityInstanceId)
   )
 
   return {
@@ -199,7 +202,7 @@ export function fieldValueKeyMatchesField(key: FieldValueKey, fieldId: FieldId |
 // STORE
 // ─────────────────────────────────────────────────────────────────
 
-export const useCustomFieldValueStore = create<CustomFieldValueState>()(
+export const useFieldValueStore = create<CustomFieldValueState>()(
   subscribeWithSelector((set, get) => ({
     values: {},
     loadingBatches: {},
@@ -352,7 +355,13 @@ export const useCustomFieldValueStore = create<CustomFieldValueState>()(
     },
 
     clearAll: () => {
-      set({ values: {}, loadingBatches: {}, updatedAt: {}, pendingUpdates: {}, mutationVersions: {} })
+      set({
+        values: {},
+        loadingBatches: {},
+        updatedAt: {},
+        pendingUpdates: {},
+        mutationVersions: {},
+      })
     },
 
     // ─── GETTERS ────────────────────────────────────────────────────
@@ -398,16 +407,23 @@ export const useCustomFieldValueStore = create<CustomFieldValueState>()(
  * - useFieldValue(key: FieldValueKey)
  * - useFieldValue(resourceId: ResourceId, fieldId: FieldId | string)
  */
-export function useFieldValue(key: FieldValueKey): { value: StoredFieldValue | undefined; isLoading: boolean }
-export function useFieldValue(resourceId: ResourceId, fieldId: FieldId | string): { value: StoredFieldValue | undefined; isLoading: boolean }
+export function useFieldValue(key: FieldValueKey): {
+  value: StoredFieldValue | undefined
+  isLoading: boolean
+}
+export function useFieldValue(
+  resourceId: ResourceId,
+  fieldId: FieldId | string
+): { value: StoredFieldValue | undefined; isLoading: boolean }
 export function useFieldValue(
   keyOrResourceId: FieldValueKey | ResourceId,
-  fieldId?: FieldId | string,
+  fieldId?: FieldId | string
 ): { value: StoredFieldValue | undefined; isLoading: boolean } {
   // Determine the actual key based on arguments
-  const key = fieldId !== undefined
-    ? buildFieldValueKey(keyOrResourceId as ResourceId, fieldId)
-    : (keyOrResourceId as FieldValueKey)
+  const key =
+    fieldId !== undefined
+      ? buildFieldValueKey(keyOrResourceId as ResourceId, fieldId)
+      : (keyOrResourceId as FieldValueKey)
 
   // Stable selector that subscribes to both value and loading state
   const selector = useCallback(
@@ -419,7 +435,7 @@ export function useFieldValue(
   )
 
   // Use shallow comparison to prevent unnecessary re-renders
-  return useCustomFieldValueStore(useShallow(selector))
+  return useFieldValueStore(useShallow(selector))
 }
 
 /**
@@ -428,7 +444,7 @@ export function useFieldValue(
  */
 export function useResourceFieldValues(
   resourceId: ResourceId,
-  fieldIds: (FieldId | string)[],
+  fieldIds: (FieldId | string)[]
 ): Record<string, StoredFieldValue | undefined> {
   // Stabilize inputs - only change selector when actual content changes
   const fieldIdsKey = fieldIds.join(',')
@@ -449,7 +465,7 @@ export function useResourceFieldValues(
   // Wrap stable selector with useShallow for shallow comparison
   const memoizedSelector = useShallow(selector)
 
-  return useCustomFieldValueStore(memoizedSelector)
+  return useFieldValueStore(memoizedSelector)
 }
 
 // ─────────────────────────────────────────────────────────────────

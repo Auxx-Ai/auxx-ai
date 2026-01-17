@@ -20,7 +20,7 @@ export {
 
 // Custom field value store exports (commented - import directly from component path)
 // export {
-//   useCustomFieldValueStore,
+//   useFieldValueStore,
 //   useFieldValue,
 //   useResourceFieldValues,
 //   buildFieldValueKey,
