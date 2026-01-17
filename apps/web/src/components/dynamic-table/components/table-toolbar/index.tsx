@@ -15,8 +15,8 @@ import { useDebounce } from '~/hooks/use-debounced-value'
 import { useTableConfig } from '../../context/table-config-context'
 import { useTableInstance } from '../../context/table-instance-context'
 import { useViewMetadata } from '../../context/view-metadata-context'
-import { useTableViews, useActiveView, useTableFilters } from '../../hooks/use-table-selectors'
-import { useSetFilters } from '../../hooks/use-table-actions'
+import { useTableViews, useActiveView, useTableFilters } from '../../stores/store-selectors'
+import { useSetFilters } from '../../stores/store-actions'
 import { useDynamicTableStore } from '../../stores/dynamic-table-store'
 import type { ReactNode } from 'react'
 import { InputSearch } from '@auxx/ui/components/input-search'
@@ -43,7 +43,6 @@ interface TableToolbarProps {
 
 /**
  * Table toolbar with filters, search, and view management.
- * NEW VERSION - Uses new hooks instead of useTableContext.
  */
 export function TableToolbar<TData = any>({
   children,

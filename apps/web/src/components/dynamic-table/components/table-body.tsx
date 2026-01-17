@@ -27,7 +27,6 @@ interface TableBodyProps {
 
 /**
  * Table body component - renders header and virtualized rows.
- * NEW VERSION - Uses focused contexts instead of useTableContext.
  */
 export function TableBody<TData extends object>({
   hideToolbar,

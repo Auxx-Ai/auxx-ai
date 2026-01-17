@@ -5,7 +5,7 @@
 import { memo } from 'react'
 import { cn } from '@auxx/ui/lib/utils'
 import { useTableConfig } from '../context/table-config-context'
-import { useColumnFormatting } from '../hooks/use-table-selectors'
+import { useColumnFormatting } from '../stores/store-selectors'
 import { renderCellValue } from '../utils/cell-renderers'
 import { ExpandableCell } from './expandable-cell'
 import type { ColumnFormatting } from '../types'

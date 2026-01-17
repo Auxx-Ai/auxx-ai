@@ -27,15 +27,13 @@ import {
 } from '~/components/tickets/ticket-badges'
 import { getFullName } from '@auxx/utils/contact'
 import { ContactHoverCard } from '~/components/contacts/contact-hover-card'
-import { useTableContext } from '~/components/dynamic-table'
 import type { Ticket } from './ticket-types'
 import { Button } from '@auxx/ui/components/button'
 
 /**
- * Type cell component - can access table context for inline editing
+ * Type cell component
  */
 function TicketTypeCell({ ticket }: { ticket: Ticket }) {
-  const { table } = useTableContext<Ticket>()
   const closed = ticket.status === 'CLOSED'
 
   // TODO: Add inline editing via dropdown using table context
@@ -51,10 +49,9 @@ function TicketTypeCell({ ticket }: { ticket: Ticket }) {
 }
 
 /**
- * Status cell component - can access table context for inline editing
+ * Status cell component
  */
 function TicketStatusCell({ ticket }: { ticket: Ticket }) {
-  const { table } = useTableContext<Ticket>()
   const closed = ticket.status === 'CLOSED'
 
   // TODO: Add inline editing via dropdown using table context
@@ -70,10 +67,9 @@ function TicketStatusCell({ ticket }: { ticket: Ticket }) {
 }
 
 /**
- * Priority cell component - can access table context for inline editing
+ * Priority cell component
  */
 function TicketPriorityCell({ ticket }: { ticket: Ticket }) {
-  const { table } = useTableContext<Ticket>()
   const closed = ticket.status === 'CLOSED'
 
   // TODO: Add inline editing via dropdown using table context
@@ -89,10 +85,9 @@ function TicketPriorityCell({ ticket }: { ticket: Ticket }) {
 }
 
 /**
- * Contact cell component - can access table context for inline editing
+ * Contact cell component
  */
 function TicketContactCell({ ticket }: { ticket: Ticket }) {
-  const { table } = useTableContext<Ticket>()
   const contact = ticket.contact
 
   // TODO: Add inline editing via contact picker using table context
@@ -108,10 +103,9 @@ function TicketContactCell({ ticket }: { ticket: Ticket }) {
 }
 
 /**
- * Due date cell component - can access table context for inline editing
+ * Due date cell component
  */
 function TicketDueDateCell({ ticket }: { ticket: Ticket }) {
-  const { table } = useTableContext<Ticket>()
   const { text, isOverdue, isDueToday } = formatDueDate(ticket.dueDate)
   const isClosed = ticket.status === 'CLOSED'
 
@@ -133,7 +127,7 @@ function TicketDueDateCell({ ticket }: { ticket: Ticket }) {
 }
 
 /**
- * Assignments cell component - can access table context for inline editing
+ * Assignments cell component
  */
 function TicketAssignmentsCell({
   ticket,
@@ -142,7 +136,6 @@ function TicketAssignmentsCell({
   ticket: Ticket
   onAssign?: (ticket: Ticket) => void
 }) {
-  const { table } = useTableContext<Ticket>()
   const assignments = ticket.assignments
 
   // TODO: Add inline editing via agent picker using table context

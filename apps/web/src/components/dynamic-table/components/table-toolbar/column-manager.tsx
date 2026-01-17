@@ -38,13 +38,13 @@ import {
   useColumnVisibility,
   useColumnOrder,
   useColumnFormatting,
-} from '../../hooks/use-table-selectors'
+} from '../../stores/store-selectors'
 import {
   useSetColumnVisibility,
   useSetColumnOrder,
   useSetColumnLabels,
   useSetColumnFormatting,
-} from '../../hooks/use-table-actions'
+} from '../../stores/store-actions'
 import { Tooltip } from '~/components/global/tooltip'
 import { EditColumnLabelDialog } from '../dialogs/edit-column-label-dialog'
 import { EditColumnFormattingDialog } from '../dialogs/edit-column-formatting-dialog'
@@ -272,7 +272,9 @@ function ColumnOptionsDropdown<TData = any>({
           fieldType={fieldType as FormattableFieldType}
           currentFormatting={columnFormatting[column.id]}
           defaultFormatting={columnDef.defaultFormatting}
-          onSave={(formatting) => setColumnFormatting({ ...columnFormatting, [column.id]: formatting })}
+          onSave={(formatting) =>
+            setColumnFormatting({ ...columnFormatting, [column.id]: formatting })
+          }
         />
       )}
     </>
@@ -403,7 +405,6 @@ function ColumnManagerContent<TData = any>({ onCreateField }: { onCreateField: (
 
 /**
  * Column manager component for managing column visibility and order.
- * NEW VERSION - Uses new hooks instead of useTableContext.
  */
 export function ColumnManager<TData = any>() {
   const [isOpen, setIsOpen] = useState(false)

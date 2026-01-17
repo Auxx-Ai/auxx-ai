@@ -46,7 +46,6 @@ export {
 
 export { useDynamicTable } from './hooks/use-dynamic-table'
 export { useCombinedFilters } from './hooks/use-combined-filters'
-export { useDynamicTableContext as useTableContext } from './context/table-context'
 export { useCellSelection } from './context/cell-selection-context'
 export { DynamicTableFooter, DefaultFooterContent } from './components/dynamic-table-footer'
 export { BulkActionBar } from './components/bulk-action-bar'

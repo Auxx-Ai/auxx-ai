@@ -6,15 +6,13 @@ import { KanbanView } from '../../kanban'
 import { useTableConfig } from '../context/table-config-context'
 import { useTableInstance } from '../context/table-instance-context'
 import { useViewMetadata } from '../context/view-metadata-context'
-import { useActiveView } from '../hooks/use-table-selectors'
+import { useActiveView } from '../stores/store-selectors'
 import type { ViewConfig, KanbanViewConfig, KanbanRow } from '../types'
 import { useDynamicTableStore } from '../stores/dynamic-table-store'
 import { useResource } from '~/components/resources'
-import type { FieldType } from '@auxx/database/types'
 /**
  * Kanban view body that integrates with focused contexts.
  * Handles view-level config mutations (column reorder, visibility).
- * NEW VERSION - Uses focused contexts instead of useTableContext.
  */
 export function KanbanViewBody<TData extends KanbanRow>() {
   // Get config from focused contexts

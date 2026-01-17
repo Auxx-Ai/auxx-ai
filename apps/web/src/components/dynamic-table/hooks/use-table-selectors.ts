@@ -2,7 +2,7 @@
 
 import { useShallow } from 'zustand/react/shallow'
 import type { RowSelectionState } from '@tanstack/react-table'
-import type { CellSelectionState, KanbanViewConfig } from '../types'
+import type { CellSelectionState } from '../types'
 import { useSelectionStore } from '../stores/selection-store'
 
 // ============================================================================
@@ -11,30 +11,6 @@ import { useSelectionStore } from '../stores/selection-store'
 
 const EMPTY_ROW_SELECTION: RowSelectionState = {}
 const EMPTY_KANBAN_CARD_IDS: Set<string> = new Set()
-
-// ============================================================================
-// RE-EXPORT FROM UNIFIED STORE (view/filter/UI selectors)
-// ============================================================================
-
-export {
-  useTableViews,
-  useActiveView,
-  useActiveViewId,
-  useViewStoreInitialized,
-  useActiveViewConfig,
-  useTableFilters,
-  useTableSorting,
-  useColumnVisibility,
-  useColumnOrder,
-  useColumnSizing,
-  useColumnPinning,
-  useColumnLabels,
-  useColumnFormatting,
-  useViewType,
-  useKanbanConfig,
-  useHasUnsavedChanges,
-  useIsSaving,
-} from '../stores/store-selectors'
 
 // ============================================================================
 // ROW SELECTION SELECTORS

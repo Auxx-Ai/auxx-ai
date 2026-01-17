@@ -34,8 +34,8 @@ import {
   useColumnLabels,
   useColumnFormatting,
   useColumnPinning,
-} from '../hooks/use-table-selectors'
-import { useSetFilters } from '../hooks/use-table-actions'
+} from '../stores/store-selectors'
+import { useSetFilters } from '../stores/store-actions'
 import { EditColumnLabelDialog } from './dialogs/edit-column-label-dialog'
 import { EditColumnFormattingDialog } from './dialogs/edit-column-formatting-dialog'
 import type { Header } from '@tanstack/react-table'

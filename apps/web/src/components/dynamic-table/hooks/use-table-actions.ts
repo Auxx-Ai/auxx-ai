@@ -6,23 +6,6 @@ import type { CellSelectionState } from '../types'
 import { useSelectionStore } from '../stores/selection-store'
 
 // ============================================================================
-// RE-EXPORT FROM UNIFIED STORE (view/filter/UI actions)
-// ============================================================================
-
-export {
-  useSetFilters,
-  useSetSorting,
-  useSetColumnVisibility,
-  useSetColumnOrder,
-  useSetColumnSizing,
-  useSetColumnPinning,
-  useSetColumnLabels,
-  useSetColumnFormatting,
-  useUpdateKanbanConfig,
-  useSetActiveView,
-} from '../stores/store-actions'
-
-// ============================================================================
 // ROW SELECTION ACTIONS
 // ============================================================================
 

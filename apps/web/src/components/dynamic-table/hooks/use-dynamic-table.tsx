@@ -36,9 +36,8 @@ import {
   useColumnPinning,
   useColumnLabels,
   useColumnFormatting,
-  useRowSelection,
-  useActiveDragItems,
-} from '../hooks/use-table-selectors'
+} from '../stores/store-selectors'
+import { useRowSelection, useActiveDragItems } from '../hooks/use-table-selectors'
 import {
   useSetFilters,
   useSetSorting,
@@ -48,9 +47,8 @@ import {
   useSetColumnPinning,
   useSetColumnLabels,
   useSetColumnFormatting,
-  useSetRowSelection,
-  useSetActiveDragItems,
-} from '../hooks/use-table-actions'
+} from '../stores/store-actions'
+import { useSetRowSelection, useSetActiveDragItems } from '../hooks/use-table-actions'
 import { useViewStorePersistence } from './use-view-store-persistence'
 
 /**
