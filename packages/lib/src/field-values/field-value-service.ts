@@ -666,15 +666,6 @@ export class FieldValueService {
   async setValuesForEntity(params: SetValuesForEntityInput): Promise<SetValuesResult[]> {
     const { resourceId, values, publishEvents = true, skipInverseSync = false } = params
 
-    // Debug TAGS input
-    const tagsValues = values.filter((v) => v.fieldId.includes('bkk5r20ztjzkzkppc2umb3fp'))
-    if (tagsValues.length > 0) {
-      console.log('🔄 setValuesForEntity received TAGS:', {
-        resourceId,
-        tagsValues,
-      })
-    }
-
     // Parse ResourceId to get both parts and derive modelType
     const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
     const modelType = getModelType(entityDefinitionId)
@@ -755,16 +746,6 @@ export class FieldValueService {
       // Now set each value (will use cached field definitions and relationship validations)
       for (const v of customs) {
         try {
-          // Debug TAGS field processing
-          if (v.fieldId.includes('bkk5r20ztjzkzkppc2umb3fp')) {
-            console.log('🔧 Processing TAGS field:', {
-              fieldId: v.fieldId,
-              value: v.value,
-              valueType: typeof v.value,
-              isArray: Array.isArray(v.value),
-            })
-          }
-
           const result = await this.setValueWithBuiltIn({
             resourceId,
             fieldId: v.fieldId,
@@ -772,15 +753,6 @@ export class FieldValueService {
             publishEvents,
             skipInverseSync,
           })
-
-          // Debug TAGS result
-          if (v.fieldId.includes('bkk5r20ztjzkzkppc2umb3fp')) {
-            console.log('✨ TAGS field result:', {
-              fieldId: v.fieldId,
-              state: result.state,
-              valueCount: result.values.length,
-            })
-          }
 
           results.push({ fieldId: v.fieldId, ...result })
         } catch (error) {

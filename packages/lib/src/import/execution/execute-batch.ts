@@ -1,7 +1,10 @@
 // packages/lib/src/import/execution/execute-batch.ts
 
+import { createScopedLogger } from '@auxx/logger'
 import type { BatchExecutionResult, RowExecutionResult } from '../types/execution'
 import type { StrategyType } from '../types/plan'
+
+const logger = createScopedLogger('execute-batch')
 
 /** Record to execute in a batch */
 export interface BatchRecord {
@@ -61,6 +64,19 @@ export async function executeBatch(
 
   const { strategy, createRecord, updateRecord, onProgress } = ctx
 
+  logger.debug('executeBatch started', {
+    strategy,
+    recordCount: records.length,
+    entityDefinitionId: ctx.entityDefinitionId,
+    sampleRecord: records[0]
+      ? {
+          rowIndex: records[0].rowIndex,
+          hasExistingRecordId: !!records[0].existingRecordId,
+          existingRecordId: records[0].existingRecordId,
+        }
+      : null,
+  })
+
   // For create strategy with bulk support, use it
   if (strategy === 'create' && ctx.bulkCreate && records.length > 1) {
     try {
@@ -98,15 +114,32 @@ export async function executeBatch(
   for (let i = 0; i < records.length; i++) {
     const record = records[i]!
 
+    logger.debug('Processing record', {
+      index: i,
+      rowIndex: record.rowIndex,
+      strategy,
+      hasExistingRecordId: !!record.existingRecordId,
+      existingRecordId: record.existingRecordId,
+    })
+
     try {
       let resultId: string | undefined
 
       if (strategy === 'create') {
+        logger.debug('Calling createRecord', { rowIndex: record.rowIndex })
         const result = await createRecord(record.data)
         resultId = result.id
-      } else if (strategy === 'update' && record.existingRecordId) {
-        const result = await updateRecord(record.existingRecordId, record.data)
-        resultId = result.id
+      } else if (strategy === 'update') {
+        if (record.existingRecordId) {
+          logger.debug('Calling updateRecord', {
+            rowIndex: record.rowIndex,
+            existingRecordId: record.existingRecordId,
+          })
+          const result = await updateRecord(record.existingRecordId, record.data)
+          resultId = result.id
+        } else {
+          logger.warn('Update strategy but no existingRecordId', { rowIndex: record.rowIndex })
+        }
       }
       // Skip strategy doesn't need to do anything
 
@@ -117,10 +150,17 @@ export async function executeBatch(
       })
       succeeded++
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      logger.error('Record execution failed', {
+        rowIndex: record.rowIndex,
+        strategy,
+        existingRecordId: record.existingRecordId,
+        error: errorMessage,
+      })
       results.push({
         rowIndex: record.rowIndex,
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: errorMessage,
       })
       failed++
     }

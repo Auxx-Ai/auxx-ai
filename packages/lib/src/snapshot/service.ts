@@ -14,7 +14,7 @@ import type {
 import type { ConditionGroup } from '../conditions'
 
 /** TTL for snapshots in seconds */
-const SNAPSHOT_TTL_SECONDS = 900 // 15 minutes
+const SNAPSHOT_TTL_SECONDS = 120 // 2 minutes
 
 /** Lock TTL in seconds */
 const LOCK_TTL_SECONDS = 30

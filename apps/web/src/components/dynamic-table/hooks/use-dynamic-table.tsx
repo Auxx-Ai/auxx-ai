@@ -295,7 +295,7 @@ export function useDynamicTable<TData extends Record<string, any>>({
     state: {
       sorting,
       columnFilters,
-      columnVisibility,
+      columnVisibility: columnVisibility ?? {},
       columnOrder: displayColumnOrder,
       columnSizing,
       columnPinning: displayColumnPinning,
@@ -363,7 +363,7 @@ export function useDynamicTable<TData extends Record<string, any>>({
   // ═══════════════════════════════════════════════════════════════════════════
 
   useEffect(() => {
-    if (onColumnVisibilityChange) {
+    if (onColumnVisibilityChange && columnVisibility !== undefined) {
       onColumnVisibilityChange(columnVisibility)
     }
   }, [columnVisibility, onColumnVisibilityChange])

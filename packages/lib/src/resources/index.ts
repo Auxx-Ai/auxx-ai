@@ -85,6 +85,7 @@ export type {
 // CRUD service and handlers
 export {
   ResourceCrudService,
+  UnifiedCrudHandler,
   getHandler,
   contactHandler,
   ticketHandler,
@@ -97,6 +98,7 @@ export {
   parseTags,
 } from './crud'
 export type {
+  CrudOptions,
   CrudResult,
   CrudResultSuccess,
   CrudResultFailure,

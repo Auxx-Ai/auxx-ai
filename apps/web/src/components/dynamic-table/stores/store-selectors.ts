@@ -99,24 +99,38 @@ export function useTableSorting(tableId: string): SortingState {
   )
 }
 
-/** Get column visibility for current table/view */
-export function useColumnVisibility(tableId: string): VisibilityState {
+/**
+ * Get column visibility for current table/view.
+ * Returns undefined if config not initialized yet (allows caller to use fallback).
+ */
+export function useColumnVisibility(tableId: string): VisibilityState | undefined {
   const viewId = useDynamicTableStore((s) => s.activeViewIds[tableId])
   return useDynamicTableStore(
     useShallow((s) => {
-      if (!viewId) return s.sessionConfigs[tableId]?.columnVisibility ?? EMPTY_COLUMN_VISIBILITY
-      return s.pendingConfigs[viewId]?.columnVisibility ?? s.viewConfigs[viewId]?.columnVisibility ?? EMPTY_COLUMN_VISIBILITY
+      if (viewId) {
+        // View mode: return from view config (pending takes precedence)
+        return s.pendingConfigs[viewId]?.columnVisibility ?? s.viewConfigs[viewId]?.columnVisibility
+      }
+      // Session mode: return from session config (undefined if not initialized)
+      return s.sessionConfigs[tableId]?.columnVisibility
     })
   )
 }
 
-/** Get column order for current table/view */
-export function useColumnOrder(tableId: string): ColumnOrderState {
+/**
+ * Get column order for current table/view.
+ * Returns undefined if config not initialized yet (allows caller to use fallback).
+ */
+export function useColumnOrder(tableId: string): ColumnOrderState | undefined {
   const viewId = useDynamicTableStore((s) => s.activeViewIds[tableId])
   return useDynamicTableStore(
     useShallow((s) => {
-      if (!viewId) return s.sessionConfigs[tableId]?.columnOrder ?? EMPTY_COLUMN_ORDER
-      return s.pendingConfigs[viewId]?.columnOrder ?? s.viewConfigs[viewId]?.columnOrder ?? EMPTY_COLUMN_ORDER
+      if (viewId) {
+        // View mode: return from view config (pending takes precedence)
+        return s.pendingConfigs[viewId]?.columnOrder ?? s.viewConfigs[viewId]?.columnOrder
+      }
+      // Session mode: return from session config (undefined if not initialized)
+      return s.sessionConfigs[tableId]?.columnOrder
     })
   )
 }

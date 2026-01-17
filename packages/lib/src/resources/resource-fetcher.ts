@@ -155,7 +155,7 @@ export async function executeResourceQuery(
 
 /**
  * Fetch a single resource by ID
- * Supports both system resources (contact, ticket, etc.) and custom entities (entity_xxx)
+ * Supports both system resources (contact, ticket, etc.) and custom entities (UUID-based)
  *
  * @param resourceId - ResourceId in format "entityDefinitionId:instanceId"
  * @param organizationId - Organization ID for scoping
@@ -169,7 +169,7 @@ export async function fetchResourceById(
   const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
   const resourceType = entityDefinitionId
 
-  // Handle custom entities (entity_xxx)
+  // Handle custom entities (UUID-based entityDefinitionId)
   if (isCustomResourceId(resourceType)) {
     if (!organizationId) {
       logger.error('organizationId required for custom entity fetch', { resourceType })
@@ -314,9 +314,9 @@ export function getResourceIdField(eventType: string): string | null {
  *   'ticket:ticket-123', ['contact'], 'org-456', db
  * )
  *
- * // Fetch custom entity with relationships
+ * // Fetch custom entity with relationships (using UUID entityDefinitionId)
  * const product = await fetchResourceWithRelationships(
- *   'entity_products:product-123', ['Variants'], 'org-456', db
+ *   'cm1abc123xyz:product-123', ['Variants'], 'org-456', db
  * )
  */
 export async function fetchResourceWithRelationships(
@@ -626,7 +626,7 @@ async function fetchHasManyCustomEntity(
  * await analyzePathForRelationships('ticket', 'contact.firstName', orgId, db)
  * // Returns: ["contact"]
  *
- * await analyzePathForRelationships('entity_products', 'Variants.first.Price', orgId, db)
+ * await analyzePathForRelationships('cm1abc123xyz', 'Variants.first.Price', orgId, db) // custom entity UUID
  * // Returns: ["Variants"]
  */
 export async function analyzePathForRelationships(

@@ -87,6 +87,8 @@ export function StepConfirmImport({ jobId, onComplete }: StepConfirmImportProps)
     onComplete: () => {
       setIsExecuting(false)
       utils.dataImport.getJob.invalidate({ jobId })
+      // Invalidate resource list cache so imported records appear immediately
+      utils.resource.listFiltered.invalidate()
     },
   })
 

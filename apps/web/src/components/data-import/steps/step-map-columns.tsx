@@ -146,6 +146,7 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
         jobId,
         columnIndex: existingMapping.sourceColumnIndex,
         targetFieldKey: null,
+        customFieldId: null,
         resolutionType: existingMapping.resolutionType,
       })
     }
@@ -155,6 +156,7 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
       jobId,
       columnIndex,
       targetFieldKey: fieldKey,
+      customFieldId: targetField?.id ?? null,
       resolutionType: finalResolutionType,
       matchField,
       relationConfig: targetField?.relationConfig,

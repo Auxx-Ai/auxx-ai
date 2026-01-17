@@ -48,12 +48,12 @@ export class ResourcePickerService {
 
   /**
    * Get paginated resources for picker
-   * Supports both system resources (TableId) and custom entities (entity_xxx)
+   * Supports both system resources (TableId) and custom entities (UUID-based)
    */
   async getResources(input: GetResourcesInput): Promise<PaginatedResourcesResult> {
     const { entityDefinitionId, limit, cursor, search, filters, skipCache } = input
 
-    // Check if it's a custom entity (entity_xxx format)
+    // Check if it's a custom entity (UUID-based entityDefinitionId)
     if (this.registryService.isCustomResource(entityDefinitionId)) {
       const resource = await this.registryService.getById(entityDefinitionId)
       if (!resource || !isCustomResource(resource)) {
@@ -101,12 +101,12 @@ export class ResourcePickerService {
 
   /**
    * Get single resource by ID
-   * Supports both system resources (TableId) and custom entities (entity_xxx)
+   * Supports both system resources (TableId) and custom entities (UUID-based)
    */
   async getResourceById(input: GetResourceByIdInput): Promise<ResourcePickerItem | null> {
     const { entityDefinitionId, id } = input
 
-    // Check if it's a custom entity (entity_xxx format)
+    // Check if it's a custom entity (UUID-based entityDefinitionId)
     if (this.registryService.isCustomResource(entityDefinitionId)) {
       const resource = await this.registryService.getById(entityDefinitionId)
       if (!resource || !isCustomResource(resource)) {
@@ -597,7 +597,7 @@ export class ResourcePickerService {
 
   /**
    * Get multiple resources by IDs (batch)
-   * Works with both system resources (TableId) and custom entities (entity_slug)
+   * Works with both system resources (TableId) and custom entities (UUID-based)
    *
    * @param resourceIds - Array of ResourceId (format: entityDefinitionId:entityInstanceId)
    * @returns Record keyed by ResourceId

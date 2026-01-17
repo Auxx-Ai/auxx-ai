@@ -226,6 +226,7 @@ export const dataImportRouter = createTRPCRouter({
         jobId: z.string(),
         columnIndex: z.number(),
         targetFieldKey: z.string().nullable(),
+        customFieldId: z.string().nullable().optional(),
         resolutionType: z.string(),
         matchField: z.string().optional(),
         relationConfig: z
@@ -258,6 +259,7 @@ export const dataImportRouter = createTRPCRouter({
         mappingId: job.importMappingId,
         columnIndex: input.columnIndex,
         targetFieldKey: input.targetFieldKey,
+        customFieldId: input.customFieldId ?? null,
         resolutionType: input.resolutionType,
         matchField: input.matchField,
         relationConfig: input.relationConfig,

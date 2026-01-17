@@ -7,3 +7,4 @@ export {
   type ProgressCallback,
 } from './progress-reporter'
 export { retryWithBackoff, type RetryOptions } from './retry-with-backoff'
+export { buildImportResourceId, buildImportResourceIds } from './resource-id'

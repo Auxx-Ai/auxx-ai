@@ -5,6 +5,7 @@ import {
   updateEntityInstance,
   deleteEntityInstance,
 } from '@auxx/services/entity-instances'
+import { isSystemModelType, toResourceId } from '@auxx/types/resource'
 import { publisher } from '../../../events'
 import type {
   EntityInstanceCreatedEvent,
@@ -21,7 +22,9 @@ import { setCustomFields } from '../utils/custom-fields'
  * Publishes events after successful operations.
  */
 export const entityHandler: ResourceHandler = {
-  supports: (resourceType) => resourceType.startsWith('entity_'),
+  // Custom entities use UUID (cuid2) as entityDefinitionId
+  // System resources use known ModelType values like 'contact', 'ticket'
+  supports: (resourceType) => !isSystemModelType(resourceType) && resourceType.length >= 20,
 
   async create(data: TransformedData, ctx: CrudContext): Promise<CrudResult> {
     const { standardFields, customFields } = data
@@ -51,7 +54,8 @@ export const entityHandler: ResourceHandler = {
 
     // Set custom fields in batch
     if (Object.keys(customFields).length > 0) {
-      await setCustomFields(record.id, customFields, entityDefinitionId, ctx)
+      const resourceId = toResourceId(entityDefinitionId, record.id)
+      await setCustomFields(resourceId, customFields, ctx)
     }
 
     // Publish event
@@ -97,7 +101,8 @@ export const entityHandler: ResourceHandler = {
 
     // Set custom fields in batch
     if (Object.keys(customFields).length > 0) {
-      await setCustomFields(id, customFields, entityDefinitionId, ctx)
+      const resourceId = toResourceId(entityDefinitionId, id)
+      await setCustomFields(resourceId, customFields, ctx)
     }
 
     // Publish event

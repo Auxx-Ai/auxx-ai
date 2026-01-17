@@ -1,6 +1,15 @@
 // packages/lib/src/import/types/index.ts
 
 export {
+  type EntityDefinitionId,
+  type EntityInstanceId,
+  type FieldId,
+  type ResourceId,
+  isSystemModelType,
+  isCustomEntityDefinitionId,
+} from './identifiers'
+
+export {
   type ImportJobStatus,
   type ImportJob,
   type ImportStatistics,

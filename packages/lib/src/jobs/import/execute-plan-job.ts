@@ -5,6 +5,7 @@ import { database as db } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { getPublishingClient } from '@auxx/redis'
 import { createScopedLogger } from '@auxx/logger'
+import { toResourceId } from '@auxx/types/resource'
 import type { Job } from 'bullmq'
 import {
   executePlan,
@@ -15,7 +16,8 @@ import {
   getAllJobResolutions,
 } from '../../import'
 import type { ImportMappingProperty, ImportPlan } from '../../import/types'
-import { ResourceCrudService } from '../../resources/crud'
+import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
+import { invalidateSnapshots } from '../../snapshot'
 
 const logger = createScopedLogger('execute-plan-job')
 
@@ -97,29 +99,35 @@ export async function executePlanJob(job: Job<ExecutePlanJobProps>): Promise<voi
     const resolutions = await getAllJobResolutions(db, jobId)
     logger.debug('Loaded resolutions', { jobId, count: resolutions.size })
 
-    // Create CRUD service and record functions
-    const crudService = new ResourceCrudService(db, organizationId, userId)
+    // Create CRUD handler and pre-warm caches
+    const crudHandler = new UnifiedCrudHandler(organizationId, userId, db)
     const entityDefinitionId = importJob.importMapping.entityDefinitionId
+
+    // Pre-warm caches once for entire import (avoids N queries for N records)
+    await crudHandler.warmCache(entityDefinitionId)
+    logger.debug('Cache warmed for import', { entityDefinitionId })
 
     const createRecord = async (data: {
       standardFields: Record<string, unknown>
       customFields: Record<string, unknown>
     }) => {
-      // Merge fields - transformData() will separate them correctly
-      // Custom fields are keyed by field ID (CUID2), which transformData detects
+      logger.debug('createRecord called', { entityDefinitionId })
+
+      // Merge fields - UnifiedCrudHandler handles field routing internally
       const mergedData: Record<string, unknown> = {
         ...data.standardFields,
         ...data.customFields,
       }
 
-      const result = await crudService.create(entityDefinitionId, mergedData, { skipEvents: true })
+      // Use UnifiedCrudHandler with skipEvents and skipSnapshotInvalidation
+      // Snapshot will be invalidated once at the end of the import
+      const instance = await crudHandler.create(entityDefinitionId, mergedData, {
+        skipEvents: true,
+        skipSnapshotInvalidation: true,
+      })
 
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to create record')
-      }
-
-      logger.debug('Created record', { id: result.id, entityDefinitionId })
-      return { id: result.id }
+      logger.debug('Created record', { id: instance.id, entityDefinitionId })
+      return { id: instance.id }
     }
 
     const updateRecord = async (
@@ -129,19 +137,28 @@ export async function executePlanJob(job: Job<ExecutePlanJobProps>): Promise<voi
         customFields: Record<string, unknown>
       }
     ) => {
+      logger.debug('updateRecord called', { id, entityDefinitionId, hasId: !!id })
+
+      if (!id) {
+        throw new Error(`updateRecord called with invalid id: ${id}`)
+      }
+
       const mergedData: Record<string, unknown> = {
         ...data.standardFields,
         ...data.customFields,
       }
 
-      const result = await crudService.update(entityDefinitionId, id, mergedData, { skipEvents: true })
+      const resourceId = toResourceId(entityDefinitionId, id)
+      logger.debug('Calling crudHandler.update', { resourceId, entityDefinitionId, id })
 
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to update record')
-      }
+      // Use UnifiedCrudHandler with skipEvents and skipSnapshotInvalidation
+      const instance = await crudHandler.update(resourceId, mergedData, {
+        skipEvents: true,
+        skipSnapshotInvalidation: true,
+      })
 
-      logger.debug('Updated record', { id, entityDefinitionId })
-      return { id: result.id }
+      logger.debug('Updated record', { resourceId, entityDefinitionId })
+      return { id: instance.id }
     }
 
     // Execute the plan
@@ -179,6 +196,14 @@ export async function executePlanJob(job: Job<ExecutePlanJobProps>): Promise<voi
         })
       },
     })
+
+    // Invalidate snapshots ONCE after all records processed
+    // This ensures the listFiltered cache is updated with the new records
+    await invalidateSnapshots({
+      organizationId,
+      resourceType: entityDefinitionId,
+    })
+    logger.debug('Invalidated snapshots after import', { entityDefinitionId })
 
     // Mark job as completed
     await markJobCompleted(db, jobId, result.statistics)

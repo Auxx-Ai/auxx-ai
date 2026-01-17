@@ -17,6 +17,12 @@ export function parseResourceId(resourceId: ResourceId): {
   entityDefinitionId: string
   entityInstanceId: string
 } {
+  // Defensive check for undefined/null
+  if (!resourceId) {
+    console.error('[parseResourceId] ResourceId is undefined or null:', resourceId)
+    return { entityDefinitionId: '', entityInstanceId: '' }
+  }
+
   const colonIndex = resourceId.indexOf(':')
   if (colonIndex === -1) {
     console.error('[parseResourceId] Malformed ResourceId (missing colon):', resourceId)

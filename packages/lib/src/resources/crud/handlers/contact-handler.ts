@@ -2,6 +2,7 @@
 
 import * as contactDb from '@auxx/services/contacts'
 import type { UpdateContactInput } from '@auxx/services/contacts'
+import { toResourceId } from '@auxx/types/resource'
 import { publisher } from '../../../events'
 import type {
   ContactCreatedEvent,
@@ -60,7 +61,8 @@ export const contactHandler: ResourceHandler = {
 
     // Set custom fields in batch
     if (Object.keys(customFields).length > 0) {
-      await setCustomFields(contact.id, customFields, 'contact', ctx)
+      const resourceId = toResourceId('contact', contact.id)
+      await setCustomFields(resourceId, customFields, ctx)
     }
 
     // Publish event
@@ -126,7 +128,8 @@ export const contactHandler: ResourceHandler = {
 
     // Set custom fields in batch
     if (Object.keys(customFields).length > 0) {
-      await setCustomFields(id, customFields, 'contact', ctx)
+      const resourceId = toResourceId('contact', id)
+      await setCustomFields(resourceId, customFields, ctx)
     }
 
     // Publish event if changes occurred

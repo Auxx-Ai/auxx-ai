@@ -1,17 +1,13 @@
 // packages/lib/src/resources/crud/resource-crud-service.ts
 
 import type { Database } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
+import { parseResourceId, type ResourceId } from '@auxx/types/resource'
 import { ResourceRegistryService } from '../registry/resource-registry-service'
 import { getHandler } from './handlers'
-import type {
-  CrudContext,
-  CrudResult,
-  TransformedData,
-  BulkResult,
-  CreateRecordOptions,
-  UpdateRecordOptions,
-  FindByFieldOptions,
-} from './types'
+import type { CrudContext, CrudResult, TransformedData, BulkResult } from './types'
+
+const logger = createScopedLogger('resource-crud-service')
 
 /**
  * Unified CRUD service for all resource types.
@@ -32,114 +28,101 @@ export class ResourceCrudService {
 
   /**
    * Create a new record
+   * @param entityDefinitionId - Entity definition ID (e.g., 'contact' or custom entity UUID)
+   * @param data - Field data to create the record with
+   * @param options - Additional options (userId, skipEvents)
    */
   async create(
-    resourceType: string,
+    entityDefinitionId: string,
     data: Record<string, unknown>,
     options: { userId?: string; skipEvents?: boolean } = {}
   ): Promise<CrudResult> {
-    const handler = getHandler(resourceType)
+    logger.debug('create called', { entityDefinitionId })
+
+    const handler = getHandler(entityDefinitionId)
     if (!handler) {
-      return { success: false, error: `No handler for resource: ${resourceType}` }
+      logger.error('No handler found for create', { entityDefinitionId })
+      return { success: false, error: `No handler for resource: ${entityDefinitionId}` }
     }
 
-    const transformed = await this.transformData(resourceType, data)
+    logger.debug('Found handler for create', { entityDefinitionId, handlerExists: !!handler })
+
+    const transformed = await this.transformData(entityDefinitionId, data)
     const ctx = this.buildContext(options)
 
     return handler.create(transformed, ctx)
   }
 
   /**
-   * Create using the legacy CreateRecordOptions format
-   * @deprecated Use create(resourceType, data, options) instead
-   */
-  async createWithOptions(
-    resourceType: string,
-    options: CreateRecordOptions
-  ): Promise<CrudResult> {
-    const handler = getHandler(resourceType)
-    if (!handler) {
-      return { success: false, error: `No handler for resource: ${resourceType}` }
-    }
-
-    const transformed: TransformedData = {
-      standardFields: options.standardFields,
-      customFields: options.customFields ?? {},
-    }
-    const ctx = this.buildContext({})
-
-    return handler.create(transformed, ctx)
-  }
-
-  /**
-   * Update an existing record
+   * Update an existing record using ResourceId
+   * @param resourceId - Full ResourceId (entityDefinitionId:entityInstanceId)
+   * @param data - Field data to update
+   * @param options - Additional options (userId, skipEvents)
    */
   async update(
-    resourceType: string,
-    id: string,
+    resourceId: ResourceId,
     data: Record<string, unknown>,
     options: { userId?: string; skipEvents?: boolean } = {}
   ): Promise<CrudResult> {
-    const handler = getHandler(resourceType)
-    if (!handler) {
-      return { success: false, error: `No handler for resource: ${resourceType}` }
+    logger.debug('update called', { resourceId, hasResourceId: !!resourceId })
+
+    const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+
+    logger.debug('update parsed resourceId', { entityDefinitionId, entityInstanceId })
+
+    if (!entityDefinitionId) {
+      return { success: false, error: `Invalid resourceId - no entityDefinitionId: ${resourceId}` }
+    }
+    if (!entityInstanceId) {
+      return { success: false, error: `Invalid resourceId - no entityInstanceId: ${resourceId}` }
     }
 
-    const transformed = await this.transformData(resourceType, data)
+    const handler = getHandler(entityDefinitionId)
+    if (!handler) {
+      logger.error('No handler found', { entityDefinitionId })
+      return { success: false, error: `No handler for resource: ${entityDefinitionId}` }
+    }
+
+    const transformed = await this.transformData(entityDefinitionId, data)
     const ctx = this.buildContext(options)
 
-    return handler.update(id, transformed, ctx)
+    return handler.update(entityInstanceId, transformed, ctx)
   }
 
   /**
-   * Update using the legacy UpdateRecordOptions format
-   * @deprecated Use update(resourceType, id, data, options) instead
-   */
-  async updateWithOptions(
-    resourceType: string,
-    options: UpdateRecordOptions
-  ): Promise<CrudResult> {
-    const handler = getHandler(resourceType)
-    if (!handler) {
-      return { success: false, error: `No handler for resource: ${resourceType}` }
-    }
-
-    const transformed: TransformedData = {
-      standardFields: options.standardFields,
-      customFields: options.customFields ?? {},
-    }
-    const ctx = this.buildContext({})
-
-    return handler.update(options.id, transformed, ctx)
-  }
-
-  /**
-   * Delete a record
+   * Delete a record using ResourceId
+   * @param resourceId - Full ResourceId (entityDefinitionId:entityInstanceId)
+   * @param options - Additional options (userId, skipEvents)
    */
   async delete(
-    resourceType: string,
-    id: string,
+    resourceId: ResourceId,
     options: { userId?: string; skipEvents?: boolean } = {}
   ): Promise<CrudResult> {
-    const handler = getHandler(resourceType)
+    const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+
+    const handler = getHandler(entityDefinitionId)
     if (!handler) {
-      return { success: false, error: `No handler for resource: ${resourceType}` }
+      return { success: false, error: `No handler for resource: ${entityDefinitionId}` }
     }
 
     const ctx = this.buildContext(options)
-    return handler.delete(id, ctx)
+    return handler.delete(entityInstanceId, ctx)
   }
 
   /**
    * Find record by unique field value
+   * @param entityDefinitionId - Entity definition ID (e.g., 'contact' or custom entity UUID)
+   * @param fieldKey - Field key to match on
+   * @param value - Value to search for
+   * @param options - Additional options (userId)
    */
   async findByField(
-    resourceType: string,
+    entityDefinitionId: string,
     fieldKey: string,
     value: string,
     options: { userId?: string } = {}
   ): Promise<string | null> {
-    const handler = getHandler(resourceType)
+    const handler = getHandler(entityDefinitionId)
     if (!handler?.findByField) {
       return null
     }
@@ -149,25 +132,17 @@ export class ResourceCrudService {
   }
 
   /**
-   * Find record by field using legacy FindByFieldOptions format
-   * @deprecated Use findByField(resourceType, fieldKey, value) instead
-   */
-  async findByFieldWithOptions(
-    resourceType: string,
-    options: FindByFieldOptions
-  ): Promise<string | null> {
-    return this.findByField(resourceType, options.fieldKey, options.value)
-  }
-
-  /**
    * Bulk create records
+   * @param entityDefinitionId - Entity definition ID (e.g., 'contact' or custom entity UUID)
+   * @param records - Array of record data to create
+   * @param options - Additional options (userId, skipEvents)
    */
   async bulkCreate(
-    resourceType: string,
+    entityDefinitionId: string,
     records: Array<Record<string, unknown>>,
     options: { userId?: string; skipEvents?: boolean } = {}
   ): Promise<BulkResult> {
-    const handler = getHandler(resourceType)
+    const handler = getHandler(entityDefinitionId)
     if (!handler) {
       return {
         total: records.length,
@@ -175,7 +150,7 @@ export class ResourceCrudService {
         failed: records.length,
         results: records.map((_, i) => ({
           success: false as const,
-          error: `No handler for resource: ${resourceType}`,
+          error: `No handler for resource: ${entityDefinitionId}`,
           index: i,
         })),
       }
@@ -185,7 +160,7 @@ export class ResourceCrudService {
 
     // Transform all records
     const transformed = await Promise.all(
-      records.map((r) => this.transformData(resourceType, r))
+      records.map((r) => this.transformData(entityDefinitionId, r))
     )
 
     // Use handler's bulk method if available
@@ -209,36 +184,40 @@ export class ResourceCrudService {
   }
 
   /**
-   * Bulk update records
+   * Bulk update records using ResourceId in each record
+   * @param records - Array of { resourceId, data } to update
+   * @param options - Additional options (userId, skipEvents)
    */
   async bulkUpdate(
-    resourceType: string,
-    records: Array<{ id: string; data: Record<string, unknown> }>,
+    records: Array<{ resourceId: ResourceId; data: Record<string, unknown> }>,
     options: { userId?: string; skipEvents?: boolean } = {}
   ): Promise<BulkResult> {
-    const handler = getHandler(resourceType)
-    if (!handler) {
-      return {
-        total: records.length,
-        succeeded: 0,
-        failed: records.length,
-        results: records.map((_, i) => ({
-          success: false as const,
-          error: `No handler for resource: ${resourceType}`,
-          index: i,
-        })),
-      }
+    if (records.length === 0) {
+      return { total: 0, succeeded: 0, failed: 0, results: [] }
     }
 
     const ctx = this.buildContext({ ...options, skipEvents: true })
-
     const results: Array<CrudResult & { index: number }> = []
     let succeeded = 0
     let failed = 0
 
     for (let i = 0; i < records.length; i++) {
-      const transformed = await this.transformData(resourceType, records[i]!.data)
-      const result = await handler.update(records[i]!.id, transformed, ctx)
+      const { resourceId, data } = records[i]!
+      const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+
+      const handler = getHandler(entityDefinitionId)
+      if (!handler) {
+        results.push({
+          success: false,
+          error: `No handler for resource: ${entityDefinitionId}`,
+          index: i,
+        })
+        failed++
+        continue
+      }
+
+      const transformed = await this.transformData(entityDefinitionId, data)
+      const result = await handler.update(entityInstanceId, transformed, ctx)
       results.push({ ...result, index: i })
       if (result.success) succeeded++
       else failed++
@@ -265,10 +244,10 @@ export class ResourceCrudService {
    * Separates standard fields from custom fields.
    */
   private async transformData(
-    resourceType: string,
+    entityDefinitionId: string,
     data: Record<string, unknown>
   ): Promise<TransformedData> {
-    const resource = await this.registry.getById(resourceType)
+    const resource = await this.registry.getById(entityDefinitionId)
     if (!resource) {
       // Unknown resource - treat all as standard fields
       return { standardFields: data, customFields: {} }

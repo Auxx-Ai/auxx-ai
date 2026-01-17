@@ -91,7 +91,7 @@ function RootStack<TData = any>() {
     })
 
     // Apply column order if exists
-    if (columnOrder.length === 0) {
+    if (!columnOrder || columnOrder.length === 0) {
       return visible // No order defined, use natural order
     }
 
@@ -117,7 +117,7 @@ function RootStack<TData = any>() {
   const handleRemoveColumn = useCallback(
     (columnId: string) => {
       setColumnVisibility({
-        ...columnVisibility,
+        ...(columnVisibility ?? {}),
         [columnId]: false,
       })
     },
@@ -272,7 +272,7 @@ function ColumnOptionsDropdown<TData = any>({
           fieldType={fieldType as FormattableFieldType}
           currentFormatting={columnFormatting[column.id]}
           defaultFormatting={columnDef.defaultFormatting}
-          onSave={(formatting) => setColumnFormatting(column.id, formatting)}
+          onSave={(formatting) => setColumnFormatting({ ...columnFormatting, [column.id]: formatting })}
         />
       )}
     </>
@@ -334,13 +334,13 @@ function AddColumnStack<TData = any>({ onCreateField }: { onCreateField: () => v
   const handleAddColumn = useCallback(
     (columnId: string) => {
       setColumnVisibility({
-        ...columnVisibility,
+        ...(columnVisibility ?? {}),
         [columnId]: true,
       })
 
       // Add to column order if not already there
-      if (!columnOrder.includes(columnId)) {
-        setColumnOrder([...columnOrder, columnId])
+      if (!columnOrder?.includes(columnId)) {
+        setColumnOrder([...(columnOrder ?? []), columnId])
       }
     },
     [columnVisibility, columnOrder, setColumnVisibility, setColumnOrder]
@@ -433,13 +433,13 @@ export function ColumnManager<TData = any>() {
 
           // Update visibility
           setColumnVisibility({
-            ...columnVisibility,
+            ...(columnVisibility ?? {}),
             [fieldColumnId]: true, // Show the new field
           })
 
           // Add to column order if not already there
-          if (!columnOrder.includes(fieldColumnId)) {
-            setColumnOrder([...columnOrder, fieldColumnId])
+          if (!columnOrder?.includes(fieldColumnId)) {
+            setColumnOrder([...(columnOrder ?? []), fieldColumnId])
           }
         }
 

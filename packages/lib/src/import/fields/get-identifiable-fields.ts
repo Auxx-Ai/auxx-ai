@@ -28,14 +28,18 @@ export function getIdentifiableFields(resource: Resource): ImportableField[] {
       // Include known system identifier fields
       return IDENTIFIER_FIELD_KEYS.has(field.key)
     })
-    .map((field) => ({
-      key: field.key,
-      id: field.id,
-      label: field.key === 'id' ? 'Record ID' : field.label,
-      type: field.type,
-      required: false,
-      isRelation: !!field.relationship,
-      isIdentifier: true,
-      group: 'identifier' as const,
-    }))
+    .map((field) => {
+      // Custom fields have UUID id different from key; system fields have id === key
+      const isCustomField = !field.isSystem && field.id !== field.key
+      return {
+        key: field.key,
+        id: isCustomField ? field.id : undefined,
+        label: field.key === 'id' ? 'Record ID' : field.label,
+        type: field.type,
+        required: false,
+        isRelation: !!field.relationship,
+        isIdentifier: true,
+        group: 'identifier' as const,
+      }
+    })
 }

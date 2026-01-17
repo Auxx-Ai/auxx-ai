@@ -22,6 +22,7 @@ export interface SaveMappingInput {
   mappingId: string
   columnIndex: number
   targetFieldKey: string | null
+  customFieldId: string | null
   resolutionType: string
   matchField?: string
   relationConfig?: RelationConfig
@@ -58,6 +59,7 @@ export async function saveMappingProperty(
     .update(schema.ImportMappingProperty)
     .set({
       targetFieldKey: input.targetFieldKey,
+      customFieldId: input.customFieldId,
       targetType: input.targetFieldKey ? 'particle' : 'skip',
       resolutionType: input.resolutionType,
       resolutionConfig,
@@ -83,6 +85,7 @@ export interface AutoMapUpdateInput {
   mappings: Array<{
     columnIndex: number
     matchedFieldKey: string | null
+    customFieldId: string | null
     resolutionType: string
     enumValues?: EnumValue[]
   }>
@@ -111,6 +114,7 @@ export async function batchUpdateMappingsFromAutoMap(
       .update(schema.ImportMappingProperty)
       .set({
         targetFieldKey: mapping.matchedFieldKey,
+        customFieldId: mapping.customFieldId,
         targetType: mapping.matchedFieldKey ? 'particle' : 'skip',
         resolutionType: mapping.resolutionType,
         resolutionConfig,

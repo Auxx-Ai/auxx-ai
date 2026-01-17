@@ -1,7 +1,9 @@
 // packages/lib/src/resources/crud/index.ts
 
-// Main service
+// Main services
 export { ResourceCrudService } from './resource-crud-service'
+export { UnifiedCrudHandler } from './unified-handler'
+export type { CrudOptions } from './unified-handler'
 
 // Types
 export {

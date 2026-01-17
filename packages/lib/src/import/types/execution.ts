@@ -1,13 +1,17 @@
 // packages/lib/src/import/types/execution.ts
 
 import type { Database } from '@auxx/database'
+import type { ResourceId } from '@auxx/types/resource'
 import type { StrategyType } from './plan'
 
 /** Single row execution result */
 export interface RowExecutionResult {
   rowIndex: number
   success: boolean
+  /** Instance ID of the created/updated record */
   recordId?: string
+  /** Full ResourceId (entityDefinitionId:recordId) - computed from context */
+  resourceId?: ResourceId
   error?: string
 }
 
@@ -22,6 +26,8 @@ export interface BatchExecutionResult {
 export interface ExecutionResult {
   planId: string
   status: 'completed' | 'partial' | 'failed'
+  /** Target entity definition for this import */
+  entityDefinitionId?: string
   statistics: {
     created: number
     updated: number
@@ -40,6 +46,7 @@ export interface ExecutionContext {
   db: Database
   organizationId: string
   userId: string
+  /** Entity definition ID for the import target */
   entityDefinitionId: string
   onProgress?: (progress: ExecutionProgress) => void
 }

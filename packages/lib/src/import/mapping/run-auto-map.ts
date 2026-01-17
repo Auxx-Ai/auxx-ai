@@ -29,6 +29,7 @@ export interface RunAutoMapResult {
   mappings: Array<{
     columnIndex: number
     targetFieldKey: string | null
+    customFieldId: string | null
     resolutionType: string
   }>
   usedAI: boolean
@@ -76,11 +77,12 @@ export async function runAutoMap(
     }
   )
 
-  // 5. Enrich mappings with enumValues from field definitions
-  const mappingsWithEnumValues = mappingResult.mappings.map((m) => {
+  // 5. Enrich mappings with customFieldId and enumValues from field definitions
+  const mappingsWithFieldData = mappingResult.mappings.map((m) => {
     const field = fields.find((f) => f.key === m.matchedFieldKey)
     return {
       ...m,
+      customFieldId: field?.id ?? null,
       enumValues: field?.enumValues,
     }
   })
@@ -88,14 +90,15 @@ export async function runAutoMap(
   // 6. Save auto-mapped results to database
   await batchUpdateMappingsFromAutoMap(db, {
     mappingId: importMappingId,
-    mappings: mappingsWithEnumValues,
+    mappings: mappingsWithFieldData,
   })
 
   // 7. Return result for API response
   return {
-    mappings: mappingResult.mappings.map((m) => ({
+    mappings: mappingsWithFieldData.map((m) => ({
       columnIndex: m.columnIndex,
       targetFieldKey: m.matchedFieldKey,
+      customFieldId: m.customFieldId,
       resolutionType: m.resolutionType,
     })),
     usedAI: mappingResult.usedAI,

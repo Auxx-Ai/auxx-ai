@@ -54,7 +54,7 @@ import { useCustomFieldValueSyncer } from '~/components/resources/hooks/use-cust
 import {
   useTableFilters,
   useTableSorting,
-  useColumnOrder,
+  useColumnVisibility,
 } from '~/components/dynamic-table/stores/store-selectors'
 import { useRecordList, useResource, toResourceId, type RecordMeta } from '~/components/resources'
 import { isCustomResource, type ResourceField, type ResourceId } from '@auxx/lib/resources/client'
@@ -162,16 +162,19 @@ export function EntityRecordsContent() {
   // Get filters and sorting directly from store (already merged saved + pending)
   const viewFilters = useTableFilters(tableId)
   const viewSorting = useTableSorting(tableId)
-  const columnOrder = useColumnOrder(tableId)
+  const storeColumnVisibility = useColumnVisibility(tableId)
 
   // Convert to formats expected by useRecordList
   const filtersForQuery = viewFilters.length > 0 ? viewFilters : undefined
   const sortingForQuery = viewSorting.length > 0 ? viewSorting : undefined
 
+  // Check if store config is initialized (undefined = not ready yet)
+  const isConfigReady = storeColumnVisibility !== undefined
+
   // ══════════════════════════════════════════════════════════════════════════
   // DATA FETCHING
   // ══════════════════════════════════════════════════════════════════════════
-  console.log(viewFilters, viewSorting, columnOrder)
+
   // Query entity instances using unified record list
   const {
     items,
@@ -186,7 +189,7 @@ export function EntityRecordsContent() {
     filters: filtersForQuery,
     sorting: sortingForQuery,
     limit: PAGE_SIZE,
-    enabled: !!entityDefinitionId && columnOrder.length > 0,
+    enabled: !!entityDefinitionId && isConfigReady,
   })
 
   // Handle scroll to bottom - load more data

@@ -60,37 +60,44 @@ export function getImportableFields(
   // 2. Add creatable scalar fields
   const scalarFields = resource.fields
     .filter((field) => field.capabilities.creatable && !field.relationship)
-    .map((field) => ({
-      key: field.key,
-      id: field.id,
-      label: field.label,
-      type: field.type,
-      required: field.capabilities.required,
-      isRelation: false,
-      isIdentifier: false,
-      group: (field.id ? 'custom' : 'system') as FieldGroup,
-      enumValues: field.enumValues,
-    }))
+    .map((field) => {
+      // Custom fields have UUID id different from key; system fields have id === key
+      const isCustomField = !field.isSystem && field.id !== field.key
+      return {
+        key: field.key,
+        id: isCustomField ? field.id : undefined,
+        label: field.label,
+        type: field.type,
+        required: field.capabilities.required,
+        isRelation: false,
+        isIdentifier: false,
+        group: (isCustomField ? 'custom' : 'system') as FieldGroup,
+        enumValues: field.enumValues,
+      }
+    })
   fields.push(...scalarFields)
 
   // 3. Add relationship fields if requested
   if (includeRelationships) {
     const relationFields = resource.fields
       .filter((field) => field.capabilities.creatable && field.relationship)
-      .map((field) => ({
-        key: field.key,
-        id: field.id,
-        label: field.label,
-        type: field.type,
-        required: field.capabilities.required,
-        isRelation: true,
-        isIdentifier: false,
-        group: 'relationship' as FieldGroup,
-        relationConfig: {
-          relatedEntityDefinitionId: field.relationship!.relatedEntityDefinitionId,
-          relationshipType: field.relationship!.relationshipType,
-        },
-      }))
+      .map((field) => {
+        const isCustomField = !field.isSystem && field.id !== field.key
+        return {
+          key: field.key,
+          id: isCustomField ? field.id : undefined,
+          label: field.label,
+          type: field.type,
+          required: field.capabilities.required,
+          isRelation: true,
+          isIdentifier: false,
+          group: 'relationship' as FieldGroup,
+          relationConfig: {
+            relatedEntityDefinitionId: field.relationship!.relatedEntityDefinitionId,
+            relationshipType: field.relationship!.relationshipType,
+          },
+        }
+      })
     fields.push(...relationFields)
   }
 
