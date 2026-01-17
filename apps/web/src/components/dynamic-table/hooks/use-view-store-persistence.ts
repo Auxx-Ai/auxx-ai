@@ -6,9 +6,7 @@ import { api } from '~/trpc/react'
 import { useDynamicTableStore } from '../stores/dynamic-table-store'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
 import { toastError } from '@auxx/ui/components/toast'
-
-/** Debounce delay for auto-save (ms) */
-const SAVE_DEBOUNCE_MS = 300
+import { DYNAMIC_TABLE_CONFIG } from '../config/table-config'
 
 /**
  * Hook that manages persistence between the unified store and API.
@@ -87,12 +85,14 @@ export function useViewStorePersistence(viewId: string | null, tableId: string) 
   ])
 
   /** Debounced save - called automatically when config changes */
-  const debouncedSave = useDebouncedCallback(saveView, SAVE_DEBOUNCE_MS)
+  const debouncedSave = useDebouncedCallback(saveView, DYNAMIC_TABLE_CONFIG.AUTO_SAVE_DEBOUNCE_MS)
 
   // ─── AUTO-SAVE TRIGGER ──────────────────────────────────────────────────────
-  // Auto-save when dirty state changes
+  // Auto-save when dirty state changes (only if auto-save is enabled)
   useEffect(() => {
     if (!viewId) return
+    // Skip auto-save if disabled - user must manually click save
+    if (!DYNAMIC_TABLE_CONFIG.AUTO_SAVE_ENABLED) return
     if (isDirty) {
       debouncedSave()
     }
@@ -105,8 +105,11 @@ export function useViewStorePersistence(viewId: string | null, tableId: string) 
     }
   }, [debouncedSave])
 
+  // Subscribe to isSaving state for reactivity
+  const isSaving = useDynamicTableStore((state) => (viewId ? state.isSaving(viewId) : false))
+
   return {
     saveView, // Immediate save (for explicit save button)
-    isSaving: viewId ? useDynamicTableStore.getState().isSaving(viewId) : false,
+    isSaving,
   }
 }

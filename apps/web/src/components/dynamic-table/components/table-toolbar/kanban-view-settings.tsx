@@ -27,12 +27,11 @@ import {
 } from '@auxx/ui/components/command'
 import { useTableConfig } from '../../context/table-config-context'
 import { useViewMetadata } from '../../context/view-metadata-context'
-import { useDynamicTableStore } from '../../stores/dynamic-table-store'
+import { useKanbanConfig } from '../../stores/store-selectors'
+import { useUpdateKanbanConfig } from '../../stores/store-actions'
 import { Tooltip } from '~/components/global/tooltip'
-import type { ViewConfig } from '../../types'
 import { getColorSwatch } from '@auxx/lib/custom-fields/client'
 import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
-import type { FieldType } from '@auxx/database/types'
 import { cn } from '@auxx/ui/lib/utils'
 import { EntityIcon } from '@auxx/ui/components/icons'
 
@@ -57,17 +56,10 @@ function RootStack() {
   const { tableId } = useTableConfig()
   const { customFields, selectFields } = useViewMetadata()
 
-  // Get current view and kanban config from stores
-  const activeViewId = useDynamicTableStore((state) => state.activeViewIds[tableId])
-  const currentView = useDynamicTableStore((state) => {
-    if (!activeViewId) return null
-    const views = state.viewsByTableId[tableId] ?? []
-    return views.find((v) => v.id === activeViewId) ?? null
-  })
+  // Get kanban config from centralized selectors/actions
+  const kanbanConfig = useKanbanConfig(tableId)
+  const updateKanbanConfig = useUpdateKanbanConfig(tableId)
 
-  const updateKanbanConfig = useDynamicTableStore((state) => state.updateKanbanConfig)
-
-  const kanbanConfig = (currentView?.config as ViewConfig)?.kanban
   const cardFields = kanbanConfig?.cardFields ?? []
 
   /** Get grouped by field name for display */
@@ -86,21 +78,19 @@ function RootStack() {
   /** Handle card fields reorder (optimistic via store) */
   const handleCardFieldsReorder = useCallback(
     (newOrder: string[]) => {
-      if (!currentView?.id) return
-      updateKanbanConfig(currentView.id, { cardFields: newOrder })
+      updateKanbanConfig({ cardFields: newOrder })
     },
-    [currentView?.id, updateKanbanConfig]
+    [updateKanbanConfig]
   )
 
   /** Handle removing a card field (optimistic via store) */
   const handleRemoveCardField = useCallback(
     (fieldId: string) => {
-      if (!currentView?.id) return
-      updateKanbanConfig(currentView.id, {
+      updateKanbanConfig({
         cardFields: cardFields.filter((id) => id !== fieldId),
       })
     },
-    [currentView?.id, cardFields, updateKanbanConfig]
+    [cardFields, updateKanbanConfig]
   )
 
   return (
@@ -181,30 +171,21 @@ function PipelineSelectionStack() {
   const { tableId } = useTableConfig()
   const { selectFields } = useViewMetadata()
 
-  // Get current view from store
-  const activeViewId = useDynamicTableStore((state) => state.activeViewIds[tableId])
-  const currentView = useDynamicTableStore((state) => {
-    if (!activeViewId) return null
-    const views = state.viewsByTableId[tableId] ?? []
-    return views.find((v) => v.id === activeViewId) ?? null
-  })
-
-  const updateKanbanConfig = useDynamicTableStore((state) => state.updateKanbanConfig)
-  const kanbanConfig = (currentView?.config as ViewConfig)?.kanban
+  // Get current view and kanban config from centralized selectors/actions
+  const kanbanConfig = useKanbanConfig(tableId)
+  const updateKanbanConfig = useUpdateKanbanConfig(tableId)
 
   /** Handle selecting a field */
   const handleSelectField = useCallback(
     (fieldId: string) => {
-      if (!currentView?.id) return
-
       // Reset column order when changing field
-      updateKanbanConfig(currentView.id, {
+      updateKanbanConfig({
         groupByFieldId: fieldId,
         columnOrder: [],
         columnSettings: {},
       })
     },
-    [currentView?.id, updateKanbanConfig]
+    [updateKanbanConfig]
   )
 
   return (
@@ -239,16 +220,9 @@ function VisibleColumnsStack() {
   const { tableId } = useTableConfig()
   const { selectFields } = useViewMetadata()
 
-  // Get current view from store
-  const activeViewId = useDynamicTableStore((state) => state.activeViewIds[tableId])
-  const currentView = useDynamicTableStore((state) => {
-    if (!activeViewId) return null
-    const views = state.viewsByTableId[tableId] ?? []
-    return views.find((v) => v.id === activeViewId) ?? null
-  })
-
-  const updateKanbanConfig = useDynamicTableStore((state) => state.updateKanbanConfig)
-  const kanbanConfig = (currentView?.config as ViewConfig)?.kanban
+  // Get kanban config from centralized selectors/actions
+  const kanbanConfig = useKanbanConfig(tableId)
+  const updateKanbanConfig = useUpdateKanbanConfig(tableId)
 
   /** Get the groupBy field and its options (stages) */
   const groupByField = useMemo(() => {
@@ -261,16 +235,14 @@ function VisibleColumnsStack() {
   /** Handle toggling a column's visibility */
   const handleToggleColumn = useCallback(
     (columnId: string, isVisible: boolean) => {
-      if (!currentView?.id) return
-
-      updateKanbanConfig(currentView.id, {
+      updateKanbanConfig({
         columnSettings: {
           ...columnSettings,
           [columnId]: { ...columnSettings[columnId], isVisible },
         },
       })
     },
-    [currentView?.id, columnSettings, updateKanbanConfig]
+    [columnSettings, updateKanbanConfig]
   )
 
   if (!groupByField) {
@@ -319,16 +291,9 @@ function AddCardFieldStack() {
   const { tableId } = useTableConfig()
   const { customFields } = useViewMetadata()
 
-  // Get current view from store
-  const activeViewId = useDynamicTableStore((state) => state.activeViewIds[tableId])
-  const currentView = useDynamicTableStore((state) => {
-    if (!activeViewId) return null
-    const views = state.viewsByTableId[tableId] ?? []
-    return views.find((v) => v.id === activeViewId) ?? null
-  })
-
-  const updateKanbanConfig = useDynamicTableStore((state) => state.updateKanbanConfig)
-  const kanbanConfig = (currentView?.config as ViewConfig)?.kanban
+  // Get kanban config from centralized selectors/actions
+  const kanbanConfig = useKanbanConfig(tableId)
+  const updateKanbanConfig = useUpdateKanbanConfig(tableId)
   const [search, setSearch] = useState('')
 
   const cardFields = kanbanConfig?.cardFields ?? []
@@ -349,13 +314,11 @@ function AddCardFieldStack() {
   /** Handle adding a field */
   const handleAddField = useCallback(
     (fieldId: string) => {
-      if (!currentView?.id) return
-
-      updateKanbanConfig(currentView.id, {
+      updateKanbanConfig({
         cardFields: [...cardFields, fieldId],
       })
     },
-    [currentView?.id, cardFields, updateKanbanConfig]
+    [cardFields, updateKanbanConfig]
   )
 
   return (

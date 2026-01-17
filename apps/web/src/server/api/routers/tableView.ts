@@ -20,10 +20,9 @@ import {
  * Map service error codes to TRPCError
  */
 function mapErrorToTRPC(error: { code: string; message: string }): never {
-  const codeMap: Record<string, 'NOT_FOUND' | 'CONFLICT' | 'BAD_REQUEST' | 'INTERNAL_SERVER_ERROR'> = {
+  const codeMap: Record<string, 'NOT_FOUND' | 'CONFLICT' | 'INTERNAL_SERVER_ERROR'> = {
     VIEW_NOT_FOUND: 'NOT_FOUND',
     VIEW_ALREADY_EXISTS: 'CONFLICT',
-    CANNOT_DELETE_DEFAULT_VIEW: 'BAD_REQUEST',
     DATABASE_ERROR: 'INTERNAL_SERVER_ERROR',
   }
 

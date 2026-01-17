@@ -19,18 +19,6 @@ export type ViewAlreadyExistsError = {
 }
 
 /**
- * Cannot delete default view error
- */
-export type CannotDeleteDefaultViewError = {
-  code: 'CANNOT_DELETE_DEFAULT_VIEW'
-  message: string
-  viewId: string
-}
-
-/**
  * All table-view-specific errors
  */
-export type TableViewError =
-  | ViewNotFoundError
-  | ViewAlreadyExistsError
-  | CannotDeleteDefaultViewError
+export type TableViewError = ViewNotFoundError | ViewAlreadyExistsError

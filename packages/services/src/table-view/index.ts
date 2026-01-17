@@ -16,9 +16,4 @@ export type { DuplicateViewInput } from './duplicate-view'
 export type { DeleteViewInput } from './delete-view'
 export type { SetDefaultViewInput } from './set-default-view'
 
-export type {
-  TableViewError,
-  ViewNotFoundError,
-  ViewAlreadyExistsError,
-  CannotDeleteDefaultViewError,
-} from './errors'
+export type { TableViewError, ViewNotFoundError, ViewAlreadyExistsError } from './errors'

@@ -161,16 +161,20 @@ export function ViewSelector({
         break
 
       case 'delete':
+        const isDefault = view.isDefault
+        const deleteDescription = isDefault
+          ? `Are you sure you want to delete "${view.name}"? This is your default view. After deletion, you'll be switched to "All rows".`
+          : `Are you sure you want to delete "${view.name}"? This action cannot be undone.`
         const confirmed = await confirmDelete({
           title: 'Delete View',
-          description: `Are you sure you want to delete "${view.name}"? This action cannot be undone.`,
+          description: deleteDescription,
           confirmText: 'Delete',
           cancelText: 'Cancel',
           destructive: true,
         })
         if (confirmed) {
           await deleteView.mutateAsync({ id: viewId })
-          // If deleting active view, switch to default
+          // If deleting active view, switch to session (All rows)
           if (activeView?.id === viewId) {
             onViewSelect(null)
           }
@@ -350,8 +354,7 @@ export function ViewSelector({
 
               <DropdownMenuItem
                 onClick={() => handleViewAction(activeView.id, 'delete')}
-                variant="destructive"
-                disabled={isDefaultView}>
+                variant="destructive">
                 <Trash />
                 Delete
               </DropdownMenuItem>

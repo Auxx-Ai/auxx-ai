@@ -6,9 +6,9 @@ import { KanbanView } from '../../kanban'
 import { useTableConfig } from '../context/table-config-context'
 import { useTableInstance } from '../context/table-instance-context'
 import { useViewMetadata } from '../context/view-metadata-context'
-import { useActiveView } from '../stores/store-selectors'
-import type { ViewConfig, KanbanViewConfig, KanbanRow } from '../types'
-import { useDynamicTableStore } from '../stores/dynamic-table-store'
+import { useActiveView, useKanbanConfig } from '../stores/store-selectors'
+import { useUpdateKanbanConfig } from '../stores/store-actions'
+import type { KanbanRow } from '../types'
 import { useResource } from '~/components/resources'
 /**
  * Kanban view body that integrates with focused contexts.
@@ -28,18 +28,13 @@ export function KanbanViewBody<TData extends KanbanRow>() {
     onSelectedKanbanCardIdsChange,
   } = useViewMetadata<TData>()
 
-  // Get current view
+  // Get current view and kanban config from centralized selectors/actions
   const currentView = useActiveView(tableId)
+  const kanbanConfig = useKanbanConfig(tableId) ?? null
+  const updateKanbanConfig = useUpdateKanbanConfig(tableId)
 
   // Get resource for primaryFieldId derivation
   const { resource } = useResource(entityDefinitionId)
-
-  const updateKanbanConfig = useDynamicTableStore((state) => state.updateKanbanConfig)
-
-  // Get kanban config from current view
-  const kanbanConfig = useMemo(() => {
-    return (currentView?.config as ViewConfig)?.kanban ?? null
-  }, [currentView])
 
   // Local state for optimistic column reordering
   const [localColumnOrder, setLocalColumnOrder] = useState<string[] | null>(null)
@@ -71,28 +66,25 @@ export function KanbanViewBody<TData extends KanbanRow>() {
   const handleColumnReorder = useCallback(
     (newColumnOrder: string[]) => {
       setLocalColumnOrder(newColumnOrder)
-
-      if (currentView?.id) {
-        updateKanbanConfig(currentView.id, { columnOrder: newColumnOrder })
-      }
+      updateKanbanConfig({ columnOrder: newColumnOrder })
     },
-    [currentView?.id, updateKanbanConfig]
+    [updateKanbanConfig]
   )
 
   // Handle column visibility change
   const handleColumnVisibilityChange = useCallback(
     (columnId: string, visible: boolean) => {
-      if (!currentView?.id || !kanbanConfig) return
+      if (!kanbanConfig) return
 
       const currentSettings = kanbanConfig.columnSettings ?? {}
-      updateKanbanConfig(currentView.id, {
+      updateKanbanConfig({
         columnSettings: {
           ...currentSettings,
           [columnId]: { ...currentSettings[columnId], isVisible: visible },
         },
       })
     },
-    [currentView?.id, kanbanConfig, updateKanbanConfig]
+    [kanbanConfig, updateKanbanConfig]
   )
 
   // If no valid kanban config, don't render

@@ -9,17 +9,14 @@ import {
   getFilteredRowModel,
   getPaginationRowModel,
   type ColumnFiltersState,
-  type SortingState,
-  type VisibilityState,
   type RowSelectionState,
   type ColumnOrderState,
-  type ColumnSizingState,
   type ColumnDef,
   type ColumnPinningState,
 } from '@tanstack/react-table'
 import { useQueryStates, parseAsString } from 'nuqs'
 import { useCallback, useEffect, useMemo, useRef, useState, startTransition } from 'react'
-import type { DynamicTableProps, ColumnFormatting } from '../types'
+import type { DynamicTableProps } from '../types'
 import { CheckboxCell } from '../components/checkbox-cell'
 import { CheckboxHeaderCell } from '../components/checkbox-header-cell'
 import { computeInitialViewConfig } from '../utils/view-config'
@@ -36,6 +33,7 @@ import {
   useColumnPinning,
   useColumnLabels,
   useColumnFormatting,
+  useViewStoreInitialized,
 } from '../stores/store-selectors'
 import { useRowSelection, useActiveDragItems } from '../hooks/use-table-selectors'
 import {
@@ -45,8 +43,9 @@ import {
   useSetColumnOrder,
   useSetColumnSizing,
   useSetColumnPinning,
-  useSetColumnLabels,
-  useSetColumnFormatting,
+  useSetColumnLabel,
+  useSetSingleColumnFormatting,
+  useSetPinnedColumn,
 } from '../stores/store-actions'
 import { useSetRowSelection, useSetActiveDragItems } from '../hooks/use-table-actions'
 import { useViewStorePersistence } from './use-view-store-persistence'
@@ -81,7 +80,7 @@ export function useDynamicTable<TData extends Record<string, any>>({
 
   // Get views from unified store
   const views = useTableViews(tableId)
-  const isStoreInitialized = useDynamicTableStore((state) => state.initialized)
+  const isStoreInitialized = useViewStoreInitialized()
   const isLoadingViews = !isStoreInitialized
   const hasUnsavedChanges = useDynamicTableStore((state) => state.hasUnsavedChanges)
   const isSaving = useDynamicTableStore((state) => state.isSaving)
@@ -111,8 +110,8 @@ export function useDynamicTable<TData extends Record<string, any>>({
     setActiveViewInStore(tableId, activeViewId)
   }, [tableId, activeViewId, setActiveViewInStore])
 
-  // Initialize persistence (triggers auto-save on changes)
-  useViewStorePersistence(currentView?.id ?? null, tableId)
+  // Initialize persistence (handles auto-save when enabled, or manual save)
+  const { saveView } = useViewStorePersistence(currentView?.id ?? null, tableId)
 
   // ═══════════════════════════════════════════════════════════════════════════
   // READ STATE FROM ZUSTAND STORES (NO LOCAL STATE!)
@@ -139,8 +138,6 @@ export function useDynamicTable<TData extends Record<string, any>>({
   const setColumnOrder = useSetColumnOrder(tableId)
   const setColumnSizing = useSetColumnSizing(tableId)
   const setColumnPinning = useSetColumnPinning(tableId)
-  const setColumnLabelsAction = useSetColumnLabels(tableId)
-  const setColumnFormattingAction = useSetColumnFormatting(tableId)
   const setRowSelection = useSetRowSelection(tableId)
   const setActiveDragItems = useSetActiveDragItems(tableId)
 
@@ -389,64 +386,16 @@ export function useDynamicTable<TData extends Record<string, any>>({
     [setUrlState]
   )
 
-  const setColumnLabel = useCallback(
-    (columnId: string, label: string | null) => {
-      // Get current labels from unified store (not from closure)
-      const store = useDynamicTableStore.getState()
-      const viewId = store.activeViewIds[tableId]
-      const currentLabels = viewId
-        ? store.viewConfigs[viewId]?.columnLabels ?? {}
-        : store.sessionConfigs[tableId]?.columnLabels ?? {}
-
-      const newLabels = { ...currentLabels }
-      if (label === null) {
-        delete newLabels[columnId]
-      } else {
-        newLabels[columnId] = label
-      }
-      setColumnLabelsAction(newLabels)
-    },
-    [tableId, setColumnLabelsAction]
+  // Get all column IDs getter for pinning (stable reference via useCallback)
+  const getAllColumnIds = useCallback(
+    () => tableRef.current?.getAllLeafColumns().map((col) => col.id) ?? [],
+    []
   )
 
-  const setColumnFormatting = useCallback(
-    (columnId: string, formatting: ColumnFormatting | null) => {
-      // Get current formatting from unified store (not from closure)
-      const store = useDynamicTableStore.getState()
-      const viewId = store.activeViewIds[tableId]
-      const currentFormatting = viewId
-        ? store.viewConfigs[viewId]?.columnFormatting ?? {}
-        : store.sessionConfigs[tableId]?.columnFormatting ?? {}
-
-      const newFormatting = { ...currentFormatting }
-      if (formatting === null) {
-        delete newFormatting[columnId]
-      } else {
-        newFormatting[columnId] = formatting
-      }
-      setColumnFormattingAction(newFormatting)
-    },
-    [tableId, setColumnFormattingAction]
-  )
-
-  const setPinnedColumn = useCallback(
-    (columnId: string | null) => {
-      if (columnId === null) {
-        setColumnPinning(resolveColumnPinning({}))
-        return
-      }
-
-      const allColumns = tableRef.current.getAllLeafColumns()
-      const targetIndex = allColumns.findIndex((column) => column.id === columnId)
-      if (targetIndex === -1) {
-        return
-      }
-
-      const leftColumns = allColumns.slice(0, targetIndex + 1).map((column) => column.id)
-      setColumnPinning({ left: leftColumns })
-    },
-    [resolveColumnPinning, setColumnPinning]
-  )
+  // Use centralized action hooks for single column operations
+  const setColumnLabel = useSetColumnLabel(tableId)
+  const setColumnFormatting = useSetSingleColumnFormatting(tableId)
+  const setPinnedColumn = useSetPinnedColumn(tableId, getAllColumnIds)
 
   const pinnedColumnId = useMemo(() => {
     const leftPinned = displayColumnPinning.left ?? []
@@ -531,10 +480,10 @@ export function useDynamicTable<TData extends Record<string, any>>({
     useDynamicTableStore.getState().resetViewChanges(currentView.id)
   }, [currentView])
 
-  // saveCurrentView is now handled by useViewStorePersistence automatically
+  // Manual save trigger - calls the persistence hook's save function
   const saveCurrentView = useCallback(async () => {
-    // The store persistence hook handles saving automatically
-  }, [])
+    await saveView()
+  }, [saveView])
 
   // markViewClean is now handled by the store
   const markViewClean = useCallback(() => {

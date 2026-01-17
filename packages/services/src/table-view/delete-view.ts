@@ -2,9 +2,8 @@
 
 import { database, schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
-import { ok, err } from 'neverthrow'
+import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import type { CannotDeleteDefaultViewError } from './errors'
 import { getView } from './get-view'
 
 /**
@@ -17,7 +16,7 @@ export interface DeleteViewInput {
 }
 
 /**
- * Delete a view (owner only, cannot delete default)
+ * Delete a view (owner only, any view including default can be deleted)
  */
 export async function deleteView(input: DeleteViewInput) {
   const { id, userId, organizationId } = input
@@ -31,10 +30,6 @@ export async function deleteView(input: DeleteViewInput) {
   })
 
   if (viewResult.isErr()) return viewResult
-
-  if (viewResult.value.isDefault) {
-    return err<CannotDeleteDefaultViewError>({ code: 'CANNOT_DELETE_DEFAULT_VIEW', message: 'Cannot delete the default view', viewId: id })
-  }
 
   const dbResult = await fromDatabase(database.delete(schema.TableView).where(eq(schema.TableView.id, id)), 'delete-view')
   if (dbResult.isErr()) return dbResult

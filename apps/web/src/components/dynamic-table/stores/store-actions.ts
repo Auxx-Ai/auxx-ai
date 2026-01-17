@@ -155,6 +155,88 @@ export function useUpdateKanbanConfig(tableId: string) {
   }, [tableId])
 }
 
+// ─── Single Column Actions ────────────────────────────────────────────────────
+
+/** Set label for a single column */
+export function useSetColumnLabel(tableId: string) {
+  return useCallback((columnId: string, label: string | null) => {
+    const s = useDynamicTableStore.getState()
+    const viewId = s.activeViewIds[tableId]
+    const current = viewId
+      ? (s.pendingConfigs[viewId]?.columnLabels ?? s.viewConfigs[viewId]?.columnLabels ?? {})
+      : (s.sessionConfigs[tableId]?.columnLabels ?? {})
+
+    const newLabels = { ...current }
+    if (label === null) {
+      delete newLabels[columnId]
+    } else {
+      newLabels[columnId] = label
+    }
+
+    if (viewId) {
+      s.updateViewConfig(viewId, { columnLabels: newLabels })
+    } else {
+      s.updateSessionConfig(tableId, { columnLabels: newLabels })
+    }
+  }, [tableId])
+}
+
+/** Set formatting for a single column */
+export function useSetSingleColumnFormatting(tableId: string) {
+  return useCallback((columnId: string, formatting: ColumnFormatting | null) => {
+    const s = useDynamicTableStore.getState()
+    const viewId = s.activeViewIds[tableId]
+    const current = viewId
+      ? (s.pendingConfigs[viewId]?.columnFormatting ?? s.viewConfigs[viewId]?.columnFormatting ?? {})
+      : (s.sessionConfigs[tableId]?.columnFormatting ?? {})
+
+    const newFormatting = { ...current }
+    if (formatting === null) {
+      delete newFormatting[columnId]
+    } else {
+      newFormatting[columnId] = formatting
+    }
+
+    if (viewId) {
+      s.updateViewConfig(viewId, { columnFormatting: newFormatting })
+    } else {
+      s.updateSessionConfig(tableId, { columnFormatting: newFormatting })
+    }
+  }, [tableId])
+}
+
+/** Set pinned column - pins all columns up to and including the target column */
+export function useSetPinnedColumn(tableId: string, getAllColumnIds: () => string[]) {
+  return useCallback((columnId: string | null) => {
+    const s = useDynamicTableStore.getState()
+    const viewId = s.activeViewIds[tableId]
+
+    // When unpinning, clear all pinning
+    if (columnId === null) {
+      if (viewId) {
+        s.updateViewConfig(viewId, { columnPinning: undefined })
+      } else {
+        s.updateSessionConfig(tableId, { columnPinning: undefined })
+      }
+      return
+    }
+
+    // When pinning, include all columns up to and including the target column
+    const allColumnIds = getAllColumnIds()
+    const targetIndex = allColumnIds.findIndex((id) => id === columnId)
+    if (targetIndex === -1) return
+
+    const leftColumns = allColumnIds.slice(0, targetIndex + 1)
+    const newPinning = { left: leftColumns }
+
+    if (viewId) {
+      s.updateViewConfig(viewId, { columnPinning: newPinning })
+    } else {
+      s.updateSessionConfig(tableId, { columnPinning: newPinning })
+    }
+  }, [tableId, getAllColumnIds])
+}
+
 // ─── View Actions ─────────────────────────────────────────────────────────────
 
 /** Get action to set active view */

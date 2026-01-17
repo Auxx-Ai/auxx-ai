@@ -42,7 +42,7 @@ import {
 import {
   useSetColumnVisibility,
   useSetColumnOrder,
-  useSetColumnLabels,
+  useSetColumnLabel,
   useSetColumnFormatting,
 } from '../../stores/store-actions'
 import { Tooltip } from '~/components/global/tooltip'
@@ -51,10 +51,9 @@ import { EditColumnFormattingDialog } from '../dialogs/edit-column-formatting-di
 import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
 import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
 import type { Column } from '@tanstack/react-table'
-import type { ExtendedColumnDef, ColumnFormatting, FormattableFieldType } from '../../types'
+import type { ExtendedColumnDef, FormattableFieldType } from '../../types'
 import { FORMATTABLE_FIELD_TYPES } from '../../types'
 import { toResourceFieldId, toFieldId } from '@auxx/types/field'
-import { useDynamicTableStore } from '../../stores/dynamic-table-store'
 
 /** Navigation item type for column manager */
 interface ColumnNavigationItem extends NavigationItem {
@@ -70,7 +69,6 @@ function RootStack<TData = any>() {
   const { push } = useCommandNavigation<ColumnNavigationItem>()
   const { tableId } = useTableConfig()
   const { table } = useTableInstance<TData>()
-  const currentView = useActiveView(tableId)
   const columnLabels = useColumnLabels(tableId)
   const columnVisibility = useColumnVisibility(tableId)
   const columnOrder = useColumnOrder(tableId)
@@ -190,22 +188,9 @@ function ColumnOptionsDropdown<TData = any>({
   const { tableId } = useTableConfig()
   const columnLabels = useColumnLabels(tableId)
   const columnFormatting = useColumnFormatting(tableId)
-  const setColumnLabels = useSetColumnLabels(tableId)
+  const setColumnLabel = useSetColumnLabel(tableId)
   const setColumnFormatting = useSetColumnFormatting(tableId)
 
-  // Wrapper to set a single column label
-  const setColumnLabel = useCallback(
-    (columnId: string, label: string | null) => {
-      const newLabels = { ...columnLabels }
-      if (label === null) {
-        delete newLabels[columnId]
-      } else {
-        newLabels[columnId] = label
-      }
-      setColumnLabels(newLabels)
-    },
-    [columnLabels, setColumnLabels]
-  )
   const [showLabelDialog, setShowLabelDialog] = useState(false)
   const [showFormattingDialog, setShowFormattingDialog] = useState(false)
 

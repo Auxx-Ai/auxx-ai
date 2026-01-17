@@ -5,7 +5,7 @@ import { useRef, useEffect, useMemo } from 'react'
 import { useTableConfig } from '../context/table-config-context'
 import { useTableInstance } from '../context/table-instance-context'
 import { useCellSelection } from '../context/cell-selection-context'
-import { useDynamicTableStore } from '../stores/dynamic-table-store'
+import { useViewStoreInitialized } from '../stores/store-selectors'
 import { VirtualTableBody } from './virtual-table-body'
 import { HeaderCellWrapper } from './header-cell-wrapper'
 import { CheckboxHeaderCell } from './checkbox-header-cell'
@@ -38,7 +38,7 @@ export function TableBody<TData extends object>({
   const { cellSelectionConfig } = useCellSelection()
 
   // Get view loading state from store
-  const isLoadingViews = useDynamicTableStore((state) => !state.initialized)
+  const isLoadingViews = !useViewStoreInitialized()
 
   // Container ref for virtualization AND CSS variables
   const containerRef = useRef<HTMLDivElement>(null)

@@ -2,10 +2,9 @@
 
 'use client'
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback } from 'react'
 import {
   ChevronDown,
-  ChevronUp,
   Filter,
   EyeOff,
   ArrowUpDown,
@@ -28,14 +27,18 @@ import { cn } from '@auxx/ui/lib/utils'
 import { getSortOptionsForFieldType, SORT_OPTIONS } from '../utils/constants'
 import { useTableConfig } from '../context/table-config-context'
 import { useViewMetadata } from '../context/view-metadata-context'
-import { useDynamicTableStore } from '../stores/dynamic-table-store'
 import {
   useTableFilters,
   useColumnLabels,
   useColumnFormatting,
   useColumnPinning,
 } from '../stores/store-selectors'
-import { useSetFilters } from '../stores/store-actions'
+import {
+  useSetFilters,
+  useSetColumnLabel,
+  useSetSingleColumnFormatting,
+  useSetPinnedColumn,
+} from '../stores/store-actions'
 import { EditColumnLabelDialog } from './dialogs/edit-column-label-dialog'
 import { EditColumnFormattingDialog } from './dialogs/edit-column-formatting-dialog'
 import type { Header } from '@tanstack/react-table'
@@ -267,96 +270,17 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
   // Get filters using granular selector
   const filters = useTableFilters(tableId)
 
-  // Get action setters from store
-  const updateViewConfig = useDynamicTableStore((state) => state.updateViewConfig)
-  const updateSessionConfig = useDynamicTableStore((state) => state.updateSessionConfig)
+  // Get column IDs getter for pinning (stable reference via useCallback)
+  const getAllColumnIds = useCallback(
+    () => header.headerGroup.headers.map((h) => h.column.id),
+    [header.headerGroup.headers]
+  )
 
-  // ─── ACTIONS ────────────────────────────────────────────────────────────────
+  // ─── ACTIONS (use centralized action hooks) ────────────────────────────────
   const setFilters = useSetFilters(tableId)
-
-  const setColumnLabel = useCallback(
-    (columnId: string, label: string | null) => {
-      // Get current labels from unified store (not from closure)
-      const store = useDynamicTableStore.getState()
-      const viewId = store.activeViewIds[tableId]
-      const currentLabels = viewId
-        ? (store.viewConfigs[viewId]?.columnLabels ?? {})
-        : (store.sessionConfigs[tableId]?.columnLabels ?? {})
-
-      const updates = label
-        ? { columnLabels: { ...currentLabels, [columnId]: label } }
-        : (() => {
-            const { [columnId]: _, ...rest } = currentLabels
-            return { columnLabels: rest }
-          })()
-
-      if (viewId) {
-        updateViewConfig(viewId, updates)
-      } else {
-        updateSessionConfig(tableId, updates)
-      }
-    },
-    [tableId, updateViewConfig, updateSessionConfig]
-  )
-
-  const setColumnFormatting = useCallback(
-    (columnId: string, formatting: ColumnFormatting | null) => {
-      // Get current formatting from unified store (not from closure)
-      const store = useDynamicTableStore.getState()
-      const viewId = store.activeViewIds[tableId]
-      const currentFormatting = viewId
-        ? (store.viewConfigs[viewId]?.columnFormatting ?? {})
-        : (store.sessionConfigs[tableId]?.columnFormatting ?? {})
-
-      const updates = formatting
-        ? { columnFormatting: { ...currentFormatting, [columnId]: formatting } }
-        : (() => {
-            const { [columnId]: _, ...rest } = currentFormatting
-            return { columnFormatting: rest }
-          })()
-
-      if (viewId) {
-        updateViewConfig(viewId, updates)
-      } else {
-        updateSessionConfig(tableId, updates)
-      }
-    },
-    [tableId, updateViewConfig, updateSessionConfig]
-  )
-
-  const setPinnedColumn = useCallback(
-    (columnId: string | null) => {
-      const store = useDynamicTableStore.getState()
-      const viewId = store.activeViewIds[tableId]
-
-      // When unpinning, clear all pinning
-      if (columnId === null) {
-        const updates = { columnPinning: undefined }
-        if (viewId) {
-          updateViewConfig(viewId, updates)
-        } else {
-          updateSessionConfig(tableId, updates)
-        }
-        return
-      }
-
-      // When pinning, include all columns up to and including the target column
-      // This prevents the pinned column from jumping to the front
-      const allColumnIds = header.headerGroup.headers.map((h) => h.column.id)
-      const targetIndex = allColumnIds.findIndex((id) => id === columnId)
-      if (targetIndex === -1) return
-
-      const leftColumns = allColumnIds.slice(0, targetIndex + 1)
-      const updates = { columnPinning: { left: leftColumns } }
-
-      if (viewId) {
-        updateViewConfig(viewId, updates)
-      } else {
-        updateSessionConfig(tableId, updates)
-      }
-    },
-    [tableId, header.headerGroup.headers, updateViewConfig, updateSessionConfig]
-  )
+  const setColumnLabel = useSetColumnLabel(tableId)
+  const setColumnFormatting = useSetSingleColumnFormatting(tableId)
+  const setPinnedColumn = useSetPinnedColumn(tableId, getAllColumnIds)
 
   // ─── DERIVED STATE ──────────────────────────────────────────────────────────
   const sortOptions = getSortOptionsForFieldType(columnDef.fieldType)
