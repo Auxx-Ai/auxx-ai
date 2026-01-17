@@ -1,13 +1,17 @@
 // apps/web/src/components/custom-fields/hooks/use-custom-field-mutations.tsx
 
+import { useCallback } from 'react'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { api } from '~/trpc/react'
 import { getResourceStoreState } from '~/components/resources/store/resource-store'
-import { toResourceFieldId, toFieldId } from '@auxx/types/field'
+import { toResourceFieldId, toFieldId, parseResourceFieldId } from '@auxx/types/field'
+import type { ResourceFieldId } from '@auxx/types/field'
 import type { ResourceField, FieldCapabilities } from '@auxx/lib/resources/client'
 import type { FieldType as FieldTypeEnum } from '@auxx/database/types'
 import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
 import { mapFieldTypeToBaseType } from '@auxx/lib/workflow-engine/utils/field-type-mapper'
+import { useField } from '~/components/resources/hooks/use-field'
+import type { SelectOption, TargetTimeInStatus } from '@auxx/types/custom-field'
 
 /** Props for useCustomFieldMutations hook */
 interface UseCustomFieldMutationsProps {
@@ -275,9 +279,10 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
         return // Stale - a newer mutation is in flight
       }
 
-      // Confirm optimistic update succeeded
-      // The store already has the correct values from our optimistic update
-      store.confirmFieldUpdate(context.key)
+      // Get the effective field (includes our optimistic update) and promote it to serverFieldMap
+      // This ensures refetches with stale data don't overwrite our optimistic update
+      const effectiveField = store.fieldMap[context.key]
+      store.confirmFieldUpdate(context.key, effectiveField)
 
       // No need for full invalidation - we've updated the store directly
       // Only invalidate the specific custom field queries in case other components need them
@@ -346,5 +351,135 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
     create: createField,
     update: updateField,
     destroy: deleteField,
+  }
+}
+
+// =============================================================================
+// SELECT OPTION MUTATIONS HOOK
+// =============================================================================
+
+/** Changes that can be applied to a select option */
+export interface SelectOptionChanges {
+  label?: string
+  color?: string
+  targetTimeInStatus?: TargetTimeInStatus | null
+  celebration?: boolean
+}
+
+/**
+ * Hook for mutating select field options.
+ * Works for SINGLE_SELECT, MULTI_SELECT, TAGS fields.
+ * Provides create, update, delete, and reorder operations with optimistic updates.
+ *
+ * @param resourceFieldId - The field to mutate options on
+ *
+ * @example
+ * // Kanban column mutations
+ * const { updateOption, createOption, deleteOption } = useFieldSelectOptionMutations(resourceFieldId)
+ * updateOption(columnId, { label: 'New Label' })
+ *
+ * // Tag mutations
+ * const { createOption } = useFieldSelectOptionMutations(tagFieldId)
+ * createOption({ label: 'New Tag', color: 'blue' })
+ */
+export function useFieldSelectOptionMutations(resourceFieldId: ResourceFieldId | undefined) {
+  // Derive entityDefinitionId from resourceFieldId
+  const entityDefinitionId = resourceFieldId
+    ? parseResourceFieldId(resourceFieldId).entityDefinitionId
+    : undefined
+
+  const { update: updateField } = useCustomFieldMutations({ entityDefinitionId })
+
+  // Subscribe to field to get current options
+  const field = useField(resourceFieldId)
+
+  /** Get current options from field */
+  const getCurrentOptions = useCallback((): SelectOption[] => {
+    return (field?.options?.options as SelectOption[]) ?? []
+  }, [field?.options?.options])
+
+  /** Update an existing option */
+  const updateOption = useCallback(
+    (optionValue: string, changes: SelectOptionChanges) => {
+      if (!resourceFieldId) return
+
+      const currentOptions = getCurrentOptions()
+      const updatedOptions = currentOptions.map((opt) => {
+        if (opt.value !== optionValue) return opt
+        return {
+          ...opt,
+          ...(changes.label !== undefined && { label: changes.label }),
+          ...(changes.color !== undefined && { color: changes.color }),
+          ...(changes.targetTimeInStatus !== undefined && {
+            targetTimeInStatus: changes.targetTimeInStatus ?? undefined,
+          }),
+          ...(changes.celebration !== undefined && { celebration: changes.celebration }),
+        }
+      })
+
+      updateField.mutate({ resourceFieldId, options: updatedOptions })
+    },
+    [resourceFieldId, getCurrentOptions, updateField]
+  )
+
+  /** Create a new option */
+  const createOption = useCallback(
+    (data: Omit<SelectOption, 'value'> & { value?: string }) => {
+      if (!resourceFieldId) return
+
+      const currentOptions = getCurrentOptions()
+      const newOption: SelectOption = {
+        value: data.value ?? data.label, // Use label as value if not provided
+        label: data.label,
+        color: data.color,
+        targetTimeInStatus: data.targetTimeInStatus,
+        celebration: data.celebration,
+      }
+
+      updateField.mutate({ resourceFieldId, options: [...currentOptions, newOption] })
+    },
+    [resourceFieldId, getCurrentOptions, updateField]
+  )
+
+  /** Delete an option */
+  const deleteOption = useCallback(
+    (optionValue: string) => {
+      if (!resourceFieldId) return
+
+      const currentOptions = getCurrentOptions()
+      updateField.mutate({
+        resourceFieldId,
+        options: currentOptions.filter((opt) => opt.value !== optionValue),
+      })
+    },
+    [resourceFieldId, getCurrentOptions, updateField]
+  )
+
+  /** Reorder options */
+  const reorderOptions = useCallback(
+    (newOrder: string[]) => {
+      if (!resourceFieldId) return
+
+      const currentOptions = getCurrentOptions()
+      const optionMap = new Map(currentOptions.map((o) => [o.value, o]))
+
+      // Build reordered array
+      const reordered = newOrder.map((value) => optionMap.get(value)).filter(Boolean) as SelectOption[]
+
+      // Append any options not in newOrder
+      const orderedSet = new Set(newOrder)
+      const remaining = currentOptions.filter((o) => !orderedSet.has(o.value))
+
+      updateField.mutate({ resourceFieldId, options: [...reordered, ...remaining] })
+    },
+    [resourceFieldId, getCurrentOptions, updateField]
+  )
+
+  return {
+    updateOption,
+    createOption,
+    deleteOption,
+    reorderOptions,
+    isPending: updateField.isPending,
   }
 }

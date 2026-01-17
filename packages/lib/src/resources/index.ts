@@ -64,7 +64,12 @@ export type {
 export type { ResourceDisplayConfig, OrgScopingStrategy, JoinScopingConfig } from './registry'
 
 // Field capability utilities
-export { canUpdateField, canSortField, canFilterField, canCreateField } from './capabilities/field-capabilities'
+export {
+  canUpdateField,
+  canSortField,
+  canFilterField,
+  canCreateField,
+} from './capabilities/field-capabilities'
 
 // Resource types (system + custom)
 export {
@@ -84,7 +89,6 @@ export type {
 
 // CRUD service and handlers
 export {
-  ResourceCrudService,
   UnifiedCrudHandler,
   getHandler,
   contactHandler,

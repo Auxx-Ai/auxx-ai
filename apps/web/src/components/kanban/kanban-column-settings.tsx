@@ -22,39 +22,26 @@ import { NumberInput, NumberInputField, NumberInputArrows } from '@auxx/ui/compo
 import { EyeOff, Trash2 } from 'lucide-react'
 import { OptionColorPicker } from '~/components/custom-fields/ui/option-color-picker'
 import { DEFAULT_SELECT_OPTION_COLOR, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
-import type { TargetTimeInStatus } from '../dynamic-table/types'
+import type { ResourceFieldId } from '@auxx/types/field'
+import { useFieldSelectOption } from '~/components/resources/hooks'
+import {
+  useFieldSelectOptionMutations,
+  type SelectOptionChanges,
+} from '~/components/custom-fields/hooks/use-custom-field-mutations'
 
 /** Time unit options for target time in status */
 type TimeUnit = 'days' | 'months' | 'years'
-
-/** Column option data that can be changed */
-export interface ColumnOptionChanges {
-  label?: string
-  color?: string
-  targetTimeInStatus?: TargetTimeInStatus | null
-  celebration?: boolean
-}
 
 /** Props for KanbanColumnSettings component */
 interface KanbanColumnSettingsProps {
   /** Column ID (option value) - optional for create mode */
   columnId?: string
-  /** Current label */
-  label?: string
-  /** Current color */
-  color?: string
-  /** Target time in status */
-  targetTimeInStatus?: TargetTimeInStatus
-  /** Celebration enabled */
-  celebration?: boolean
-  /** Is visible in current view */
-  isVisible?: boolean
+  /** ResourceFieldId of the groupBy field - required for mutations */
+  resourceFieldId?: ResourceFieldId
 
   /** Mode: 'full' shows all sections, 'create' shows only label + color */
   mode?: 'full' | 'create'
 
-  /** Single callback for all option changes (for existing columns) */
-  onChange?: (changes: ColumnOptionChanges) => void
   /** Visibility is view-level, separate callback */
   onVisibilityChange?: (visible: boolean) => void
   /** Delete callback */
@@ -68,136 +55,120 @@ interface KanbanColumnSettingsProps {
 
 /**
  * Dropdown menu component for kanban column settings.
+ * Subscribes directly to option data via useFieldSelectOption for reactive updates.
  * Allows editing label, color, time tracking, celebration, and visibility.
  * In 'create' mode, shows only label + color for creating new columns.
  */
 export function KanbanColumnSettings({
   columnId,
-  label = '',
-  color = DEFAULT_SELECT_OPTION_COLOR,
-  targetTimeInStatus,
-  celebration = false,
-  isVisible = true,
+  resourceFieldId,
   mode = 'full',
-  onChange,
   onVisibilityChange,
   onDelete,
   onCreate,
   children,
 }: KanbanColumnSettingsProps) {
   const [open, setOpen] = useState(false)
-  const [localLabel, setLocalLabel] = useState(label)
-  const [localColor, setLocalColor] = useState(color)
-  const [trackTimeEnabled, setTrackTimeEnabled] = useState(!!targetTimeInStatus)
-  const [targetTimeValue, setTargetTimeValue] = useState(targetTimeInStatus?.value ?? 5)
-  const [targetTimeUnit, setTargetTimeUnit] = useState<TimeUnit>(targetTimeInStatus?.unit ?? 'days')
-  const [localCelebration, setLocalCelebration] = useState(celebration)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Sync local state when props change (only when closed to avoid fighting with user input)
-  useEffect(() => {
-    if (!open) {
-      setLocalLabel(label)
-      setLocalColor(color)
-      setTrackTimeEnabled(!!targetTimeInStatus)
-      if (targetTimeInStatus) {
-        setTargetTimeValue(targetTimeInStatus.value)
-        setTargetTimeUnit(targetTimeInStatus.unit)
-      } else {
-        setTargetTimeValue(5)
-        setTargetTimeUnit('days')
-      }
-      setLocalCelebration(celebration)
-    }
-  }, [label, color, targetTimeInStatus, celebration, open])
+  // Subscribe to column option data directly from store (reactive!)
+  const option = useFieldSelectOption(resourceFieldId, columnId)
 
-  // Focus input when opening in create mode
+  // Get mutations for option changes
+  const { updateOption } = useFieldSelectOptionMutations(resourceFieldId)
+
+  // Create mode state (separate from full mode)
+  const [newLabel, setNewLabel] = useState('')
+  const [newColor, setNewColor] = useState(DEFAULT_SELECT_OPTION_COLOR)
+
+  // Full mode: single local state for all changes, saved on close
+  const [localChanges, setLocalChanges] = useState<SelectOptionChanges>({})
+
+  // Merge defaults, option, and localChanges into display values
+  const display = {
+    label: '',
+    color: DEFAULT_SELECT_OPTION_COLOR,
+    celebration: false,
+    targetTimeInStatus: null as { value: number; unit: TimeUnit } | null,
+    ...option,
+    ...localChanges,
+  }
+
+  // Derived for convenience (check for both null and undefined since DB may omit the key)
+  const trackTimeEnabled = display.targetTimeInStatus != null
+  const timeValue = display.targetTimeInStatus?.value ?? 5
+  const timeUnit = display.targetTimeInStatus?.unit ?? 'days'
+
+  // Reset create form when opening in create mode
   useEffect(() => {
     if (open && mode === 'create') {
-      setLocalLabel('')
-      setLocalColor(DEFAULT_SELECT_OPTION_COLOR)
+      setNewLabel('')
+      setNewColor(DEFAULT_SELECT_OPTION_COLOR)
       setTimeout(() => inputRef.current?.focus(), 0)
     }
   }, [open, mode])
 
-  /** Handle create submission */
-  const handleCreate = () => {
-    if (mode === 'create' && localLabel.trim() && onCreate) {
-      onCreate({ label: localLabel.trim(), color: localColor })
-      setOpen(false)
-    }
-  }
-
-  /** Commit label change - called on blur or Enter */
-  const handleLabelCommit = () => {
-    if (mode === 'create') {
-      handleCreate()
+  /** Helper for updating targetTimeInStatus in localChanges */
+  const updateTargetTime = (updates: { value?: number; unit?: TimeUnit; enabled?: boolean }) => {
+    // Disable time tracking
+    if (updates.enabled === false) {
+      setLocalChanges((prev) => ({ ...prev, targetTimeInStatus: null }))
       return
     }
-    // In full mode, save if changed
-    if (localLabel.trim() && localLabel !== label) {
-      onChange?.({ label: localLabel.trim() })
+    // Enable time tracking (only when explicitly enabling)
+    if (updates.enabled === true) {
+      setLocalChanges((prev) => ({
+        ...prev,
+        targetTimeInStatus: {
+          value: prev.targetTimeInStatus?.value ?? option?.targetTimeInStatus?.value ?? 5,
+          unit: prev.targetTimeInStatus?.unit ?? option?.targetTimeInStatus?.unit ?? 'days',
+        },
+      }))
+      return
     }
+    // Update value or unit (only called when already enabled)
+    setLocalChanges((prev) => ({
+      ...prev,
+      targetTimeInStatus: {
+        value: updates.value ?? prev.targetTimeInStatus?.value ?? option?.targetTimeInStatus?.value ?? 5,
+        unit: updates.unit ?? prev.targetTimeInStatus?.unit ?? option?.targetTimeInStatus?.unit ?? 'days',
+      },
+    }))
   }
 
-  /** Handle label key down */
-  const handleLabelKeyDown = (e: React.KeyboardEvent) => {
+  /** Handle open/close - save changes on close in full mode */
+  const handleOpenChange = (newOpen: boolean) => {
+    if (!newOpen && mode === 'full' && columnId && Object.keys(localChanges).length > 0) {
+      const changes = localChanges.label
+        ? { ...localChanges, label: localChanges.label.trim() }
+        : localChanges
+      updateOption(columnId, changes)
+    }
+    if (!newOpen) setLocalChanges({})
+    setOpen(newOpen)
+  }
+
+  /** Handle key down - Escape cancels, Enter closes (saves) */
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      setLocalChanges({})
+      setOpen(false)
+    }
     if (e.key === 'Enter') {
       e.preventDefault()
-      handleLabelCommit()
-      if (mode === 'full') {
+      if (mode === 'create') {
+        handleCreate()
+      } else {
         setOpen(false)
       }
     }
-    if (e.key === 'Escape') {
-      setLocalLabel(label) // Reset
+  }
+
+  /** Handle create submission */
+  const handleCreate = () => {
+    if (mode === 'create' && newLabel.trim() && onCreate) {
+      onCreate({ label: newLabel.trim(), color: newColor })
       setOpen(false)
-    }
-  }
-
-  /** Handle color change - immediate save */
-  const handleColorChange = (newColor: string) => {
-    setLocalColor(newColor)
-    if (mode === 'full') {
-      onChange?.({ color: newColor })
-    }
-  }
-
-  /** Handle track time toggle - immediate save */
-  const handleTrackTimeToggle = (enabled: boolean) => {
-    setTrackTimeEnabled(enabled)
-    if (mode === 'full') {
-      if (enabled) {
-        onChange?.({ targetTimeInStatus: { value: targetTimeValue, unit: targetTimeUnit } })
-      } else {
-        onChange?.({ targetTimeInStatus: null })
-      }
-    }
-  }
-
-  /** Handle target time value change - immediate save */
-  const handleTargetTimeValueChange = (value: number | undefined) => {
-    if (value !== undefined && value > 0) {
-      setTargetTimeValue(value)
-      if (mode === 'full' && trackTimeEnabled) {
-        onChange?.({ targetTimeInStatus: { value, unit: targetTimeUnit } })
-      }
-    }
-  }
-
-  /** Handle target time unit change - immediate save */
-  const handleTargetTimeUnitChange = (unit: TimeUnit) => {
-    setTargetTimeUnit(unit)
-    if (mode === 'full' && trackTimeEnabled) {
-      onChange?.({ targetTimeInStatus: { value: targetTimeValue, unit } })
-    }
-  }
-
-  /** Handle celebration toggle - immediate save */
-  const handleCelebrationToggle = (enabled: boolean) => {
-    setLocalCelebration(enabled)
-    if (mode === 'full') {
-      onChange?.({ celebration: enabled })
     }
   }
 
@@ -216,7 +187,7 @@ export function KanbanColumnSettings({
   const isCreateMode = mode === 'create'
 
   return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
+    <DropdownMenu open={open} onOpenChange={handleOpenChange}>
       <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
 
       <DropdownMenuContent
@@ -226,23 +197,30 @@ export function KanbanColumnSettings({
             : 'min-w-[calc(var(--radix-dropdown-menu-trigger-width)+2px)] -mt-[calc(var(--radix-dropdown-menu-trigger-height)+1px)] -ml-px'
         }
         align="start"
-        sideOffset={isCreateMode ? 4 : 0}>
+        sideOffset={isCreateMode ? 4 : 0}
+        onKeyDown={handleKeyDown}>
         {/* Section 1: Label + Color */}
         <div className="" onPointerDown={(e) => e.stopPropagation()}>
           <InputGroup>
             <InputGroupAddon align="inline-start" className="pl-2">
               <OptionColorPicker
-                value={localColor as SelectOptionColor}
-                onChange={handleColorChange}
+                value={(isCreateMode ? newColor : display.color) as SelectOptionColor}
+                onChange={(color) =>
+                  isCreateMode
+                    ? setNewColor(color)
+                    : setLocalChanges((prev) => ({ ...prev, color }))
+                }
               />
             </InputGroupAddon>
             <InputGroupInput
               ref={inputRef}
               className="ps-1!"
-              value={localLabel}
-              onChange={(e) => setLocalLabel(e.target.value)}
-              onBlur={handleLabelCommit}
-              onKeyDown={handleLabelKeyDown}
+              value={isCreateMode ? newLabel : display.label}
+              onChange={(e) =>
+                isCreateMode
+                  ? setNewLabel(e.target.value)
+                  : setLocalChanges((prev) => ({ ...prev, label: e.target.value }))
+              }
               placeholder={isCreateMode ? 'New stage name' : 'Stage name'}
             />
           </InputGroup>
@@ -257,7 +235,7 @@ export function KanbanColumnSettings({
             <DropdownMenuItem
               onSelect={(e) => {
                 e.preventDefault()
-                handleTrackTimeToggle(!trackTimeEnabled)
+                updateTargetTime({ enabled: !trackTimeEnabled })
               }}>
               <span className="flex-1">Track time in stage</span>
               <Switch
@@ -271,13 +249,15 @@ export function KanbanColumnSettings({
             {trackTimeEnabled && (
               <div className="py-2 px-1" onPointerDown={(e) => e.stopPropagation()}>
                 <NumberInput
-                  value={targetTimeValue}
-                  onValueChange={handleTargetTimeValueChange}
+                  value={timeValue}
+                  onValueChange={(value) => value && value > 0 && updateTargetTime({ value })}
                   min={1}>
                   <div className="">
                     <InputGroup className="h-8">
                       <NumberInputField className="text-left ps-2 w-20" />
-                      <Select value={targetTimeUnit} onValueChange={handleTargetTimeUnitChange}>
+                      <Select
+                        value={timeUnit}
+                        onValueChange={(unit: TimeUnit) => updateTargetTime({ unit })}>
                         <SelectTrigger variant="transparent" size="sm" className="w-20">
                           <SelectValue />
                         </SelectTrigger>
@@ -300,11 +280,11 @@ export function KanbanColumnSettings({
             <DropdownMenuItem
               onSelect={(e) => {
                 e.preventDefault()
-                handleCelebrationToggle(!localCelebration)
+                setLocalChanges((prev) => ({ ...prev, celebration: !display.celebration }))
               }}>
               <span className="flex-1">Celebration</span>
               <Switch
-                checked={localCelebration}
+                checked={display.celebration}
                 size="sm"
                 tabIndex={-1}
                 className="pointer-events-none"

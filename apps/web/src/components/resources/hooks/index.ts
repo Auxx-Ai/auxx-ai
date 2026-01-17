@@ -12,6 +12,7 @@ export {
   useFieldIsPending,
   useFieldIsDeleted,
   useResourceProperty,
+  useFieldSelectOption,
 } from './use-field'
 
 // Record store hooks

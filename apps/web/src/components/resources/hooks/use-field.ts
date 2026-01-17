@@ -5,6 +5,7 @@ import { useShallow } from 'zustand/react/shallow'
 import type { ResourceFieldId } from '@auxx/types/field'
 import type { ResourceField } from '@auxx/lib/resources/client'
 import type { Resource } from '@auxx/lib/resources/client'
+import type { SelectOption } from '@auxx/types/custom-field'
 
 /**
  * FIELD ACCESS PATTERNS - When to Use What
@@ -146,4 +147,32 @@ export function useResourceProperty<K extends keyof Resource>(
     const resource = state.getEffectiveResource(entityDefinitionId)
     return resource?.[property]
   })
+}
+
+/**
+ * Subscribe to a specific select option within a field.
+ * Works for SINGLE_SELECT, MULTI_SELECT, TAGS fields.
+ * Updates only when THIS option's data changes.
+ *
+ * @param resourceFieldId - The field containing the options
+ * @param optionValue - The option's value (unique identifier)
+ * @returns SelectOption or null if not found
+ *
+ * @example
+ * // Kanban column
+ * const option = useFieldSelectOption(resourceFieldId, columnId)
+ *
+ * // Tag display
+ * const tag = useFieldSelectOption(tagFieldId, tagValue)
+ */
+export function useFieldSelectOption(
+  resourceFieldId: ResourceFieldId | null | undefined,
+  optionValue: string | undefined
+): SelectOption | null {
+  const field = useField(resourceFieldId)
+
+  if (!optionValue || !field?.options?.options) return null
+
+  const options = field.options.options as SelectOption[]
+  return options.find((o) => o.value === optionValue) ?? null
 }

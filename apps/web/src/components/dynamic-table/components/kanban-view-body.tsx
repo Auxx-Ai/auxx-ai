@@ -21,7 +21,6 @@ export function KanbanViewBody<TData extends KanbanRow>() {
   const {
     selectFields,
     customFields,
-    entityLabel,
     onCardClick,
     onAddCard,
     selectedKanbanCardIds,
@@ -71,22 +70,6 @@ export function KanbanViewBody<TData extends KanbanRow>() {
     [updateKanbanConfig]
   )
 
-  // Handle column visibility change
-  const handleColumnVisibilityChange = useCallback(
-    (columnId: string, visible: boolean) => {
-      if (!kanbanConfig) return
-
-      const currentSettings = kanbanConfig.columnSettings ?? {}
-      updateKanbanConfig({
-        columnSettings: {
-          ...currentSettings,
-          [columnId]: { ...currentSettings[columnId], isVisible: visible },
-        },
-      })
-    },
-    [kanbanConfig, updateKanbanConfig]
-  )
-
   // If no valid kanban config, don't render
   if (!kanbanConfig || !groupByField) {
     return (
@@ -108,23 +91,6 @@ export function KanbanViewBody<TData extends KanbanRow>() {
   // Get data from table rows
   const data = table.getRowModel().rows.map((row) => row.original) as TData[]
 
-  // Convert selectField to format expected by KanbanView (CustomField type)
-  // const groupByFieldForKanban = useMemo(
-  //   () => ({
-  //     id: groupByField.id,
-  //     key: groupByField.id,
-  //     label: groupByField.name,
-  //     name: groupByField.name,
-  //     type: 'enum' as const,
-  //     fieldType: (groupByField.type ?? 'SINGLE_SELECT'),
-  //     options: groupByField.options,
-  //     sortOrder: '0',
-  //     active: true,
-  //     capabilities: { filterable: true, sortable: true, creatable: true, updatable: true },
-  //   }),
-  //   [groupByField]
-  // )
-
   return (
     <KanbanView
       data={data}
@@ -132,13 +98,12 @@ export function KanbanViewBody<TData extends KanbanRow>() {
       groupByField={groupByField}
       customFields={customFields ?? []}
       primaryFieldId={primaryFieldId}
-      entityLabel={entityLabel}
       onCardClick={onCardClick}
       onAddCard={onAddCard}
       onColumnReorder={handleColumnReorder}
       isLoading={isLoading}
-      onColumnVisibilityChange={handleColumnVisibilityChange}
       entityDefinitionId={entityDefinitionId}
+      tableId={tableId}
       selectedCardIds={selectedKanbanCardIds}
       onSelectedCardIdsChange={onSelectedKanbanCardIdsChange}
     />

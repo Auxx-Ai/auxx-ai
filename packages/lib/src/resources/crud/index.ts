@@ -1,7 +1,6 @@
 // packages/lib/src/resources/crud/index.ts
 
 // Main services
-export { ResourceCrudService } from './resource-crud-service'
 export { UnifiedCrudHandler } from './unified-handler'
 export type { CrudOptions } from './unified-handler'
 
@@ -19,8 +18,8 @@ export {
 } from './types'
 
 // Handlers
-export { getHandler, contactHandler, ticketHandler, entityHandler } from './handlers'
-export type { ResourceHandler } from './handlers'
+// export { getHandler, contactHandler, ticketHandler, entityHandler } from './handlers'
+// export type { ResourceHandler } from './handlers'
 
 // Utilities
 export {

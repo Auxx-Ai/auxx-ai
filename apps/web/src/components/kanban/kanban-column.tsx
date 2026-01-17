@@ -10,70 +10,92 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Button } from '@auxx/ui/components/button'
 import { ChevronRight, EyeOff, GripVertical, Plus } from 'lucide-react'
 import { getColorSwatch, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
-import { KanbanColumnSettings, type ColumnOptionChanges } from './kanban-column-settings'
-import { NO_STATUS_COLUMN_ID, type TargetTimeInStatus } from '../dynamic-table/types'
+import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
+import { KanbanColumnSettings } from './kanban-column-settings'
+import { NO_STATUS_COLUMN_ID } from '../dynamic-table/types'
 import { Badge } from '@auxx/ui/components/badge'
+import { useFieldSelectOption, useResourceProperty } from '~/components/resources/hooks'
+import {
+  useFieldSelectOptionMutations,
+  type SelectOptionChanges,
+} from '~/components/custom-fields/hooks/use-custom-field-mutations'
+import { useKanbanConfig } from '../dynamic-table/stores/store-selectors'
+import { useUpdateKanbanConfig } from '../dynamic-table/stores/store-actions'
 
 /** Props for KanbanColumn component */
 interface KanbanColumnProps {
-  id: string
-  title: string
-  color?: string
+  /** Column ID (option value) */
+  columnId: string
+  /** ResourceFieldId of the groupBy field */
+  resourceFieldId: ResourceFieldId | undefined
+  /** Table ID for view config access */
+  tableId: string
+  /** Number of cards in column */
   count: number
-  isCollapsed?: boolean
+  /** Callback when "New X" is clicked */
+  onAddCard?: () => void
+  /** Callback when "Add calculation" is clicked */
+  onAddCalculation?: () => void
+  /** Whether column can be reordered */
+  isSortable?: boolean
+  /** Column content (cards) */
+  children: React.ReactNode
+  /** True when cards are being dragged over this column */
   isOver?: boolean
   /** True when this column is the source of the dragged card */
   isSourceColumn?: boolean
   /** True when a column (not a card) is being dragged */
   isDraggingColumn?: boolean
-  entityLabel?: string
-  onAddCard?: () => void
-  onAddCalculation?: () => void
-  isSortable?: boolean
-  children: React.ReactNode
-
-  /** Settings props */
-  targetTimeInStatus?: TargetTimeInStatus
-  celebration?: boolean
-  isVisible?: boolean
-
-  /** Unified settings callback */
-  onChange?: (changes: ColumnOptionChanges) => void
-  /** View-level visibility change */
-  onVisibilityChange?: (visible: boolean) => void
-  /** Delete callback */
-  onDelete?: () => void
 }
 
 /**
  * Kanban column component.
+ * Subscribes directly to field options via useFieldSelectOption for reactive updates.
  * Features: color dot, sortable, collapsible, footer, "New X" button, settings popover.
  */
 export function KanbanColumn({
-  id,
-  title,
-  color = 'gray',
+  columnId,
+  resourceFieldId,
+  tableId,
   count,
-  isCollapsed: initialCollapsed = false,
-  isOver,
-  isSourceColumn,
-  isDraggingColumn,
-  entityLabel = 'Record',
   onAddCard,
   onAddCalculation,
   isSortable = false,
   children,
-  // Settings props
-  targetTimeInStatus,
-  celebration,
-  isVisible,
-  // Settings callbacks
-  onChange,
-  onVisibilityChange,
-  onDelete,
+  isOver,
+  isSourceColumn,
+  isDraggingColumn,
 }: KanbanColumnProps) {
-  const isNoStatusColumn = id === NO_STATUS_COLUMN_ID
+  const isNoStatusColumn = columnId === NO_STATUS_COLUMN_ID
+
+  // Derive entityDefinitionId from resourceFieldId
+  const entityDefinitionId = resourceFieldId
+    ? parseResourceFieldId(resourceFieldId).entityDefinitionId
+    : undefined
+
+  // Subscribe to this column's option data (reactive!)
+  const option = useFieldSelectOption(resourceFieldId, columnId)
+
+  // Get entity label for "New X" button
+  const entityLabel = useResourceProperty(entityDefinitionId, 'label') ?? 'Record'
+
+  // Get mutations for option changes
+  const { updateOption, deleteOption } = useFieldSelectOptionMutations(resourceFieldId)
+
+  // Get view config for visibility and collapsed state
+  const kanbanConfig = useKanbanConfig(tableId)
+  const isVisible = kanbanConfig?.columnSettings?.[columnId]?.isVisible !== false
+  const initialCollapsed = kanbanConfig?.collapsedColumns?.includes(columnId) ?? false
+  const updateKanbanConfig = useUpdateKanbanConfig(tableId)
+
+  // Local collapsed state (UI-only, could be persisted to view config if needed)
   const [isCollapsed, setIsCollapsed] = useState(initialCollapsed)
+
+  // Derive display values from option (or defaults for No Status column)
+  const title = isNoStatusColumn ? 'No stage' : (option?.label ?? columnId)
+  const color = isNoStatusColumn ? 'gray' : (option?.color ?? 'gray')
+  const targetTimeInStatus = option?.targetTimeInStatus
+  const celebration = option?.celebration
 
   // Sortable for column reordering
   const {
@@ -84,14 +106,14 @@ export function KanbanColumn({
     transition,
     isDragging,
   } = useSortable({
-    id,
+    id: columnId,
     data: { type: 'column' },
     disabled: !isSortable,
   })
 
   // Droppable for card drops
   const { setNodeRef: setDroppableRef, isOver: isDndOver } = useDroppable({
-    id,
+    id: columnId,
     data: { type: 'column' },
   })
 
@@ -118,6 +140,35 @@ export function KanbanColumn({
   const colorDot = getColorSwatch(color as SelectOptionColor)
   // Only highlight when cards are dragged over, not when columns are being reordered
   const isActive = (isOver || isDndOver) && !isSourceColumn && !isDraggingColumn
+
+  /** Handle option changes (label, color, time, celebration) */
+  const handleChange = useCallback(
+    (changes: SelectOptionChanges) => {
+      updateOption(columnId, changes)
+    },
+    [columnId, updateOption]
+  )
+
+  /** Handle visibility change (view-level setting) */
+  const handleVisibilityChange = useCallback(
+    (visible: boolean) => {
+      updateKanbanConfig({
+        columnSettings: {
+          ...kanbanConfig?.columnSettings,
+          [columnId]: { ...kanbanConfig?.columnSettings?.[columnId], isVisible: visible },
+        },
+      })
+    },
+    [columnId, kanbanConfig?.columnSettings, updateKanbanConfig]
+  )
+
+  /** Handle column deletion */
+  const handleDelete = useCallback(() => {
+    deleteOption(columnId)
+  }, [columnId, deleteOption])
+
+  // Don't render non-existent options (except No Status column)
+  if (!isNoStatusColumn && !option) return null
 
   // Collapsed state - vertical label
   if (isCollapsed) {
@@ -216,16 +267,11 @@ export function KanbanColumn({
 
           return (
             <KanbanColumnSettings
-              columnId={id}
-              label={title}
-              color={color}
-              targetTimeInStatus={targetTimeInStatus}
-              celebration={celebration}
-              isVisible={isVisible}
+              columnId={columnId}
+              resourceFieldId={resourceFieldId}
               mode="full"
-              onChange={onChange}
-              onVisibilityChange={onVisibilityChange}
-              onDelete={onDelete}>
+              onVisibilityChange={handleVisibilityChange}
+              onDelete={handleDelete}>
               {headerContent}
             </KanbanColumnSettings>
           )

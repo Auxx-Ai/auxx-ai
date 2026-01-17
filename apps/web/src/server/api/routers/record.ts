@@ -85,21 +85,21 @@ export const recordRouter = createTRPCRouter({
    * Get paginated records for picker
    * Accepts entityDefinitionId (system resource ID or custom entity UUID)
    */
-  getAll: protectedProcedure.input(getRecordsInputSchema).query(async ({ ctx, input }) => {
-    const { organizationId, userId } = ctx.session
-    const { entityDefinitionId } = input
+  // getAll: protectedProcedure.input(getRecordsInputSchema).query(async ({ ctx, input }) => {
+  //   const { organizationId, userId } = ctx.session
+  //   const { entityDefinitionId } = input
 
-    try {
-      const service = new ResourcePickerService(organizationId, userId, ctx.db)
-      return await service.getResources({ ...input, entityDefinitionId })
-    } catch (error: any) {
-      if (error instanceof TRPCError) throw error
-      throw new TRPCError({
-        code: 'INTERNAL_SERVER_ERROR',
-        message: `Failed to fetch records: ${error.message}`,
-      })
-    }
-  }),
+  //   try {
+  //     const service = new ResourcePickerService(organizationId, userId, ctx.db)
+  //     return await service.getResources({ ...input, entityDefinitionId })
+  //   } catch (error: any) {
+  //     if (error instanceof TRPCError) throw error
+  //     throw new TRPCError({
+  //       code: 'INTERNAL_SERVER_ERROR',
+  //       message: `Failed to fetch records: ${error.message}`,
+  //     })
+  //   }
+  // }),
 
   /**
    * Get single record by ID
@@ -391,13 +391,14 @@ function extractRequiredRelatedEntities(
       const relationshipRef = fieldRef[0]
 
       // Parse field key (handle both ResourceFieldId and plain string)
-      const relationshipFieldKey = typeof relationshipRef === 'string' && relationshipRef.includes(':')
-        ? parseResourceFieldId(relationshipRef as ResourceFieldId).fieldId
-        : relationshipRef
+      const relationshipFieldKey =
+        typeof relationshipRef === 'string' && relationshipRef.includes(':')
+          ? parseResourceFieldId(relationshipRef as ResourceFieldId).fieldId
+          : relationshipRef
 
       // Find relationship field in source fields
-      const relationshipField = sourceFields.find(f =>
-        f.key === relationshipFieldKey || (f.id && f.id === relationshipFieldKey)
+      const relationshipField = sourceFields.find(
+        (f) => f.key === relationshipFieldKey || (f.id && f.id === relationshipFieldKey)
       )
 
       if (relationshipField?.relationship?.relatedEntityDefinitionId) {
@@ -421,7 +422,9 @@ async function queryEntityInstanceIds(params: {
 }): Promise<string[]> {
   const { db, entityDefinitionId, organizationId, filters, sorting } = params
 
-  logger.debug(`Querying entity instances for entityDefinitionId: ${entityDefinitionId}, filters: ${JSON.stringify(filters)}`)
+  logger.debug(
+    `Querying entity instances for entityDefinitionId: ${entityDefinitionId}, filters: ${JSON.stringify(filters)}`
+  )
 
   // Get fields for this entity via ResourceRegistryService (entityDefinitionId is now UUID, no prefix)
   const registryService = new ResourceRegistryService(organizationId, db)
@@ -429,7 +432,9 @@ async function queryEntityInstanceIds(params: {
 
   // Detect required related entities from filters
   const requiredRelatedEntities = extractRequiredRelatedEntities(filters, fields)
-  logger.debug(`Detected ${requiredRelatedEntities.size} required related entities: ${Array.from(requiredRelatedEntities).join(', ')}`)
+  logger.debug(
+    `Detected ${requiredRelatedEntities.size} required related entities: ${Array.from(requiredRelatedEntities).join(', ')}`
+  )
 
   // Build relatedEntityFields map
   const relatedEntityFields: Record<string, ResourceField[]> = {}
