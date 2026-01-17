@@ -8,6 +8,7 @@ export { deleteCustomField, type DeleteCustomFieldInput } from './delete-field'
 
 // Field queries
 export { getFieldByIdQuery, type GetFieldByIdInput } from './get-field-by-id'
+export { getFieldsByIds, type GetFieldsByIdsInput } from './get-fields-by-ids'
 export { verifyEntityExistsQuery, type VerifyEntityInput } from './verify-entity'
 
 // Relationship helper

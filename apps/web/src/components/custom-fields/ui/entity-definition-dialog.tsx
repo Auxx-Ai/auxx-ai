@@ -31,6 +31,7 @@ import { IconPicker, type IconPickerValue } from '@auxx/ui/components/icon-picke
 import { api } from '~/trpc/react'
 import { toastError } from '@auxx/ui/components/toast'
 import { useEntityDefinitionMutations } from '~/components/resources/hooks'
+import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
 import { Check, DivideSquare, X } from 'lucide-react'
 import { Spinner } from '@auxx/ui/components/spinner'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
@@ -279,16 +280,10 @@ export function EntityDefinitionDialog({
   const { createEntity: createEntityMutation, updateEntity: updateEntityMutation } =
     useEntityDefinitionMutations()
 
-  // Custom field mutation (used after entity creation)
-  const createCustomField = api.customField.create.useMutation({
-    onError: (error) => {
-      const code = (error.data as { code?: string } | undefined)?.code
-      if (code === 'DUPLICATE_FIELD_NAME') {
-        toastError({ title: 'Field already exists', description: 'A field with this name already exists on this entity.' })
-      } else {
-        toastError({ title: 'Error creating field', description: error.message })
-      }
-    },
+  // Custom field mutation hook (used after entity creation)
+  // Note: entityDefinitionId is set to createdEntityId which is populated after entity creation
+  const { create: createCustomField, isPending: isCreatingField } = useCustomFieldMutations({
+    entityDefinitionId: createdEntityId ?? undefined,
   })
 
   /** Handle create success - open custom field dialog */
@@ -305,12 +300,12 @@ export function EntityDefinitionDialog({
     onSuccess?.()
   }
 
-  /** Handle custom field save */
+  /** Handle custom field save - creates field with optimistic updates */
   const handleCustomFieldSave = async (fieldData: any) => {
     if (!createdEntityId) return
+    // modelType is derived from entityDefinitionId on the server
     await createCustomField.mutateAsync({
       ...fieldData,
-      modelType: 'entity' as const,
       entityDefinitionId: createdEntityId,
     })
   }
@@ -608,7 +603,7 @@ export function EntityDefinitionDialog({
           open={customFieldDialogOpen}
           onOpenChange={handleCustomFieldDialogClose}
           onSave={handleCustomFieldSave}
-          isPending={createCustomField.isPending}
+          isPending={isCreatingField}
           currentResourceId={createdEntityId ?? undefined}
         />
       )}

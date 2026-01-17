@@ -33,7 +33,7 @@ interface InlineCellEditorProps {
  *
  * Unlike CellFieldEditor (popover), this renders an absolute overlay
  * that replaces the cell content during editing. Used for TEXT, NUMBER,
- * and CURRENCY fields where inline editing feels more natural.
+ * CURRENCY, EMAIL, and URL fields where inline editing feels more natural.
  *
  * Uses the same useFieldPopoverHandlers hook as CellFieldEditor to ensure
  * consistent save/cancel behavior.
@@ -83,8 +83,8 @@ function InlineCellEditorInner({ onClose }: { onClose: () => void }) {
   // Get input component from shared function
   const InputComponent = getInputComponentForFieldType(field.fieldType)
 
-  // TEXT/RICH_TEXT need padding adjustments for visual alignment
-  const isTextType = field.fieldType === 'TEXT' || field.fieldType === 'RICH_TEXT'
+  // Text-like fields need padding adjustments for visual alignment
+  const isTextLikeType = ['TEXT', 'RICH_TEXT', 'EMAIL', 'URL'].includes(field.fieldType)
 
   // Click outside detection - wired to shared handler
   useEffect(() => {
@@ -116,7 +116,7 @@ function InlineCellEditorInner({ onClose }: { onClose: () => void }) {
         ref={containerRef}
         className={cn(
           'absolute left-0 top-0 z-20 min-w-full min-h-9 bg-background max-w-[280px] [&_[data-slot=input-group]]:w-auto [&_[data-slot=input-group]]:min-h-9 [&_[data-slot=input-group-control]]:pl-3 [&_input]:[field-sizing:content]',
-          isTextType && 'pt-[4px] pl-1'
+          isTextLikeType && 'pt-[4px] pl-1'
         )}>
         <CellSelectionOverlay isSelected={false} isEditing={true} />
         <div className="w-full">{InputComponent}</div>

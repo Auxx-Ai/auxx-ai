@@ -5,7 +5,8 @@ import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { CustomFieldService } from '@auxx/lib/custom-fields'
 import { fieldOptionsUnionSchema, relationshipOptionsSchema } from '@auxx/types/custom-field'
 import { FieldType } from '@auxx/database/enums'
-import { resourceFieldIdSchema } from '@auxx/types/field'
+import { resourceFieldIdSchema, fieldIdSchema } from '@auxx/types/field'
+import { getFieldsByIds } from '@auxx/services/custom-fields'
 
 export const customFieldRouter = createTRPCRouter({
   /**
@@ -119,4 +120,23 @@ export const customFieldRouter = createTRPCRouter({
       return await service.getRelationshipPair(input.resourceFieldId)
     }),
 
-  })
+  /**
+   * Get multiple custom fields by their IDs.
+   * Useful for fetching both sides of a relationship after updates.
+   */
+  getByIds: protectedProcedure
+    .input(z.object({ fieldIds: z.array(fieldIdSchema) }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const result = await getFieldsByIds({
+        fieldIds: input.fieldIds,
+        organizationId,
+      })
+
+      if (result.isErr()) {
+        throw new Error(result.error.message)
+      }
+
+      return result.value
+    }),
+})

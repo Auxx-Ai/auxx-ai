@@ -10,11 +10,13 @@ const INLINE_EDITABLE_FIELD_TYPES = new Set<string>([
   FieldType.TEXT,
   FieldType.NUMBER,
   FieldType.CURRENCY,
+  FieldType.EMAIL,
+  FieldType.URL,
 ])
 
 /**
  * Determines the edit mode for a field type
- * - 'inline': Input renders directly in cell (TEXT, NUMBER, CURRENCY)
+ * - 'inline': Input renders directly in cell (TEXT, NUMBER, CURRENCY, EMAIL, URL)
  * - 'popover': Input renders in popover overlay (all other types)
  */
 export function getEditModeForFieldType(fieldType: string | undefined): EditMode {

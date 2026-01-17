@@ -4,6 +4,7 @@ import { useResourceStore } from '../store/resource-store'
 import { useShallow } from 'zustand/react/shallow'
 import type { ResourceFieldId } from '@auxx/types/field'
 import type { ResourceField } from '@auxx/lib/resources/client'
+import type { Resource } from '@auxx/lib/resources/client'
 
 /**
  * FIELD ACCESS PATTERNS - When to Use What
@@ -86,4 +87,63 @@ export function useFields(
   )
 
   return fields
+}
+
+/**
+ * Subscribe to field pending state (for showing save indicators).
+ * Returns true if field has an optimistic update that hasn't been confirmed.
+ *
+ * @param resourceFieldId - ResourceFieldId (or null/undefined for conditional usage)
+ * @returns boolean - true if field has pending optimistic updates
+ *
+ * @example
+ * const isPending = useFieldIsPending(resourceFieldId)
+ * // Show spinner or saving indicator when isPending is true
+ */
+export function useFieldIsPending(
+  resourceFieldId: ResourceFieldId | null | undefined
+): boolean {
+  return useResourceStore((state) => {
+    if (!resourceFieldId) return false
+    return resourceFieldId in state.pendingFieldUpdates
+  })
+}
+
+/**
+ * Subscribe to field deleted state (for hiding fields during optimistic delete).
+ * Returns true if field has been optimistically deleted but not yet confirmed.
+ *
+ * @param resourceFieldId - ResourceFieldId (or null/undefined for conditional usage)
+ * @returns boolean - true if field has been optimistically deleted
+ */
+export function useFieldIsDeleted(
+  resourceFieldId: ResourceFieldId | null | undefined
+): boolean {
+  return useResourceStore((state) => {
+    if (!resourceFieldId) return false
+    return state.optimisticDeletedFields.has(resourceFieldId)
+  })
+}
+
+/**
+ * Subscribe to specific resource properties.
+ * Granular: only re-renders when selected properties change.
+ *
+ * @param entityDefinitionId - Entity definition ID
+ * @param property - Property key to subscribe to
+ * @returns Property value or undefined if resource not found
+ *
+ * @example
+ * const name = useResourceProperty('contact', 'label')
+ * const icon = useResourceProperty('contact', 'icon')
+ */
+export function useResourceProperty<K extends keyof Resource>(
+  entityDefinitionId: string | undefined,
+  property: K
+): Resource[K] | undefined {
+  return useResourceStore((state) => {
+    if (!entityDefinitionId) return undefined
+    const resource = state.getEffectiveResource(entityDefinitionId)
+    return resource?.[property]
+  })
 }

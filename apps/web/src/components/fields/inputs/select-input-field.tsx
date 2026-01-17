@@ -4,7 +4,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { usePropertyContext } from '../property-provider'
 import { useFieldNavigationOptional } from '../field-navigation-context'
-import { api } from '~/trpc/react'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { Button } from '@auxx/ui/components/button'
@@ -15,6 +14,7 @@ import { FieldType } from '@auxx/database/enums'
 import type { SelectOption } from '@auxx/types/custom-field'
 import { toResourceFieldId } from '@auxx/types/field'
 import { parseResourceId } from '@auxx/lib/resources/client'
+import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
 
 /**
  * Configuration for select-type fields based on field type
@@ -78,7 +78,6 @@ export function getSelectConfig(fieldType: string): SelectConfig {
 export function SelectInputField() {
   const { value, field, resourceId, commitValue, close, onBeforeClose } = usePropertyContext()
   const nav = useFieldNavigationOptional()
-  const utils = api.useUtils()
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // Parse resourceId to get entityDefinitionId for constructing ResourceFieldId
@@ -102,14 +101,8 @@ export function SelectInputField() {
     localSelectedRef.current = localSelected
   }, [localSelected])
 
-  // Mutation to update field options (only for TAGS)
-  const updateField = api.customField.update.useMutation({
-    onSuccess: () => {
-      utils.customField.getAll.invalidate()
-      utils.customField.getByEntityDefinition.invalidate()
-      utils.resource.getAllResourceTypes.invalidate()
-    },
-  })
+  // Use centralized mutations hook with optimistic updates for field options
+  const { update: updateField } = useCustomFieldMutations({ entityDefinitionId })
 
   /**
    * Debounced save to server - waits for user to stop clicking (multi-select only)

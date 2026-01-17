@@ -6,7 +6,13 @@ export { useResource } from './use-resource'
 export { useEntityDefinitionMutations } from './use-entity-definition-mutations'
 export { useRelationship } from './use-relationship'
 export { useResourceFields } from './use-resource-fields'
-export { useField, useFields } from './use-field'
+export {
+  useField,
+  useFields,
+  useFieldIsPending,
+  useFieldIsDeleted,
+  useResourceProperty,
+} from './use-field'
 
 // Record store hooks
 export { useRecordList } from './use-record-list'

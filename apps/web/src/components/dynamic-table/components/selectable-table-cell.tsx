@@ -142,7 +142,7 @@ function SelectableTableCellInner<TData>({
         {flexRender(cell.column.columnDef.cell, cell.getContext())}
       </div>
 
-      {/* Inline editor - renders IN the cell for TEXT, NUMBER, CURRENCY */}
+      {/* Inline editor - renders IN the cell for TEXT, NUMBER, CURRENCY, EMAIL, URL */}
       {isInlineEditing && cellSelectionConfig && (
         <InlineCellEditor
           rowId={rowId}
