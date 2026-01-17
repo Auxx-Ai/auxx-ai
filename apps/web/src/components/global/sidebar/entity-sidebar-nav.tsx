@@ -57,7 +57,7 @@ export function EntitySidebarNav() {
 
   // Get custom entities from resource store
   const { customResources, isLoading } = useResources()
-  console.log('Resources in Sidebar:', customResources)
+
   const dynamicEntities = customResources
 
   // console.log('Dynamic Entities:', dynamicEntities)

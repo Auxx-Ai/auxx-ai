@@ -28,7 +28,7 @@ export interface EntityFieldsContentProps {
   handleSaveField: (fieldData: any) => Promise<void>
   isPending: boolean
   sensors: SensorDescriptor<SensorOptions>[]
-  handleDragEnd: (event: DragEndEvent) => Promise<void>
+  handleDragEnd: (event: DragEndEvent) => void
   /** Unified sorted fields (system + custom) */
   fields: ResourceField[]
   /** Loading state */

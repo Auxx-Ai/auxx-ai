@@ -10,7 +10,7 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core'
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
-import { getSmartSortPositions } from '@auxx/utils'
+import { generateKeyBetween } from '@auxx/utils'
 import { FieldNavigationProvider } from './field-navigation-context'
 import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -71,7 +71,7 @@ function EntityFields({
   const [isEditMode, setIsEditMode] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingField, setEditingField] = useState<any | null>(null)
-  // Optimistic reorder state - only used during drag operations
+  // Local optimistic order for immediate UI feedback during reorder
   const [optimisticOrder, setOptimisticOrder] = useState<ResourceField[] | null>(null)
 
   // Use custom field mutations hook for creating/updating/deleting fields (fields come from resource)
@@ -123,8 +123,7 @@ function EntityFields({
   const { fields: enrichedFields, isLoading: optionsLoading } =
     useDynamicFieldOptions(displayFields)
 
-  // Use optimistic order during drag, otherwise use enriched fields directly
-  // This avoids the infinite loop caused by useEffect + setState
+  // Use optimistic order for immediate UI feedback, fall back to enriched fields
   const sortedFields = optimisticOrder ?? enrichedFields
 
   // Apply field exclusion filter
@@ -172,31 +171,39 @@ function EntityFields({
   // DRAG & DROP
   // ─────────────────────────────────────────────────────────────────
 
-  async function handleDragEnd(event: DragEndEvent) {
+  function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
     if (!over || active.id === over.id) return
 
     // Only allow reordering of custom fields from FILTERED list
     const customFields = filteredFields.filter((f) => !f.isSystem)
-    const oldIndex = customFields.findIndex((item) => item.key === active.id)
-    const newIndex = customFields.findIndex((item) => item.key === over.id)
-
+    const oldIndex = customFields.findIndex((item) => item.id === active.id)
+    const newIndex = customFields.findIndex((item) => item.id === over.id)
     if (oldIndex === -1 || newIndex === -1) return
 
-    const newOrder = getSmartSortPositions(customFields, oldIndex, newIndex)
+    const movedField = customFields[oldIndex]
+    if (!movedField) return
 
-    // Set optimistic order for immediate UI feedback
-    const systemFields = filteredFields.filter((f) => f.isSystem)
+    // Reorder to find neighbors at new position
     const reorderedCustom = arrayMove(customFields, oldIndex, newIndex)
+    const beforeField = newIndex > 0 ? reorderedCustom[newIndex - 1] : null
+    const afterField = newIndex < reorderedCustom.length - 1 ? reorderedCustom[newIndex + 1] : null
+
+    // Generate ONE key between neighbors
+    const newSortOrder = generateKeyBetween(
+      beforeField?.sortOrder ?? null,
+      afterField?.sortOrder ?? null
+    )
+
+    // Set optimistic order immediately for smooth UI
+    const systemFields = filteredFields.filter((f) => f.isSystem)
     setOptimisticOrder([...systemFields, ...reorderedCustom])
 
-    // Persist to server, then clear optimistic order (server data will be used)
-    try {
-      await Promise.all(newOrder.map(({ id, sortOrder }) => update.mutateAsync({ id, sortOrder })))
-    } finally {
-      // Clear optimistic order - the refetch will update enrichedFields
-      setOptimisticOrder(null)
-    }
+    // Update only the moved field, clear optimistic state when done
+    update.mutate(
+      { id: movedField.id, sortOrder: newSortOrder },
+      { onSettled: () => setOptimisticOrder(null) }
+    )
   }
 
   // ─────────────────────────────────────────────────────────────────

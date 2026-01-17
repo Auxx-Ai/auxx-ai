@@ -328,9 +328,26 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
     (columnId: string | null) => {
       const store = useDynamicTableStore.getState()
       const viewId = store.activeViewIds[tableId]
-      const updates = {
-        columnPinning: columnId ? { left: [columnId] } : undefined,
+
+      // When unpinning, clear all pinning
+      if (columnId === null) {
+        const updates = { columnPinning: undefined }
+        if (viewId) {
+          updateViewConfig(viewId, updates)
+        } else {
+          updateSessionConfig(tableId, updates)
+        }
+        return
       }
+
+      // When pinning, include all columns up to and including the target column
+      // This prevents the pinned column from jumping to the front
+      const allColumnIds = header.headerGroup.headers.map((h) => h.column.id)
+      const targetIndex = allColumnIds.findIndex((id) => id === columnId)
+      if (targetIndex === -1) return
+
+      const leftColumns = allColumnIds.slice(0, targetIndex + 1)
+      const updates = { columnPinning: { left: leftColumns } }
 
       if (viewId) {
         updateViewConfig(viewId, updates)
@@ -338,7 +355,7 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
         updateSessionConfig(tableId, updates)
       }
     },
-    [tableId, updateViewConfig, updateSessionConfig]
+    [tableId, header.headerGroup.headers, updateViewConfig, updateSessionConfig]
   )
 
   // ─── DERIVED STATE ──────────────────────────────────────────────────────────

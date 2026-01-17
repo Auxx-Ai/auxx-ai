@@ -49,29 +49,21 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
 
   const updateField = api.customField.update.useMutation({
     onMutate: async (variables) => {
-      console.log('🔵 onMutate START - variables:', variables)
-
       // Create transaction for automatic rollback on error
       const transaction = new CacheTransaction(queryClient)
 
       await transaction.execute(async () => {
         // Cancel any outgoing refetches to prevent race conditions
         await utils.resource.getAllResourceTypes.cancel()
-        console.log('🔵 Cancelled outgoing refetches')
 
         // Optimistically update the resource cache
         utils.resource.getAllResourceTypes.setData(undefined, (oldData) => {
-          console.log('🔵 setData called - oldData:', oldData)
           if (!oldData) return oldData
 
-          const newData = oldData.map((resource) => {
+          return oldData.map((resource) => {
             // Find the resource containing this field
             const fieldIndex = resource.fields.findIndex((f) => f.id === variables.id)
             if (fieldIndex === -1) return resource
-
-            console.log('🔵 Found field in resource:', resource.id)
-            console.log('🔵 Old field:', resource.fields.find((f) => f.id === variables.id))
-            console.log('🔵 New sortOrder:', variables.sortOrder)
 
             // Update the specific field with new values
             return {
@@ -81,25 +73,18 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
               ),
             }
           })
-
-          console.log('🔵 newData after optimistic update:', newData)
-          return newData
         })
       })
 
-      console.log('🔵 onMutate END')
       return { transaction }
     },
-    onSuccess: (data) => {
-      console.log('🟢 onSuccess - mutation confirmed by server, data:', data)
+    onSuccess: () => {
       // Only invalidate after server confirms the update
       // This prevents the "bounce" effect from early invalidation
       invalidateCustomFieldQueries()
       invalidateResourceDefinitions()
-      console.log('🟢 Invalidated queries')
     },
-    onError: (error, variables, context) => {
-      console.log('🔴 onError - rolling back:', error)
+    onError: (error) => {
       // Transaction automatically rolls back the cache
       toastError({ title: 'Error updating custom field', description: error.message })
     },
