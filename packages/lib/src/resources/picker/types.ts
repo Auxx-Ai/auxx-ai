@@ -27,9 +27,9 @@ export interface GetResourcesInput {
 }
 
 /**
- * Resource item formatted for picker display
+ * Record item formatted for picker display
  */
-export interface ResourcePickerItem {
+export interface RecordPickerItem {
   /** Instance ID (just the entity instance ID, not the full ResourceId) */
   id: string
 
@@ -57,7 +57,7 @@ export interface ResourcePickerItem {
  * Paginated picker results
  */
 export interface PaginatedResourcesResult {
-  items: ResourcePickerItem[]
+  items: RecordPickerItem[]
   nextCursor: string | null
   totalCount?: number
 }

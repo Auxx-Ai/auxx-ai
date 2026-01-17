@@ -12,7 +12,7 @@ import {
 import { parseResourceId, type ResourceId } from '@auxx/lib/resources/client'
 import type { VisibilityState } from '@tanstack/react-table'
 import { generateId } from '@auxx/utils/generateId'
-import { toFieldId, parseResourceFieldId, type FieldId } from '@auxx/types/field'
+import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 
 interface UseCustomFieldValueSyncerOptions {
   /** ResourceIds for the entities being displayed */
@@ -21,8 +21,8 @@ interface UseCustomFieldValueSyncerOptions {
   /** Column visibility state from DynamicTable */
   columnVisibility: VisibilityState
 
-  /** Column IDs in ResourceFieldId format (e.g., ['contact:email', 'contact:abc']) */
-  columnIds: string[]
+  /** ResourceFieldIds for columns (e.g., ['contact:email', 'contact:abc']) */
+  resourceFieldIds: string[]
 
   /** Whether syncing is enabled */
   enabled?: boolean
@@ -36,10 +36,10 @@ interface SyncerResult {
   isFetching: boolean
 
   /** Get a value from the store (returns TypedFieldValue | TypedFieldValue[] | null) */
-  getValue: (resourceId: ResourceId, fieldId: FieldId | string) => StoredFieldValue | undefined
+  getValue: (resourceId: ResourceId, resourceFieldId: ResourceFieldId) => StoredFieldValue | undefined
 
   /** Check if a value is currently loading */
-  isValueLoading: (resourceId: ResourceId, fieldId: FieldId | string) => boolean
+  isValueLoading: (resourceId: ResourceId, resourceFieldId: ResourceFieldId) => boolean
 }
 
 /**
@@ -48,17 +48,17 @@ interface SyncerResult {
  *
  * @example
  * ```tsx
- * // Pass column IDs in ResourceFieldId format
+ * // Pass resourceFieldIds in ResourceFieldId format
  * useCustomFieldValueSyncer({
  *   resourceIds,
  *   columnVisibility,
- *   columnIds: customFields.map(f => toResourceFieldId(entityDefinitionId, f.id)),
+ *   resourceFieldIds: customFields.map(f => f.resourceFieldId),
  *   enabled: customFields.length > 0,
  * })
  * ```
  */
 export function useCustomFieldValueSyncer(options: UseCustomFieldValueSyncerOptions): SyncerResult {
-  const { resourceIds, columnVisibility, columnIds, enabled = true, debounceMs = 150 } = options
+  const { resourceIds, columnVisibility, resourceFieldIds, enabled = true, debounceMs = 150 } = options
 
   // Get store actions (stable references)
   const setValues = useFieldValueStore((s) => s.setValues)
@@ -71,13 +71,13 @@ export function useCustomFieldValueSyncer(options: UseCustomFieldValueSyncerOpti
 
   // Extract field IDs from ResourceFieldIds and filter by visibility
   const visibleFieldIds = useMemo(() => {
-    return columnIds
-      .filter((columnId) => columnVisibility[columnId] !== false)
-      .map((columnId) => {
-        const { fieldId } = parseResourceFieldId(columnId)
+    return resourceFieldIds
+      .filter((resourceFieldId) => columnVisibility[resourceFieldId] !== false)
+      .map((resourceFieldId) => {
+        const { fieldId } = parseResourceFieldId(resourceFieldId)
         return fieldId
       })
-  }, [columnIds, columnVisibility])
+  }, [resourceFieldIds, columnVisibility])
 
   // Helper to check if a key is loading (uses getState, not subscription)
   const isKeyLoading = useCallback((key: FieldValueKey) => {
@@ -203,9 +203,9 @@ export function useCustomFieldValueSyncer(options: UseCustomFieldValueSyncerOpti
 
   // Get value accessor - reads directly from store via getState (stable function)
   const getValue = useCallback(
-    (resourceId: ResourceId, fieldId: FieldId | string): StoredFieldValue | undefined => {
-      const typedFieldId = typeof fieldId === 'string' ? toFieldId(fieldId) : fieldId
-      const key = buildFieldValueKey(resourceId, typedFieldId)
+    (resourceId: ResourceId, resourceFieldId: ResourceFieldId): StoredFieldValue | undefined => {
+      const { fieldId } = parseResourceFieldId(resourceFieldId)
+      const key = buildFieldValueKey(resourceId, fieldId)
       return useFieldValueStore.getState().values[key]
     },
     []
@@ -213,9 +213,9 @@ export function useCustomFieldValueSyncer(options: UseCustomFieldValueSyncerOpti
 
   // Loading state accessor
   const isValueLoading = useCallback(
-    (resourceId: ResourceId, fieldId: FieldId | string): boolean => {
-      const typedFieldId = typeof fieldId === 'string' ? toFieldId(fieldId) : fieldId
-      const key = buildFieldValueKey(resourceId, typedFieldId)
+    (resourceId: ResourceId, resourceFieldId: ResourceFieldId): boolean => {
+      const { fieldId } = parseResourceFieldId(resourceFieldId)
+      const key = buildFieldValueKey(resourceId, fieldId)
       return isKeyLoading(key)
     },
     [isKeyLoading]

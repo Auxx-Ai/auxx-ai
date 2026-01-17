@@ -34,13 +34,15 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
 
   const createField = api.customField.create.useMutation({
     onMutate: async (variables) => {
-      if (!entityDefinitionId) return
+      // Use entityDefinitionId from hook props, or fall back to variables
+      const effectiveEntityDefId = entityDefinitionId || variables.entityDefinitionId
+      if (!effectiveEntityDefId) return
 
       const store = getResourceStoreState()
 
       // Generate temp ID for optimistic field
       const tempId = `temp_${Date.now()}`
-      const tempKey = toResourceFieldId(entityDefinitionId, toFieldId(tempId))
+      const tempKey = toResourceFieldId(effectiveEntityDefId, toFieldId(tempId))
 
       // Determine base type from field type
       const baseType = mapFieldTypeToBaseType(variables.type)
@@ -82,11 +84,13 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
     },
 
     onSuccess: (result, variables, context) => {
-      if (!context || !entityDefinitionId) return
+      // Use entityDefinitionId from hook props, or fall back to variables
+      const effectiveEntityDefId = entityDefinitionId || variables.entityDefinitionId
+      if (!context || !effectiveEntityDefId) return
       const store = getResourceStoreState()
 
       // Build the server field's key
-      const serverKey = toResourceFieldId(entityDefinitionId, toFieldId(result.id))
+      const serverKey = toResourceFieldId(effectiveEntityDefId, toFieldId(result.id))
 
       // Determine base type from field type
       const baseType = mapFieldTypeToBaseType(result.type)

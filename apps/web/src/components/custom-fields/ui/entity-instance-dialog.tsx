@@ -75,7 +75,7 @@ export function EntityInstanceDialog({
 
   const { getValue } = useCustomFieldValueSyncer({
     resourceIds,
-    columnIds, // Now ResourceFieldId format
+    resourceFieldIds: columnIds,
     columnVisibility: {},
     enabled: !!resourceId && columnIds.length > 0,
   })
@@ -118,7 +118,7 @@ export function EntityInstanceDialog({
 
       if (resourceId) {
         for (const field of editableFields) {
-          const storeValue = getValue(resourceId, field.id)
+          const storeValue = getValue(resourceId, field.resourceFieldId!)
           if (storeValue !== undefined && storeValue !== null) {
             initValues[field.id] = formatToRawValue(storeValue, field.fieldType ?? 'TEXT')
           }

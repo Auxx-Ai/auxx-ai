@@ -7,18 +7,18 @@ import { useFieldValue } from '~/components/resources/store/field-value-store'
 import { formatToDisplayValue } from '@auxx/lib/field-values/client'
 import type { TypedFieldValue } from '@auxx/types/field-value'
 import { PrimaryCell } from './primary-cell'
-import { parseResourceFieldId } from '@auxx/types/field'
+import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import { useField } from '~/components/resources/hooks/use-field'
-import type { ResourceId } from '@auxx/lib/resources/client'
+import { toResourceId } from '~/components/resources'
 
 /**
  * Props for PrimaryFieldCell component
  */
 interface PrimaryFieldCellProps {
-  /** Resource ID (entityDefinitionId:rowId) */
-  resourceId: ResourceId
-  /** Column ID in ResourceFieldId format (entityDefinitionId:fieldId) */
-  columnId: string
+  /** ResourceFieldId in format "entityDefinitionId:fieldId" */
+  resourceFieldId: ResourceFieldId
+  /** Row ID (record's unique identifier) */
+  rowId: string
   /** Click handler for the title */
   onTitleClick: () => void
   /** Dropdown menu items passed as children */
@@ -34,22 +34,28 @@ interface PrimaryFieldCellProps {
  * following the same pattern as CustomFieldCell.
  */
 export const PrimaryFieldCell = memo(function PrimaryFieldCell({
-  resourceId,
-  columnId, // Now in ResourceFieldId format
+  resourceFieldId,
+  rowId,
   onTitleClick,
   children,
 }: PrimaryFieldCellProps) {
-  // Extract fieldId from ResourceFieldId format (columnId)
-  const fieldId = useMemo(() => {
-    const { fieldId } = parseResourceFieldId(columnId)
-    return fieldId
-  }, [columnId])
+  // Extract entityDefinitionId and fieldId from ResourceFieldId
+  const { entityDefinitionId, fieldId } = useMemo(
+    () => parseResourceFieldId(resourceFieldId),
+    [resourceFieldId]
+  )
+
+  // Build resourceId from entityDefinitionId and rowId
+  const resourceId = useMemo(
+    () => toResourceId(entityDefinitionId, rowId),
+    [entityDefinitionId, rowId]
+  )
 
   // Direct store subscription - triggers re-render when value changes
   const { value, isLoading } = useFieldValue(resourceId, fieldId)
 
   // Get field metadata
-  const field = useField(columnId)
+  const field = useField(resourceFieldId)
   const fieldType = field?.fieldType
 
   // Format value for display

@@ -62,9 +62,13 @@ export function useResourceFields(
     }
 
     // Add optimistic new fields for this resource
+    // Use both resource.id and resource.entityDefinitionId for matching (they should be equal but handle edge cases)
+    const resourceId = resource.id
+    const resourceEntityDefId = resource.entityDefinitionId
     for (const [key, field] of Object.entries(optimisticNewFields) as Array<[ResourceFieldId, ResourceField]>) {
-      const { entityDefinitionId } = parseResourceFieldId(key)
-      if (entityDefinitionId === resource.id && !optimisticDeletedFields.has(key)) {
+      const { entityDefinitionId: fieldEntityDefId } = parseResourceFieldId(key)
+      const matchesResource = fieldEntityDefId === resourceId || fieldEntityDefId === resourceEntityDefId
+      if (matchesResource && !optimisticDeletedFields.has(key)) {
         effectiveFields.push(field)
       }
     }

@@ -137,11 +137,11 @@ export {
   type ValidationResult as FormInputValidationResult,
 } from './validation'
 
-// Resource picker service
-export { ResourcePickerService } from '../resources/picker'
+// Record picker service
+export { RecordPickerService } from '../resources/picker'
 export type {
   GetResourcesInput,
-  ResourcePickerItem,
+  RecordPickerItem,
   PaginatedResourcesResult,
   GetResourceByIdInput,
 } from '../resources/picker'

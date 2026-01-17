@@ -1,4 +1,4 @@
-// apps/web/src/components/pickers/resource-picker.tsx
+// apps/web/src/components/pickers/record-picker.tsx
 
 'use client'
 
@@ -20,27 +20,27 @@ import {
   isCustomResource,
   toResourceId,
   getDefinitionId,
-  type ResourcePickerItem,
+  type RecordPickerItem,
   type ResourceId,
 } from '@auxx/lib/resources/client'
 import { useRelationship, useResource, useResourceStore } from '~/components/resources'
 import { api } from '~/trpc/react'
 
 /**
- * Props for ResourcePickerItem display component
+ * Props for RecordItem display component
  */
-interface ResourceItemProps {
-  item: ResourcePickerItem
+interface RecordItemProps {
+  item: RecordPickerItem
   isSelected: boolean
   onToggle: (resourceId: ResourceId) => void
   showEntityType?: boolean
 }
 
 /**
- * Single item in the resource picker list.
+ * Single item in the record picker list.
  * Displays avatar or entity icon with name and secondary info.
  */
-function ResourceItem({ item, isSelected, onToggle, showEntityType }: ResourceItemProps) {
+function RecordItem({ item, isSelected, onToggle, showEntityType }: RecordItemProps) {
   const { resource } = useResource(getDefinitionId(item.resourceId))
   const iconColor = resource && isCustomResource(resource) ? resource.color : undefined
 
@@ -83,9 +83,9 @@ function ResourceItem({ item, isSelected, onToggle, showEntityType }: ResourceIt
 }
 
 /**
- * Props for the ResourcePicker component
+ * Props for the RecordPicker component
  */
-export interface ResourcePickerProps {
+export interface RecordPickerProps {
   /** Currently selected ResourceIds */
   value: ResourceId[]
 
@@ -133,7 +133,7 @@ export interface ResourcePickerProps {
 }
 
 /**
- * ResourcePicker - A context-agnostic resource picker component.
+ * RecordPicker - A context-agnostic record picker component.
  * Supports searching entities and selecting ResourceId values.
  *
  * Features:
@@ -142,7 +142,7 @@ export interface ResourcePickerProps {
  * - Shows selected items at top, available items below
  * - Hydrates selected items using useRelationship hook
  */
-export function ResourcePicker({
+export function RecordPicker({
   value,
   onChange,
   entityDefinitionId,
@@ -158,7 +158,7 @@ export function ResourcePicker({
   createLabel = 'Create new',
   className,
   excludeIds = [],
-}: ResourcePickerProps) {
+}: RecordPickerProps) {
   const [search, setSearch] = useState('')
   const getResourceById = useResourceStore((s) => s.getResourceById)
 
@@ -214,7 +214,7 @@ export function ResourcePicker({
 
   // Build map of hydrated items for quick lookup
   const hydratedMap = useMemo(() => {
-    const map: Record<string, ResourcePickerItem> = {}
+    const map: Record<string, RecordPickerItem> = {}
     initialSelectedIds.forEach((resourceId, idx) => {
       const item = hydratedItems[idx]
       if (item) {
@@ -243,7 +243,7 @@ export function ResourcePicker({
   // Filter initially selected items by search term
   const filteredSelectedItems = useMemo(() => {
     const searchLower = search.toLowerCase()
-    const items: ResourcePickerItem[] = []
+    const items: RecordPickerItem[] = []
 
     for (const resourceId of initialSelectedIds) {
       const item = hydratedMap[resourceId]
@@ -267,7 +267,7 @@ export function ResourcePicker({
   }, [searchResults, wasInitiallySelected, excludeIds])
 
   /**
-   * Toggle selection of a resource
+   * Toggle selection of a record
    */
   const handleToggle = useCallback(
     (resourceId: ResourceId) => {
@@ -331,7 +331,7 @@ export function ResourcePicker({
               <CommandGroup aria-label="Selected Items">
                 {filteredSelectedItems.map((item) => {
                   return (
-                    <ResourceItem
+                    <RecordItem
                       key={item.resourceId}
                       item={item}
                       isSelected={isSelected(item.resourceId)}
@@ -351,7 +351,7 @@ export function ResourcePicker({
               <CommandGroup aria-label="Available Items">
                 {availableItems.map((item) => {
                   return (
-                    <ResourceItem
+                    <RecordItem
                       key={item.resourceId}
                       item={item}
                       isSelected={isSelected(item.resourceId)}

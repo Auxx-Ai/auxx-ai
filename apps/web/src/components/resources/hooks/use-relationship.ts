@@ -2,14 +2,14 @@
 
 import { useEffect, useMemo } from 'react'
 import { useHydratedItems, useIsLoadingRelationships, getRelationshipStoreState } from '../store'
-import type { ResourcePickerItem } from '@auxx/lib/resources/client'
+import type { RecordPickerItem } from '@auxx/lib/resources/client'
 import { getInstanceId, type ResourceId } from '@auxx/lib/resources/client'
 
 interface UseRelationshipResult {
   /** Hydrated items indexed by position (matches input resourceIds order) */
-  items: (ResourcePickerItem | null | undefined)[]
-  /** Map of entityInstanceId -> ResourcePickerItem for random access */
-  itemsMap: Map<string, ResourcePickerItem | null | undefined>
+  items: (RecordPickerItem | null | undefined)[]
+  /** Map of entityInstanceId -> RecordPickerItem for random access */
+  itemsMap: Map<string, RecordPickerItem | null | undefined>
   /** Whether any items are still loading */
   isLoading: boolean
   /** Whether all items are resolved (found or not found) */
@@ -44,7 +44,7 @@ export function useRelationship(resourceIds: ResourceId[]): UseRelationshipResul
 
   // Build itemsMap for random access (keyed by entityInstanceId)
   const itemsMap = useMemo(() => {
-    const map = new Map<string, ResourcePickerItem | null | undefined>()
+    const map = new Map<string, RecordPickerItem | null | undefined>()
     resourceIds.forEach((resourceId, idx) => {
       map.set(getInstanceId(resourceId), items[idx])
     })

@@ -10,11 +10,11 @@ export {
   getResourceIdField,
 } from './resource-fetcher'
 
-// Resource picker service (server-side)
-export { ResourcePickerService } from './picker'
+// Record picker service (server-side)
+export { RecordPickerService } from './picker'
 export type {
   GetResourcesInput,
-  ResourcePickerItem,
+  RecordPickerItem,
   PaginatedResourcesResult,
   GetResourceByIdInput,
 } from './picker'

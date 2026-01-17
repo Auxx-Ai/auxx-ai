@@ -14,17 +14,17 @@ import {
 } from '@auxx/lib/field-values/client'
 import { api } from '~/trpc/react'
 import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
-import { ResourcePicker } from '~/components/pickers/resource-picker'
+import { RecordPicker } from '~/components/pickers/record-picker'
 import { isSingleValueRelationship } from '@auxx/utils'
 
 /**
  * Input component for RELATIONSHIP field type.
- * Uses ResourcePicker for the UI and manages save-on-close pattern.
+ * Uses RecordPicker for the UI and manages save-on-close pattern.
  *
  * Pattern E: Save-on-close
  * - Local state for selection tracking
  * - Uses onBeforeClose hook for fire-and-forget save
- * - Delegates UI to ResourcePicker component
+ * - Delegates UI to RecordPicker component
  */
 export function RelationshipInputField() {
   const { value, field, commitValue, onBeforeClose, resourceId } = usePropertyContext()
@@ -62,7 +62,7 @@ export function RelationshipInputField() {
   // Only custom resources support inline create (system resources have dedicated flows)
   const canInlineCreate = true //relatedResource && isCustomResource(relatedResource)
 
-  // Convert field value to ResourceId[] for ResourcePicker
+  // Convert field value to ResourceId[] for RecordPicker
   const currentResourceIds = useMemo<ResourceId[]>(() => {
     if (!resourceRef) return []
     return extractRelationshipResourceIds(value)
@@ -111,7 +111,7 @@ export function RelationshipInputField() {
   }, [onBeforeClose, value, commitValue, relatedEntityDefinitionId])
 
   /**
-   * Handle selection change from ResourcePicker
+   * Handle selection change from RecordPicker
    */
   const handleChange = useCallback((selected: ResourceId[]) => {
     setLocalResourceIds(selected)
@@ -218,7 +218,7 @@ export function RelationshipInputField() {
 
   return (
     <div className="">
-      <ResourcePicker
+      <RecordPicker
         value={localResourceIds}
         onChange={handleChange}
         entityDefinitionId={resourceRef.entityDefinitionId}

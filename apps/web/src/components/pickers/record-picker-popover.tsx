@@ -1,4 +1,4 @@
-// apps/web/src/components/pickers/resource-picker-popover.tsx
+// apps/web/src/components/pickers/record-picker-popover.tsx
 
 'use client'
 
@@ -7,14 +7,14 @@ import { Link2 } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
-import { ResourcePicker, type ResourcePickerProps } from './resource-picker'
+import { RecordPicker, type RecordPickerProps } from './record-picker'
 import type { ResourceId } from '@auxx/types/resource'
 
 /**
- * Props for ResourcePickerPopover component
+ * Props for RecordPickerPopover component
  */
-export interface ResourcePickerPopoverProps
-  extends Omit<ResourcePickerProps, 'onCaptureChange' | 'className'> {
+export interface RecordPickerPopoverProps
+  extends Omit<RecordPickerProps, 'onCaptureChange' | 'className'> {
   /** Custom trigger element (if not provided, uses default button) */
   children?: ReactNode
 
@@ -44,8 +44,8 @@ export interface ResourcePickerPopoverProps
 }
 
 /**
- * ResourcePickerPopover - A popover wrapper around ResourcePicker.
- * Provides a complete dropdown experience for selecting resources.
+ * RecordPickerPopover - A popover wrapper around RecordPicker.
+ * Provides a complete dropdown experience for selecting records.
  *
  * Features:
  * - Custom trigger support via children
@@ -53,7 +53,7 @@ export interface ResourcePickerPopoverProps
  * - Controlled or uncontrolled open state
  * - Auto-close on single select
  */
-export function ResourcePickerPopover({
+export function RecordPickerPopover({
   children,
   open,
   onOpenChange,
@@ -68,7 +68,7 @@ export function ResourcePickerPopover({
   multi = true,
   onSelectSingle,
   ...pickerProps
-}: ResourcePickerPopoverProps) {
+}: RecordPickerPopoverProps) {
   // Internal open state (for uncontrolled mode)
   const [internalOpen, setInternalOpen] = useState(false)
 
@@ -135,7 +135,7 @@ export function ResourcePickerPopover({
         align={align}
         side={side}
         sideOffset={sideOffset}>
-        <ResourcePicker
+        <RecordPicker
           value={value}
           onChange={onChange}
           multi={multi}

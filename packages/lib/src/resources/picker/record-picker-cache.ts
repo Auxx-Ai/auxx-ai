@@ -1,18 +1,18 @@
-// packages/lib/src/workflow-engine/resources/picker/resource-picker-cache.ts
+// packages/lib/src/resources/picker/record-picker-cache.ts
 
 import { BaseCacheService } from '@auxx/lib/cache'
-import type { ResourcePickerItem, PaginatedResourcesResult } from './types'
+import type { RecordPickerItem, PaginatedResourcesResult } from './types'
 
 /**
- * Cache service for resource picker data
+ * Cache service for record picker data
  */
-export class ResourcePickerCacheService extends BaseCacheService {
+export class RecordPickerCacheService extends BaseCacheService {
   constructor() {
-    super('resource-picker', 1800) // 30 min TTL
+    super('record-picker', 1800) // 30 min TTL
   }
 
   /**
-   * Build cache key for resource list queries
+   * Build cache key for record list queries
    */
   private buildListKey(
     orgId: string,
@@ -47,7 +47,7 @@ export class ResourcePickerCacheService extends BaseCacheService {
     const key = this.buildListKey(orgId, entityDefinitionId, options)
     await this.set(key, result, {
       ttl: 1800, // 30 minutes
-      tags: ['resource-picker', `entity:${entityDefinitionId}`, `org:${orgId}`],
+      tags: ['record-picker', `entity:${entityDefinitionId}`, `org:${orgId}`],
     })
   }
 
@@ -68,30 +68,30 @@ export class ResourcePickerCacheService extends BaseCacheService {
   }
 
   /**
-   * Cache single resource
+   * Cache single record
    */
   async cacheSingleResource(
     orgId: string,
     entityDefinitionId: string,
-    item: ResourcePickerItem,
+    item: RecordPickerItem,
   ): Promise<void> {
     const key = this.buildKey('item', orgId, entityDefinitionId, item.id)
     await this.set(key, item, {
       ttl: 3600, // 1 hour
-      tags: ['resource-picker', `entity:${entityDefinitionId}`, `org:${orgId}`, `id:${item.id}`],
+      tags: ['record-picker', `entity:${entityDefinitionId}`, `org:${orgId}`, `id:${item.id}`],
     })
   }
 
   /**
-   * Get cached single resource
+   * Get cached single record
    */
   async getCachedSingleResource(
     orgId: string,
     entityDefinitionId: string,
     id: string,
-  ): Promise<ResourcePickerItem | null> {
+  ): Promise<RecordPickerItem | null> {
     const key = this.buildKey('item', orgId, entityDefinitionId, id)
-    return this.get<ResourcePickerItem>(key)
+    return this.get<RecordPickerItem>(key)
   }
 
   /**

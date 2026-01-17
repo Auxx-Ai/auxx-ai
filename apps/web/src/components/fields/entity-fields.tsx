@@ -15,7 +15,7 @@ import { FieldNavigationProvider } from './field-navigation-context'
 import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
 import { useConfirm } from '~/hooks/use-confirm'
 import { EntityFieldsContent } from './entity-fields-content'
-import { useResource, useRecord, useRecordHydration } from '~/components/resources'
+import { useResourceFields } from '~/components/resources'
 import {
   parseResourceId,
   sortFieldsForDisplay,
@@ -61,8 +61,8 @@ function EntityFields({
   showTitle = true,
   excludeFields,
 }: EntityFieldsProps) {
-  // Parse resourceId to get components
-  const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+  // Parse resourceId to get entityDefinitionId
+  const { entityDefinitionId } = parseResourceId(resourceId)
 
   // State management
   const closeHandlersRef = useRef<Record<string, () => void>>({})
@@ -72,8 +72,6 @@ function EntityFields({
   const [isEditMode, setIsEditMode] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingField, setEditingField] = useState<any | null>(null)
-  // Local optimistic order for immediate UI feedback during reorder
-  const [optimisticOrder, setOptimisticOrder] = useState<ResourceField[] | null>(null)
 
   // Use custom field mutations hook for creating/updating/deleting fields (fields come from resource)
   const { create, update, isPending, destroy } = useCustomFieldMutations({
@@ -90,25 +88,11 @@ function EntityFields({
   )
 
   // ─────────────────────────────────────────────────────────────────
-  // RESOURCE & RECORD DATA
+  // RESOURCE FIELDS (with optimistic overlays from store)
   // ─────────────────────────────────────────────────────────────────
 
-  // Get resource from ResourceProvider (single source of truth)
-  const { resource, isLoading: resourceLoading } = useResource(entityDefinitionId)
-
-  // Fetch record data (uses cache from list view, fetches if needed)
-  const { record, isLoading: recordLoading } = useRecord({
-    resourceId,
-    enabled: !!resource,
-  })
-
-  // Hydrate field values into the store when data changes
-  useRecordHydration({
-    resource,
-    resourceId,
-    recordData: record as Record<string, unknown> | undefined,
-    enabled: !!record && !!resource,
-  })
+  // Get fields with optimistic overlays - subscribes to fieldMap for instant updates
+  const { fields: effectiveFields, isLoading: fieldsLoading } = useResourceFields(entityDefinitionId)
 
   // ─────────────────────────────────────────────────────────────────
   // FIELD PROCESSING (unified system + custom)
@@ -116,16 +100,16 @@ function EntityFields({
 
   // Get unified field list sorted for display
   const displayFields = useMemo(() => {
-    if (!resource?.fields) return []
-    return sortFieldsForDisplay(resource.fields)
-  }, [resource?.fields])
+    if (!effectiveFields.length) return []
+    return sortFieldsForDisplay(effectiveFields)
+  }, [effectiveFields])
 
   // Enrich fields with dynamic options
   const { fields: enrichedFields, isLoading: optionsLoading } =
     useDynamicFieldOptions(displayFields)
 
-  // Use optimistic order for immediate UI feedback, fall back to enriched fields
-  const sortedFields = optimisticOrder ?? enrichedFields
+  // Use enriched fields directly - optimistic updates are handled by fieldMap in the store
+  const sortedFields = enrichedFields
 
   // Apply field exclusion filter
   const filteredFields = useMemo(() => {
@@ -196,15 +180,8 @@ function EntityFields({
       afterField?.sortOrder ?? null
     )
 
-    // Set optimistic order immediately for smooth UI
-    const systemFields = filteredFields.filter((f) => f.isSystem)
-    setOptimisticOrder([...systemFields, ...reorderedCustom])
-
-    // Update only the moved field, clear optimistic state when done
-    update.mutate(
-      { resourceFieldId: toResourceFieldId(entityDefinitionId, movedField.id), sortOrder: newSortOrder },
-      { onSettled: () => setOptimisticOrder(null) }
-    )
+    // Update only the moved field - store handles optimistic updates via setFieldOptimistic
+    update.mutate({ resourceFieldId: toResourceFieldId(entityDefinitionId, movedField.id), sortOrder: newSortOrder })
   }
 
   // ─────────────────────────────────────────────────────────────────
@@ -261,7 +238,7 @@ function EntityFields({
     return !field.isSystem && field.capabilities.updatable !== false
   }
 
-  const isLoading = resourceLoading || optionsLoading || recordLoading
+  const isLoading = fieldsLoading || optionsLoading
 
   return (
     <FieldNavigationProvider>

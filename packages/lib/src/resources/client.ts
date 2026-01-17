@@ -23,7 +23,7 @@ export type { ResourceDisplayConfig, OrgScopingStrategy, JoinScopingConfig } fro
 // Picker types
 export type {
   GetResourcesInput,
-  ResourcePickerItem,
+  RecordPickerItem,
   PaginatedResourcesResult,
   GetResourceByIdInput,
 } from './picker'

@@ -65,7 +65,7 @@ export function BulkUpdateEntityInstanceDialog({
 
   const { getValue } = useCustomFieldValueSyncer({
     resourceIds,
-    columnIds, // Now ResourceFieldId format
+    resourceFieldIds: columnIds,
     columnVisibility: {},
     enabled: resourceIds.length > 0 && columnIds.length > 0,
   })
@@ -125,7 +125,7 @@ export function BulkUpdateEntityInstanceDialog({
 
       for (const field of editableFields) {
         const fieldValues = resourceIds.map((resourceId) => {
-          const storeValue = getValue(resourceId, field.id)
+          const storeValue = getValue(resourceId, field.resourceFieldId!)
           return formatToRawValue(storeValue, field.fieldType ?? 'TEXT')
         })
 

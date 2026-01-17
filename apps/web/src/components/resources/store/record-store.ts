@@ -15,7 +15,7 @@ const BATCH_DELAY = 50 // ms to wait before processing batch
 const MAX_BATCH_SIZE = 100 // max records per batch request
 
 /**
- * Record metadata from ResourcePickerItem
+ * Record metadata from RecordPickerItem
  * Contains full resource data including display fields and database row
  */
 export interface RecordMeta {

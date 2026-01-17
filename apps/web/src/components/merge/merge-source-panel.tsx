@@ -6,7 +6,7 @@ import { Plus, X, ArrowRight } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverTrigger, PopoverContent } from '@auxx/ui/components/popover'
 import type { ResourceId } from '@auxx/lib/resources/client'
-import { ResourcePicker } from '~/components/pickers/resource-picker'
+import { RecordPicker } from '~/components/pickers/record-picker'
 import { MergeItemCard } from './merge-item-card'
 import { EntityIcon } from '@auxx/ui/components/icons'
 
@@ -121,7 +121,7 @@ export function MergeSourcePanel({
         )}
 
         <PopoverContent className="w-[300px] p-0" align="start">
-          <ResourcePicker
+          <RecordPicker
             value={sourceResourceIds}
             onChange={handlePickerChange}
             entityDefinitionId={entityDefinitionId ?? undefined}

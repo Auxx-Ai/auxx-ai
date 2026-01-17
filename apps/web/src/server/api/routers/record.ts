@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { TRPCError } from '@trpc/server'
 import {
-  ResourcePickerService,
+  RecordPickerService,
   ResourceRegistryService,
   RESOURCE_TABLE_REGISTRY,
   RESOURCE_TABLE_MAP,
@@ -90,7 +90,7 @@ export const recordRouter = createTRPCRouter({
   //   const { entityDefinitionId } = input
 
   //   try {
-  //     const service = new ResourcePickerService(organizationId, userId, ctx.db)
+  //     const service = new RecordPickerService(organizationId, userId, ctx.db)
   //     return await service.getResources({ ...input, entityDefinitionId })
   //   } catch (error: any) {
   //     if (error instanceof TRPCError) throw error
@@ -108,7 +108,7 @@ export const recordRouter = createTRPCRouter({
     const { organizationId, userId } = ctx.session
 
     try {
-      const service = new ResourcePickerService(organizationId, userId, ctx.db)
+      const service = new RecordPickerService(organizationId, userId, ctx.db)
       const item = await service.getResourceById(input)
 
       if (!item) {
@@ -142,7 +142,7 @@ export const recordRouter = createTRPCRouter({
       const { organizationId, userId } = ctx.session
 
       try {
-        const service = new ResourcePickerService(organizationId, userId, ctx.db)
+        const service = new RecordPickerService(organizationId, userId, ctx.db)
         return await service.getResourcesByIds(input.items as ResourceId[])
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Unknown error'
@@ -167,7 +167,7 @@ export const recordRouter = createTRPCRouter({
     const { apiSlug, query, limit, cursor, entityDefinitionIds } = input
 
     try {
-      const service = new ResourcePickerService(organizationId, userId, ctx.db)
+      const service = new RecordPickerService(organizationId, userId, ctx.db)
 
       // Resolve apiSlug to entityDefinitionId if provided
       if (apiSlug && !entityDefinitionId) {
@@ -242,7 +242,7 @@ export const recordRouter = createTRPCRouter({
       const { organizationId, userId } = ctx.session
 
       try {
-        const service = new ResourcePickerService(organizationId, userId, ctx.db)
+        const service = new RecordPickerService(organizationId, userId, ctx.db)
 
         if (input.id) {
           await service.invalidateCacheById(input.entityDefinitionId, input.id)

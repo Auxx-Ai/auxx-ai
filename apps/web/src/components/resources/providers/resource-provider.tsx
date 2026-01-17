@@ -25,7 +25,7 @@ const MAX_RELATIONSHIP_BATCH = 100
  *
  * Provides:
  * 1. Resources - Unified list of system + custom resources with fields (loaded once upfront)
- * 2. Relationship Items - ResourcePickerItem objects (batch fetched on demand)
+ * 2. Relationship Items - RecordPickerItem objects (batch fetched on demand)
  * 3. Record Items - Batch fetched on demand
  *
  * All data is stored in Zustand stores for selective subscriptions.

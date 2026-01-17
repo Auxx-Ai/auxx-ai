@@ -219,7 +219,7 @@ export default function CustomerListPage() {
   useCustomFieldValueSyncer({
     resourceIds,
     columnVisibility,
-    columnIds, // Now ResourceFieldId format
+    resourceFieldIds: columnIds,
     enabled: columnIds.length > 0,
   })
 

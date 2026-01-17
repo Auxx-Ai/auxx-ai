@@ -99,7 +99,7 @@ export function MergeDialog({
     },
   })
 
-  /** Add source items via ResourcePicker */
+  /** Add source items via RecordPicker */
   const handleAddSources = useCallback(
     (newIds: ResourceId[]) => {
       setSourceResourceIds((prev) => {

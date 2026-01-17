@@ -245,7 +245,7 @@ export function EntityRecordsContent() {
   const { getValue, isValueLoading } = useCustomFieldValueSyncer({
     resourceIds,
     columnVisibility,
-    columnIds, // Now ResourceFieldId format
+    resourceFieldIds: columnIds,
     enabled: !!entityDefinitionId && columnIds.length > 0,
   })
 
@@ -357,8 +357,7 @@ export function EntityRecordsContent() {
       .sort((a, b) => (a.sortOrder ?? '').localeCompare(b.sortOrder ?? ''))
 
     // Find primary display field (only available on custom resources)
-    const primaryFieldId =
-      resource && isCustomResource(resource) ? resource.display.primaryDisplayField?.id : undefined
+    const primaryFieldId = resource?.display.primaryDisplayField?.id
     const primaryField = primaryFieldId
       ? sortedFields.find((f) => f.id === primaryFieldId)
       : sortedFields[0] // Fallback to first field
@@ -369,7 +368,7 @@ export function EntityRecordsContent() {
       ? {
           id: toResourceFieldId(entityDefinitionId!, toFieldId(primaryField.id)),
           accessorFn: () => undefined, // Not used - PrimaryFieldCell reads from store
-          header: primaryField.name ?? primaryField.label,
+          header: primaryField.name,
           primaryCell: true,
           fieldType: primaryField.fieldType,
           icon: getIconForFieldType(primaryField.fieldType!),
@@ -380,8 +379,8 @@ export function EntityRecordsContent() {
           size: 300,
           cell: ({ row }) => (
             <PrimaryFieldCell
-              resourceId={toResourceId(entityDefinitionId!, row.original.id)}
-              columnId={toResourceFieldId(entityDefinitionId!, toFieldId(primaryField.id))}
+              resourceFieldId={toResourceFieldId(entityDefinitionId!, toFieldId(primaryField.id))}
+              rowId={row.original.id}
               onTitleClick={() => handleOpenDrawer(row.original)}>
               <DropdownMenuItem onClick={() => handleOpenEditDialog(row.original)}>
                 <SquarePen />
@@ -487,9 +486,8 @@ export function EntityRecordsContent() {
         // System columns don't have values in the store
         if (columnId.startsWith('_')) return undefined
 
-        const { fieldId } = parseResourceFieldId(columnId)
         if (!entityDefinitionId) return undefined
-        return getValue(toResourceId(entityDefinitionId, rowId), fieldId)
+        return getValue(toResourceId(entityDefinitionId, rowId), columnId)
       },
       // ResourceId for optimistic updates via PropertyProvider
       getResourceId: (rowId: string) => {

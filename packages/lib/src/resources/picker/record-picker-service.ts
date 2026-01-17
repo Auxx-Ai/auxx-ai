@@ -1,4 +1,4 @@
-// packages/lib/src/workflow-engine/resources/picker/resource-picker-service.ts
+// packages/lib/src/resources/picker/record-picker-service.ts
 
 import { type Database, schema } from '@auxx/database'
 import { eq, and, desc, asc, or, ilike, sql, inArray, type SQL } from 'drizzle-orm'
@@ -12,10 +12,10 @@ import {
   type ResourceDisplayConfig,
   type CustomResource,
 } from '../registry'
-import { ResourcePickerCacheService } from './resource-picker-cache'
+import { RecordPickerCacheService } from './record-picker-cache'
 import type {
   GetResourcesInput,
-  ResourcePickerItem,
+  RecordPickerItem,
   PaginatedResourcesResult,
   GetResourceByIdInput,
   GlobalSearchParams,
@@ -24,25 +24,25 @@ import type {
 import type { ResourceId } from '@auxx/types/resource'
 import { parseResourceId, toResourceId } from '../resource-id'
 
-const logger = createScopedLogger('resource-picker-service')
+const logger = createScopedLogger('record-picker-service')
 
 /**
- * Generic resource picker service
+ * Generic record picker service
  * Works with any table defined in RESOURCE_TABLE_REGISTRY
  * Handles both direct and join-based organization scoping
  */
-export class ResourcePickerService {
+export class RecordPickerService {
   private db: Database
   private organizationId: string
   private userId?: string
-  private cache: ResourcePickerCacheService
+  private cache: RecordPickerCacheService
   private registryService: ResourceRegistryService
 
   constructor(organizationId: string, userId: string | undefined, db: Database) {
     this.db = db
     this.organizationId = organizationId
     this.userId = userId
-    this.cache = new ResourcePickerCacheService()
+    this.cache = new RecordPickerCacheService()
     this.registryService = new ResourceRegistryService(organizationId, db)
   }
 
@@ -103,7 +103,7 @@ export class ResourcePickerService {
    * Get single resource by ID
    * Supports both system resources (TableId) and custom entities (UUID-based)
    */
-  async getResourceById(input: GetResourceByIdInput): Promise<ResourcePickerItem | null> {
+  async getResourceById(input: GetResourceByIdInput): Promise<RecordPickerItem | null> {
     const { entityDefinitionId, id } = input
 
     // Check if it's a custom entity (UUID-based entityDefinitionId)
@@ -271,7 +271,7 @@ export class ResourcePickerService {
       nextCursor = `${sortValue instanceof Date ? sortValue.toISOString() : sortValue}|${nextItem.id}`
     }
 
-    // Transform to ResourcePickerItem
+    // Transform to RecordPickerItem
     const transformedItems = items.map((item) => this.transformToPickerItem(tableId, item))
 
     return {
@@ -381,7 +381,7 @@ export class ResourcePickerService {
       nextCursor = `${sortValue instanceof Date ? sortValue.toISOString() : sortValue}|${nextItem.id}`
     }
 
-    // Transform to ResourcePickerItem
+    // Transform to RecordPickerItem
     const transformedItems = extractedItems.map((item) => this.transformToPickerItem(tableId, item))
 
     return {
@@ -396,7 +396,7 @@ export class ResourcePickerService {
   private async fetchSingleResourceFromDb(
     tableId: TableId,
     id: string
-  ): Promise<ResourcePickerItem | null> {
+  ): Promise<RecordPickerItem | null> {
     const tableConfig = RESOURCE_TABLE_MAP[tableId]
     const displayConfig = RESOURCE_DISPLAY_CONFIG[tableId]
     const tableName = tableConfig.dbName
@@ -452,9 +452,9 @@ export class ResourcePickerService {
   }
 
   /**
-   * Transform database row to ResourcePickerItem using display config
+   * Transform database row to RecordPickerItem using display config
    */
-  private transformToPickerItem(tableId: TableId, row: any): ResourcePickerItem {
+  private transformToPickerItem(tableId: TableId, row: any): RecordPickerItem {
     const displayConfig = RESOURCE_DISPLAY_CONFIG[tableId]
 
     const entityInstanceId = row[displayConfig.identifierField]
@@ -524,7 +524,7 @@ export class ResourcePickerService {
       nextCursor = `${nextItem.updatedAt}|${nextItem.id}`
     }
 
-    // Transform to ResourcePickerItems with search filtering
+    // Transform to RecordPickerItems with search filtering
     let transformedItems = instances.map((inst) =>
       this.transformEntityInstanceToPickerItem(resource, inst)
     )
@@ -535,8 +535,7 @@ export class ResourcePickerService {
       transformedItems = transformedItems.filter(
         (item) =>
           item.displayName?.toLowerCase().includes(searchLower) ||
-          item.secondaryInfo?.toLowerCase().includes(searchLower) ||
-          item.entityInstanceId?.toLowerCase().includes(searchLower)
+          item.secondaryInfo?.toLowerCase().includes(searchLower)
       )
     }
 
@@ -552,7 +551,7 @@ export class ResourcePickerService {
   private async getEntityInstanceById(
     resource: CustomResource,
     id: string
-  ): Promise<ResourcePickerItem | null> {
+  ): Promise<RecordPickerItem | null> {
     // Use pre-computed display columns instead of field values
     const instance = await this.db.query.EntityInstance.findFirst({
       where: and(
@@ -568,7 +567,7 @@ export class ResourcePickerService {
   }
 
   /**
-   * Transform an EntityInstance to ResourcePickerItem using pre-computed display columns.
+   * Transform an EntityInstance to RecordPickerItem using pre-computed display columns.
    * EntityInstance.displayName, secondaryDisplayValue, and avatarUrl are populated
    * by FieldValueService.maybeUpdateDisplayValue() when field values are set.
    */
@@ -582,7 +581,7 @@ export class ResourcePickerService {
       createdAt: string
       updatedAt: string
     }
-  ): ResourcePickerItem {
+  ): RecordPickerItem {
     return {
       id: instance.id,
       resourceId: toResourceId(resource.id, instance.id),
@@ -604,8 +603,8 @@ export class ResourcePickerService {
    */
   async getResourcesByIds(
     resourceIds: ResourceId[]
-  ): Promise<Record<ResourceId, ResourcePickerItem>> {
-    const result: Record<ResourceId, ResourcePickerItem> = {}
+  ): Promise<Record<ResourceId, RecordPickerItem>> {
+    const result: Record<ResourceId, RecordPickerItem> = {}
 
     // Group by entityDefinitionId for efficient batching
     const grouped = new Map<string, string[]>()
@@ -646,7 +645,7 @@ export class ResourcePickerService {
   private async fetchEntityInstancesByIds(
     resource: CustomResource,
     ids: string[]
-  ): Promise<ResourcePickerItem[]> {
+  ): Promise<RecordPickerItem[]> {
     const instances = await this.db.query.EntityInstance.findMany({
       where: and(
         eq(schema.EntityInstance.organizationId, this.organizationId),
@@ -814,8 +813,8 @@ export class ResourcePickerService {
       nextCursor = `${lastItem.combined_score}|${lastItem.id}`
     }
 
-    // Transform to ResourcePickerItem format
-    const items: ResourcePickerItem[] = searchResults.map((row) => ({
+    // Transform to RecordPickerItem format
+    const items: RecordPickerItem[] = searchResults.map((row) => ({
       id: row.id,
       resourceId: toResourceId(row.entityDefinitionId, row.id),
       displayName: row.displayName || row.id,
@@ -927,8 +926,8 @@ export class ResourcePickerService {
       nextCursor = `${lastItem.updatedAt}|${lastItem.id}`
     }
 
-    // Transform to ResourcePickerItem format
-    const items: ResourcePickerItem[] = results.map((row) => ({
+    // Transform to RecordPickerItem format
+    const items: RecordPickerItem[] = results.map((row) => ({
       id: row.id,
       resourceId: toResourceId(row.entityDefinitionId, row.id),
       displayName: row.displayName || row.id,

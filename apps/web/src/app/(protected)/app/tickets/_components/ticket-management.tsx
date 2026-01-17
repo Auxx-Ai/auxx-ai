@@ -158,7 +158,7 @@ export function TicketManagement({
   useCustomFieldValueSyncer({
     resourceIds,
     columnVisibility,
-    columnIds, // Now ResourceFieldId format
+    resourceFieldIds: columnIds,
     enabled: columnIds.length > 0,
   })
 

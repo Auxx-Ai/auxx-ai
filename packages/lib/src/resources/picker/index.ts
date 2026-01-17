@@ -1,10 +1,10 @@
-// packages/lib/src/workflow-engine/resources/picker/index.ts
+// packages/lib/src/resources/picker/index.ts
 
-export { ResourcePickerService } from './resource-picker-service'
-export { ResourcePickerCacheService } from './resource-picker-cache'
+export { RecordPickerService } from './record-picker-service'
+export { RecordPickerCacheService } from './record-picker-cache'
 export type {
   GetResourcesInput,
-  ResourcePickerItem,
+  RecordPickerItem,
   PaginatedResourcesResult,
   GetResourceByIdInput,
   GlobalSearchParams,

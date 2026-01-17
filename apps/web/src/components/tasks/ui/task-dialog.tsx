@@ -24,7 +24,7 @@ import { createMentionExtension } from '~/components/editor/extensions/mention-e
 import { type MentionItem } from '~/components/editor/mention-popover'
 import { DateTimePicker } from '~/components/pickers/date-time-picker'
 import { AssigneePicker, type TeamMember } from '~/components/pickers/assignee-picker'
-import { ResourcePickerPopover } from '~/components/pickers/resource-picker-popover'
+import { RecordPickerPopover } from '~/components/pickers/record-picker-popover'
 import { formatTaskDeadlineDisplay } from '../utils/group-tasks-by-period'
 import { useTaskMutations } from '../hooks/use-task-mutations'
 import { api } from '~/trpc/react'
@@ -384,7 +384,7 @@ export function TaskDialog({
               </AssigneePicker>
 
               {/* Record Linking */}
-              <ResourcePickerPopover
+              <RecordPickerPopover
                 value={linkedRecords}
                 onChange={setLinkedRecords}
                 multi
@@ -395,7 +395,7 @@ export function TaskDialog({
                     ? `${linkedRecords.length} linked record${linkedRecords.length > 1 ? 's' : ''}`
                     : 'Link record'}
                 </Button>
-              </ResourcePickerPopover>
+              </RecordPickerPopover>
             </div>
 
             {/* Right side: Actions */}

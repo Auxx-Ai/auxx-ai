@@ -98,7 +98,7 @@ function createInitialState<TValue>(): HydrationStoreState<TValue> {
  * @example
  * ```typescript
  * // Create a store for relationship items
- * const useRelationshipStore = createHydrationStore<ResourcePickerItem>({
+ * const useRelationshipStore = createHydrationStore<RecordPickerItem>({
  *   name: 'relationship',
  *   getKeyFromValue: (item) => `${item.entityDefinitionId}:${item.id}`,
  * })
