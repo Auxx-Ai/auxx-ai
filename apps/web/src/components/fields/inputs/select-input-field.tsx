@@ -13,6 +13,8 @@ import { cn } from '@auxx/ui/lib/utils'
 import { TagsView } from '~/components/ui/tags-view'
 import { FieldType } from '@auxx/database/enums'
 import type { SelectOption } from '@auxx/types/custom-field'
+import { toResourceFieldId } from '@auxx/types/field'
+import { parseResourceId } from '@auxx/lib/resources/client'
 
 /**
  * Configuration for select-type fields based on field type
@@ -74,10 +76,14 @@ export function getSelectConfig(fieldType: string): SelectConfig {
  * Uses onBeforeClose hook to flush pending debounced saves when popover closes.
  */
 export function SelectInputField() {
-  const { value, field, commitValue, close, onBeforeClose } = usePropertyContext()
+  const { value, field, resourceId, commitValue, close, onBeforeClose } = usePropertyContext()
   const nav = useFieldNavigationOptional()
   const utils = api.useUtils()
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Parse resourceId to get entityDefinitionId for constructing ResourceFieldId
+  const { entityDefinitionId } = parseResourceId(resourceId)
+
   // Get configuration based on field type
   const config = getSelectConfig(field?.fieldType || field?.type)
 
@@ -188,11 +194,11 @@ export function SelectInputField() {
     (newOptions: SelectOption[]) => {
       if (!config.canManage) return
       updateField.mutate({
-        id: field.id,
+        resourceFieldId: toResourceFieldId(entityDefinitionId, field.id),
         options: newOptions,
       })
     },
-    [config.canManage, updateField, field.id]
+    [config.canManage, updateField, entityDefinitionId, field.id]
   )
 
   /**

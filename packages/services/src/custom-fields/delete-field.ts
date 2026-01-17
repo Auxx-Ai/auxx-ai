@@ -6,12 +6,13 @@ import { ok, err } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import type { RelationshipConfig } from './types'
 import type { CustomFieldNotFoundError, AccessDeniedError } from './errors'
+import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 
 /**
  * Input for deleting a custom field
  */
 export interface DeleteCustomFieldInput {
-  id: string
+  resourceFieldId: ResourceFieldId
   organizationId: string
 }
 
@@ -23,7 +24,10 @@ export interface DeleteCustomFieldInput {
  * @returns Result with success status
  */
 export async function deleteCustomField(input: DeleteCustomFieldInput) {
-  const { id, organizationId } = input
+  const { resourceFieldId, organizationId } = input
+
+  // Parse ResourceFieldId to get components
+  const { fieldId: id } = parseResourceFieldId(resourceFieldId)
 
   // Get full field data to check type and options
   const fieldResult = await fromDatabase(
@@ -44,7 +48,7 @@ export async function deleteCustomField(input: DeleteCustomFieldInput) {
     return err({
       code: 'CUSTOM_FIELD_NOT_FOUND',
       message: 'Field not found',
-      fieldId: id,
+      fieldId: id as string,
     } as CustomFieldNotFoundError)
   }
 

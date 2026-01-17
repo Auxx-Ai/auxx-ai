@@ -23,6 +23,7 @@ import {
   type ResourceId,
 } from '@auxx/lib/resources/client'
 import { useDynamicFieldOptions } from './hooks/use-dynamic-field-options'
+import { toResourceFieldId } from '@auxx/types/field'
 
 /**
  * Props for EntityFields component
@@ -201,7 +202,7 @@ function EntityFields({
 
     // Update only the moved field, clear optimistic state when done
     update.mutate(
-      { id: movedField.id, sortOrder: newSortOrder },
+      { resourceFieldId: toResourceFieldId(entityDefinitionId, movedField.id), sortOrder: newSortOrder },
       { onSettled: () => setOptimisticOrder(null) }
     )
   }
@@ -222,7 +223,10 @@ function EntityFields({
 
   const handleSaveField = async (fieldData: any) => {
     if (editingField) {
-      await update.mutateAsync({ ...fieldData, id: editingField.id })
+      await update.mutateAsync({
+        ...fieldData,
+        resourceFieldId: toResourceFieldId(entityDefinitionId, editingField.id),
+      })
     } else {
       // entityDefinitionId is now included by CustomFieldDialog
       await create.mutateAsync(fieldData)
@@ -243,7 +247,9 @@ function EntityFields({
     })
 
     if (confirmed) {
-      await destroy.mutateAsync({ id: fieldId })
+      await destroy.mutateAsync({
+        resourceFieldId: toResourceFieldId(entityDefinitionId, fieldId),
+      })
       onMutationSuccess?.()
     }
   }

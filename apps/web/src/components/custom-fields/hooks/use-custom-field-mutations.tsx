@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { api } from '~/trpc/react'
 import { CacheTransaction } from '~/lib/cache/cache-transaction'
+import { parseResourceFieldId } from '@auxx/types/field'
 
 /** Props for useCustomFieldMutations hook */
 interface UseCustomFieldMutationsProps {
@@ -49,6 +50,9 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
 
   const updateField = api.customField.update.useMutation({
     onMutate: async (variables) => {
+      // Parse resourceFieldId to get fieldId for cache lookup
+      const { fieldId } = parseResourceFieldId(variables.resourceFieldId)
+
       // Create transaction for automatic rollback on error
       const transaction = new CacheTransaction(queryClient)
 
@@ -62,14 +66,14 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
 
           return oldData.map((resource) => {
             // Find the resource containing this field
-            const fieldIndex = resource.fields.findIndex((f) => f.id === variables.id)
+            const fieldIndex = resource.fields.findIndex((f) => f.id === fieldId)
             if (fieldIndex === -1) return resource
 
             // Update the specific field with new values
             return {
               ...resource,
               fields: resource.fields.map((field) =>
-                field.id === variables.id ? { ...field, ...variables } : field
+                field.id === fieldId ? { ...field, ...variables } : field
               ),
             }
           })

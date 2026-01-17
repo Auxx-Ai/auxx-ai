@@ -19,12 +19,13 @@ import {
   mergeDisplayOptions,
 } from './types'
 import { checkExistingDuplicates } from './check-unique-value'
+import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 
 /**
  * Input for updating a custom field
  */
 export interface UpdateCustomFieldInput {
-  id: string
+  resourceFieldId: ResourceFieldId
   organizationId: string
   name?: string
   description?: string
@@ -53,7 +54,10 @@ export interface UpdateCustomFieldInput {
  * @returns Result with updated field
  */
 export async function updateCustomField(input: UpdateCustomFieldInput) {
-  const { id, organizationId, options, addressComponents, type, isUnique, ...data } = input
+  const { resourceFieldId, organizationId, options, addressComponents, type, isUnique, ...data } = input
+
+  // Parse ResourceFieldId to get components
+  const { fieldId: id } = parseResourceFieldId(resourceFieldId)
 
   // Get current field
   const currentResult = await fromDatabase(
@@ -83,7 +87,7 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
     return err({
       code: 'CUSTOM_FIELD_NOT_FOUND',
       message: 'Field not found',
-      fieldId: id,
+      fieldId: id as string,
     } as CustomFieldNotFoundError)
   }
 

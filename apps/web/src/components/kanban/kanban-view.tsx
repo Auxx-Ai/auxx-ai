@@ -47,6 +47,7 @@ import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-cu
 import { toastError } from '@auxx/ui/components/toast'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
 import { FieldType } from '@auxx/database/enums'
+import { toResourceFieldId } from '@auxx/types/field'
 
 /**
  * Extract raw value from TypedFieldValue using centralized formatter.
@@ -299,7 +300,10 @@ export function KanbanView<TData extends KanbanRow>({
         }
       })
       updateField.mutate(
-        { id: config.groupByFieldId, options: updatedOptions },
+        {
+          resourceFieldId: toResourceFieldId(entityDefinitionId, config.groupByFieldId),
+          options: updatedOptions,
+        },
         {
           onError: (error) => {
             toastError({ title: 'Failed to update stage', description: error.message })
@@ -307,7 +311,7 @@ export function KanbanView<TData extends KanbanRow>({
         }
       )
     },
-    [getCurrentOptions, config.groupByFieldId, updateField]
+    [getCurrentOptions, entityDefinitionId, config.groupByFieldId, updateField]
   )
 
   /** Handle creating a new column */
@@ -322,7 +326,10 @@ export function KanbanView<TData extends KanbanRow>({
       // Optimistic update: add to pending so rapid creates don't lose options
       setPendingOptions((prev) => [...prev, newOption])
       updateField.mutate(
-        { id: config.groupByFieldId, options: [...currentOptions, newOption] },
+        {
+          resourceFieldId: toResourceFieldId(entityDefinitionId, config.groupByFieldId),
+          options: [...currentOptions, newOption],
+        },
         {
           onError: (error) => {
             // Rollback: remove from pending on error
@@ -332,7 +339,7 @@ export function KanbanView<TData extends KanbanRow>({
         }
       )
     },
-    [getCurrentOptions, config.groupByFieldId, updateField]
+    [getCurrentOptions, entityDefinitionId, config.groupByFieldId, updateField]
   )
 
   /** Handle deleting a column */
@@ -341,7 +348,10 @@ export function KanbanView<TData extends KanbanRow>({
       const currentOptions = getCurrentOptions()
       const updatedOptions = currentOptions.filter((opt) => opt.value !== columnId)
       updateField.mutate(
-        { id: config.groupByFieldId, options: updatedOptions },
+        {
+          resourceFieldId: toResourceFieldId(entityDefinitionId, config.groupByFieldId),
+          options: updatedOptions,
+        },
         {
           onError: (error) => {
             toastError({ title: 'Failed to delete stage', description: error.message })
@@ -349,7 +359,7 @@ export function KanbanView<TData extends KanbanRow>({
         }
       )
     },
-    [getCurrentOptions, config.groupByFieldId, updateField]
+    [getCurrentOptions, entityDefinitionId, config.groupByFieldId, updateField]
   )
 
   /** Toggle card selection */

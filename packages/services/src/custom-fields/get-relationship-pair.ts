@@ -6,12 +6,13 @@ import { ok, err } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import type { RelationshipConfig } from './types'
 import type { CustomFieldEntity } from '@auxx/database/models'
+import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 
 /**
  * Input for getting a relationship pair
  */
 export interface GetRelationshipPairInput {
-  fieldId: string
+  resourceFieldId: ResourceFieldId
   organizationId: string
 }
 
@@ -22,7 +23,10 @@ export interface GetRelationshipPairInput {
  * @returns Result with primary and inverse fields
  */
 export async function getRelationshipPair(input: GetRelationshipPairInput) {
-  const { fieldId, organizationId } = input
+  const { resourceFieldId, organizationId } = input
+
+  // Parse ResourceFieldId to get components
+  const { fieldId } = parseResourceFieldId(resourceFieldId)
 
   // Get the primary field
   const primaryResult = await fromDatabase(
@@ -48,7 +52,7 @@ export async function getRelationshipPair(input: GetRelationshipPairInput) {
     return err({
       code: 'CUSTOM_FIELD_NOT_FOUND' as const,
       message: 'Field not found',
-      fieldId,
+      fieldId: fieldId as string,
     })
   }
 

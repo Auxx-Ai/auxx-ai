@@ -28,6 +28,7 @@ import { CustomFieldRow } from '~/components/custom-fields/ui/field-list'
 import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
 import { useConfirm } from '~/hooks/use-confirm'
 import type { Resource } from '@auxx/lib/resources/client'
+import { toResourceFieldId } from '@auxx/types/field'
 
 /** Props for CustomFieldsList component */
 interface CustomFieldsListProps {
@@ -64,8 +65,11 @@ export function CustomFieldsList({ resource }: CustomFieldsListProps) {
   /** Handle saving a field (create or update) */
   const handleSave = async (fieldData: any) => {
     if (editingField) {
-      // Update existing field - include the id
-      await update.mutateAsync({ ...fieldData, id: editingField.id })
+      // Update existing field - include the resourceFieldId
+      await update.mutateAsync({
+        ...fieldData,
+        resourceFieldId: toResourceFieldId(resource.entityDefinitionId, editingField.id),
+      })
     } else {
       // entityDefinitionId is now included by CustomFieldDialog
       await create.mutateAsync(fieldData)
@@ -96,7 +100,9 @@ export function CustomFieldsList({ resource }: CustomFieldsListProps) {
     })
 
     if (confirmed) {
-      await destroy.mutateAsync({ id })
+      await destroy.mutateAsync({
+        resourceFieldId: toResourceFieldId(resource.entityDefinitionId, id),
+      })
     }
   }
 
@@ -120,7 +126,7 @@ export function CustomFieldsList({ resource }: CustomFieldsListProps) {
 
     // Fire optimistic mutation (UI updates immediately via optimistic update hook)
     update.mutate({
-      id: active.id as string,
+      resourceFieldId: toResourceFieldId(resource.entityDefinitionId, active.id as string),
       sortOrder: newSortOrder,
     })
   }

@@ -5,6 +5,7 @@ import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { CustomFieldService } from '@auxx/lib/custom-fields'
 import { fieldOptionsUnionSchema, relationshipOptionsSchema } from '@auxx/types/custom-field'
 import { FieldType } from '@auxx/database/enums'
+import { resourceFieldIdSchema } from '@auxx/types/field'
 
 export const customFieldRouter = createTRPCRouter({
   /**
@@ -75,7 +76,7 @@ export const customFieldRouter = createTRPCRouter({
   update: protectedProcedure
     .input(
       z.object({
-        id: z.string(),
+        resourceFieldId: resourceFieldIdSchema,
         name: z.string().optional(),
         description: z.string().optional(),
         required: z.boolean().optional(),
@@ -100,22 +101,22 @@ export const customFieldRouter = createTRPCRouter({
    * Delete a custom field
    */
   delete: protectedProcedure
-    .input(z.object({ id: z.string() }))
+    .input(z.object({ resourceFieldId: resourceFieldIdSchema }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       const service = new CustomFieldService(organizationId, userId, ctx.db)
-      return await service.deleteField(input.id)
+      return await service.deleteField(input.resourceFieldId)
     }),
 
   /**
    * Get both sides of a relationship field
    */
   getRelationshipPair: protectedProcedure
-    .input(z.object({ fieldId: z.string() }))
+    .input(z.object({ resourceFieldId: resourceFieldIdSchema }))
     .query(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       const service = new CustomFieldService(organizationId, userId, ctx.db)
-      return await service.getRelationshipPair(input.fieldId)
+      return await service.getRelationshipPair(input.resourceFieldId)
     }),
 
   })

@@ -18,6 +18,7 @@ import type {
   DisplayOptions,
 } from '@auxx/services/custom-fields'
 import type { CurrencyOptions } from '@auxx/types/custom-field'
+import type { ResourceFieldId } from '@auxx/types/field'
 
 /**
  * Service for managing custom fields and their values across different models
@@ -96,7 +97,7 @@ export class CustomFieldService {
    * @param input - Field data to update
    */
   async updateField(input: {
-    id: string
+    resourceFieldId: ResourceFieldId
     name?: string
     description?: string
     required?: boolean
@@ -126,11 +127,11 @@ export class CustomFieldService {
   /**
    * Delete a custom field and its values
    *
-   * @param id - ID of the field to delete
+   * @param resourceFieldId - ResourceFieldId of the field to delete
    */
-  async deleteField(id: string) {
+  async deleteField(resourceFieldId: ResourceFieldId) {
     const result = await deleteCustomField({
-      id,
+      resourceFieldId,
       organizationId: this.organizationId,
     })
 
@@ -145,12 +146,12 @@ export class CustomFieldService {
   /**
    * Get both sides of a relationship field
    *
-   * @param fieldId - ID of the relationship field
+   * @param resourceFieldId - ResourceFieldId of the relationship field
    * @returns Object with primary and inverse fields
    */
-  async getRelationshipPair(fieldId: string) {
+  async getRelationshipPair(resourceFieldId: ResourceFieldId) {
     const result = await getRelationshipPair({
-      fieldId,
+      resourceFieldId,
       organizationId: this.organizationId,
     })
 
