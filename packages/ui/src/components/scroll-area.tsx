@@ -5,17 +5,31 @@ import { ScrollArea as ScrollAreaPrimitive } from 'radix-ui'
 
 import { cn } from '@auxx/ui/lib/utils'
 
-function ScrollArea({
-  className,
-  children,
-  ...props
-}: React.ComponentProps<typeof ScrollAreaPrimitive.Root>) {
+/**
+ * Props for ScrollArea component.
+ */
+interface ScrollAreaProps extends React.ComponentProps<typeof ScrollAreaPrimitive.Root> {
+  /** Scroll orientation: vertical (default), horizontal, or both */
+  orientation?: 'vertical' | 'horizontal' | 'both'
+}
+
+/**
+ * ScrollArea component with configurable scroll orientation.
+ */
+function ScrollArea({ className, children, orientation = 'vertical', ...props }: ScrollAreaProps) {
   return (
     <ScrollAreaPrimitive.Root className={cn('relative overflow-hidden', className)} {...props}>
-      <ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit] [&>div]:h-full [&>div]:!flex [&>div]:!flex-col">
+      <ScrollAreaPrimitive.Viewport
+        className={cn(
+          'h-full w-full rounded-[inherit]',
+          orientation !== 'horizontal' && '[&>div]:h-full [&>div]:!flex [&>div]:!flex-col'
+        )}>
         {children}
       </ScrollAreaPrimitive.Viewport>
-      <ScrollBar />
+      {(orientation === 'vertical' || orientation === 'both') && <ScrollBar orientation="vertical" />}
+      {(orientation === 'horizontal' || orientation === 'both') && (
+        <ScrollBar orientation="horizontal" />
+      )}
       <ScrollAreaPrimitive.Corner />
     </ScrollAreaPrimitive.Root>
   )

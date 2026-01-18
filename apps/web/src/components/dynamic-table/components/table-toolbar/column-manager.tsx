@@ -50,17 +50,23 @@ import { EditColumnLabelDialog } from '../dialogs/edit-column-label-dialog'
 import { EditColumnFormattingDialog } from '../dialogs/edit-column-formatting-dialog'
 import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
 import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
+import { ResourcePickerInnerContent } from '~/components/pickers/resource-picker'
+import type { ResourcePickerNavigationItem } from '~/components/pickers/resource-picker'
 import type { Column } from '@tanstack/react-table'
 import type { ExtendedColumnDef, FormattableFieldType } from '../../types'
 import { FORMATTABLE_FIELD_TYPES } from '../../types'
-import { toResourceFieldId, toFieldId } from '@auxx/types/field'
+import { toResourceFieldId, toFieldId, isFieldPath } from '@auxx/types/field'
+import type { FieldReference } from '@auxx/types/field'
 
-/** Navigation item type for column manager */
-interface ColumnNavigationItem extends NavigationItem {
+/** Base navigation item for "Add column" action */
+interface AddColumnNavigationItem extends NavigationItem {
   id: string
   label: string
   type: 'add-column'
 }
+
+/** Navigation item type for column manager (union of add-column and relationship drill-down) */
+type ColumnNavigationItem = AddColumnNavigationItem | ResourcePickerNavigationItem
 
 /**
  * RootStack - Shows visible columns (sortable, removable)
@@ -267,9 +273,104 @@ function ColumnOptionsDropdown<TData = any>({
 }
 
 /**
- * AddColumnStack - Shows hidden columns (searchable, addable)
+ * AddColumnStack - Shows available fields to add as columns.
+ * Uses ResourcePickerInnerContent with external navigation to avoid nested breadcrumbs.
  */
-function AddColumnStack<TData = any>({ onCreateField }: { onCreateField: () => void }) {
+function AddColumnStack({ onCreateField }: { onCreateField: () => void }) {
+  const { tableId, entityDefinitionId } = useTableConfig()
+  const columnVisibility = useColumnVisibility(tableId)
+  const columnOrder = useColumnOrder(tableId)
+  const setColumnVisibility = useSetColumnVisibility(tableId)
+  const setColumnOrder = useSetColumnOrder(tableId)
+  const { stack, current, push, pop } = useCommandNavigation<ColumnNavigationItem>()
+
+  // Get visible column IDs to exclude from picker
+  const visibleColumnIds = useMemo(() => {
+    if (!columnVisibility) return []
+    return Object.entries(columnVisibility)
+      .filter(([_, visible]) => visible !== false)
+      .map(([id]) => id)
+  }, [columnVisibility])
+
+  // Handle field selection - add as column
+  const handleSelectField = useCallback(
+    (fieldReference: FieldReference) => {
+      // For now, only support direct fields (not nested paths)
+      // FieldPath support can be added later for relationship columns
+      // FieldPath always has at least 1 element, so last element is always defined
+      const columnId: string = isFieldPath(fieldReference)
+        ? (fieldReference[fieldReference.length - 1] as string) // Use last segment
+        : (fieldReference as string)
+
+      // Make column visible
+      setColumnVisibility({
+        ...(columnVisibility ?? {}),
+        [columnId]: true,
+      })
+
+      // Add to column order if not already there
+      if (!columnOrder?.includes(columnId)) {
+        setColumnOrder([...(columnOrder ?? []), columnId])
+      }
+
+      // Go back to root stack
+      pop()
+    },
+    [columnVisibility, columnOrder, setColumnVisibility, setColumnOrder, pop]
+  )
+
+  // Filter stack to only include ResourcePickerNavigationItem items (for relationship drill-down)
+  const resourcePickerStack = useMemo(() => {
+    return stack.filter(
+      (item): item is ResourcePickerNavigationItem => 'resourceFieldId' in item
+    )
+  }, [stack])
+
+  // Get current item for resource picker (only if it's a relationship navigation item)
+  const resourcePickerCurrent = useMemo((): ResourcePickerNavigationItem | null => {
+    if (!current) return null
+    if ('resourceFieldId' in current) return current as ResourcePickerNavigationItem
+    return null
+  }, [current])
+
+  // External navigation adapter for ResourcePickerInnerContent
+  const externalNavigation = useMemo(
+    () => ({
+      push: (item: ResourcePickerNavigationItem) => push(item),
+      pop,
+      stack: resourcePickerStack,
+      current: resourcePickerCurrent,
+      // "At root" for the resource picker means we're at "Add column" level
+      // (no relationship has been drilled into yet)
+      isAtRoot: resourcePickerStack.length === 0,
+    }),
+    [push, pop, resourcePickerStack, resourcePickerCurrent]
+  )
+
+  // Fallback if no entityDefinitionId (non-resource table)
+  if (!entityDefinitionId) {
+    return <LegacyAddColumnStack onCreateField={onCreateField} />
+  }
+
+  return (
+    <ResourcePickerInnerContent
+      entityDefinitionId={entityDefinitionId}
+      excludeFields={visibleColumnIds}
+      mode="single"
+      closeOnSelect={false} // We handle navigation via pop()
+      onSelect={handleSelectField}
+      onCreateField={onCreateField}
+      searchPlaceholder="Search fields..."
+      externalNavigation={externalNavigation}
+    />
+  )
+}
+
+/**
+ * LegacyAddColumnStack - Fallback for tables without entityDefinitionId.
+ * Shows hidden columns from TanStack Table.
+ */
+function LegacyAddColumnStack<TData = any>({ onCreateField }: { onCreateField: () => void }) {
   const { tableId, entityDefinitionId } = useTableConfig()
   const { table } = useTableInstance<TData>()
   const columnLabels = useColumnLabels(tableId)
@@ -379,9 +480,13 @@ function AddColumnStack<TData = any>({ onCreateField }: { onCreateField: () => v
 function ColumnManagerContent<TData = any>({ onCreateField }: { onCreateField: () => void }) {
   const { current } = useCommandNavigation<ColumnNavigationItem>()
 
+  // Check if we're in "add column" mode or drilling into a relationship
+  const isInAddColumnMode =
+    current?.type === 'add-column' || (current && 'resourceFieldId' in current)
+
   // Render based on navigation
-  if (current?.type === 'add-column') {
-    return <AddColumnStack<TData> onCreateField={onCreateField} />
+  if (isInAddColumnMode) {
+    return <AddColumnStack onCreateField={onCreateField} />
   }
 
   // Root stack

@@ -18,3 +18,14 @@ export type { RecordPickerProps } from './record-picker'
 
 export { RecordPickerPopover } from './record-picker-popover'
 export type { RecordPickerPopoverProps } from './record-picker-popover'
+
+export { ResourcePicker, ResourcePickerContent, ResourcePickerInnerContent, FieldItem } from './resource-picker'
+export type {
+  ResourcePickerProps,
+  ResourcePickerContentProps,
+  ResourcePickerInnerContentProps,
+  ResourcePickerNavigationItem,
+  ExternalNavigation,
+  FieldItemProps,
+  ExcludeFilter,
+} from './resource-picker'

@@ -7,6 +7,7 @@ export { ResourceProvider, clearResourceCaches } from './providers/resource-prov
 export {
   useResources,
   useResource,
+  useResourceProperty,
   useRelationship,
   useResourceFields,
   useField,

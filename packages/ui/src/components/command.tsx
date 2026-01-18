@@ -26,6 +26,7 @@ import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 
 import { cn } from '@auxx/ui/lib/utils'
 import { Dialog, DialogContent } from '@auxx/ui/components/dialog'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { Switch } from '@auxx/ui/components/switch'
@@ -249,7 +250,7 @@ function CommandBreadcrumb({
   }
 
   return (
-    <div className={cn('flex items-center border-b px-2 py-1 text-sm', className)}>
+    <div className={cn('flex items-center border-b px-2 py-1 text-sm shrink-0', className)}>
       {showBackButton && (
         <Button variant="ghost" size="icon-xs" onClick={pop}>
           <ChevronLeft />
@@ -257,28 +258,30 @@ function CommandBreadcrumb({
         </Button>
       )}
 
-      <div className="flex items-center overflow-x-auto">
-        <Button variant="ghost" size="xs" className="" onClick={reset}>
-          {rootLabel}
-        </Button>
+      <ScrollArea orientation="horizontal" className="flex-1">
+        <div className="flex items-center">
+          <Button variant="ghost" size="xs" className="" onClick={reset}>
+            {rootLabel}
+          </Button>
 
-        {stack.map((item, index) => {
-          const isLast = index === stack.length - 1
-          const label = renderItem ? renderItem(item, index, isLast) : item.label
-          return (
-            <div key={item.id} className="flex items-center">
-              <ChevronRight className="size-3.5 shrink-0 opacity-50" />
-              {isLast ? (
-                <span className="text-xs font-medium select-none">{label}</span>
-              ) : (
-                <Button variant="ghost" size="xs" className="" onClick={() => navigateTo(index)}>
-                  {label}
-                </Button>
-              )}
-            </div>
-          )
-        })}
-      </div>
+          {stack.map((item, index) => {
+            const isLast = index === stack.length - 1
+            const label = renderItem ? renderItem(item, index, isLast) : item.label
+            return (
+              <div key={item.id} className="flex items-center shrink-0">
+                <ChevronRight className="size-3.5 shrink-0 opacity-50" />
+                {isLast ? (
+                  <span className="text-xs font-medium select-none shrink-0  px-2">{label}</span>
+                ) : (
+                  <Button variant="ghost" size="xs" className="" onClick={() => navigateTo(index)}>
+                    {label}
+                  </Button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </ScrollArea>
     </div>
   )
 }
@@ -366,6 +369,17 @@ function CommandGroup({
     <CommandPrimitive.Group
       className={cn(
         'p-1 text-foreground [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground',
+        className
+      )}
+      {...props}
+    />
+  )
+}
+function CommandGroupLabel({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        'sticky top-0 z-10 -mt-1 -mx-1 bg-background/90 backdrop-blur-lg px-2 py-1.5 text-xs font-medium text-muted-foreground mask-b-from-80%',
         className
       )}
       {...props}
@@ -791,6 +805,7 @@ export {
   CommandList,
   CommandEmpty,
   CommandGroup,
+  CommandGroupLabel,
   CommandItem,
   CommandShortcut,
   CommandSeparator,

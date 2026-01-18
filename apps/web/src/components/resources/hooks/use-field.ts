@@ -131,22 +131,49 @@ export function useFieldIsDeleted(
  * Granular: only re-renders when selected properties change.
  *
  * @param entityDefinitionId - Entity definition ID
- * @param property - Property key to subscribe to
- * @returns Property value or undefined if resource not found
+ * @param properties - Single property key or array of property keys to subscribe to
+ * @returns Single value for single property, or Pick object for array of properties
  *
  * @example
+ * // Single property
  * const name = useResourceProperty('contact', 'label')
  * const icon = useResourceProperty('contact', 'icon')
+ *
+ * // Multiple properties
+ * const { icon, color } = useResourceProperty('contact', ['icon', 'color'])
+ * const { label, plural, icon } = useResourceProperty(entityDefId, ['label', 'plural', 'icon'])
  */
 export function useResourceProperty<K extends keyof Resource>(
-  entityDefinitionId: string | undefined,
-  property: K
-): Resource[K] | undefined {
-  return useResourceStore((state) => {
-    if (!entityDefinitionId) return undefined
-    const resource = state.getEffectiveResource(entityDefinitionId)
-    return resource?.[property]
-  })
+  entityDefinitionId: string | null | undefined,
+  properties: K
+): Resource[K] | undefined
+export function useResourceProperty<K extends keyof Resource>(
+  entityDefinitionId: string | null | undefined,
+  properties: K[]
+): Pick<Resource, K> | undefined
+export function useResourceProperty<K extends keyof Resource>(
+  entityDefinitionId: string | null | undefined,
+  properties: K | K[]
+): Resource[K] | Pick<Resource, K> | undefined {
+  return useResourceStore(
+    useShallow((state) => {
+      if (!entityDefinitionId) return undefined
+      const resource = state.getEffectiveResource(entityDefinitionId)
+      if (!resource) return undefined
+
+      // Single property - return value directly
+      if (!Array.isArray(properties)) {
+        return resource[properties]
+      }
+
+      // Multiple properties - return picked object
+      const result = {} as Pick<Resource, K>
+      for (const key of properties) {
+        result[key] = resource[key]
+      }
+      return result
+    })
+  )
 }
 
 /**
