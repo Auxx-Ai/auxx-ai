@@ -3,7 +3,7 @@
 import { database, schema } from '@auxx/database'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import { parseResourceId } from '@auxx/types/resource'
+import { parseRecordId } from '@auxx/types/resource'
 import type { InsertFieldValueInput, FieldValueRow } from './types'
 
 /**
@@ -13,8 +13,8 @@ import type { InsertFieldValueInput, FieldValueRow } from './types'
  * @returns Result with inserted row
  */
 export async function insertFieldValue(input: InsertFieldValueInput) {
-  // Split ResourceId at DB boundary
-  const { entityDefinitionId, entityInstanceId } = parseResourceId(input.resourceId)
+  // Split RecordId at DB boundary
+  const { entityDefinitionId, entityInstanceId } = parseRecordId(input.recordId)
 
   const dbResult = await fromDatabase(
     database
@@ -57,7 +57,7 @@ export async function batchInsertFieldValues(inputs: InsertFieldValueInput[]) {
   }
 
   const values = inputs.map((input) => {
-    const { entityDefinitionId, entityInstanceId } = parseResourceId(input.resourceId)
+    const { entityDefinitionId, entityInstanceId } = parseRecordId(input.recordId)
     return {
       organizationId: input.organizationId,
       entityId: entityInstanceId,

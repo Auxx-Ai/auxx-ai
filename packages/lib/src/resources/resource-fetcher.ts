@@ -14,7 +14,7 @@ import { BaseType } from './types'
 import { getEntityInstance } from '@auxx/services/entity-instances'
 import { ResourceRegistryService } from './registry/resource-registry-service'
 import type { ResourceField } from './registry/field-types'
-import { parseResourceId, toResourceId, type ResourceId } from '@auxx/types/resource'
+import { parseRecordId, toRecordId, type RecordId } from '@auxx/types/resource'
 
 const logger = createScopedLogger('resource-fetcher')
 
@@ -157,16 +157,16 @@ export async function executeResourceQuery(
  * Fetch a single resource by ID
  * Supports both system resources (contact, ticket, etc.) and custom entities (UUID-based)
  *
- * @param resourceId - ResourceId in format "entityDefinitionId:instanceId"
+ * @param recordId - RecordId in format "entityDefinitionId:instanceId"
  * @param organizationId - Organization ID for scoping
  * @returns Resource data or null if not found
  */
 export async function fetchResourceById(
-  resourceId: ResourceId,
+  recordId: RecordId,
   organizationId: string | undefined
 ): Promise<any | null> {
-  // Parse ResourceId to extract both components
-  const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+  // Parse RecordId to extract both components
+  const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
   const resourceType = entityDefinitionId
 
   // Handle custom entities (UUID-based entityDefinitionId)
@@ -272,9 +272,9 @@ export function getResourceTypeFromEvent(eventType: string): TableId | null {
 
 /**
  * Get the ID field name for an event type
- * Maps event data field names to resource ID field names
+ * Maps event data field names to record ID field names
  */
-export function getResourceIdField(eventType: string): string | null {
+export function getRecordIdField(eventType: string): string | null {
   const idFieldMap: Record<string, string> = {
     'contact:created': 'contactId',
     'contact:updated': 'contactId',
@@ -301,7 +301,7 @@ export function getResourceIdField(eventType: string): string | null {
  * This is the core of lazy loading - fetches only requested relationships
  * instead of loading everything upfront.
  *
- * @param resourceId - ResourceId in format "entityDefinitionId:instanceId"
+ * @param recordId - RecordId in format "entityDefinitionId:instanceId"
  * @param relationships - Array of relationship field names to load (e.g., ["contact", "Variants"])
  * @param organizationId - Organization context
  * @param db - Database connection
@@ -320,18 +320,18 @@ export function getResourceIdField(eventType: string): string | null {
  * )
  */
 export async function fetchResourceWithRelationships(
-  resourceId: ResourceId,
+  recordId: RecordId,
   relationships: string[],
   organizationId: string | undefined,
   db?: Database,
   existingService?: ResourceRegistryService
 ): Promise<any | null> {
-  // Parse ResourceId to extract both components
-  const { entityDefinitionId } = parseResourceId(resourceId)
+  // Parse RecordId to extract both components
+  const { entityDefinitionId } = parseRecordId(recordId)
   const resourceType = entityDefinitionId
 
   // 1. Fetch base resource
-  const resource = await fetchResourceById(resourceId, organizationId)
+  const resource = await fetchResourceById(recordId, organizationId)
   if (!resource) return null
 
   // If no relationships requested or no DB for custom entity lookups, return base resource
@@ -376,8 +376,8 @@ export async function fetchResourceWithRelationships(
         const relatedId = getRelatedIdForBelongsTo(resource, fieldDef, resourceType)
 
         if (relatedId) {
-          const relatedResourceId = toResourceId(targetResourceType, relatedId)
-          const relatedResource = await fetchResourceById(relatedResourceId, organizationId)
+          const relatedRecordId = toRecordId(targetResourceType, relatedId)
+          const relatedResource = await fetchResourceById(relatedRecordId, organizationId)
           return { relFieldName, value: relatedResource }
         } else {
           return { relFieldName, value: null }
@@ -390,7 +390,7 @@ export async function fetchResourceWithRelationships(
 
         if (db && organizationId && registryService) {
           items = await fetchHasManyRelationship(
-            resourceId,
+            recordId,
             resourceType,
             targetResourceType,
             fieldDef,
@@ -401,7 +401,7 @@ export async function fetchResourceWithRelationships(
         } else if (!isCustomResourceId(targetResourceType)) {
           // System resource without DB - use static registry for has_many
           items = await fetchHasManySystemResource(
-            resourceId,
+            recordId,
             targetResourceType as TableId,
             fieldDef,
             organizationId
@@ -482,7 +482,7 @@ function getRelatedIdForBelongsTo(
  * We need to find all child entities where their relationship field = parentId
  */
 async function fetchHasManyRelationship(
-  parentId: string,
+  parentRecordId: string,
   parentResourceType: string,
   targetResourceType: string,
   fieldDef: ResourceField,
@@ -514,18 +514,18 @@ async function fetchHasManyRelationship(
 
   // For system resources, use existing query infrastructure
   if (targetResource.type === 'system') {
-    return fetchHasManySystemResource(parentId, targetResourceType as TableId, reciprocalField, organizationId)
+    return fetchHasManySystemResource(parentRecordId, targetResourceType as TableId, reciprocalField, organizationId)
   }
 
   // For custom entities, query via CustomFieldValue with cached field definitions
-  return fetchHasManyCustomEntity(parentId, reciprocalField, targetResourceType, db, registryService)
+  return fetchHasManyCustomEntity(parentRecordId, reciprocalField, targetResourceType, db, registryService)
 }
 
 /**
  * Fetch has_many for system resources
  */
 async function fetchHasManySystemResource(
-  parentId: string,
+  parentRecordId: string,
   targetResourceType: TableId,
   reciprocalField: ResourceField,
   organizationId: string | undefined
@@ -535,7 +535,7 @@ async function fetchHasManySystemResource(
   const tableName = RESOURCE_TABLE_MAP[targetResourceType]?.dbName
   if (!tableName) return []
 
-  const whereSql = eq(schema[tableName][reciprocalField.dbColumn], parentId)
+  const whereSql = eq(schema[tableName][reciprocalField.dbColumn], parentRecordId)
   return executeResourceQuery(targetResourceType, organizationId, { where: whereSql }, 'findMany')
 }
 
@@ -548,7 +548,7 @@ async function fetchHasManySystemResource(
  * - value->>'data' = parent entity ID (values are wrapped in { data: ... })
  */
 async function fetchHasManyCustomEntity(
-  parentId: string,
+  parentRecordId: string,
   reciprocalField: ResourceField,
   targetResourceType: string,
   db: Database,
@@ -567,7 +567,7 @@ async function fetchHasManyCustomEntity(
     where: (cfv, { and }) =>
       and(
         eq(cfv.fieldId, reciprocalField.id!),
-        sql`${cfv.value}->>'data' = ${parentId}`
+        sql`${cfv.value}->>'data' = ${parentRecordId}`
       ),
     with: {
       entityInstance: {

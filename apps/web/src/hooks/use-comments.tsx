@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { api } from '~/trpc/react'
 import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 import { formatCommentContent } from '~/lib/sanitize'
-import { parseResourceId, getDefinitionId, type ResourceId } from '@auxx/lib/field-values/client'
+import { parseRecordId, getDefinitionId, type RecordId } from '@auxx/lib/field-values/client'
 
 // System entity types
 export const SYSTEM_ENTITY_TYPES = ['Ticket', 'Thread', 'Contact'] as const
@@ -34,8 +34,8 @@ interface FileAttachment {
 }
 
 export interface UseCommentsOptions {
-  // Entity identifier (ResourceId format: "entityType:entityId")
-  resourceId?: ResourceId
+  // Entity identifier (RecordId format: "entityType:entityId")
+  recordId?: RecordId
 
   // Single comment option
   commentId?: string
@@ -116,7 +116,7 @@ export type Comment = {
 }
 
 export function useComments({
-  resourceId,
+  recordId,
   commentId,
   comment: initialComment,
   initialComments,
@@ -133,11 +133,11 @@ export function useComments({
     data: fetchedCommentsData,
     isLoading: isFetchingComments,
     refetch: refetchComments,
-  } = api.comment.getByResourceId.useQuery(
-    { resourceId: resourceId! },
+  } = api.comment.getByRecordId.useQuery(
+    { recordId: recordId! },
     {
-      // Only run this query if we have a resourceId and no commentId
-      enabled: !!(resourceId && !commentId && !initialComment && !initialComments),
+      // Only run this query if we have a recordId and no commentId
+      enabled: !!(recordId && !commentId && !initialComment && !initialComments),
       refetchOnWindowFocus: false,
     }
   )
@@ -279,9 +279,9 @@ export function useComments({
 
   // Action handlers
   const handleCreateComment = async (content: string, fileAttachments?: FileAttachment[]) => {
-    if (!content.trim() || !resourceId) return
+    if (!content.trim() || !recordId) return
 
-    await createComment.mutateAsync({ content, resourceId, fileAttachments })
+    await createComment.mutateAsync({ content, recordId, fileAttachments })
   }
 
   const handleCreateReply = async (
@@ -289,9 +289,9 @@ export function useComments({
     parentId: string,
     fileAttachments?: FileAttachment[]
   ) => {
-    if (!content.trim() || !resourceId) return
+    if (!content.trim() || !recordId) return
 
-    await createReply.mutateAsync({ content, resourceId, parentId, fileAttachments })
+    await createReply.mutateAsync({ content, recordId, parentId, fileAttachments })
   }
 
   const handleUpdateComment = async (

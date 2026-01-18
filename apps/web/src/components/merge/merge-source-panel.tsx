@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { Plus, X, ArrowRight } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverTrigger, PopoverContent } from '@auxx/ui/components/popover'
-import type { ResourceId } from '@auxx/lib/resources/client'
+import type { RecordId } from '@auxx/lib/resources/client'
 import { RecordPicker } from '~/components/pickers/record-picker'
 import { MergeItemCard } from './merge-item-card'
 import { EntityIcon } from '@auxx/ui/components/icons'
@@ -13,16 +13,16 @@ import { EntityIcon } from '@auxx/ui/components/icons'
 interface MergeSourcePanelProps {
   /** Entity definition ID for filtering picker */
   entityDefinitionId: string | null
-  /** List of source ResourceIds to be merged */
-  sourceResourceIds: ResourceId[]
-  /** The target ResourceId (excluded from picker) */
-  targetResourceId: ResourceId
+  /** List of source RecordIds to be merged */
+  sourceRecordIds: RecordId[]
+  /** The target RecordId (excluded from picker) */
+  targetRecordId: RecordId
   /** Callback when new sources are added */
-  onAddSources: (resourceIds: ResourceId[]) => void
+  onAddSources: (recordIds: RecordId[]) => void
   /** Callback when a source is removed */
-  onRemoveSource: (resourceId: ResourceId) => void
+  onRemoveSource: (recordId: RecordId) => void
   /** Callback when a source should become the target */
-  onSetAsTarget: (resourceId: ResourceId) => void
+  onSetAsTarget: (recordId: RecordId) => void
   /** Loading state */
   isLoading?: boolean
 }
@@ -33,21 +33,21 @@ interface MergeSourcePanelProps {
  */
 export function MergeSourcePanel({
   entityDefinitionId,
-  sourceResourceIds,
-  targetResourceId,
+  sourceRecordIds,
+  targetRecordId,
   onAddSources,
   onRemoveSource,
   onSetAsTarget,
   isLoading,
 }: MergeSourcePanelProps) {
   const [pickerOpen, setPickerOpen] = useState(false)
-  const isEmpty = sourceResourceIds.length === 0
+  const isEmpty = sourceRecordIds.length === 0
 
   // Exclude already-selected items from picker
-  const excludeIds = [targetResourceId, ...sourceResourceIds]
+  const excludeIds = [targetRecordId, ...sourceRecordIds]
 
   /** Handle picker selection */
-  const handlePickerChange = (selected: ResourceId[]) => {
+  const handlePickerChange = (selected: RecordId[]) => {
     if (selected.length > 0) {
       onAddSources(selected)
     }
@@ -79,17 +79,17 @@ export function MergeSourcePanel({
           ) : (
             /* Source items list */
             <div className="space-y-1">
-              {sourceResourceIds.map((resourceId) => (
+              {sourceRecordIds.map((recordId) => (
                 <MergeItemCard
-                  key={resourceId}
-                  resourceId={resourceId}
+                  key={recordId}
+                  recordId={recordId}
                   actions={
                     <>
                       <Button
                         variant="ghost"
                         size="icon-xs"
                         className="size-6 opacity-0 group-hover:opacity-100"
-                        onClick={() => onSetAsTarget(resourceId)}
+                        onClick={() => onSetAsTarget(recordId)}
                         title="Set as target">
                         <ArrowRight className="size-3" />
                       </Button>
@@ -97,7 +97,7 @@ export function MergeSourcePanel({
                         variant="ghost"
                         size="icon-xs"
                         className="size-6 opacity-0 group-hover:opacity-100"
-                        onClick={() => onRemoveSource(resourceId)}
+                        onClick={() => onRemoveSource(recordId)}
                         title="Remove">
                         <X className="size-3" />
                       </Button>
@@ -122,7 +122,7 @@ export function MergeSourcePanel({
 
         <PopoverContent className="w-[300px] p-0" align="start">
           <RecordPicker
-            value={sourceResourceIds}
+            value={sourceRecordIds}
             onChange={handlePickerChange}
             entityDefinitionId={entityDefinitionId ?? undefined}
             multi={true}

@@ -8,7 +8,7 @@ import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
 import { RecordPicker, type RecordPickerProps } from './record-picker'
-import type { ResourceId } from '@auxx/types/resource'
+import type { RecordId } from '@auxx/types/resource'
 
 /**
  * Props for RecordPickerPopover component
@@ -88,8 +88,8 @@ export function RecordPickerPopover({
   /**
    * Handle single select - close popover after selection
    */
-  const handleSelectSingle = (resourceId: ResourceId) => {
-    onSelectSingle?.(resourceId)
+  const handleSelectSingle = (recordId: RecordId) => {
+    onSelectSingle?.(recordId)
     handleOpenChange(false)
   }
 

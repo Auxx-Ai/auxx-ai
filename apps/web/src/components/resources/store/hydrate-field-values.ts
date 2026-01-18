@@ -2,13 +2,13 @@
 
 import { useFieldValueStore, buildFieldValueKey, type StoredFieldValue } from './field-value-store'
 import { formatToTypedInput } from '@auxx/lib/field-values/client'
-import { isComputedField, type Resource, type ResourceId } from '@auxx/lib/resources/client'
+import { isComputedField, type Resource, type RecordId } from '@auxx/lib/resources/client'
 import type { FieldType } from '@auxx/database/types'
 
 interface HydrationOptions {
   resource: Resource
-  /** ResourceId in format "entityDefinitionId:entityInstanceId" */
-  resourceId: ResourceId
+  /** RecordId in format "entityDefinitionId:entityInstanceId" */
+  recordId: RecordId
   recordData: Record<string, unknown>
 }
 
@@ -18,7 +18,7 @@ interface HydrationOptions {
  *
  * This is a pure function that can be called from any context (not a hook).
  */
-export function hydrateFieldValues({ resource, resourceId, recordData }: HydrationOptions): void {
+export function hydrateFieldValues({ resource, recordId, recordData }: HydrationOptions): void {
   const entries: Array<{ key: string; value: StoredFieldValue }> = []
 
   // Process all fields (system + custom)
@@ -59,8 +59,8 @@ export function hydrateFieldValues({ resource, resourceId, recordData }: Hydrati
     })
 
     if (typedValue !== null) {
-      // Use buildFieldValueKey with ResourceId directly
-      const storeKey = buildFieldValueKey(resourceId, field.key)
+      // Use buildFieldValueKey with RecordId directly
+      const storeKey = buildFieldValueKey(recordId, field.key)
       entries.push({ key: storeKey, value: typedValue as StoredFieldValue })
     }
   }
@@ -77,7 +77,7 @@ export function hydrateFieldValues({ resource, resourceId, recordData }: Hydrati
  */
 export function hydrateMultipleRecords(
   resource: Resource,
-  records: Array<{ resourceId: ResourceId; data: Record<string, unknown> }>
+  records: Array<{ recordId: RecordId; data: Record<string, unknown> }>
 ): void {
   const allEntries: Array<{ key: string; value: StoredFieldValue }> = []
 
@@ -112,8 +112,8 @@ export function hydrateMultipleRecords(
       })
 
       if (typedValue !== null) {
-        // Use buildFieldValueKey with ResourceId directly
-        const storeKey = buildFieldValueKey(record.resourceId, field.key)
+        // Use buildFieldValueKey with RecordId directly
+        const storeKey = buildFieldValueKey(record.recordId, field.key)
         allEntries.push({ key: storeKey, value: typedValue as StoredFieldValue })
       }
     }

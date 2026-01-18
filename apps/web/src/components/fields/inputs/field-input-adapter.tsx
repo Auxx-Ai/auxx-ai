@@ -6,8 +6,8 @@ import { FieldType } from '@auxx/database/enums'
 import type { FieldOptions } from '@auxx/lib/field-values/client'
 import { isMultiRelationship } from '@auxx/lib/field-values/client'
 import type { SelectOption } from '@auxx/types/custom-field'
-import type { ResourceId } from '@auxx/types/resource'
-import { toResourceId } from '@auxx/lib/resources/client'
+import type { RecordId } from '@auxx/types/resource'
+import { toRecordId } from '@auxx/lib/resources/client'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
 import { SelectFieldInput, getSelectConfig } from './select-input-field'
 import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
@@ -128,8 +128,8 @@ export function FieldInputAdapter({
       // Derive multi from relationship type using helper
       const multi = isMultiRelationship(relationship.relationshipType)
 
-      // Value is already ResourceId[] from caller - just pass through
-      const resourceIds = (value as ResourceId[]) || []
+      // Value is already RecordId[] from caller - just pass through
+      const recordIds = (value as RecordId[]) || []
 
       /**
        * Handle opening the create dialog
@@ -143,8 +143,8 @@ export function FieldInputAdapter({
        * Handle instance creation - add the new instance to selection
        */
       const handleInstanceCreated = (instanceId: string) => {
-        const newResourceId = toResourceId(entityDefinitionId, instanceId)
-        const updatedIds = multi ? [...resourceIds, newResourceId] : [newResourceId]
+        const newRecordId = toRecordId(entityDefinitionId, instanceId)
+        const updatedIds = multi ? [...recordIds, newRecordId] : [newRecordId]
         onChange(updatedIds)
       }
 
@@ -152,7 +152,7 @@ export function FieldInputAdapter({
         <>
           <MultiRelationInput
             entityDefinitionId={entityDefinitionId}
-            value={resourceIds}
+            value={recordIds}
             onChange={onChange}
             multi={multi}
             placeholder={placeholder}

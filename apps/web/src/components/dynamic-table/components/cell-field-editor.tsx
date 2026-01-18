@@ -9,7 +9,7 @@ import { PropertyProvider, usePropertyContext } from '~/components/fields/proper
 import { useFieldPopoverHandlers } from '~/components/fields/use-field-popover-handlers'
 import { getInputComponentForFieldType } from '~/components/fields/inputs/get-input-component'
 import { getFieldTypeMinWidth, getFieldTypeMaxWidth } from '@auxx/lib/custom-fields/types'
-import type { ResourceId } from '@auxx/lib/resources/client'
+import type { RecordId } from '@auxx/lib/resources/client'
 
 interface CellFieldEditorProps {
   rowId: string
@@ -40,13 +40,13 @@ export function CellFieldEditor({
   // Get field definition from config
   const field = cellSelectionConfig.getFieldDefinition?.(columnId)
 
-  // Get resourceId for optimistic updates (required)
-  const resourceId = useMemo<ResourceId | undefined>(() => {
-    return cellSelectionConfig.getResourceId?.(rowId)
+  // Get recordId for optimistic updates (required)
+  const recordId = useMemo<RecordId | undefined>(() => {
+    return cellSelectionConfig.getRecordId?.(rowId)
   }, [cellSelectionConfig, rowId])
 
-  if (!field || !resourceId) {
-    // No field definition or resourceId - can't edit
+  if (!field || !recordId) {
+    // No field definition or recordId - can't edit
     onClose()
     return null
   }
@@ -56,7 +56,7 @@ export function CellFieldEditor({
       providerId={`cell-${rowId}-${columnId}`}
       field={field}
       loading={false}
-      resourceId={resourceId}>
+      recordId={recordId}>
       <CellFieldEditorInner onClose={onClose} anchorRef={anchorRef} />
     </PropertyProvider>
   )

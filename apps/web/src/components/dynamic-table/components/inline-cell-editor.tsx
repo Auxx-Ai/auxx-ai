@@ -8,7 +8,7 @@ import { useFieldPopoverHandlers } from '~/components/fields/use-field-popover-h
 import { getInputComponentForFieldType } from '~/components/fields/inputs/get-input-component'
 import { CellSelectionOverlay } from './cell-selection-overlay'
 import { cn } from '@auxx/ui/lib/utils'
-import type { ResourceId } from '@auxx/lib/resources/client'
+import type { RecordId } from '@auxx/lib/resources/client'
 
 /** Context to signal inline editing mode to child input components */
 const InlineEditorContext = createContext(false)
@@ -47,13 +47,13 @@ export function InlineCellEditor({
   // Get field definition from config
   const field = cellSelectionConfig.getFieldDefinition?.(columnId)
 
-  // Get resourceId for optimistic updates (required)
-  const resourceId = useMemo<ResourceId | undefined>(() => {
-    return cellSelectionConfig.getResourceId?.(rowId)
+  // Get recordId for optimistic updates (required)
+  const recordId = useMemo<RecordId | undefined>(() => {
+    return cellSelectionConfig.getRecordId?.(rowId)
   }, [cellSelectionConfig, rowId])
 
-  if (!field || !resourceId) {
-    // No field definition or resourceId - can't edit
+  if (!field || !recordId) {
+    // No field definition or recordId - can't edit
     onClose()
     return null
   }
@@ -63,7 +63,7 @@ export function InlineCellEditor({
       providerId={`inline-${rowId}-${columnId}`}
       field={field}
       loading={false}
-      resourceId={resourceId}>
+      recordId={recordId}>
       <InlineCellEditorInner onClose={onClose} />
     </PropertyProvider>
   )

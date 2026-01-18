@@ -1,7 +1,7 @@
 // packages/lib/src/import/types/execution.ts
 
 import type { Database } from '@auxx/database'
-import type { ResourceId } from '@auxx/types/resource'
+import type { RecordId } from '@auxx/types/resource'
 import type { StrategyType } from './plan'
 
 /** Single row execution result */
@@ -9,9 +9,9 @@ export interface RowExecutionResult {
   rowIndex: number
   success: boolean
   /** Instance ID of the created/updated record */
-  recordId?: string
-  /** Full ResourceId (entityDefinitionId:recordId) - computed from context */
-  resourceId?: ResourceId
+  instanceId?: string
+  /** Full RecordId (entityDefinitionId:instanceId) - computed from context */
+  recordId?: RecordId
   error?: string
 }
 

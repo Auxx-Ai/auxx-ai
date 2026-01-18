@@ -3,10 +3,10 @@
 import { useEffect, useMemo } from 'react'
 import { useHydratedItems, useIsLoadingRelationships, getRelationshipStoreState } from '../store'
 import type { RecordPickerItem } from '@auxx/lib/resources/client'
-import { getInstanceId, type ResourceId } from '@auxx/lib/resources/client'
+import { getInstanceId, type RecordId } from '@auxx/lib/resources/client'
 
 interface UseRelationshipResult {
-  /** Hydrated items indexed by position (matches input resourceIds order) */
+  /** Hydrated items indexed by position (matches input recordIds order) */
   items: (RecordPickerItem | null | undefined)[]
   /** Map of entityInstanceId -> RecordPickerItem for random access */
   itemsMap: Map<string, RecordPickerItem | null | undefined>
@@ -19,37 +19,37 @@ interface UseRelationshipResult {
 /**
  * Hook for requesting and subscribing to relationship items
  *
- * @param resourceIds - Array of ResourceId to hydrate (supports mixed entity types)
+ * @param recordIds - Array of RecordId to hydrate (supports mixed entity types)
  * @returns Hydrated items and loading state
  *
  * @example
- * const resourceIds = extractRelationshipResourceIds(fieldValue)
- * const { items, isLoading } = useRelationship(resourceIds)
+ * const recordIds = extractRelationshipRecordIds(fieldValue)
+ * const { items, isLoading } = useRelationship(recordIds)
  */
-export function useRelationship(resourceIds: ResourceId[]): UseRelationshipResult {
+export function useRelationship(recordIds: RecordId[]): UseRelationshipResult {
 
   // Create stable key for effect dependency
-  const resourceIdsKey = useMemo(() => resourceIds.join('|'), [resourceIds])
+  const recordIdsKey = useMemo(() => recordIds.join('|'), [recordIds])
 
   // Request hydration on mount/change
   useEffect(() => {
-    if (resourceIds.length === 0) return
-    getRelationshipStoreState().requestHydration(resourceIds)
-  }, [resourceIdsKey, resourceIds])
+    if (recordIds.length === 0) return
+    getRelationshipStoreState().requestHydration(recordIds)
+  }, [recordIdsKey, recordIds])
 
   // Subscribe to hydrated items
-  const items = useHydratedItems(resourceIds)
-  const isLoading = useIsLoadingRelationships(resourceIds)
-  const isComplete = resourceIds.length > 0 && items.every((item) => item !== undefined)
+  const items = useHydratedItems(recordIds)
+  const isLoading = useIsLoadingRelationships(recordIds)
+  const isComplete = recordIds.length > 0 && items.every((item) => item !== undefined)
 
   // Build itemsMap for random access (keyed by entityInstanceId)
   const itemsMap = useMemo(() => {
     const map = new Map<string, RecordPickerItem | null | undefined>()
-    resourceIds.forEach((resourceId, idx) => {
-      map.set(getInstanceId(resourceId), items[idx])
+    recordIds.forEach((recordId, idx) => {
+      map.set(getInstanceId(recordId), items[idx])
     })
     return map
-  }, [resourceIds, items])
+  }, [recordIds, items])
 
   return { items, itemsMap, isLoading, isComplete }
 }

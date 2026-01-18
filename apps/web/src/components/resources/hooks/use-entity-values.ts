@@ -4,8 +4,8 @@ import { useMemo } from 'react'
 import {
   useResourceFieldValues,
   type StoredFieldValue,
-  parseResourceId,
-  type ResourceId,
+  parseRecordId,
+  type RecordId,
 } from '~/components/resources/store/field-value-store'
 import { useResourceFields } from './use-resource-fields'
 
@@ -20,8 +20,8 @@ interface PreloadedValue {
 }
 
 interface UseEntityValuesOptions {
-  /** ResourceId in format "entityDefinitionId:entityInstanceId" */
-  resourceId: ResourceId | null | undefined
+  /** RecordId in format "entityDefinitionId:entityInstanceId" */
+  recordId: RecordId | null | undefined
 }
 
 interface UseEntityValuesResult {
@@ -38,10 +38,10 @@ interface UseEntityValuesResult {
  * Gets field definitions automatically via useResourceFields.
  * Returns values in the format expected by EntityFields.preloadedValues.
  */
-export function useEntityValues({ resourceId }: UseEntityValuesOptions): UseEntityValuesResult {
-  // Parse resourceId to get components
-  const { entityDefinitionId, entityInstanceId } = resourceId
-    ? parseResourceId(resourceId)
+export function useEntityValues({ recordId }: UseEntityValuesOptions): UseEntityValuesResult {
+  // Parse recordId to get components
+  const { entityDefinitionId, entityInstanceId } = recordId
+    ? parseRecordId(recordId)
     : { entityDefinitionId: undefined, entityInstanceId: undefined }
 
   // Get fields for this entity definition
@@ -59,8 +59,8 @@ export function useEntityValues({ resourceId }: UseEntityValuesOptions): UseEnti
     return ids.length > 0 ? ids : EMPTY_FIELD_IDS
   }, [fieldIdsKey])
 
-  // Get field values from store using ResourceId directly
-  const rawFieldValues = useResourceFieldValues(resourceId ?? ('' as ResourceId), activeFieldIds)
+  // Get field values from store using RecordId directly
+  const rawFieldValues = useResourceFieldValues(recordId ?? ('' as RecordId), activeFieldIds)
 
   // Stabilize fieldValues - only change when actual content changes
   const fieldValuesKey = JSON.stringify(rawFieldValues)

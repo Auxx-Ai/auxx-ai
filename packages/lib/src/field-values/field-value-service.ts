@@ -40,13 +40,13 @@ import {
 import { checkUniqueValueTyped } from '../custom-fields/check-unique-value-typed'
 import { ResourceRegistryService } from '../resources/registry/resource-registry-service'
 import {
-  parseResourceId,
-  toResourceId,
+  parseRecordId,
+  toRecordId,
   getInstanceId,
   getDefinitionId,
   getModelType,
 } from '../resources/resource-id'
-import type { ResourceId } from '@auxx/types/resource'
+import type { RecordId } from '@auxx/types/resource'
 import { publisher } from '../events'
 import type { ContactFieldUpdatedEvent } from '../events/types'
 import type {
@@ -116,7 +116,7 @@ export class FieldValueService {
    * **Caching:** CustomField definitions are cached within the service instance to avoid redundant lookups.
    *
    * @param params - The SetValueInput object
-   * @param params.resourceId - ResourceId of the entity (format: "entityDefinitionId:entityInstanceId")
+   * @param params.recordId - RecordId of the entity (format: "entityDefinitionId:entityInstanceId")
    *                            Example: "contact:550e8400-e29b-41d4-a716-446655440000"
    * @param params.fieldId - UUID of the custom field
    *                         Example: "660e8400-e29b-41d4-a716-446655440000"
@@ -142,7 +142,7 @@ export class FieldValueService {
    * @example
    * // Set email for contact
    * const result = await fieldValueService.setValue({
-   *   resourceId: "contact:contact-123",
+   *   recordId: "contact:contact-123",
    *   fieldId: "field-email",
    *   value: "customer@shop.com"
    * });
@@ -150,13 +150,13 @@ export class FieldValueService {
    * @example
    * // Set multi-select tags
    * const result = await fieldValueService.setValue({
-   *   resourceId: "ticket:ticket-456",
+   *   recordId: "ticket:ticket-456",
    *   fieldId: "field-tags",
    *   value: ["option-1", "option-2"]
    * });
    */
   async setValue(params: SetValueInput): Promise<TypedFieldValue[]> {
-    const { resourceId, fieldId, value } = params
+    const { recordId, fieldId, value } = params
 
     // 1. Get field definition (cached)
     const field = await this.getField(fieldId)
@@ -168,8 +168,8 @@ export class FieldValueService {
 
     // Handle null/delete case
     if (typedInput === null) {
-      await this.deleteValue({ resourceId, fieldId })
-      await this.maybeUpdateDisplayValue(resourceId, field, null)
+      await this.deleteValue({ recordId, fieldId })
+      await this.maybeUpdateDisplayValue(recordId, field, null)
       return []
     }
 
@@ -178,14 +178,14 @@ export class FieldValueService {
 
     if (isMultiValueFieldType(field.type)) {
       // Multi-value: DELETE all + INSERT all
-      result = await this.setMultiValue(resourceId, fieldId, field.type, typedInput)
+      result = await this.setMultiValue(recordId, fieldId, field.type, typedInput)
     } else {
       // Single-value: UPSERT (UPDATE or INSERT)
-      result = await this.setSingleValue(resourceId, fieldId, field.type, typedInput)
+      result = await this.setSingleValue(recordId, fieldId, field.type, typedInput)
     }
 
     // 4. Update display value if this is a display field
-    await this.maybeUpdateDisplayValue(resourceId, field, typedInput)
+    await this.maybeUpdateDisplayValue(recordId, field, typedInput)
 
     return result
   }
@@ -197,11 +197,11 @@ export class FieldValueService {
    * efficient when called multiple times in a batch or when you already know the field type.
    * Still fetches field definition (with caching) to handle displayName updates.
    *
-   * **Replaces all existing values** - Always DELETEs all rows for this resourceId+fieldId,
+   * **Replaces all existing values** - Always DELETEs all rows for this recordId+fieldId,
    * then INSERTs new ones. This is safe for both single and multi-value fields.
    *
    * @param params - The SetValueWithTypeInput object
-   * @param params.resourceId - ResourceId of the entity (format: "entityDefinitionId:entityInstanceId")
+   * @param params.recordId - RecordId of the entity (format: "entityDefinitionId:entityInstanceId")
    *                            Example: "contact:550e8400-e29b-41d4-a716-446655440000"
    * @param params.fieldId - UUID of the custom field
    *                         Example: "660e8400-e29b-41d4-a716-446655440000"
@@ -231,7 +231,7 @@ export class FieldValueService {
    * @example
    * // Set a text field with known type
    * const result = await fieldValueService.setValueWithType({
-   *   resourceId: "contact:contact-123",
+   *   recordId: "contact:contact-123",
    *   fieldId: "field-name",
    *   fieldType: "TEXT",
    *   value: { type: "text", value: "John Doe" }
@@ -240,7 +240,7 @@ export class FieldValueService {
    * @example
    * // Set a multi-value field
    * const result = await fieldValueService.setValueWithType({
-   *   resourceId: "ticket:ticket-456",
+   *   recordId: "ticket:ticket-456",
    *   fieldId: "field-tags",
    *   fieldType: "TAGS",
    *   value: [
@@ -250,10 +250,10 @@ export class FieldValueService {
    * });
    */
   async setValueWithType(params: SetValueWithTypeInput): Promise<TypedFieldValue[]> {
-    const { resourceId, fieldId, fieldType, value, skipInverseSync = false } = params
+    const { recordId, fieldId, fieldType, value, skipInverseSync = false } = params
 
-    // Parse ResourceId to get entityInstanceId for DB queries
-    const { entityInstanceId } = parseResourceId(resourceId)
+    // Parse RecordId to get entityInstanceId for DB queries
+    const { entityInstanceId } = parseRecordId(recordId)
 
     // Get field definition for displayName update (cached)
     const field = await this.getField(fieldId)
@@ -288,7 +288,7 @@ export class FieldValueService {
 
     // If value is null, we're done (deletion)
     if (value === null) {
-      await this.maybeUpdateDisplayValue(resourceId, field, null)
+      await this.maybeUpdateDisplayValue(recordId, field, null)
 
       // Sync inverse if we had old relationships
       if (inverseInfo && oldRelatedIds.length > 0) {
@@ -304,7 +304,7 @@ export class FieldValueService {
     // Handle array of values (multi-value fields)
     const values = Array.isArray(value) ? value : [value]
     if (values.length === 0) {
-      await this.maybeUpdateDisplayValue(resourceId, field, null)
+      await this.maybeUpdateDisplayValue(recordId, field, null)
 
       // Sync inverse if we had old relationships
       if (inverseInfo && oldRelatedIds.length > 0) {
@@ -317,10 +317,10 @@ export class FieldValueService {
       return []
     }
 
-    // Generate sort keys for each value - pass resourceId to buildInsertRow
+    // Generate sort keys for each value - pass recordId to buildInsertRow
     const insertRows = values.map((v, index) => {
       const sortKey = generateKeyBetween(index === 0 ? null : `a${index - 1}`, null)
-      return this.buildInsertRow(resourceId, fieldId, fieldType, v, sortKey)
+      return this.buildInsertRow(recordId, fieldId, fieldType, v, sortKey)
     })
 
     // Insert all values
@@ -331,7 +331,7 @@ export class FieldValueService {
     )
 
     // Update display value if this is a display field
-    await this.maybeUpdateDisplayValue(resourceId, field, value)
+    await this.maybeUpdateDisplayValue(recordId, field, value)
 
     // ═══ Sync inverse relationships ═══
     if (inverseInfo) {
@@ -360,7 +360,7 @@ export class FieldValueService {
    * Add a single value to a multi-value field without removing existing values.
    * APPEND operation - calculates correct sort order based on existing values.
    *
-   * @param params.resourceId - ResourceId of the entity (e.g. "contact:abc123")
+   * @param params.recordId - RecordId of the entity (e.g. "contact:abc123")
    * @param params.fieldId - UUID of the multi-value field
    * @param params.fieldType - Field type (MULTI_SELECT, TAGS, RELATIONSHIP, FILE)
    * @param params.value - Single TypedFieldValueInput to add
@@ -369,7 +369,7 @@ export class FieldValueService {
    *
    * @example
    * await service.addValue({
-   *   resourceId: "ticket:abc123",
+   *   recordId: "ticket:abc123",
    *   fieldId: "field-tags",
    *   fieldType: "TAGS",
    *   value: { type: "option", optionId: "tag-urgent" },
@@ -378,7 +378,7 @@ export class FieldValueService {
    *
    * @example
    * await service.addValue({
-   *   resourceId: "order:xyz456",
+   *   recordId: "order:xyz456",
    *   fieldId: "field-related-items",
    *   fieldType: "RELATIONSHIP",
    *   value: { type: "relationship", relatedEntityId: "item-789", relatedEntityDefinitionId: "entity-def-1" },
@@ -386,10 +386,10 @@ export class FieldValueService {
    * })
    */
   async addValue(params: AddValueInput): Promise<TypedFieldValue> {
-    const { resourceId, fieldId, fieldType, value, position = 'end' } = params
+    const { recordId, fieldId, fieldType, value, position = 'end' } = params
 
-    // Parse ResourceId to get entityInstanceId for DB queries
-    const { entityInstanceId } = parseResourceId(resourceId)
+    // Parse RecordId to get entityInstanceId for DB queries
+    const { entityInstanceId } = parseRecordId(recordId)
 
     // Get existing values to determine sortKey position
     const existing = await this.db
@@ -424,7 +424,7 @@ export class FieldValueService {
       }
     }
 
-    const insertRow = this.buildInsertRow(resourceId, fieldId, fieldType, value, sortKey)
+    const insertRow = this.buildInsertRow(recordId, fieldId, fieldType, value, sortKey)
 
     const [inserted] = await this.db.insert(schema.FieldValue).values(insertRow).returning()
 
@@ -479,14 +479,14 @@ export class FieldValueService {
    *
    * **Note:** Does NOT update entity display values (caller may need to do that)
    *
-   * @param params.resourceId - ResourceId of the entity (e.g. "contact:abc123")
+   * @param params.recordId - RecordId of the entity (e.g. "contact:abc123")
    * @param params.fieldId - UUID of the field to clear
    *
    * @example
-   * await service.deleteValue({ resourceId: "contact:abc123", fieldId: "field-email" })
+   * await service.deleteValue({ recordId: "contact:abc123", fieldId: "field-email" })
    */
   async deleteValue(params: DeleteValueInput): Promise<void> {
-    const { entityInstanceId } = parseResourceId(params.resourceId)
+    const { entityInstanceId } = parseRecordId(params.recordId)
 
     await this.db
       .delete(schema.FieldValue)
@@ -510,7 +510,7 @@ export class FieldValueService {
    * Features: built-in field detection, type validation, uniqueness checking,
    * automatic displayName updates, event publishing for contacts, field caching.
    *
-   * @param params.resourceId - ResourceId of the entity (e.g. "contact:abc123")
+   * @param params.recordId - RecordId of the entity (e.g. "contact:abc123")
    * @param params.fieldId - Field UUID or built-in field ID (e.g. "firstName", "createdAt")
    * @param params.value - Raw value to set (auto-converted and validated)
    * @param params.publishEvents - Publish contact:field:updated events (default: true)
@@ -519,7 +519,7 @@ export class FieldValueService {
    *
    * @example
    * await service.setValueWithBuiltIn({
-   *   resourceId: "contact:abc123",
+   *   recordId: "contact:abc123",
    *   fieldId: "field-email-uuid",
    *   value: "john@example.com",
    *   publishEvents: true
@@ -527,16 +527,16 @@ export class FieldValueService {
    *
    * @example
    * await service.setValueWithBuiltIn({
-   *   resourceId: "contact:xyz456",
+   *   recordId: "contact:xyz456",
    *   fieldId: "firstName",
    *   value: "John"
    * })
    */
   async setValueWithBuiltIn(params: SetValueWithBuiltInInput): Promise<SetValueResult> {
-    const { resourceId, fieldId, value, publishEvents = true, skipInverseSync = false } = params
+    const { recordId, fieldId, value, publishEvents = true, skipInverseSync = false } = params
 
-    // Parse ResourceId to get both parts
-    const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+    // Parse RecordId to get both parts
+    const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
     // Derive modelType from entityDefinitionId
     const modelType = getModelType(entityDefinitionId)
@@ -579,8 +579,8 @@ export class FieldValueService {
 
     // Handle null values (deletion)
     if (typedValue === null) {
-      await this.deleteValue({ resourceId, fieldId })
-      await this.maybeUpdateDisplayValue(resourceId, field, null)
+      await this.deleteValue({ recordId, fieldId })
+      await this.maybeUpdateDisplayValue(recordId, field, null)
       return { state: 'complete', performedAt: new Date().toISOString(), values: [] }
     }
 
@@ -602,12 +602,12 @@ export class FieldValueService {
     // 5. Get old value for event (only if publishing for contacts)
     let oldValue: TypedFieldValue | TypedFieldValue[] | null = null
     if (publishEvents && modelType === 'contact') {
-      oldValue = await this.getValue({ resourceId, fieldId })
+      oldValue = await this.getValue({ recordId, fieldId })
     }
 
     // 6. Set the value
     const result = await this.setValueWithType({
-      resourceId,
+      recordId,
       fieldId,
       fieldType: field.type,
       value: typedValue,
@@ -646,7 +646,7 @@ export class FieldValueService {
    * Optimizations: prefetches field definitions, batch validates relationships,
    * separates built-in/custom fields, continues on individual field errors.
    *
-   * @param params.resourceId - ResourceId of the entity (e.g. "contact:abc123")
+   * @param params.recordId - RecordId of the entity (e.g. "contact:abc123")
    * @param params.values - Array of {fieldId, value} pairs to set
    * @param params.publishEvents - Publish contact:field:updated events (default: true)
    * @param params.skipInverseSync - Skip inverse relationship sync (for bulk ops)
@@ -654,7 +654,7 @@ export class FieldValueService {
    *
    * @example
    * await service.setValuesForEntity({
-   *   resourceId: "contact:abc123",
+   *   recordId: "contact:abc123",
    *   values: [
    *     { fieldId: "field-email", value: "customer@example.com" },
    *     { fieldId: "field-phone", value: "+1-555-0123" },
@@ -664,10 +664,10 @@ export class FieldValueService {
    * })
    */
   async setValuesForEntity(params: SetValuesForEntityInput): Promise<SetValuesResult[]> {
-    const { resourceId, values, publishEvents = true, skipInverseSync = false } = params
+    const { recordId, values, publishEvents = true, skipInverseSync = false } = params
 
-    // Parse ResourceId to get both parts and derive modelType
-    const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+    // Parse RecordId to get both parts and derive modelType
+    const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
     const modelType = getModelType(entityDefinitionId)
 
     // Filter out undefined values
@@ -747,7 +747,7 @@ export class FieldValueService {
       for (const v of customs) {
         try {
           const result = await this.setValueWithBuiltIn({
-            resourceId,
+            recordId,
             fieldId: v.fieldId,
             value: v.value,
             publishEvents,
@@ -779,13 +779,13 @@ export class FieldValueService {
    * Behavior: prefetches field definitions, sets fields in parallel, continues on failures,
    * disables event publishing, handles bulk inverse relationship sync efficiently.
    *
-   * @param params.resourceIds - Array of ResourceIds to update (e.g. ["contact:abc", "contact:xyz"])
+   * @param params.recordIds - Array of RecordIds to update (e.g. ["contact:abc", "contact:xyz"])
    * @param params.values - Array of {fieldId, value} pairs to apply to all entities
    * @returns Object with count of successfully updated entities
    *
    * @example
    * await service.setBulkValues({
-   *   resourceIds: ["contact:abc123", "contact:xyz456", ...],
+   *   recordIds: ["contact:abc123", "contact:xyz456", ...],
    *   values: [
    *     { fieldId: "field-status", value: "archived" },
    *     { fieldId: "field-archived-date", value: "2024-01-15T10:00:00Z" }
@@ -793,14 +793,14 @@ export class FieldValueService {
    * })
    */
   async setBulkValues(params: SetBulkValuesInput): Promise<{ count: number }> {
-    const { resourceIds, values } = params
+    const { recordIds, values } = params
 
-    if (resourceIds.length === 0 || values.length === 0) {
+    if (recordIds.length === 0 || values.length === 0) {
       return { count: 0 }
     }
 
-    // Parse ResourceIds and derive modelType from first one (all should be same type in bulk)
-    const parsedResources = resourceIds.map((rid) => parseResourceId(rid))
+    // Parse RecordIds and derive modelType from first one (all should be same type in bulk)
+    const parsedResources = recordIds.map((rid) => parseRecordId(rid))
     const entityInstanceIds = parsedResources.map((p) => p.entityInstanceId)
     const modelType = getModelType(parsedResources[0]!.entityDefinitionId)
 
@@ -850,9 +850,9 @@ export class FieldValueService {
     // ═══ Set values for all entities in parallel ═══
     // Skip inverse sync here - we'll do bulk sync at the end
     const results = await Promise.allSettled(
-      resourceIds.map((resourceId) =>
+      recordIds.map((recordId) =>
         this.setValuesForEntity({
-          resourceId,
+          recordId,
           values: validValues,
           publishEvents: false, // Don't spam events for bulk operations
           skipInverseSync: true, // Bulk sync handled separately below
@@ -941,19 +941,19 @@ export class FieldValueService {
    * Get a single field value for an entity.
    * Returns TypedFieldValue for single-value fields, TypedFieldValue[] for multi-value fields, or null.
    *
-   * @param params.resourceId - ResourceId of the entity (e.g. "contact:abc123")
+   * @param params.recordId - RecordId of the entity (e.g. "contact:abc123")
    * @param params.fieldId - UUID of the field
    * @param cachedField - Optional pre-fetched FieldWithDefinition to avoid lookup
    * @returns TypedFieldValue | TypedFieldValue[] | null
    *
    * @example
-   * const email = await service.getValue({ resourceId: "contact:abc123", fieldId: "field-email" })
+   * const email = await service.getValue({ recordId: "contact:abc123", fieldId: "field-email" })
    */
   async getValue(
     params: GetValueInput,
     cachedField?: FieldWithDefinition
   ): Promise<TypedFieldValue | TypedFieldValue[] | null> {
-    const { entityInstanceId } = parseResourceId(params.resourceId)
+    const { entityInstanceId } = parseRecordId(params.recordId)
 
     // Use cached field if provided (avoids redundant CustomField join)
     const field = cachedField ?? (await this.getField(params.fieldId))
@@ -982,13 +982,13 @@ export class FieldValueService {
    * Returns Map keyed by fieldId. Use this instead of calling getValue() multiple times.
    * Single DB join of FieldValue + CustomField avoids N+1 queries.
    *
-   * @param params.resourceId - ResourceId of the entity (e.g. "contact:abc123")
+   * @param params.recordId - RecordId of the entity (e.g. "contact:abc123")
    * @param params.fieldIds - Optional array of field UUIDs (omit to get all fields)
    * @returns Map<fieldId, TypedFieldValue | TypedFieldValue[]>
    *
    * @example
    * const values = await service.getValues({
-   *   resourceId: "contact:abc123",
+   *   recordId: "contact:abc123",
    *   fieldIds: ["field-email", "field-phone"]
    * })
    * const email = values.get("field-email")
@@ -996,7 +996,7 @@ export class FieldValueService {
   async getValues(
     params: GetValuesInput
   ): Promise<Map<string, TypedFieldValue | TypedFieldValue[]>> {
-    const { entityInstanceId } = parseResourceId(params.resourceId)
+    const { entityInstanceId } = parseRecordId(params.recordId)
 
     const query = this.db
       .select()
@@ -1040,7 +1040,7 @@ export class FieldValueService {
   /**
    * Efficiently get field values for multiple entities in a single batch query.
    *
-   * Uses the ResourceId format (entityDefinitionId:entityInstanceId) which encodes
+   * Uses the RecordId format (entityDefinitionId:entityInstanceId) which encodes
    * both the entity type and instance in a single value.
    *
    * Returns a normalized array with one result per entity+field combination that has a value.
@@ -1053,8 +1053,8 @@ export class FieldValueService {
    * - ResourceRegistryService caching for efficient field type lookups
    *
    * @param params - The BatchGetValuesInput object
-   * @param params.resourceIds - Array of ResourceIds in format "entityDefinitionId:entityInstanceId"
-   *                             Use toResourceIds() helper to build from entityDefinitionId + instanceIds
+   * @param params.recordIds - Array of RecordIds in format "entityDefinitionId:entityInstanceId"
+   *                             Use toRecordIds() helper to build from entityDefinitionId + instanceIds
    *                             Example: ["contact:contact-1", "contact:contact-2"]
    * @param params.fieldIds - Array of field UUIDs to retrieve
    *                          Example: ["field-email", "field-name", "field-status"]
@@ -1062,7 +1062,7 @@ export class FieldValueService {
    * @returns BatchFieldValueResult containing:
    *          - values: Array of TypedFieldValueResult, one per entity+field with actual data
    *            Each result includes:
-   *            - resourceId: The entity instance ID (NOT the full ResourceId)
+   *            - recordId: The entity instance ID (NOT the full RecordId)
    *            - fieldId: The field UUID
    *            - value: TypedFieldValue or TypedFieldValue[] (based on field type)
    *            - issues?: Array of validation issues (orphaned references, type mismatches)
@@ -1070,14 +1070,14 @@ export class FieldValueService {
    * @example
    * // Fetch email and name for 10 contacts
    * const result = await fieldValueService.batchGetValues({
-   *   resourceIds: toResourceIds("contact", ["contact-1", "contact-2", "contact-10"]),
+   *   recordIds: toRecordIds("contact", ["contact-1", "contact-2", "contact-10"]),
    *   fieldIds: ["field-email", "field-name"]
    * });
    *
    * @example
    * // Fetch custom entity values
    * const result = await fieldValueService.batchGetValues({
-   *   resourceIds: toResourceIds(entityDefinitionId, instanceIds),
+   *   recordIds: toRecordIds(entityDefinitionId, instanceIds),
    *   fieldIds: ["field-title", "field-status", "field-related"]
    * });
    *
@@ -1088,22 +1088,22 @@ export class FieldValueService {
    * }
    */
   async batchGetValues(params: BatchGetValuesInput): Promise<BatchFieldValueResult> {
-    const { resourceIds, fieldIds } = params
+    const { recordIds, fieldIds } = params
 
-    if (resourceIds.length === 0 || fieldIds.length === 0) {
+    if (recordIds.length === 0 || fieldIds.length === 0) {
       return { values: [] }
     }
 
-    // Parse ResourceIds to extract entityInstanceIds for DB query
-    const parsedResources = resourceIds.map((rid) => parseResourceId(rid))
+    // Parse RecordIds to extract entityInstanceIds for DB query
+    const parsedResources = recordIds.map((rid) => parseRecordId(rid))
     const entityInstanceIds = parsedResources.map((p) => p.entityInstanceId)
 
-    // Create lookup: instanceId -> ResourceId
-    const instanceToResourceId = new Map<string, ResourceId>()
+    // Create lookup: instanceId -> RecordId
+    const instanceToRecordId = new Map<string, RecordId>()
     for (const parsed of parsedResources) {
-      instanceToResourceId.set(
+      instanceToRecordId.set(
         parsed.entityInstanceId,
-        toResourceId(parsed.entityDefinitionId, parsed.entityInstanceId)
+        toRecordId(parsed.entityDefinitionId, parsed.entityInstanceId)
       )
     }
 
@@ -1144,8 +1144,8 @@ export class FieldValueService {
     // Build result with validation (only include combinations that have actual data)
     const results: TypedFieldValueResult[] = []
     for (const instanceId of entityInstanceIds) {
-      const fullResourceId = instanceToResourceId.get(instanceId)
-      if (!fullResourceId) continue
+      const fullRecordId = instanceToRecordId.get(instanceId)
+      if (!fullRecordId) continue
 
       for (const fieldId of fieldIds) {
         const key = `${instanceId}:${fieldId}`
@@ -1162,7 +1162,7 @@ export class FieldValueService {
             // Field definition not found - orphaned reference
             issues.push(`Field type not found for field ${fieldId}`)
             results.push({
-              resourceId: fullResourceId,
+              recordId: fullRecordId,
               fieldId,
               value: null,
               issues,
@@ -1186,7 +1186,7 @@ export class FieldValueService {
           }
 
           const result: TypedFieldValueResult = {
-            resourceId: fullResourceId,
+            recordId: fullRecordId,
             fieldId,
           }
 
@@ -1555,11 +1555,11 @@ export class FieldValueService {
    * Handles primary (displayName), secondary (secondaryDisplayValue), and avatar (avatarUrl).
    */
   private async maybeUpdateDisplayValue(
-    resourceId: ResourceId,
+    recordId: RecordId,
     field: FieldWithDefinition,
     value: TypedFieldValueInput | TypedFieldValueInput[] | null
   ): Promise<void> {
-    const { entityInstanceId } = parseResourceId(resourceId)
+    const { entityInstanceId } = parseRecordId(recordId)
     const entityDef = field.entityDefinition
     if (!entityDef) return
 
@@ -1631,12 +1631,12 @@ export class FieldValueService {
    * Checks if row exists, then UPDATE or INSERT.
    */
   private async setSingleValue(
-    resourceId: ResourceId,
+    recordId: RecordId,
     fieldId: string,
     fieldType: string,
     value: TypedFieldValueInput | TypedFieldValueInput[]
   ): Promise<TypedFieldValue[]> {
-    const { entityInstanceId } = parseResourceId(resourceId)
+    const { entityInstanceId } = parseRecordId(recordId)
     const singleValue = Array.isArray(value) ? value[0] : value
     if (!singleValue) return []
 
@@ -1668,10 +1668,10 @@ export class FieldValueService {
 
       return [this.rowToTypedValue(updatedResult.value as unknown as FieldValueRow, fieldType)]
     } else {
-      // INSERT new row - pass resourceId to buildInsertData
+      // INSERT new row - pass recordId to buildInsertData
       const insertData = this.buildInsertData(fieldType, singleValue)
       const insertedResult = await insertFieldValue({
-        resourceId,
+        recordId,
         fieldId,
         organizationId: this.organizationId,
         sortKey: generateKeyBetween(null, null),
@@ -1690,18 +1690,18 @@ export class FieldValueService {
    * Set multi-value field using DELETE+INSERT strategy.
    */
   private async setMultiValue(
-    resourceId: ResourceId,
+    recordId: RecordId,
     fieldId: string,
     fieldType: string,
     value: TypedFieldValueInput | TypedFieldValueInput[]
   ): Promise<TypedFieldValue[]> {
-    const { entityInstanceId } = parseResourceId(resourceId)
+    const { entityInstanceId } = parseRecordId(recordId)
     const values = Array.isArray(value) ? value : [value]
 
     // Debug logging for TAGS
     if (fieldType === 'TAGS') {
       console.log('💾 setMultiValue called for TAGS:', {
-        resourceId,
+        recordId,
         fieldId,
         fieldType,
         valueCount: values.length,
@@ -1722,9 +1722,9 @@ export class FieldValueService {
 
     if (values.length === 0) return []
 
-    // Build insert rows with sortKeys - pass resourceId
+    // Build insert rows with sortKeys - pass recordId
     const insertInputs = values.map((v, index) => ({
-      resourceId,
+      recordId,
       fieldId,
       organizationId: this.organizationId,
       sortKey: generateKeyBetween(index === 0 ? null : `a${index - 1}`, null),
@@ -1744,7 +1744,7 @@ export class FieldValueService {
     // Debug logging for TAGS
     if (fieldType === 'TAGS') {
       console.log('✅ Inserted TAGS values:', {
-        resourceId,
+        recordId,
         fieldId,
         count: result.length,
         values: result,
@@ -1839,14 +1839,14 @@ export class FieldValueService {
    * Note: id, createdAt, updatedAt are auto-generated by the database.
    */
   private buildInsertRow(
-    resourceId: ResourceId,
+    recordId: RecordId,
     fieldId: string,
     fieldType: string,
     value: TypedFieldValueInput,
     sortKey: string
   ) {
-    // Split ResourceId at DB boundary
-    const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+    // Split RecordId at DB boundary
+    const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
     const base = {
       organizationId: this.organizationId,

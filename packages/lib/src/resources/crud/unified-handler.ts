@@ -18,7 +18,7 @@ import { FieldValueService } from '../../field-values'
 import { publisher } from '../../events/publisher'
 import { CommentService } from '../../comments'
 import { invalidateSnapshots } from '../../snapshot'
-import { toResourceId, parseResourceId, type ResourceId } from '../resource-id'
+import { toRecordId, parseRecordId, type RecordId } from '../resource-id'
 import { getSystemHooks } from '../hooks'
 import type { EntityDefinitionEntity } from '@auxx/database/schema/entity-definition'
 import type { CustomFieldEntity } from '@auxx/database/schema/custom-field'
@@ -67,8 +67,8 @@ export interface CrudOptions {
  * })
  *
  * // Update a contact
- * const resourceId = toResourceId('contact', contact.id)
- * await handler.update(resourceId, {
+ * const recordId = toRecordId('contact', contact.id)
+ * await handler.update(recordId, {
  *   first_name: 'Jane'
  * })
  *
@@ -146,11 +146,11 @@ export class UnifiedCrudHandler {
 
     const instance = unwrapResult(instanceResult)
 
-    // Build ResourceId for field value operations
-    const resourceId = toResourceId(entityDef.id, instance.id)
+    // Build RecordId for field value operations
+    const recordId = toRecordId(entityDef.id, instance.id)
 
-    // Set field values using ResourceId
-    await this.setFieldValues(resourceId, processedValues)
+    // Set field values using RecordId
+    await this.setFieldValues(recordId, processedValues)
 
     // Invalidate snapshots (unless skipped for bulk operations)
     if (!options.skipSnapshotInvalidation) {
@@ -168,19 +168,19 @@ export class UnifiedCrudHandler {
   /**
    * Update entity instance field values
    *
-   * @param resourceId - ResourceId in format "entityDefinitionId:instanceId"
+   * @param recordId - RecordId in format "entityDefinitionId:instanceId"
    * @param values - Field values to update (map of fieldId -> value)
    * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
    */
   async update(
-    resourceId: ResourceId,
+    recordId: RecordId,
     values: Record<string, unknown>,
     options: CrudOptions = {}
   ): Promise<EntityInstanceEntity> {
-    const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+    const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
     // Single fetch to verify existence
-    const instance = await this.getById(resourceId)
+    const instance = await this.getById(recordId)
     if (!instance) throw new Error(`Entity not found: ${entityInstanceId}`)
 
     const entityDef = await this.resolveEntityDefinition(entityDefinitionId)
@@ -191,8 +191,8 @@ export class UnifiedCrudHandler {
     // Check uniqueness (excluding current entity)
     await this.validateUniqueFields(entityDef.id, processedValues, entityInstanceId)
 
-    // Set field values using ResourceId
-    await this.setFieldValues(resourceId, processedValues)
+    // Set field values using RecordId
+    await this.setFieldValues(recordId, processedValues)
 
     // Invalidate snapshots (unless skipped for bulk operations)
     if (!options.skipSnapshotInvalidation) {
@@ -211,10 +211,10 @@ export class UnifiedCrudHandler {
   /**
    * Get entity instance by ID
    *
-   * @param resourceId - ResourceId in format "entityDefinitionId:instanceId"
+   * @param recordId - RecordId in format "entityDefinitionId:instanceId"
    */
-  async getById(resourceId: ResourceId): Promise<EntityInstanceEntity | null> {
-    const { entityInstanceId } = parseResourceId(resourceId)
+  async getById(recordId: RecordId): Promise<EntityInstanceEntity | null> {
+    const { entityInstanceId } = parseRecordId(recordId)
     const result = await getEntityInstance({
       id: entityInstanceId,
       organizationId: this.organizationId,
@@ -255,8 +255,8 @@ export class UnifiedCrudHandler {
 
     if (rows.length === 0) return null
 
-    const resourceId = toResourceId(entityDef.id, rows[0]!.entityId)
-    return this.getById(resourceId)
+    const recordId = toRecordId(entityDef.id, rows[0]!.entityId)
+    return this.getById(recordId)
   }
 
   /**
@@ -286,13 +286,13 @@ export class UnifiedCrudHandler {
   /**
    * Archive entity instance (soft delete)
    *
-   * @param resourceId - ResourceId in format "entityDefinitionId:instanceId"
+   * @param recordId - RecordId in format "entityDefinitionId:instanceId"
    * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
    */
-  async archive(resourceId: ResourceId, options: CrudOptions = {}): Promise<EntityInstanceEntity> {
-    const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+  async archive(recordId: RecordId, options: CrudOptions = {}): Promise<EntityInstanceEntity> {
+    const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
-    const instance = await this.getById(resourceId)
+    const instance = await this.getById(recordId)
     if (!instance) throw new Error(`Entity not found: ${entityInstanceId}`)
 
     const entityDef = await this.resolveEntityDefinition(entityDefinitionId)
@@ -319,13 +319,13 @@ export class UnifiedCrudHandler {
   /**
    * Restore archived entity instance
    *
-   * @param resourceId - ResourceId in format "entityDefinitionId:instanceId"
+   * @param recordId - RecordId in format "entityDefinitionId:instanceId"
    * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
    */
-  async restore(resourceId: ResourceId, options: CrudOptions = {}): Promise<EntityInstanceEntity> {
-    const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+  async restore(recordId: RecordId, options: CrudOptions = {}): Promise<EntityInstanceEntity> {
+    const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
-    const instance = await this.getById(resourceId)
+    const instance = await this.getById(recordId)
     if (!instance) throw new Error(`Entity not found: ${entityInstanceId}`)
 
     const entityDef = await this.resolveEntityDefinition(entityDefinitionId)
@@ -352,13 +352,13 @@ export class UnifiedCrudHandler {
   /**
    * Permanently delete entity instance
    *
-   * @param resourceId - ResourceId in format "entityDefinitionId:instanceId"
+   * @param recordId - RecordId in format "entityDefinitionId:instanceId"
    * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
    */
-  async delete(resourceId: ResourceId, options: CrudOptions = {}): Promise<void> {
-    const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+  async delete(recordId: RecordId, options: CrudOptions = {}): Promise<void> {
+    const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
-    const instance = await this.getById(resourceId)
+    const instance = await this.getById(recordId)
     if (!instance) throw new Error(`Entity not found: ${entityInstanceId}`)
 
     const entityDef = await this.resolveEntityDefinition(entityDefinitionId)
@@ -431,33 +431,33 @@ export class UnifiedCrudHandler {
   /**
    * Bulk update entities
    *
-   * @param updates - Array of { resourceId, values } to update
+   * @param updates - Array of { recordId, values } to update
    * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
    */
   async bulkUpdate(
-    updates: Array<{ resourceId: ResourceId; values: Record<string, unknown> }>,
+    updates: Array<{ recordId: RecordId; values: Record<string, unknown> }>,
     options: CrudOptions = {}
-  ): Promise<{ updated: number; errors: Array<{ resourceId: ResourceId; error: string }> }> {
+  ): Promise<{ updated: number; errors: Array<{ recordId: RecordId; error: string }> }> {
     if (updates.length === 0) return { updated: 0, errors: [] }
 
     // Pre-warm cache for the first entity's definition (assumes all are same type)
-    const { entityDefinitionId } = parseResourceId(updates[0]!.resourceId)
+    const { entityDefinitionId } = parseRecordId(updates[0]!.recordId)
     await this.warmCache(entityDefinitionId)
     const entityDef = await this.resolveEntityDefinition(entityDefinitionId)
 
     let updated = 0
-    const errors: Array<{ resourceId: ResourceId; error: string }> = []
+    const errors: Array<{ recordId: RecordId; error: string }> = []
 
     // Update all records without individual snapshot invalidation
-    for (const { resourceId, values } of updates) {
+    for (const { recordId, values } of updates) {
       try {
-        await this.update(resourceId, values, {
+        await this.update(recordId, values, {
           skipEvents: options.skipEvents,
           skipSnapshotInvalidation: true, // Always skip - we'll do it once at end
         })
         updated++
       } catch (e) {
-        errors.push({ resourceId, error: e instanceof Error ? e.message : 'Unknown error' })
+        errors.push({ recordId, error: e instanceof Error ? e.message : 'Unknown error' })
       }
     }
 
@@ -472,21 +472,21 @@ export class UnifiedCrudHandler {
   /**
    * Bulk archive entities (soft delete)
    *
-   * @param resourceIds - Array of ResourceIds to archive
+   * @param recordIds - Array of RecordIds to archive
    * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
    */
-  async bulkArchive(resourceIds: ResourceId[], options: CrudOptions = {}): Promise<{ count: number }> {
-    if (resourceIds.length === 0) return { count: 0 }
+  async bulkArchive(recordIds: RecordId[], options: CrudOptions = {}): Promise<{ count: number }> {
+    if (recordIds.length === 0) return { count: 0 }
 
     // Pre-warm cache for the first entity's definition (assumes all are same type)
-    const { entityDefinitionId } = parseResourceId(resourceIds[0]!)
+    const { entityDefinitionId } = parseRecordId(recordIds[0]!)
     await this.warmCache(entityDefinitionId)
     const entityDef = await this.resolveEntityDefinition(entityDefinitionId)
 
     let count = 0
-    for (const resourceId of resourceIds) {
+    for (const recordId of recordIds) {
       try {
-        await this.archive(resourceId, {
+        await this.archive(recordId, {
           skipEvents: options.skipEvents,
           skipSnapshotInvalidation: true, // Always skip - we'll do it once at end
         })
@@ -507,21 +507,21 @@ export class UnifiedCrudHandler {
   /**
    * Bulk delete entities (hard delete)
    *
-   * @param resourceIds - Array of ResourceIds to delete
+   * @param recordIds - Array of RecordIds to delete
    * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
    */
-  async bulkDelete(resourceIds: ResourceId[], options: CrudOptions = {}): Promise<{ count: number }> {
-    if (resourceIds.length === 0) return { count: 0 }
+  async bulkDelete(recordIds: RecordId[], options: CrudOptions = {}): Promise<{ count: number }> {
+    if (recordIds.length === 0) return { count: 0 }
 
     // Pre-warm cache for the first entity's definition (assumes all are same type)
-    const { entityDefinitionId } = parseResourceId(resourceIds[0]!)
+    const { entityDefinitionId } = parseRecordId(recordIds[0]!)
     await this.warmCache(entityDefinitionId)
     const entityDef = await this.resolveEntityDefinition(entityDefinitionId)
 
     let count = 0
-    for (const resourceId of resourceIds) {
+    for (const recordId of recordIds) {
       try {
-        await this.delete(resourceId, {
+        await this.delete(recordId, {
           skipEvents: options.skipEvents,
           skipSnapshotInvalidation: true, // Always skip - we'll do it once at end
         })
@@ -542,25 +542,25 @@ export class UnifiedCrudHandler {
   /**
    * Bulk set field value across multiple entities
    *
-   * @param resourceIds - Array of ResourceIds to update
+   * @param recordIds - Array of RecordIds to update
    * @param fieldId - Field ID to set
    * @param value - Value to set
    */
   async bulkSetFieldValue(
-    resourceIds: ResourceId[],
+    recordIds: RecordId[],
     fieldId: string,
     value: unknown
   ): Promise<{ count: number }> {
-    if (resourceIds.length === 0) return { count: 0 }
+    if (recordIds.length === 0) return { count: 0 }
 
     // Use FieldValueService.setBulkValues for efficient bulk operation
     const result = await this.fieldValueService.setBulkValues({
-      resourceIds,
+      recordIds,
       values: [{ fieldId, value }],
     })
 
-    // Get entityDefinitionId from first resourceId for invalidation
-    const { entityDefinitionId } = parseResourceId(resourceIds[0]!)
+    // Get entityDefinitionId from first recordId for invalidation
+    const { entityDefinitionId } = parseRecordId(recordIds[0]!)
     await this.invalidateSnapshots(entityDefinitionId)
 
     return { count: result.count }
@@ -604,21 +604,21 @@ export class UnifiedCrudHandler {
   /**
    * Set single field value
    *
-   * @param resourceId - ResourceId in format "entityDefinitionId:instanceId"
+   * @param recordId - RecordId in format "entityDefinitionId:instanceId"
    * @param fieldId - Field ID to set
    * @param value - Value to set
    */
   async setFieldValue(
-    resourceId: ResourceId,
+    recordId: RecordId,
     fieldId: string,
     value: unknown
   ): Promise<void> {
-    const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+    const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
     const entityDef = await this.resolveEntityDefinition(entityDefinitionId)
 
-    // Use FieldValueService with ResourceId (no modelType needed)
+    // Use FieldValueService with RecordId (no modelType needed)
     await this.fieldValueService.setValueWithBuiltIn({
-      resourceId,
+      recordId,
       fieldId,
       value,
     })
@@ -630,15 +630,15 @@ export class UnifiedCrudHandler {
   /**
    * Get field values for entity
    *
-   * @param resourceId - ResourceId in format "entityDefinitionId:instanceId"
+   * @param recordId - RecordId in format "entityDefinitionId:instanceId"
    * @param fieldIds - Optional array of field IDs to fetch
    */
   async getFieldValues(
-    resourceId: ResourceId,
+    recordId: RecordId,
     fieldIds?: string[]
   ): Promise<Map<string, any>> {
-    // Use FieldValueService with ResourceId
-    return this.fieldValueService.getValues({ resourceId, fieldIds })
+    // Use FieldValueService with RecordId
+    return this.fieldValueService.getValues({ recordId, fieldIds })
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -714,13 +714,13 @@ export class UnifiedCrudHandler {
   }
 
   /**
-   * Set field values for an entity using ResourceId
+   * Set field values for an entity using RecordId
    *
-   * @param resourceId - ResourceId in format "entityDefinitionId:instanceId"
+   * @param recordId - RecordId in format "entityDefinitionId:instanceId"
    * @param values - Map of fieldId -> value
    */
   private async setFieldValues(
-    resourceId: ResourceId,
+    recordId: RecordId,
     values: Record<string, unknown>
   ): Promise<void> {
     const valueArray = Object.entries(values)
@@ -729,7 +729,7 @@ export class UnifiedCrudHandler {
 
     if (valueArray.length > 0) {
       await this.fieldValueService.setValuesForEntity({
-        resourceId,
+        recordId,
         values: valueArray,
       })
     }

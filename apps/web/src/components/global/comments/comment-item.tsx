@@ -16,12 +16,12 @@ import { Badge } from '@auxx/ui/components/badge'
 import { AttachmentDisplay } from '~/components/files/utils/attachment-display'
 
 import { cn } from '@auxx/ui/lib/utils'
-import type { ResourceId } from '@auxx/lib/field-values/client'
+import type { RecordId } from '@auxx/lib/field-values/client'
 
 interface CommentItemProps {
   comment?: CommentType
   commentId?: string
-  resourceId?: ResourceId
+  recordId?: RecordId
   isReply?: boolean
   disableReplies?: boolean
   isFirstInGroup?: boolean // Show avatar and name
@@ -46,7 +46,7 @@ export const CommentSkeleton = () => (
 export function CommentItem({
   comment: initialComment,
   commentId,
-  resourceId,
+  recordId,
   isReply = false,
   disableReplies = false,
   isFirstInGroup = true,
@@ -71,7 +71,7 @@ export function CommentItem({
     deletingCommentId,
     pinningCommentId,
     addingEmojiToCommentId,
-  } = useComments({ commentId, resourceId })
+  } = useComments({ commentId, recordId })
 
   // Use either the provided comment or the fetched single comment
   // const comment = initialComment || singleComment
@@ -170,7 +170,7 @@ export function CommentItem({
             {isEditing && (
               <div className="mb-4 w-[400px]">
                 <CommentComposer
-                  resourceId={resourceId!}
+                  resourceId={recordId!}
                   commentId={comment.id}
                   initialContent={comment.content}
                   initialAttachments={comment.attachments || []}
@@ -318,7 +318,7 @@ export function CommentItem({
       {isReplying && !disableReplies && (
         <div className="ms-8 mt-2 mb-2 max-w-[400px]">
           <CommentComposer
-            resourceId={resourceId!}
+            resourceId={recordId!}
             parentId={comment.id}
             placeholder="Write a reply..."
             onSubmitted={() => setReplyingToId(null)}
@@ -335,7 +335,7 @@ export function CommentItem({
             <CommentItem
               key={reply.id}
               comment={reply}
-              resourceId={resourceId}
+              recordId={recordId}
               isReply={true}
               disableReplies={true} // Disallow nested replies
             />

@@ -3,8 +3,8 @@
 'use client'
 
 import { useMemo } from 'react'
-import type { ResourceId, Resource } from '@auxx/lib/resources/client'
-import { parseResourceId, getDefinitionId, isSystemResource } from '@auxx/lib/resources/client'
+import type { RecordId, Resource } from '@auxx/lib/resources/client'
+import { parseRecordId, getDefinitionId, isSystemResource } from '@auxx/lib/resources/client'
 import { useResourceStore } from '../store/resource-store'
 
 /**
@@ -55,15 +55,15 @@ export interface GetResourceLinkOptions {
 
   /**
    * Parent resource context (useful for relationship navigation)
-   * Example: When opening a contact from a ticket, pass the ticket's resourceId
+   * Example: When opening a contact from a ticket, pass the ticket's recordId
    */
-  parentResourceId?: ResourceId
+  parentRecordId?: RecordId
 }
 
 /**
  * Pure function to generate a link to a resource detail page
  *
- * @param resourceId - ResourceId in format "entityDefinitionId:entityInstanceId"
+ * @param recordId - RecordId in format "entityDefinitionId:entityInstanceId"
  * @param resource - The resource object (system or custom)
  * @param options - Optional configuration for the link
  * @returns The URL path
@@ -90,11 +90,11 @@ export interface GetResourceLinkOptions {
  * // Returns: '/app/custom/companies/inst456?tab=overview'
  */
 export function getResourceLink(
-  resourceId: ResourceId,
+  recordId: RecordId,
   resource: Resource,
   options: GetResourceLinkOptions = {}
 ): string {
-  const { entityInstanceId } = parseResourceId(resourceId)
+  const { entityInstanceId } = parseRecordId(recordId)
 
   // Build base path
   const isSystem = isSystemResource(resource)
@@ -121,8 +121,8 @@ export function getResourceLink(
   }
 
   // Add parent resource context if specified
-  if (options.parentResourceId) {
-    queryParams.append('from', options.parentResourceId)
+  if (options.parentRecordId) {
+    queryParams.append('from', options.parentRecordId)
   }
 
   // Add custom query parameters
@@ -159,7 +159,7 @@ export function getResourceLink(
  * Hook to generate a link to a resource detail page
  * Automatically looks up the resource from the provider
  *
- * @param resourceId - ResourceId in format "entityDefinitionId:entityInstanceId"
+ * @param recordId - RecordId in format "entityDefinitionId:entityInstanceId"
  * @param options - Optional configuration for the link
  * @returns The URL path, or null if resource not found
  *
@@ -193,24 +193,24 @@ export function getResourceLink(
  * // Returns: '/app/custom/companies/inst456?tab=overview'
  */
 export function useResourceLink(
-  resourceId: ResourceId | null | undefined,
+  recordId: RecordId | null | undefined,
   options: GetResourceLinkOptions = {}
 ): string | null {
   const getResourceById = useResourceStore((s) => s.getResourceById)
 
   return useMemo(() => {
-    if (!resourceId) return null
+    if (!recordId) return null
 
     // Look up the resource
-    const entityDefinitionId = getDefinitionId(resourceId)
+    const entityDefinitionId = getDefinitionId(recordId)
     const resource = getResourceById(entityDefinitionId)
 
     if (!resource) {
-      console.warn(`Resource not found for resourceId: ${resourceId}`)
+      console.warn(`Resource not found for recordId: ${recordId}`)
       return null
     }
 
     // Use the pure function
-    return getResourceLink(resourceId, resource, options)
-  }, [resourceId, getResourceById, options])
+    return getResourceLink(recordId, resource, options)
+  }, [recordId, getResourceById, options])
 }

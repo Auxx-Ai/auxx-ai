@@ -12,7 +12,7 @@ import { Badge } from '@auxx/ui/components/badge'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { useRelationship } from '~/components/resources'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
-import { toResourceId, getInstanceId, type ResourceId } from '@auxx/lib/resources/client'
+import { toRecordId, getInstanceId, type RecordId } from '@auxx/lib/resources/client'
 
 /**
  * Props for MultiRelationInput
@@ -25,11 +25,11 @@ export interface MultiRelationInputProps {
    */
   entityDefinitionId?: string | string[]
 
-  /** Currently selected ResourceIds */
-  value: ResourceId[]
+  /** Currently selected RecordIds */
+  value: RecordId[]
 
   /** Callback when selection changes */
-  onChange: (resourceIds: ResourceId[]) => void
+  onChange: (recordIds: RecordId[]) => void
 
   /** Whether the input is disabled */
   disabled?: boolean
@@ -112,14 +112,14 @@ export function MultiRelationInput({
 
   /**
    * Handle selection change from MultiSelectPicker
-   * Convert string IDs back to ResourceId[]
+   * Convert string IDs back to RecordId[]
    */
   const handleSelectionChange = useCallback(
     (ids: string[]) => {
       if (!tableId) return
 
-      const resourceIds = ids.map((id) => toResourceId(tableId, id))
-      onChange(resourceIds)
+      const recordIds = ids.map((id) => toRecordId(tableId, id))
+      onChange(recordIds)
     },
     [tableId, onChange]
   )

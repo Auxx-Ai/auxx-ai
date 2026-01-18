@@ -1,29 +1,29 @@
 // packages/lib/src/import/utils/resource-id.ts
 
-import { toResourceId, type ResourceId } from '@auxx/types/resource'
+import { toRecordId, type RecordId } from '@auxx/types/resource'
 
 /**
- * Build a ResourceId from an import context.
+ * Build a RecordId from an import context.
  * Handles both system resources (contact, ticket) and custom entities (UUID).
  *
  * @param entityDefinitionId - Entity definition ID (e.g., 'contact' or UUID for custom entity)
  * @param instanceId - Instance ID of the record
- * @returns Full ResourceId in format 'entityDefinitionId:instanceId'
+ * @returns Full RecordId in format 'entityDefinitionId:instanceId'
  */
-export function buildImportResourceId(entityDefinitionId: string, instanceId: string): ResourceId {
-  return toResourceId(entityDefinitionId, instanceId)
+export function buildImportRecordId(entityDefinitionId: string, instanceId: string): RecordId {
+  return toRecordId(entityDefinitionId, instanceId)
 }
 
 /**
- * Build ResourceIds for a batch of instance IDs.
+ * Build RecordIds for a batch of instance IDs.
  *
  * @param entityDefinitionId - Entity definition ID (shared by all instances)
  * @param instanceIds - Array of instance IDs
- * @returns Array of ResourceIds
+ * @returns Array of RecordIds
  */
-export function buildImportResourceIds(
+export function buildImportRecordIds(
   entityDefinitionId: string,
   instanceIds: string[]
-): ResourceId[] {
-  return instanceIds.map((id) => toResourceId(entityDefinitionId, id))
+): RecordId[] {
+  return instanceIds.map((id) => toRecordId(entityDefinitionId, id))
 }

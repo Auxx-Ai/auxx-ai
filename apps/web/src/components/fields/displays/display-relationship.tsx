@@ -3,15 +3,15 @@
 import { useMemo } from 'react'
 import { useFieldContext } from './display-field'
 import { useRelationship } from '~/components/resources'
-import { extractRelationshipResourceIds } from '@auxx/lib/field-values/client'
+import { extractRelationshipRecordIds } from '@auxx/lib/field-values/client'
 import DisplayWrapper from './display-wrapper'
 import { ItemsListView, type ItemsListItem } from '~/components/ui/items-list-view'
 import { ResourceBadge } from '~/components/resources/ui/resource-badge'
-import type { ResourceId } from '@auxx/lib/resources/client'
+import type { RecordId } from '@auxx/lib/resources/client'
 
 /** Relationship item for ItemsListView */
 interface RelationshipItem extends ItemsListItem {
-  resourceId: ResourceId
+  recordId: RecordId
 }
 
 /**
@@ -22,19 +22,19 @@ interface RelationshipItem extends ItemsListItem {
 export function DisplayRelationship() {
   const { value } = useFieldContext()
 
-  // Extract ResourceIds using centralized utility
-  const resourceIds = useMemo(() => extractRelationshipResourceIds(value), [value])
+  // Extract RecordIds using centralized utility
+  const recordIds = useMemo(() => extractRelationshipRecordIds(value), [value])
 
   // Hydrate items via global store for copy text
-  const { items } = useRelationship(resourceIds)
+  const { items } = useRelationship(recordIds)
 
   // Build relationship items for ItemsListView
   const relationshipItems = useMemo<RelationshipItem[]>(() => {
-    return resourceIds.map((resourceId) => ({
-      id: resourceId,
-      resourceId,
+    return recordIds.map((recordId) => ({
+      id: recordId,
+      recordId,
     }))
-  }, [resourceIds])
+  }, [recordIds])
 
   // Build display names for copy value
   const copyText = items.map((item) => item?.displayName ?? '').filter(Boolean).join(', ')
@@ -44,7 +44,7 @@ export function DisplayRelationship() {
       <ItemsListView
         items={relationshipItems}
         emptyContent={<span className="text-muted-foreground">-</span>}
-        renderItem={(item) => <ResourceBadge resourceId={item.resourceId} />}
+        renderItem={(item) => <ResourceBadge recordId={item.recordId} />}
       />
     </DisplayWrapper>
   )

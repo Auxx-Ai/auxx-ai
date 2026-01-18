@@ -5,10 +5,10 @@ export {
   getRelationshipStoreState,
   useHydratedItems,
   useIsLoadingRelationships,
-  toResourceId,
-  parseResourceId,
+  toRecordId,
+  parseRecordId,
   type RelationshipStoreState,
-  type ResourceId,
+  type RecordId,
 } from './relationship-store'
 
 export {

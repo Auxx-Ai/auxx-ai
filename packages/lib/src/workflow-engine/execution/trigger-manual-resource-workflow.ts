@@ -7,7 +7,7 @@ import { getWorkflowApp } from '@auxx/services/workflows'
 import { database as db } from '@auxx/database'
 import { fetchResourceById } from '../../resources'
 import { RedisWorkflowExecutionReporter } from '../execution-reporter'
-import { parseResourceId, type ResourceId } from '@auxx/types/resource'
+import { parseRecordId, type RecordId } from '@auxx/types/resource'
 
 const logger = createScopedLogger('trigger-manual-workflow')
 
@@ -31,20 +31,20 @@ const logger = createScopedLogger('trigger-manual-workflow')
  */
 export async function triggerManualResourceWorkflow(params: {
   workflowAppId: string
-  resourceId: ResourceId
+  recordId: RecordId
   organizationId: string
   createdBy: string
 }) {
-  const { workflowAppId, resourceId, organizationId, createdBy } = params
+  const { workflowAppId, recordId, organizationId, createdBy } = params
 
-  // Parse ResourceId to get both components
-  const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+  // Parse RecordId to get both components
+  const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
   logger.info('Manual trigger started', {
     workflowAppId,
     entityDefinitionId,
     entityInstanceId,
-    resourceId,
+    recordId,
     organizationId,
     createdBy,
   })
@@ -89,7 +89,7 @@ export async function triggerManualResourceWorkflow(params: {
   }
 
   // 2. Fetch resource and verify organization ownership
-  const resourceData = await fetchResourceById(resourceId, organizationId)
+  const resourceData = await fetchResourceById(recordId, organizationId)
 
   if (!resourceData) {
     return err({
@@ -97,7 +97,7 @@ export async function triggerManualResourceWorkflow(params: {
       message: `Resource ${entityInstanceId} not found or does not belong to organization ${organizationId}`,
       entityDefinitionId,
       entityInstanceId,
-      resourceId,
+      recordId,
     })
   }
 
@@ -126,7 +126,7 @@ export async function triggerManualResourceWorkflow(params: {
       workflowRunId: workflowRun.id,
       entityDefinitionId,
       entityInstanceId,
-      resourceId,
+      recordId,
       createdBy,
     })
 
@@ -141,7 +141,7 @@ export async function triggerManualResourceWorkflow(params: {
         workflowRunId: workflowRun.id,
         workflowAppId,
         entityInstanceId,
-        resourceId,
+        recordId,
         error: error instanceof Error ? error.message : String(error),
       })
     })
@@ -151,7 +151,7 @@ export async function triggerManualResourceWorkflow(params: {
       workflowRunId: workflowRun.id,
       entityDefinitionId,
       entityInstanceId,
-      resourceId,
+      recordId,
       organizationId,
     })
 

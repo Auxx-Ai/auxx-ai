@@ -16,7 +16,7 @@ import {
   Layers,
   Truck,
 } from 'lucide-react'
-import { getEntityDrawerConfig, parseResourceId } from '@auxx/lib/resources/client'
+import { getEntityDrawerConfig, parseRecordId } from '@auxx/lib/resources/client'
 import { getTabComponent } from './drawer-tab-registry'
 import { useResource, useRecord } from '~/components/resources'
 import EntityFields from '~/components/fields/entity-fields'
@@ -25,11 +25,11 @@ import { TimelineTab } from '~/components/timeline'
 import { useQueryState } from 'nuqs'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
-import { type ResourceId } from '@auxx/types/resource'
+import { type RecordId } from '@auxx/types/resource'
 
 interface BaseEntityDrawerProps {
-  /** ResourceId in format "entityDefinitionId:entityInstanceId" */
-  resourceId: ResourceId | null
+  /** RecordId in format "entityDefinitionId:entityInstanceId" */
+  recordId: RecordId | null
   /** Drawer open state */
   open: boolean
   /** Callback when drawer open state changes */
@@ -65,7 +65,7 @@ interface BaseEntityDrawerProps {
  * Supports both system entities (contact, part) and custom entities
  */
 export function BaseEntityDrawer({
-  resourceId,
+  recordId,
   open,
   onOpenChange,
   entityType: entityTypeOverride,
@@ -83,9 +83,9 @@ export function BaseEntityDrawer({
 }: BaseEntityDrawerProps) {
   const [activeTab, setActiveTab] = useQueryState('tab', { defaultValue: 'overview' })
 
-  // Parse resourceId
-  const { entityDefinitionId, entityInstanceId } = resourceId
-    ? parseResourceId(resourceId)
+  // Parse recordId
+  const { entityDefinitionId, entityInstanceId } = recordId
+    ? parseRecordId(recordId)
     : { entityDefinitionId: null, entityInstanceId: null }
 
   // Get resource metadata
@@ -93,8 +93,8 @@ export function BaseEntityDrawer({
 
   // Get record data
   const { record } = useRecord({
-    resourceId,
-    enabled: !!open && !!resourceId,
+    recordId,
+    enabled: !!open && !!recordId,
   })
 
   // Determine entity type (use override if provided, otherwise infer from resource)
@@ -140,7 +140,7 @@ export function BaseEntityDrawer({
     }
   }, [onClose, onOpenChange])
 
-  if (!open || !resourceId || !drawerConfig || !entityType) return null
+  if (!open || !recordId || !drawerConfig || !entityType) return null
 
   return (
     <DockableDrawer
@@ -182,7 +182,7 @@ export function BaseEntityDrawer({
                       initialOpen
                       collapsible={false}
                       icon={<HouseIcon className="size-4" />}>
-                      <EntityFields resourceId={resourceId} />
+                      <EntityFields recordId={recordId} />
                     </Section>
                   </ScrollArea>
                 </TabsContent>
@@ -190,7 +190,7 @@ export function BaseEntityDrawer({
                 <TabsContent value="timeline" className="w-full h-full mt-0">
                   <ScrollArea className="flex-1">
                     <div className="p-3 flex-1 flex-col flex">
-                      <TimelineTab resourceId={resourceId} />
+                      <TimelineTab recordId={recordId} />
                     </div>
                   </ScrollArea>
                 </TabsContent>
@@ -198,7 +198,7 @@ export function BaseEntityDrawer({
                 <TabsContent value="comments" className="w-full h-full mt-0">
                   <ScrollArea className="flex-1">
                     <DrawerComments
-                      resourceId={resourceId}
+                      recordId={recordId}
                       focusComposerTrigger={focusComposerTrigger}
                     />
                   </ScrollArea>
@@ -212,7 +212,7 @@ export function BaseEntityDrawer({
                         entityType={entityType}
                         tabValue={tab.value}
                         entityInstanceId={entityInstanceId!}
-                        resourceId={resourceId}
+                        recordId={recordId}
                         record={record}
                       />
                     </ScrollArea>
@@ -234,13 +234,13 @@ function LazyTabComponent({
   entityType,
   tabValue,
   entityInstanceId,
-  resourceId,
+  recordId,
   record,
 }: {
   entityType: string
   tabValue: string
   entityInstanceId: string
-  resourceId: string
+  recordId: string
   record?: Record<string, unknown>
 }) {
   const componentLoader = getTabComponent(entityType, tabValue)
@@ -259,7 +259,7 @@ function LazyTabComponent({
     return <div className="p-4">Loading...</div>
   }
 
-  return <Component entityInstanceId={entityInstanceId} resourceId={resourceId} record={record} />
+  return <Component entityInstanceId={entityInstanceId} recordId={recordId} record={record} />
 }
 
 /**

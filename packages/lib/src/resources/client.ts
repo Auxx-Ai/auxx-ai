@@ -43,18 +43,18 @@ export type {
   CustomResourceId,
 } from './registry'
 
-// ResourceId utilities (branded string format: entityDefinitionId:entityInstanceId)
+// RecordId utilities (branded string format: entityDefinitionId:entityInstanceId)
 export {
-  toResourceId,
-  parseResourceId,
-  isResourceId,
-  toResourceIds,
+  toRecordId,
+  parseRecordId,
+  isRecordId,
+  toRecordIds,
   getInstanceId,
   getDefinitionId,
   isSystemModelType,
   getModelType,
 } from './resource-id'
-export type { ResourceId } from '@auxx/types/resource'
+export type { RecordId } from '@auxx/types/resource'
 
 // Field utility functions (client-safe)
 export {

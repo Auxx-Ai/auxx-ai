@@ -5,7 +5,7 @@ import { eq, and, desc, inArray, lt, or } from 'drizzle-orm'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import type { TimelineEventEntity } from '@auxx/database/models'
-import { parseResourceId, toResourceId, type ResourceId } from '@auxx/types/resource'
+import { parseRecordId, toRecordId, type RecordId } from '@auxx/types/resource'
 
 /**
  * Cursor for timeline pagination
@@ -20,7 +20,7 @@ export interface TimelineCursor {
  */
 export interface GetTimelineEventsInput {
   organizationId: string
-  resourceId: ResourceId
+  recordId: RecordId
   cursor?: TimelineCursor
   limit?: number
   actorFilter?: string[]
@@ -28,18 +28,18 @@ export interface GetTimelineEventsInput {
 }
 
 /**
- * Timeline event with resourceId attached
+ * Timeline event with recordId attached
  */
-export interface TimelineEventWithResourceId extends TimelineEventEntity {
-  resourceId: ResourceId
-  relatedResourceId?: ResourceId
+export interface TimelineEventWithRecordId extends TimelineEventEntity {
+  recordId: RecordId
+  relatedRecordId?: RecordId
 }
 
 /**
  * Output for getting timeline events
  */
 export interface GetTimelineEventsOutput {
-  events: TimelineEventWithResourceId[]
+  events: TimelineEventWithRecordId[]
   hasMore: boolean
   nextCursor?: TimelineCursor
 }
@@ -53,15 +53,15 @@ export interface GetTimelineEventsOutput {
 export async function getTimelineEvents(input: GetTimelineEventsInput) {
   const {
     organizationId,
-    resourceId,
+    recordId,
     cursor,
     limit = 100,
     actorFilter,
     eventTypeFilter,
   } = input
 
-  // Parse resourceId to get components
-  const { entityDefinitionId: entityType, entityInstanceId: entityId } = parseResourceId(resourceId)
+  // Parse recordId to get components
+  const { entityDefinitionId: entityType, entityInstanceId: entityId } = parseRecordId(recordId)
 
   // Build where conditions
   const conditions = [
@@ -127,17 +127,17 @@ export async function getTimelineEvents(input: GetTimelineEventsInput) {
     rawEvents.pop()
   }
 
-  // Attach resourceId to each event
-  const eventsWithResourceId: TimelineEventWithResourceId[] = rawEvents.map((event) => ({
+  // Attach recordId to each event
+  const eventsWithRecordId: TimelineEventWithRecordId[] = rawEvents.map((event) => ({
     ...event,
-    resourceId: toResourceId(event.entityType, event.entityId),
+    recordId: toRecordId(event.entityType, event.entityId),
     ...(event.relatedEntityType && event.relatedEntityId
-      ? { relatedResourceId: toResourceId(event.relatedEntityType, event.relatedEntityId) }
+      ? { relatedRecordId: toRecordId(event.relatedEntityType, event.relatedEntityId) }
       : {}),
-  })) as TimelineEventWithResourceId[]
+  })) as TimelineEventWithRecordId[]
 
   return ok({
-    events: eventsWithResourceId,
+    events: eventsWithRecordId,
     hasMore,
     nextCursor,
   })

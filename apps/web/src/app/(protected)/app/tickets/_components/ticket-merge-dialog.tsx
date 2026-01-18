@@ -17,7 +17,7 @@ import { Button } from '@auxx/ui/components/button'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { api } from '~/trpc/react'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
-import { getInstanceId, type ResourceId } from '@auxx/lib/field-values/client'
+import { getInstanceId, type RecordId } from '@auxx/lib/field-values/client'
 
 /**
  * Props for TicketMergeDialog
@@ -79,13 +79,13 @@ function TicketMergeDialogContent({
   onClose,
   onMergeComplete,
 }: TicketMergeDialogContentProps) {
-  // State is now ResourceId[]
-  const [ticketsToMerge, setTicketsToMerge] = useState<ResourceId[]>([])
+  // State is now RecordId[]
+  const [ticketsToMerge, setTicketsToMerge] = useState<RecordId[]>([])
   const router = useRouter()
 
   // Derive IDs when needed for API calls
   const ticketsToMergeIds = useMemo(
-    () => ticketsToMerge.map((resourceId) => getInstanceId(resourceId)),
+    () => ticketsToMerge.map((recordId) => getInstanceId(recordId)),
     [ticketsToMerge]
   )
 

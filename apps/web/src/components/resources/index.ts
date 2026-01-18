@@ -26,8 +26,8 @@ export {
 
 // Store utilities (for advanced use cases)
 export {
-  toResourceId,
-  parseResourceId,
+  toRecordId,
+  parseRecordId,
   // Resource store
   useResourceStore,
   getResourceStoreState,
@@ -41,7 +41,7 @@ export {
   EMPTY_FILTERS,
   EMPTY_SORTING,
   type RecordMeta,
-  type ResourceId,
+  type RecordId,
 } from './store'
 
 // Utilities

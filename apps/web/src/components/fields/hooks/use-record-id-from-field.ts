@@ -1,4 +1,4 @@
-// apps/web/src/components/fields/hooks/use-resource-id-from-field.ts
+// apps/web/src/components/fields/hooks/use-record-id-from-field.ts
 
 import { useMemo } from 'react'
 import type { RelationshipConfig } from '@auxx/types/custom-field'
@@ -13,10 +13,10 @@ interface FieldWithRelationship {
 }
 
 /**
- * Result from useResourceIdFromField hook.
+ * Result from useRecordIdFromField hook.
  * Contains entityDefinitionId (system resource ID or custom entity UUID).
  */
-export interface ResourceIdResult {
+export interface RecordIdResult {
   /** Entity definition ID - system resource ID or custom entity UUID */
   entityDefinitionId: string
 }
@@ -30,9 +30,9 @@ export interface ResourceIdResult {
  * - UUID (EntityDefinition.id) - used directly as entityDefinitionId
  *
  * @param field - Field definition with relationship options
- * @returns ResourceIdResult or null if not a valid relationship field
+ * @returns RecordIdResult or null if not a valid relationship field
  */
-export function useResourceIdFromField(field: FieldWithRelationship): ResourceIdResult | null {
+export function useRecordIdFromField(field: FieldWithRelationship): RecordIdResult | null {
   return useMemo(() => {
     const relationship = field.options?.relationship
     if (!relationship) return null

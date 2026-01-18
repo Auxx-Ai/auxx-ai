@@ -1,7 +1,7 @@
 // packages/lib/src/timeline/types.ts
 
 import type { TimelineActorType, TimelineEventType } from './event-types'
-import type { ResourceId } from '@auxx/types/resource'
+import type { RecordId } from '@auxx/types/resource'
 
 export { ContactEventType } from './event-types'
 
@@ -20,8 +20,8 @@ export interface TimelineEventBase {
   startedAt: Date
   endedAt?: Date
 
-  resourceId: ResourceId
-  relatedResourceId?: ResourceId
+  recordId: RecordId
+  relatedRecordId?: RecordId
 
   // Keep for internal DB structure
   entityType: string
@@ -72,7 +72,7 @@ export type TimelineCursor = string
 /** Timeline query input */
 export interface TimelineQueryInput {
   organizationId: string
-  resourceId: ResourceId
+  recordId: RecordId
   cursor?: TimelineCursor
   limit?: number
   isGroupingDisabled?: boolean
@@ -90,8 +90,8 @@ export interface TimelineQueryResult {
 /** Input for creating a timeline event */
 export interface CreateTimelineEventInput {
   eventType: TimelineEventType
-  resourceId: ResourceId
-  relatedResourceId?: ResourceId
+  recordId: RecordId
+  relatedRecordId?: RecordId
 
   actorType: TimelineActorType
   actorId: string

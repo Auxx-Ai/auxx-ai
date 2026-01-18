@@ -2,15 +2,15 @@
 
 import { useEffect, useMemo } from 'react'
 import { useRecordStore, type RecordMeta } from '../store/record-store'
-import { parseResourceId, type ResourceId } from '@auxx/lib/resources/client'
+import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 
 /**
  * Options for the useRecords hook.
  */
 interface UseRecordsOptions {
-  /** Array of ResourceIds to fetch (format: "entityDefinitionId:entityInstanceId") */
-  resourceIds: ResourceId[]
-  /** Disable fetching (default: true when resourceIds.length > 0) */
+  /** Array of RecordIds to fetch (format: "entityDefinitionId:entityInstanceId") */
+  recordIds: RecordId[]
+  /** Disable fetching (default: true when recordIds.length > 0) */
   enabled?: boolean
 }
 
@@ -18,68 +18,68 @@ interface UseRecordsOptions {
  * Result returned by the useRecords hook.
  */
 interface UseRecordsResult<T = RecordMeta> {
-  /** Records in same order as input resourceIds (undefined if not found/not loaded) */
+  /** Records in same order as input recordIds (undefined if not found/not loaded) */
   records: (T | undefined)[]
-  /** Quick lookup by ResourceId */
-  recordsByKey: Map<ResourceId, T>
+  /** Quick lookup by RecordId */
+  recordsByKey: Map<RecordId, T>
   /** True while any records are still loading */
   isLoading: boolean
   /** All requested records found in cache */
   isComplete: boolean
-  /** ResourceIds that were not found (deleted/invalid) */
-  notFoundIds: ResourceId[]
+  /** RecordIds that were not found (deleted/invalid) */
+  notFoundIds: RecordId[]
 }
 
 /** Stable empty array for records */
 const EMPTY_RECORDS: undefined[] = []
 /** Stable empty map for recordsByKey */
-const EMPTY_MAP = new Map<ResourceId, RecordMeta>()
+const EMPTY_MAP = new Map<RecordId, RecordMeta>()
 /** Stable empty array for notFoundIds */
-const EMPTY_NOT_FOUND: ResourceId[] = []
+const EMPTY_NOT_FOUND: RecordId[] = []
 
 /**
- * Hook for fetching multiple specific records by ResourceId array.
+ * Hook for fetching multiple specific records by RecordId array.
  * Leverages the batch fetcher system for efficient fetching with automatic deduplication.
  *
  * @example
  * // Basic usage
  * const { records, isLoading } = useRecords({
- *   resourceIds: [
- *     toResourceId('contact', 'abc123'),
- *     toResourceId('ticket', 'xyz789'),
+ *   recordIds: [
+ *     toRecordId('contact', 'abc123'),
+ *     toRecordId('ticket', 'xyz789'),
  *   ]
  * })
  *
  * @example
  * // With relationship field values
- * const resourceIds = extractRelationshipResourceIds(fieldValue)
- * const { records, isComplete } = useRecords({ resourceIds })
+ * const recordIds = extractRelationshipRecordIds(fieldValue)
+ * const { records, isComplete } = useRecords({ recordIds })
  *
  * @example
  * // Conditional fetching
  * const { records } = useRecords({
- *   resourceIds: selectedResourceIds,
+ *   recordIds: selectedRecordIds,
  *   enabled: isPreviewOpen
  * })
  */
 export function useRecords<T extends RecordMeta = RecordMeta>({
-  resourceIds,
+  recordIds,
   enabled = true,
 }: UseRecordsOptions): UseRecordsResult<T> {
   // Create stable key for dependencies
-  const resourceIdsKey = useMemo(() => resourceIds.join(','), [resourceIds])
+  const recordIdsKey = useMemo(() => recordIds.join(','), [recordIds])
 
   // Get request action
   const requestRecord = useRecordStore((s) => s.requestRecord)
 
   // Request all records via batch system
   useEffect(() => {
-    if (!enabled || resourceIds.length === 0) return
+    if (!enabled || recordIds.length === 0) return
 
-    for (const resourceId of resourceIds) {
-      requestRecord(resourceId)
+    for (const recordId of recordIds) {
+      requestRecord(recordId)
     }
-  }, [enabled, resourceIdsKey, requestRecord])
+  }, [enabled, recordIdsKey, requestRecord])
 
   // Subscribe to records from store
   const recordsState = useRecordStore((s) => s.records)
@@ -89,50 +89,50 @@ export function useRecords<T extends RecordMeta = RecordMeta>({
 
   // Resolve records in order
   const records = useMemo(() => {
-    if (resourceIds.length === 0) return EMPTY_RECORDS as (T | undefined)[]
+    if (recordIds.length === 0) return EMPTY_RECORDS as (T | undefined)[]
 
-    return resourceIds.map((resourceId) => {
-      const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+    return recordIds.map((recordId) => {
+      const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
       return recordsState[entityDefinitionId]?.get(entityInstanceId) as T | undefined
     })
-  }, [resourceIds, recordsState, resourceIdsKey])
+  }, [recordIds, recordsState, recordIdsKey])
 
   // Build lookup map
   const recordsByKey = useMemo(() => {
-    if (resourceIds.length === 0) return EMPTY_MAP as Map<ResourceId, T>
+    if (recordIds.length === 0) return EMPTY_MAP as Map<RecordId, T>
 
-    const map = new Map<ResourceId, T>()
-    resourceIds.forEach((resourceId, idx) => {
+    const map = new Map<RecordId, T>()
+    recordIds.forEach((recordId, idx) => {
       const record = records[idx]
       if (record) {
-        map.set(resourceId, record)
+        map.set(recordId, record)
       }
     })
     return map
-  }, [resourceIds, records])
+  }, [recordIds, records])
 
   // Check loading state
   const isLoading = useMemo(() => {
-    if (resourceIds.length === 0) return false
-    return resourceIds.some((id) => loadingIds.has(id) || pendingIds.has(id))
-  }, [resourceIds, loadingIds, pendingIds, resourceIdsKey])
+    if (recordIds.length === 0) return false
+    return recordIds.some((id) => loadingIds.has(id) || pendingIds.has(id))
+  }, [recordIds, loadingIds, pendingIds, recordIdsKey])
 
   // Check completion state
   const isComplete = useMemo(() => {
-    if (resourceIds.length === 0) return true
-    return resourceIds.every((resourceId) => {
-      const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+    if (recordIds.length === 0) return true
+    return recordIds.every((recordId) => {
+      const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
       return (
-        recordsState[entityDefinitionId]?.has(entityInstanceId) || notFoundIdsSet.has(resourceId)
+        recordsState[entityDefinitionId]?.has(entityInstanceId) || notFoundIdsSet.has(recordId)
       )
     })
-  }, [resourceIds, recordsState, notFoundIdsSet, resourceIdsKey])
+  }, [recordIds, recordsState, notFoundIdsSet, recordIdsKey])
 
   // Get not found IDs
   const notFoundIds = useMemo(() => {
-    if (resourceIds.length === 0) return EMPTY_NOT_FOUND
-    return resourceIds.filter((id) => notFoundIdsSet.has(id))
-  }, [resourceIds, notFoundIdsSet, resourceIdsKey])
+    if (recordIds.length === 0) return EMPTY_NOT_FOUND
+    return recordIds.filter((id) => notFoundIdsSet.has(id))
+  }, [recordIds, notFoundIdsSet, recordIdsKey])
 
   return {
     records,

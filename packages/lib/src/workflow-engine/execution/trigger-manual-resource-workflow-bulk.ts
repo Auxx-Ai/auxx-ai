@@ -10,7 +10,7 @@ import { executeResourceQuery, fetchResourceById } from '../../resources/resourc
 import { isCustomResourceId } from '../../resources/client'
 import { ResourceRegistryService } from '../../resources/registry'
 import { inArray } from 'drizzle-orm'
-import { parseResourceId, type ResourceId } from '@auxx/types/resource'
+import { parseRecordId, type RecordId } from '@auxx/types/resource'
 
 const logger = createScopedLogger('trigger-manual-workflow-bulk')
 
@@ -80,14 +80,14 @@ export interface BulkTriggerError {
  */
 export async function triggerManualResourceWorkflowBulk(params: {
   workflowAppId: string
-  resourceIds: ResourceId[]
+  recordIds: RecordId[]
   organizationId: string
   createdBy: string
 }): Promise<Result<BulkTriggerResponse, BulkTriggerError>> {
-  const { workflowAppId, resourceIds, organizationId, createdBy } = params
+  const { workflowAppId, recordIds, organizationId, createdBy } = params
 
-  // Parse all ResourceIds
-  const parsedResources = resourceIds.map(parseResourceId)
+  // Parse all RecordIds
+  const parsedResources = recordIds.map(parseRecordId)
 
   // Validate all have same entityDefinitionId (workflows are entity-specific)
   const entityDefinitionIds = [...new Set(parsedResources.map(r => r.entityDefinitionId))]
@@ -110,7 +110,7 @@ export async function triggerManualResourceWorkflowBulk(params: {
   logger.info('Bulk manual trigger started', {
     workflowAppId,
     entityDefinitionId,
-    resourceCount: resourceIds.length,
+    resourceCount: recordIds.length,
     organizationId,
     createdBy,
   })
@@ -152,10 +152,10 @@ export async function triggerManualResourceWorkflowBulk(params: {
 
   // 2. Batch fetch all resources
   const registryService = new ResourceRegistryService(organizationId, db)
-  const resourcesMap = await fetchResourcesByIds(resourceIds, organizationId, registryService)
+  const resourcesMap = await fetchResourcesByIds(recordIds, organizationId, registryService)
 
   logger.info('Resources fetched', {
-    requested: resourceIds.length,
+    requested: recordIds.length,
     found: resourcesMap.size,
   })
 
@@ -251,14 +251,14 @@ export async function triggerManualResourceWorkflowBulk(params: {
 
   logger.info('Bulk manual trigger completed', {
     workflowAppId,
-    total: resourceIds.length,
+    total: recordIds.length,
     succeeded,
     failed,
   })
 
   return ok({
     summary: {
-      total: resourceIds.length,
+      total: recordIds.length,
       succeeded,
       failed,
     },
@@ -273,20 +273,20 @@ export async function triggerManualResourceWorkflowBulk(params: {
  * For system resources: Uses single batch query with IN clause
  * For custom entities: Fetches individually (no batch query available yet)
  *
- * @param resourceIds - Array of ResourceIds in format "entityDefinitionId:instanceId"
+ * @param recordIds - Array of RecordIds in format "entityDefinitionId:instanceId"
  * @param organizationId - Organization ID for scoping
  * @param registryService - Resource registry service for resource metadata lookup
  * @returns Map for O(1) lookup by instance ID
  */
 async function fetchResourcesByIds(
-  resourceIds: ResourceId[],
+  recordIds: RecordId[],
   organizationId: string,
   registryService: ResourceRegistryService
 ): Promise<Map<string, any>> {
   const resourcesMap = new Map<string, any>()
 
-  // Parse all ResourceIds
-  const parsedResources = resourceIds.map(parseResourceId)
+  // Parse all RecordIds
+  const parsedResources = recordIds.map(parseRecordId)
 
   // Validate all have same entityDefinitionId
   const entityDefinitionIds = [...new Set(parsedResources.map(r => r.entityDefinitionId))]
@@ -306,11 +306,11 @@ async function fetchResourcesByIds(
   if (isCustomResourceId(resourceType)) {
     // Fetch each entity instance individually
     // TODO: Implement batch fetch for entity instances when available
-    const fetchPromises = resourceIds.map(async (resourceId) => {
-      const resource = await fetchResourceById(resourceId, organizationId)
+    const fetchPromises = recordIds.map(async (recordId) => {
+      const resource = await fetchResourceById(recordId, organizationId)
       if (resource) {
         // Use entityInstanceId as the key for lookup
-        const { entityInstanceId } = parseResourceId(resourceId)
+        const { entityInstanceId } = parseRecordId(recordId)
         resourcesMap.set(entityInstanceId, resource)
       }
     })

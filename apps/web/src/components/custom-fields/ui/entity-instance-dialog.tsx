@@ -22,15 +22,15 @@ import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-v
 import { useResource } from '~/components/resources'
 import { useCustomFieldValueSyncer } from '~/components/resources/hooks/use-custom-field-value-syncer'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
-import { toResourceId, parseResourceId, type ResourceId } from '@auxx/lib/resources/client'
+import { toRecordId, parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 
 interface EntityInstanceDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   /** Entity definition ID */
   entityDefinitionId: string
-  /** ResourceId for edit mode (format: "entityDefinitionId:entityInstanceId"), undefined for create */
-  resourceId?: ResourceId
+  /** RecordId for edit mode (format: "entityDefinitionId:entityInstanceId"), undefined for create */
+  recordId?: RecordId
   /** Callback after successful save */
   onSaved?: (instanceId: string) => void
   /** Preset field values for CREATE mode. Format: { fieldId: value } */
@@ -45,12 +45,12 @@ export function EntityInstanceDialog({
   open,
   onOpenChange,
   entityDefinitionId,
-  resourceId,
+  recordId,
   onSaved,
   presetValues,
 }: EntityInstanceDialogProps) {
-  // Parse resourceId to get instance ID for editing
-  const editingInstanceId = resourceId ? parseResourceId(resourceId).entityInstanceId : undefined
+  // Parse recordId to get instance ID for editing
+  const editingInstanceId = recordId ? parseRecordId(recordId).entityInstanceId : undefined
   const isEditing = !!editingInstanceId
 
   // Get resource definition with fields
@@ -64,8 +64,8 @@ export function EntityInstanceDialog({
       .sort((a, b) => (a.sortOrder ?? '').localeCompare(b.sortOrder ?? ''))
   }, [resource])
 
-  // ResourceIds for syncer
-  const resourceIds = useMemo(() => (resourceId ? [resourceId] : []), [resourceId])
+  // RecordIds for syncer
+  const recordIds = useMemo(() => (recordId ? [recordId] : []), [recordId])
 
   // Build column IDs in ResourceFieldId format
   const columnIds = useMemo(
@@ -74,10 +74,10 @@ export function EntityInstanceDialog({
   )
 
   const { getValue } = useCustomFieldValueSyncer({
-    resourceIds,
+    recordIds,
     resourceFieldIds: columnIds,
     columnVisibility: {},
-    enabled: !!resourceId && columnIds.length > 0,
+    enabled: !!recordId && columnIds.length > 0,
   })
 
   // Field values state: { fieldId: value }
@@ -116,9 +116,9 @@ export function EntityInstanceDialog({
 
       const initValues: Record<string, unknown> = {}
 
-      if (resourceId) {
+      if (recordId) {
         for (const field of editableFields) {
-          const storeValue = getValue(resourceId, field.resourceFieldId!)
+          const storeValue = getValue(recordId, field.resourceFieldId!)
           if (storeValue !== undefined && storeValue !== null) {
             initValues[field.id] = formatToRawValue(storeValue, field.fieldType ?? 'TEXT')
           }
@@ -149,7 +149,7 @@ export function EntityInstanceDialog({
       // Reset initialization flag when dialog closes
       isInitialized.current = false
     }
-  }, [open, editingInstanceId, editableFields, presetValues, setInitial, getValue])
+  }, [open, recordId, editableFields, presetValues, setInitial, getValue])
 
   // Create instance mutation
   const createInstance = api.entityInstance.create.useMutation({
@@ -236,8 +236,8 @@ export function EntityInstanceDialog({
         instanceId = created.id
       }
 
-      // Convert to ResourceId
-      const instanceResourceId = toResourceId(entityDefinitionId, instanceId)
+      // Convert to RecordId
+      const instanceRecordId = toRecordId(entityDefinitionId, instanceId)
 
       // Save all field values
       const valuesToSave = Object.entries(values)
@@ -248,7 +248,7 @@ export function EntityInstanceDialog({
         })
 
       if (valuesToSave.length > 0) {
-        const success = await saveMultipleAsync(instanceResourceId, valuesToSave)
+        const success = await saveMultipleAsync(instanceRecordId, valuesToSave)
         if (!success) return
       }
 

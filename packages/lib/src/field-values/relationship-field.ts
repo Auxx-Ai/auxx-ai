@@ -5,19 +5,19 @@ import type {
   RelationshipFieldValueInput,
   TypedFieldValue,
 } from '@auxx/types/field-value'
-import type { ResourceId } from '@auxx/types/resource'
+import type { RecordId } from '@auxx/types/resource'
 import type { RelationshipType } from '@auxx/types/custom-field'
-import { toResourceId, getInstanceId } from '../resources/resource-id'
+import { toRecordId, getInstanceId } from '../resources/resource-id'
 
 // Re-export RelationshipType for consumers
 export type { RelationshipType }
 
 /**
- * Extracted relationship data with ResourceIds ready for useRelationship
+ * Extracted relationship data with RecordIds ready for useRelationship
  */
 export interface RelationshipData {
-  /** ResourceId[] ready for direct use with useRelationship */
-  resourceIds: ResourceId[]
+  /** RecordId[] ready for direct use with useRelationship */
+  recordIds: RecordId[]
   /** Unique entity definition IDs found in the value (for mixed-type relationships) */
   entityDefinitionIds: string[]
 }
@@ -47,21 +47,21 @@ export function isRelationshipFieldValueArray(v: unknown): v is RelationshipFiel
 // ============================================================================
 
 /**
- * Extract ResourceIds and entityDefinitionIds from ANY relationship value format.
+ * Extract RecordIds and entityDefinitionIds from ANY relationship value format.
  * Handles: objects, arrays, strings, null, undefined.
  *
- * @returns { resourceIds, entityDefinitionIds } - ready for useRelationship
+ * @returns { recordIds, entityDefinitionIds } - ready for useRelationship
  *
  * @example
- * const { resourceIds } = extractRelationshipData(value)
- * const { items } = useRelationship(resourceIds)
+ * const { recordIds } = extractRelationshipData(value)
+ * const { items } = useRelationship(recordIds)
  */
 export function extractRelationshipData(value: unknown): RelationshipData {
   if (!value) {
-    return { resourceIds: [], entityDefinitionIds: [] }
+    return { recordIds: [], entityDefinitionIds: [] }
   }
 
-  const resourceIds: ResourceId[] = []
+  const recordIds: RecordId[] = []
   const entityDefinitionIdSet = new Set<string>()
 
   // Array of full objects or IDs
@@ -71,15 +71,15 @@ export function extractRelationshipData(value: unknown): RelationshipData {
         const rel = item as RelationshipFieldValue
         const entityDefId = rel.relatedEntityDefinitionId
         if (entityDefId && rel.relatedEntityId) {
-          resourceIds.push(toResourceId(entityDefId, rel.relatedEntityId))
+          recordIds.push(toRecordId(entityDefId, rel.relatedEntityId))
           entityDefinitionIdSet.add(entityDefId)
         }
       }
-      // Skip raw string IDs - we need entityDefinitionId to create valid ResourceId
+      // Skip raw string IDs - we need entityDefinitionId to create valid RecordId
     }
 
     return {
-      resourceIds,
+      recordIds,
       entityDefinitionIds: Array.from(entityDefinitionIdSet),
     }
   }
@@ -89,15 +89,16 @@ export function extractRelationshipData(value: unknown): RelationshipData {
     const rel = value as RelationshipFieldValue
     const entityDefId = rel.relatedEntityDefinitionId
     if (entityDefId && rel.relatedEntityId) {
+      const ids = [toRecordId(entityDefId, rel.relatedEntityId)]
       return {
-        resourceIds: [toResourceId(entityDefId, rel.relatedEntityId)],
+        recordIds: ids,
         entityDefinitionIds: [entityDefId],
       }
     }
   }
 
-  // Raw ID string or invalid format - cannot create ResourceId without entityDefinitionId
-  return { resourceIds: [], entityDefinitionIds: [] }
+  // Raw ID string or invalid format - cannot create RecordId without entityDefinitionId
+  return { recordIds: [], entityDefinitionIds: [] }
 }
 
 // ============================================================================
@@ -276,15 +277,15 @@ export function validateEntityDefinitionId(entityDefinitionId: string | null): b
 }
 
 // ============================================================================
-// RESOURCE ID EXTRACTORS - For useRelationship hook
+// RECORD ID EXTRACTORS - For useRelationship hook
 // ============================================================================
 
 /**
- * Extract ResourceId[] from ANY relationship value format.
- * Convenience wrapper around extractRelationshipData(value).resourceIds
+ * Extract RecordId[] from ANY relationship value format.
+ * Convenience wrapper around extractRelationshipData(value).recordIds
  */
-export function extractRelationshipResourceIds(value: unknown): ResourceId[] {
-  return extractRelationshipData(value).resourceIds
+export function extractRelationshipRecordIds(value: unknown): RecordId[] {
+  return extractRelationshipData(value).recordIds
 }
 
 // ============================================================================
@@ -318,50 +319,50 @@ export function isSingleRelationship(relationshipType?: RelationshipType | strin
 }
 
 /**
- * Create a single ResourceId from entityDefinitionId and entityInstanceId.
+ * Create a single RecordId from entityDefinitionId and entityInstanceId.
  *
  * @example
- * const resourceId = toResourceIdFromParts('ticket', ticketId)
+ * const recordId = toRecordIdFromParts('ticket', ticketId)
  */
-export function toResourceIdFromParts(
+export function toRecordIdFromParts(
   entityDefinitionId: string,
   entityInstanceId: string
-): ResourceId {
-  return toResourceId(entityDefinitionId, entityInstanceId)
+): RecordId {
+  return toRecordId(entityDefinitionId, entityInstanceId)
 }
 
 /**
- * Create ResourceId[] from entityDefinitionId and array of IDs.
+ * Create RecordId[] from entityDefinitionId and array of IDs.
  *
  * @example
- * const resourceIds = toResourceIdsFromParts('contact', ['id1', 'id2'])
+ * const recordIds = toRecordIdsFromParts('contact', ['id1', 'id2'])
  */
-export function toResourceIdsFromParts(entityDefinitionId: string, ids: string[]): ResourceId[] {
-  return ids.map((id) => toResourceId(entityDefinitionId, id))
+export function toRecordIdsFromParts(entityDefinitionId: string, ids: string[]): RecordId[] {
+  return ids.map((id) => toRecordId(entityDefinitionId, id))
 }
 
 /**
- * Create ResourceId from entityDefinitionId and optional single ID.
+ * Create RecordId from entityDefinitionId and optional single ID.
  * Returns null if id is falsy.
  *
  * @example
- * const resourceId = toResourceIdFromId('ticket', selectedTicketId)
+ * const recordId = toRecordIdFromId('ticket', selectedTicketId)
  * // selectedTicketId = 'abc' → 'ticket:abc'
  * // selectedTicketId = null → null
  */
-export function toResourceIdFromId(
+export function toRecordIdFromId(
   entityDefinitionId: string,
   id: string | null | undefined
-): ResourceId | null {
-  return id ? toResourceId(entityDefinitionId, id) : null
+): RecordId | null {
+  return id ? toRecordId(entityDefinitionId, id) : null
 }
 
 // Re-export from resource-id for convenience
 export {
-  toResourceId,
-  parseResourceId,
-  isResourceId,
-  toResourceIds,
+  toRecordId,
+  parseRecordId,
+  isRecordId,
+  toRecordIds,
   getInstanceId,
   getDefinitionId,
 } from '../resources/resource-id'

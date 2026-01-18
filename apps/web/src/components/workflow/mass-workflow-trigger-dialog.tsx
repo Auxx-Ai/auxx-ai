@@ -25,7 +25,7 @@ import { api } from '~/trpc/react'
 import { useWorkflowRunStatusStore } from '~/stores/workflow-run-status-store'
 import { showWorkflowProgressToast } from './workflow-progress-toast'
 import { invalidateBatchResources } from '~/lib/workflow'
-import { type ResourceId, parseResourceId } from '@auxx/types/resource'
+import { type RecordId, parseRecordId } from '@auxx/types/resource'
 
 /**
  * Mass workflow trigger dialog
@@ -38,8 +38,8 @@ interface MassWorkflowTriggerDialogProps {
   open: boolean
   /** Dialog open state change handler */
   onOpenChange: (open: boolean) => void
-  /** Array of ResourceIds to trigger workflow for */
-  resourceIds: ResourceId[]
+  /** Array of RecordIds to trigger workflow for */
+  recordIds: RecordId[]
   /** Success callback (for refetching data) */
   onSuccess?: () => void
 }
@@ -47,18 +47,18 @@ interface MassWorkflowTriggerDialogProps {
 export function MassWorkflowTriggerDialog({
   open,
   onOpenChange,
-  resourceIds,
+  recordIds,
   onSuccess,
 }: MassWorkflowTriggerDialogProps) {
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>('')
 
-  // Parse first ResourceId to get entityDefinitionId for querying workflows
-  const entityDefinitionId = resourceIds.length > 0 ? parseResourceId(resourceIds[0]!).entityDefinitionId : ''
+  // Parse first RecordId to get entityDefinitionId for querying workflows
+  const entityDefinitionId = recordIds.length > 0 ? parseRecordId(recordIds[0]!).entityDefinitionId : ''
 
   // Query available workflows
   const { data: workflows, isLoading: workflowsLoading } = api.workflow.getManualWorkflows.useQuery(
     { entityDefinitionId },
-    { enabled: open && resourceIds.length > 0 && entityDefinitionId.length > 0 }
+    { enabled: open && recordIds.length > 0 && entityDefinitionId.length > 0 }
   )
 
   // Get selected workflow name
@@ -73,7 +73,7 @@ export function MassWorkflowTriggerDialog({
       const successfulRuns = results
         .filter((r) => r.success && r.workflowRunId)
         .map((r) => ({
-          resourceId: r.resourceId,
+          recordId: r.recordId,
           workflowRunId: r.workflowRunId!,
         }))
 
@@ -87,7 +87,7 @@ export function MassWorkflowTriggerDialog({
             // Invalidate all resources efficiently (list queries only once)
             invalidateBatchResources(
               entityDefinitionId,
-              successfulRuns.map(({ resourceId }) => resourceId)
+              successfulRuns.map(({ recordId }) => recordId)
             )
           },
         })
@@ -134,7 +134,7 @@ export function MassWorkflowTriggerDialog({
 
     triggerBulk.mutate({
       workflowAppId: selectedWorkflowId,
-      resourceIds,
+      recordIds,
     })
   }
 
@@ -146,8 +146,8 @@ export function MassWorkflowTriggerDialog({
         <DialogHeader>
           <DialogTitle>Run Workflow</DialogTitle>
           <DialogDescription>
-            Select a workflow to run for {resourceIds.length} selected resource
-            {resourceIds.length !== 1 ? 's' : ''}
+            Select a workflow to run for {recordIds.length} selected resource
+            {recordIds.length !== 1 ? 's' : ''}
           </DialogDescription>
         </DialogHeader>
 

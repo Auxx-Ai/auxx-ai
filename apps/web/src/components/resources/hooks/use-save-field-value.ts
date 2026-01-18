@@ -8,12 +8,12 @@ import {
   type FieldValueKey,
   type StoredFieldValue,
 } from '~/components/resources/store/field-value-store'
-import { parseResourceId, type ResourceId } from '@auxx/lib/resources/client'
+import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { formatToTypedInput, isArrayReturnFieldType } from '@auxx/lib/field-values/client'
 import {
   useRelationshipSync,
-  extractRelatedResourceIds,
+  extractRelatedRecordIds,
   type InverseSyncInfo,
 } from './use-relationship-sync'
 import { getInverseCardinality, type RelationshipType } from '@auxx/utils'
@@ -43,19 +43,19 @@ interface OptimisticUpdatePrep {
   mutationVersion: number
   typedValue: unknown
   inverseInfo: InverseSyncInfo | null
-  oldRelatedResourceIds: ResourceId[]
-  newRelatedResourceIds: ResourceId[]
+  oldRelatedRecordIds: RecordId[]
+  newRelatedRecordIds: RecordId[]
 }
 
 /** Prepare optimistic update and capture rollback info */
 function prepareOptimisticUpdate(
-  resourceId: ResourceId,
+  recordId: RecordId,
   fieldId: string,
   value: unknown,
   fieldType: FieldType,
   getFieldMetadata?: (fieldId: string) => FieldMetadata | undefined
 ): OptimisticUpdatePrep {
-  const key = buildFieldValueKey(resourceId, fieldId)
+  const key = buildFieldValueKey(recordId, fieldId)
   const store = useFieldValueStore.getState()
 
   // Capture old value for relationship sync rollback
@@ -70,17 +70,17 @@ function prepareOptimisticUpdate(
 
   // Relationship sync prep
   let inverseInfo: InverseSyncInfo | null = null
-  let oldRelatedResourceIds: ResourceId[] = []
-  let newRelatedResourceIds: ResourceId[] = []
+  let oldRelatedRecordIds: RecordId[] = []
+  let newRelatedRecordIds: RecordId[] = []
 
   if (fieldType === 'RELATIONSHIP') {
-    const { entityDefinitionId } = parseResourceId(resourceId)
+    const { entityDefinitionId } = parseRecordId(recordId)
     const metadata = getFieldMetadata?.(fieldId)
     const rel = metadata?.relationship
 
     if (rel?.inverseFieldId && rel.relationshipType && rel.relatedEntityDefinitionId) {
-      oldRelatedResourceIds = extractRelatedResourceIds(oldValue)
-      newRelatedResourceIds = extractRelatedResourceIds(typedValue)
+      oldRelatedRecordIds = extractRelatedRecordIds(oldValue)
+      newRelatedRecordIds = extractRelatedRecordIds(typedValue)
 
       inverseInfo = {
         inverseFieldId: rel.inverseFieldId,
@@ -97,8 +97,8 @@ function prepareOptimisticUpdate(
     mutationVersion,
     typedValue,
     inverseInfo,
-    oldRelatedResourceIds,
-    newRelatedResourceIds,
+    oldRelatedRecordIds,
+    newRelatedRecordIds,
   }
 }
 
@@ -132,14 +132,14 @@ function handleMutationError(
   mutationVersion: number,
   prep: {
     inverseInfo: InverseSyncInfo | null
-    oldRelatedResourceIds: ResourceId[]
-    newRelatedResourceIds: ResourceId[]
+    oldRelatedRecordIds: RecordId[]
+    newRelatedRecordIds: RecordId[]
   },
-  sourceResourceId: ResourceId,
+  sourceRecordId: RecordId,
   syncInverseCache: (input: {
-    sourceResourceId: ResourceId
-    oldRelatedResourceIds: ResourceId[]
-    newRelatedResourceIds: ResourceId[]
+    sourceRecordId: RecordId
+    oldRelatedRecordIds: RecordId[]
+    newRelatedRecordIds: RecordId[]
     inverseInfo: InverseSyncInfo
   }) => void,
   error: Error | unknown
@@ -154,9 +154,9 @@ function handleMutationError(
   // Rollback inverse cache (swap old/new to reverse)
   if (prep.inverseInfo) {
     syncInverseCache({
-      sourceResourceId,
-      oldRelatedResourceIds: prep.newRelatedResourceIds, // Swap!
-      newRelatedResourceIds: prep.oldRelatedResourceIds, // Swap!
+      sourceRecordId,
+      oldRelatedRecordIds: prep.newRelatedRecordIds, // Swap!
+      newRelatedRecordIds: prep.oldRelatedRecordIds, // Swap!
       inverseInfo: prep.inverseInfo,
     })
   }
@@ -185,33 +185,33 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
 
   /**
    * Save a field value with optimistic update.
-   * @param resourceId - Full ResourceId (entityDefinitionId:entityInstanceId)
+   * @param recordId - Full RecordId (entityDefinitionId:entityInstanceId)
    * @param fieldId - The custom field ID
    * @param value - The value to save
    * @param fieldType - The field type for proper value extraction
    */
   const saveFieldValue = useCallback(
     (
-      resourceId: ResourceId,
+      recordId: RecordId,
       fieldId: string,
       value: StoredFieldValue | unknown,
       fieldType: FieldType
     ): void => {
-      const prep = prepareOptimisticUpdate(resourceId, fieldId, value, fieldType, getFieldMetadata)
+      const prep = prepareOptimisticUpdate(recordId, fieldId, value, fieldType, getFieldMetadata)
 
       // Sync relationship cache
       if (prep.inverseInfo) {
         syncInverseCache({
-          sourceResourceId: resourceId,
-          oldRelatedResourceIds: prep.oldRelatedResourceIds,
-          newRelatedResourceIds: prep.newRelatedResourceIds,
+          sourceRecordId: recordId,
+          oldRelatedRecordIds: prep.oldRelatedRecordIds,
+          newRelatedRecordIds: prep.newRelatedRecordIds,
           inverseInfo: prep.inverseInfo,
         })
       }
 
       // Fire mutation
       mutation.mutate(
-        { resourceId, fieldId, value },
+        { recordId, fieldId, value },
         {
           onSuccess: (result) => {
             if (handleMutationSuccess(prep.key, prep.mutationVersion, result, fieldType)) {
@@ -223,7 +223,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
               prep.key,
               prep.mutationVersion,
               prep,
-              resourceId,
+              recordId,
               syncInverseCache,
               error
             )
@@ -236,7 +236,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
 
   /**
    * Async version that waits for mutation to complete.
-   * @param resourceId - Full ResourceId (entityDefinitionId:entityInstanceId)
+   * @param recordId - Full RecordId (entityDefinitionId:entityInstanceId)
    * @param fieldId - The custom field ID
    * @param value - The value to save
    * @param fieldType - The field type for proper value extraction
@@ -244,25 +244,25 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
    */
   const saveFieldValueAsync = useCallback(
     async (
-      resourceId: ResourceId,
+      recordId: RecordId,
       fieldId: string,
       value: StoredFieldValue | unknown,
       fieldType: FieldType
     ): Promise<{ success: boolean; id?: string } | undefined> => {
-      const prep = prepareOptimisticUpdate(resourceId, fieldId, value, fieldType, getFieldMetadata)
+      const prep = prepareOptimisticUpdate(recordId, fieldId, value, fieldType, getFieldMetadata)
 
       // Sync relationship cache
       if (prep.inverseInfo) {
         syncInverseCache({
-          sourceResourceId: resourceId,
-          oldRelatedResourceIds: prep.oldRelatedResourceIds,
-          newRelatedResourceIds: prep.newRelatedResourceIds,
+          sourceRecordId: recordId,
+          oldRelatedRecordIds: prep.oldRelatedRecordIds,
+          newRelatedRecordIds: prep.newRelatedRecordIds,
           inverseInfo: prep.inverseInfo,
         })
       }
 
       try {
-        const result = await mutation.mutateAsync({ resourceId, fieldId, value })
+        const result = await mutation.mutateAsync({ recordId, fieldId, value })
 
         // Check if stale (a newer mutation was fired)
         const store = useFieldValueStore.getState()
@@ -286,7 +286,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
           prep.key,
           prep.mutationVersion,
           prep,
-          resourceId,
+          recordId,
           syncInverseCache,
           error
         )
@@ -298,12 +298,12 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
 
   /**
    * Save multiple field values to a single resource (async version).
-   * @param resourceId - Full ResourceId
+   * @param recordId - Full RecordId
    * @param fieldValues - Array of { fieldId, value, fieldType }
    */
   const saveMultipleAsync = useCallback(
     async (
-      resourceId: ResourceId,
+      recordId: RecordId,
       fieldValues: Array<{ fieldId: string; value: unknown; fieldType: FieldType }>
     ): Promise<boolean> => {
       const store = useFieldValueStore.getState()
@@ -311,7 +311,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       // Build keys, capture versions, and apply optimistic updates
       const keyVersions: Array<{ key: string; version: number }> = []
       for (const { fieldId, value, fieldType } of fieldValues) {
-        const key = buildFieldValueKey(resourceId, fieldId)
+        const key = buildFieldValueKey(recordId, fieldId)
         const version = store.incrementMutationVersion(key)
         keyVersions.push({ key, version })
         const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
@@ -322,7 +322,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       const apiValues = fieldValues.map(({ fieldId, value }) => ({ fieldId, value }))
 
       try {
-        await bulkMutation.mutateAsync({ resourceIds: [resourceId], values: apiValues })
+        await bulkMutation.mutateAsync({ recordIds: [recordId], values: apiValues })
 
         const currentStore = useFieldValueStore.getState()
         for (const { key, version } of keyVersions) {
@@ -349,14 +349,14 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
 
   /**
    * Save the same field value for multiple resources in a single API call.
-   * @param resourceIds - Array of ResourceIds to update
+   * @param recordIds - Array of RecordIds to update
    * @param fieldId - The field ID to update
    * @param value - The value to set for all resources
    * @param fieldType - The field type
    */
   const saveBulkValues = useCallback(
     (
-      resourceIds: ResourceId[],
+      recordIds: RecordId[],
       fieldId: string,
       value: StoredFieldValue | unknown,
       fieldType: FieldType
@@ -367,8 +367,8 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       const keyVersions: Array<{ key: FieldValueKey; version: number }> = []
       const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
 
-      for (const resourceId of resourceIds) {
-        const key = buildFieldValueKey(resourceId, fieldId)
+      for (const recordId of recordIds) {
+        const key = buildFieldValueKey(recordId, fieldId)
         const version = store.incrementMutationVersion(key)
         keyVersions.push({ key, version })
         store.setValueOptimistic(key, typedValue)
@@ -376,7 +376,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
 
       // Fire mutation
       bulkMutation.mutate(
-        { resourceIds, values: [{ fieldId, value }] },
+        { recordIds, values: [{ fieldId, value }] },
         {
           onSuccess: () => {
             const currentStore = useFieldValueStore.getState()
@@ -407,12 +407,12 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
 
   /**
    * Save multiple field values to multiple resources in one API call.
-   * @param resourceIds - Array of ResourceIds to update
+   * @param recordIds - Array of RecordIds to update
    * @param fieldValues - Array of { fieldId, value, fieldType }
    */
   const saveBulkMultipleFields = useCallback(
     (
-      resourceIds: ResourceId[],
+      recordIds: RecordId[],
       fieldValues: Array<{ fieldId: string; value: unknown; fieldType: FieldType }>
     ): void => {
       const store = useFieldValueStore.getState()
@@ -420,9 +420,9 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       // Build all keys, capture versions, and apply optimistic updates
       const keyVersions: Array<{ key: string; version: number }> = []
 
-      for (const resourceId of resourceIds) {
+      for (const recordId of recordIds) {
         for (const { fieldId, value, fieldType } of fieldValues) {
-          const key = buildFieldValueKey(resourceId, fieldId)
+          const key = buildFieldValueKey(recordId, fieldId)
           const version = store.incrementMutationVersion(key)
           keyVersions.push({ key, version })
           const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
@@ -434,7 +434,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       const apiValues = fieldValues.map(({ fieldId, value }) => ({ fieldId, value }))
 
       bulkMutation.mutate(
-        { resourceIds, values: apiValues },
+        { recordIds, values: apiValues },
         {
           onSuccess: () => {
             const currentStore = useFieldValueStore.getState()

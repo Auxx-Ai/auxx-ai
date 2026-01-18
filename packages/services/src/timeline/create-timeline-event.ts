@@ -4,15 +4,15 @@ import { database, schema } from '@auxx/database'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import type { TimelineEventEntity } from '@auxx/database/models'
-import { parseResourceId, toResourceId, type ResourceId } from '@auxx/types/resource'
+import { parseRecordId, toRecordId, type RecordId } from '@auxx/types/resource'
 
 /**
  * Input for creating a timeline event
  */
 export interface CreateTimelineEventInput {
   eventType: string
-  resourceId: ResourceId
-  relatedResourceId?: ResourceId | null
+  recordId: RecordId
+  relatedRecordId?: RecordId | null
   actorType: string
   actorId: string
   eventData?: Record<string, any>
@@ -27,11 +27,11 @@ export interface CreateTimelineEventInput {
 }
 
 /**
- * Extended timeline event entity with resourceId
+ * Extended timeline event entity with recordId
  */
-export interface TimelineEventWithResourceId extends TimelineEventEntity {
-  resourceId: ResourceId
-  relatedResourceId?: ResourceId
+export interface TimelineEventWithRecordId extends TimelineEventEntity {
+  recordId: RecordId
+  relatedRecordId?: RecordId
 }
 
 /**
@@ -43,8 +43,8 @@ export interface TimelineEventWithResourceId extends TimelineEventEntity {
 export async function createTimelineEvent(input: CreateTimelineEventInput) {
   const {
     eventType,
-    resourceId,
-    relatedResourceId,
+    recordId,
+    relatedRecordId,
     actorType,
     actorId,
     eventData = {},
@@ -54,14 +54,14 @@ export async function createTimelineEvent(input: CreateTimelineEventInput) {
     occurredAt = new Date(),
   } = input
 
-  // Parse resourceId to get components
-  const { entityDefinitionId: entityType, entityInstanceId: entityId } = parseResourceId(resourceId)
+  // Parse recordId to get components
+  const { entityDefinitionId: entityType, entityInstanceId: entityId } = parseRecordId(recordId)
 
-  // Parse relatedResourceId if provided
+  // Parse relatedRecordId if provided
   let relatedEntityType: string | null = null
   let relatedEntityId: string | null = null
-  if (relatedResourceId) {
-    const parsed = parseResourceId(relatedResourceId)
+  if (relatedRecordId) {
+    const parsed = parseRecordId(relatedRecordId)
     relatedEntityType = parsed.entityDefinitionId
     relatedEntityId = parsed.entityInstanceId
   }
@@ -95,14 +95,14 @@ export async function createTimelineEvent(input: CreateTimelineEventInput) {
   const created = dbResult.value[0]
   const event = created as TimelineEventEntity
 
-  // Return event with resourceId attached
-  const eventWithResourceId: TimelineEventWithResourceId = {
+  // Return event with recordId attached
+  const eventWithRecordId: TimelineEventWithRecordId = {
     ...event,
-    resourceId: toResourceId(event.entityType, event.entityId),
+    recordId: toRecordId(event.entityType, event.entityId),
     ...(event.relatedEntityType && event.relatedEntityId
-      ? { relatedResourceId: toResourceId(event.relatedEntityType, event.relatedEntityId) }
+      ? { relatedRecordId: toRecordId(event.relatedEntityType, event.relatedEntityId) }
       : {}),
   }
 
-  return ok(eventWithResourceId)
+  return ok(eventWithRecordId)
 }

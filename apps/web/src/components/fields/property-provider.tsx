@@ -17,7 +17,7 @@ import {
 } from '~/components/resources/store/field-value-store'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
-import type { ResourceId } from '@auxx/lib/resources/client'
+import type { RecordId } from '@auxx/lib/resources/client'
 import type { FieldType } from '@auxx/database/types'
 /**
  * property-provider.tsx
@@ -34,7 +34,7 @@ import type { FieldType } from '@auxx/database/types'
 interface PropertyContextValue {
   // ─── Data ───
   field: any
-  resourceId: ResourceId
+  recordId: RecordId
   /** Current value (local if editing, server if not) */
   value: any
   /** Last confirmed server value - use for dirty comparison */
@@ -113,8 +113,8 @@ interface PropertyProviderProps {
   onOpenChange?: (providerId: string, isOpen: boolean) => void
   registerClose?: (providerId: string, closeFn: () => void) => void
   unregisterClose?: (providerId: string) => void
-  /** ResourceId in format "entityDefinitionId:entityInstanceId" (required for saving) */
-  resourceId: ResourceId
+  /** RecordId in format "entityDefinitionId:entityInstanceId" (required for saving) */
+  recordId: RecordId
   /** Whether all fields are read-only (default: false) */
   readOnly?: boolean
   /** Whether to show field titles/labels (default: true) */
@@ -197,14 +197,14 @@ export function PropertyProvider({
   onOpenChange,
   registerClose,
   unregisterClose,
-  resourceId,
+  recordId,
   readOnly = false,
   showTitle = true,
   children,
 }: PropertyProviderProps) {
   // ─── Store Integration ───
-  // Get value from store using ResourceId directly
-  const storeKey = buildFieldValueKey(resourceId, field.id)
+  // Get value from store using RecordId directly
+  const storeKey = buildFieldValueKey(recordId, field.id)
   const storeValue = useFieldValueStore((s) => s.values[storeKey])
 
   // Field metadata provider for relationship sync
@@ -278,11 +278,11 @@ export function PropertyProvider({
       setIsDirty(false)
 
       // 2. Fire mutation in BACKGROUND (optimistic + background mutation)
-      storeSave(resourceId, field.id, newValue, field.fieldType)
+      storeSave(recordId, field.id, newValue, field.fieldType)
       // Store handles the optimistic update, so also update local serverValue
       setServerValue(newValue)
     },
-    [resourceId, serverValue, storeSave, field.id, field.fieldType]
+    [recordId, serverValue, storeSave, field.id, field.fieldType]
   )
 
   /**
@@ -330,10 +330,10 @@ export function PropertyProvider({
       isOutsideClick.current = false
 
       // Fire mutation in background (optimistic + background mutation)
-      storeSave(resourceId, field.id, newValue, field.fieldType)
+      storeSave(recordId, field.id, newValue, field.fieldType)
       setServerValue(newValue)
     },
-    [resourceId, isSaving, serverValue, storeSave, field.id, field.fieldType]
+    [recordId, isSaving, serverValue, storeSave, field.id, field.fieldType]
   )
 
   /**
@@ -361,11 +361,11 @@ export function PropertyProvider({
       setIsDirty(false)
 
       // Use async save path
-      const result = await storeSaveAsync(resourceId, field.id, newValue, field.fieldType)
+      const result = await storeSaveAsync(recordId, field.id, newValue, field.fieldType)
       setServerValue(newValue)
       return result
     },
-    [resourceId, isSaving, serverValue, storeSaveAsync, field.id, field.fieldType]
+    [recordId, isSaving, serverValue, storeSaveAsync, field.id, field.fieldType]
   )
 
   /**
@@ -426,7 +426,7 @@ export function PropertyProvider({
   // ─── Context Value ───
   const contextValue: PropertyContextValue = {
     field,
-    resourceId,
+    recordId,
     value: currentValue,
     serverValue,
     readOnly,

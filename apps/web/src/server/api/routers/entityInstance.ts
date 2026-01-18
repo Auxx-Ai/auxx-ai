@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { EntityInstanceService } from '@auxx/lib/entity-instances'
 import { EntityMergeService } from '@auxx/lib/resources/merge'
-import { resourceIdSchema } from '@auxx/types/resource'
+import { recordIdSchema } from '@auxx/types/resource'
 
 export const entityInstanceRouter = createTRPCRouter({
   /**
@@ -103,8 +103,8 @@ export const entityInstanceRouter = createTRPCRouter({
   merge: protectedProcedure
     .input(
       z.object({
-        targetResourceId: resourceIdSchema,
-        sourceResourceIds: z.array(resourceIdSchema).min(1),
+        targetRecordId: recordIdSchema,
+        sourceRecordIds: z.array(recordIdSchema).min(1),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -115,8 +115,8 @@ export const entityInstanceRouter = createTRPCRouter({
       )
 
       return mergeService.merge({
-        targetResourceId: input.targetResourceId,
-        sourceResourceIds: input.sourceResourceIds,
+        targetRecordId: input.targetRecordId,
+        sourceRecordIds: input.sourceRecordIds,
       })
     }),
 })

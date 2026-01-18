@@ -14,7 +14,7 @@ import {
 } from './display-field-types'
 import { ResourceRegistryService } from '../resources/registry/resource-registry-service'
 import { FieldValueService } from './field-value-service'
-import { toResourceIds, getInstanceId } from '../resources/resource-id'
+import { toRecordIds, getInstanceId } from '../resources/resource-id'
 import type { ResourceField } from '../resources/registry/field-types'
 import type { CustomResource } from '../resources/registry/types'
 import type { TypedFieldValue } from '@auxx/types'
@@ -116,16 +116,16 @@ export class DisplayFieldService {
 
       // 5. Use FieldValueService.batchGetValues() - no more raw rows!
       const batchResult = await this.fieldValueService.batchGetValues({
-        resourceIds: toResourceIds(entityDefinitionId, instanceIds),
+        recordIds: toRecordIds(entityDefinitionId, instanceIds),
         fieldIds: [displayFieldId],
       })
 
       // Group by entityId for easy lookup
-      // Extract instanceId from ResourceId for local Map lookup
+      // Extract instanceId from RecordId for local Map lookup
       const valuesByEntity = new Map<string, TypedFieldValue | TypedFieldValue[]>()
       for (const result of batchResult.values) {
         if (result.value) {
-          valuesByEntity.set(getInstanceId(result.resourceId), result.value)
+          valuesByEntity.set(getInstanceId(result.recordId), result.value)
         }
       }
 

@@ -1,6 +1,6 @@
 // packages/lib/src/import/types/identifiers.ts
 
-import type { ResourceId } from '@auxx/types/resource'
+import type { RecordId } from '@auxx/types/resource'
 
 /**
  * Entity definition identifier.
@@ -25,7 +25,7 @@ export type FieldId = string
 /**
  * Re-export branded types for convenience
  */
-export type { ResourceId }
+export type { RecordId }
 
 /**
  * Re-export type guards from @auxx/types/resource

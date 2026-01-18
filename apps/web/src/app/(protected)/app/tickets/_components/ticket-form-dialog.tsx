@@ -48,7 +48,7 @@ import { useRecord } from '~/components/resources'
 import { TicketPriorityColors, TicketTypeIcons } from '~/components/tickets/shared'
 import { TicketType, TicketPriority } from '@auxx/database/enums'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
-import { toResourceId, getInstanceId, type ResourceId } from '@auxx/lib/field-values/client'
+import { toRecordId, getInstanceId, type RecordId } from '@auxx/lib/field-values/client'
 import { cn } from '@auxx/ui/lib/utils'
 
 /** Base form schema for ticket creation/editing */
@@ -228,7 +228,7 @@ export default function TicketFormDialog({
   // Watch for changes to contactId and fetch contact details
   const watchContactId = form.watch('contactId')
   const { record: selectedContact, isLoading: isLoadingContact } = useRecord({
-    resourceId: watchContactId ? toResourceId('contact', watchContactId) : null,
+    recordId: watchContactId ? toRecordId('contact', watchContactId) : null,
     enabled: !!watchContactId,
   })
 
@@ -431,9 +431,9 @@ export default function TicketFormDialog({
                     <FormControl>
                       <RecordPickerPopover
                         entityDefinitionId="contact"
-                        value={field.value ? [toResourceId('contact', field.value)] : []}
-                        onChange={(resourceIds: ResourceId[]) =>
-                          field.onChange(resourceIds[0] ? getInstanceId(resourceIds[0]) : '')
+                        value={field.value ? [toRecordId('contact', field.value)] : []}
+                        onChange={(recordIds: RecordId[]) =>
+                          field.onChange(recordIds[0] ? getInstanceId(recordIds[0]) : '')
                         }
                         multi={false}
                         placeholder="Search for a customer..."
@@ -558,9 +558,9 @@ export default function TicketFormDialog({
                     <FormControl>
                       <MultiRelationInput
                         entityDefinitionId="ticket"
-                        value={field.value ? [toResourceId('ticket', field.value)] : []}
-                        onChange={(resourceIds: ResourceId[]) =>
-                          field.onChange(resourceIds[0] ? getInstanceId(resourceIds[0]) : '')
+                        value={field.value ? [toRecordId('ticket', field.value)] : []}
+                        onChange={(recordIds: RecordId[]) =>
+                          field.onChange(recordIds[0] ? getInstanceId(recordIds[0]) : '')
                         }
                         excludeIds={ticket?.id ? [ticket.id] : []}
                         placeholder="No parent ticket"

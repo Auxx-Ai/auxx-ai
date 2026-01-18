@@ -2,7 +2,7 @@
 
 // import { TicketService } from '../../../tickets/ticket-service'
 // import type { TicketType, TicketPriority, TicketStatus } from '@auxx/database/types'
-// import { toResourceId } from '@auxx/types/resource'
+// import { toRecordId } from '@auxx/types/resource'
 // import type { ResourceHandler } from './types'
 // import type { CrudResult, CrudContext, TransformedData } from '../types'
 // import { trackChanges, type FieldChange } from '../utils/change-tracker'
@@ -57,8 +57,8 @@
 
 //       // Set custom fields in batch
 //       if (Object.keys(customFields).length > 0) {
-//         const resourceId = toResourceId('ticket', ticket.id)
-//         await setCustomFields(resourceId, customFields, ctx)
+//         const recordId = toRecordId('ticket', ticket.id)
+//         await setCustomFields(recordId, customFields, ctx)
 //       }
 
 //       // Note: TicketService already publishes 'ticket:created' event
@@ -105,8 +105,8 @@
 
 //       // Set custom fields in batch
 //       if (Object.keys(customFields).length > 0) {
-//         const resourceId = toResourceId('ticket', id)
-//         await setCustomFields(resourceId, customFields, ctx)
+//         const recordId = toRecordId('ticket', id)
+//         await setCustomFields(recordId, customFields, ctx)
 //       }
 
 //       // Note: TicketService already publishes 'ticket:updated' event

@@ -3,26 +3,26 @@
 import { useMemo } from 'react'
 import { createHydrationStore, type HydrationStore } from '~/stores'
 import type { RecordPickerItem } from '@auxx/lib/resources/client'
-import { toResourceId, parseResourceId, type ResourceId } from '@auxx/lib/resources/client'
+import { toRecordId, parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 
 /**
  * Zustand store for relationship field hydration
  */
 export const useRelationshipStore = createHydrationStore<RecordPickerItem>({
   name: 'relationship',
-  getKeyFromValue: (item) => item.resourceId,
+  getKeyFromValue: (item) => item.recordId,
 })
 
 /**
  * Extended state type with convenience methods
  */
 export interface RelationshipStoreState extends HydrationStore<RecordPickerItem> {
-  /** Request hydration for ResourceId[] */
-  requestHydration: (resourceIds: ResourceId[]) => void
-  /** Get items pending fetch as ResourceId[] */
-  getItemsToFetch: () => ResourceId[]
+  /** Request hydration for RecordId[] */
+  requestHydration: (recordIds: RecordId[]) => void
+  /** Get items pending fetch as RecordId[] */
+  getItemsToFetch: () => RecordId[]
   /** Add hydrated items. Pass requestedKeys to mark missing items as not found. */
-  addHydratedItems: (items: Record<ResourceId, RecordPickerItem>, requestedKeys?: ResourceId[]) => void
+  addHydratedItems: (items: Record<RecordId, RecordPickerItem>, requestedKeys?: RecordId[]) => void
 }
 
 /**
@@ -33,11 +33,11 @@ export function getRelationshipStoreState(): RelationshipStoreState {
 
   return {
     ...state,
-    requestHydration: (resourceIds: ResourceId[]) => {
-      state.request(resourceIds)
+    requestHydration: (recordIds: RecordId[]) => {
+      state.request(recordIds)
     },
     getItemsToFetch: () => {
-      return state.getKeysToFetch() as ResourceId[]
+      return state.getKeysToFetch() as RecordId[]
     },
     addHydratedItems: (items, requestedKeys) => {
       state.addItems(items, requestedKeys)
@@ -46,22 +46,22 @@ export function getRelationshipStoreState(): RelationshipStoreState {
 }
 
 /**
- * Selector hook for getting hydrated items by ResourceId
+ * Selector hook for getting hydrated items by RecordId
  * Returns: RecordPickerItem (found), null (not found/deleted), or undefined (not loaded)
  */
-export function useHydratedItems(resourceIds: ResourceId[]): (RecordPickerItem | null | undefined)[] {
+export function useHydratedItems(recordIds: RecordId[]): (RecordPickerItem | null | undefined)[] {
   const dataMap = useRelationshipStore((state) => state.dataMap)
-  return useMemo(() => resourceIds.map((id) => dataMap[id]), [resourceIds, dataMap])
+  return useMemo(() => recordIds.map((id) => dataMap[id]), [recordIds, dataMap])
 }
 
 /**
- * Selector hook for checking if any ResourceIds are loading
+ * Selector hook for checking if any RecordIds are loading
  */
-export function useIsLoadingRelationships(resourceIds: ResourceId[]): boolean {
+export function useIsLoadingRelationships(recordIds: RecordId[]): boolean {
   return useRelationshipStore((state) =>
-    resourceIds.some((id) => state.loadingIds.has(id) || state.pendingIds.has(id))
+    recordIds.some((id) => state.loadingIds.has(id) || state.pendingIds.has(id))
   )
 }
 
 // Re-export utilities for convenience
-export { toResourceId, parseResourceId, type ResourceId }
+export { toRecordId, parseRecordId, type RecordId }

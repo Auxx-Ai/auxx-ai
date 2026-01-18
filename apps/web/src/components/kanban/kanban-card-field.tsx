@@ -2,7 +2,7 @@
 'use client'
 
 import { memo, useState, useCallback, useRef } from 'react'
-import { useFieldValue, toResourceId } from '~/components/resources/store/field-value-store'
+import { useFieldValue, toRecordId } from '~/components/resources/store/field-value-store'
 import { renderCellValue, type CellConfig } from '~/components/dynamic-table'
 import { CellFieldEditor } from '~/components/dynamic-table/components/cell-field-editor'
 import { useCellSelectionOptional } from '~/components/dynamic-table/context/cell-selection-context'
@@ -42,11 +42,11 @@ export const KanbanCardField = memo(function KanbanCardField({
   editable = true,
   className,
 }: KanbanCardFieldProps) {
-  // Build resourceId for store lookups
-  const resourceId = toResourceId(entityDefinitionId, rowId)
+  // Build recordId for store lookups
+  const recordId = toRecordId(entityDefinitionId, rowId)
 
   // Direct store subscription - triggers re-render when value changes
-  const { value, isLoading } = useFieldValue(resourceId, field.id)
+  const { value, isLoading } = useFieldValue(recordId, field.id)
 
   // Get cellSelectionConfig from context (same config used by table)
   const cellSelectionContext = useCellSelectionOptional()

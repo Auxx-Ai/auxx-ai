@@ -12,7 +12,7 @@ import { ResourceBadge } from '~/components/resources/ui'
 import {
   formatToRawValue,
   formatToDisplayValue,
-  extractRelationshipResourceIds,
+  extractRelationshipRecordIds,
   getInstanceId,
   type NumberFieldOptions,
   type DateFieldOptions,
@@ -39,20 +39,20 @@ type SelectOption = { label: string; value: string }
  * - Custom entities: store UUID of EntityDefinition
  */
 function RelationshipCellContent({ value }: { value: unknown }) {
-  // Extract ResourceIds from value using centralized utility
-  const resourceIds = useMemo(() => extractRelationshipResourceIds(value), [value])
+  // Extract RecordIds from value using centralized utility
+  const recordIds = useMemo(() => extractRelationshipRecordIds(value), [value])
 
-  // Map resourceIds to simple items for ItemsCellView
-  const items = resourceIds.map((resourceId) => ({
-    id: getInstanceId(resourceId),
-    resourceId, // Pass the full ResourceId to renderItem
+  // Map recordIds to simple items for ItemsCellView
+  const items = recordIds.map((recordId) => ({
+    id: getInstanceId(recordId),
+    recordId, // Pass the full RecordId to renderItem
   }))
 
   return (
     <ItemsCellView
       items={items}
       isLoading={false} // ResourceBadge handles individual loading states
-      renderItem={(item) => <ResourceBadge resourceId={item.resourceId} link />}
+      renderItem={(item) => <ResourceBadge recordId={item.recordId} link />}
     />
   )
 }
@@ -526,7 +526,7 @@ const cellRenderers: Record<string, CellRenderer> = {
     return <TagsCellView value={value as string | string[] | null} options={opts} />
   },
 
-  // Relationship - uses RelationshipCellContent which extracts resourceId from TypedFieldValue
+  // Relationship - uses RelationshipCellContent which extracts recordId from TypedFieldValue
   RELATIONSHIP: (value) => {
     return <RelationshipCellContent value={value} />
   },

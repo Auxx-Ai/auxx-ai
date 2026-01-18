@@ -5,7 +5,7 @@ import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { subscribeWithSelector } from 'zustand/middleware'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
-import { parseResourceId, type ResourceId } from '@auxx/lib/resources/client'
+import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 
 // ─────────────────────────────────────────────────────────────────
 // BATCHING CONSTANTS
@@ -20,7 +20,7 @@ const MAX_BATCH_SIZE = 100 // max records per batch request
  */
 export interface RecordMeta {
   id: string
-  resourceId?: ResourceId
+  recordId?: RecordId
   displayName?: string
   secondaryInfo?: string
   avatarUrl?: string
@@ -55,14 +55,14 @@ interface RecordStoreState {
   /** List cache: listKey → cached state */
   lists: Record<string, ListCache>
 
-  /** ResourceIds pending fetch (unified across all resource types) */
-  pendingFetchIds: Set<ResourceId>
+  /** RecordIds pending fetch (unified across all resource types) */
+  pendingFetchIds: Set<RecordId>
 
-  /** ResourceIds currently being fetched */
-  loadingIds: Set<ResourceId>
+  /** RecordIds currently being fetched */
+  loadingIds: Set<RecordId>
 
-  /** ResourceIds that were requested but not found (deleted/invalid) */
-  notFoundIds: Set<ResourceId>
+  /** RecordIds that were requested but not found (deleted/invalid) */
+  notFoundIds: Set<RecordId>
 
   /** Single batch timer for all resource types */
   batchTimer: ReturnType<typeof setTimeout> | null
@@ -95,29 +95,29 @@ interface RecordStoreState {
   // ─────────────────────────────────────────────────────────────────
 
   /** Queue a record for batch fetching */
-  requestRecord: (resourceId: ResourceId) => void
+  requestRecord: (recordId: RecordId) => void
 
   /** Process all pending items into a batch (called by provider) */
-  startBatch: () => ResourceId[]
+  startBatch: () => RecordId[]
 
   /** Mark batch as complete */
-  completeBatch: (resourceIds: ResourceId[]) => void
+  completeBatch: (recordIds: RecordId[]) => void
 
-  /** Mark ResourceIds as not found (deleted/invalid) */
-  setNotFound: (resourceIds: ResourceId[]) => void
+  /** Mark RecordIds as not found (deleted/invalid) */
+  setNotFound: (recordIds: RecordId[]) => void
 
   // ─────────────────────────────────────────────────────────────────
   // HELPERS
   // ─────────────────────────────────────────────────────────────────
 
   /** Check if a record exists in cache */
-  hasRecord: (resourceId: ResourceId) => boolean
+  hasRecord: (recordId: RecordId) => boolean
 
-  /** Check if a ResourceId is loading */
-  isLoading: (resourceId: ResourceId) => boolean
+  /** Check if a RecordId is loading */
+  isLoading: (recordId: RecordId) => boolean
 
-  /** Check if a ResourceId was not found */
-  isNotFound: (resourceId: ResourceId) => boolean
+  /** Check if a RecordId was not found */
+  isNotFound: (recordId: RecordId) => boolean
 
   // ─────────────────────────────────────────────────────────────────
   // INVALIDATION
@@ -184,9 +184,9 @@ export const useRecordStore = create<RecordStoreState>()(
     immer((set, get) => ({
       records: {},
       lists: {},
-      pendingFetchIds: new Set<ResourceId>(),
-      loadingIds: new Set<ResourceId>(),
-      notFoundIds: new Set<ResourceId>(),
+      pendingFetchIds: new Set<RecordId>(),
+      loadingIds: new Set<RecordId>(),
+      notFoundIds: new Set<RecordId>(),
       batchTimer: null,
 
       // ─── RECORD ACTIONS ────────────────────────────────────────────
@@ -252,18 +252,18 @@ export const useRecordStore = create<RecordStoreState>()(
 
       // ─── BATCHED RECORD FETCHING (unified across resource types) ───
 
-      requestRecord: (resourceId) => {
+      requestRecord: (recordId) => {
         const state = get()
-        const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+        const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
         // Skip if already cached, pending, loading, or known not-found
         if (state.records[entityDefinitionId]?.has(entityInstanceId)) return
-        if (state.pendingFetchIds.has(resourceId)) return
-        if (state.loadingIds.has(resourceId)) return
-        if (state.notFoundIds.has(resourceId)) return
+        if (state.pendingFetchIds.has(recordId)) return
+        if (state.loadingIds.has(recordId)) return
+        if (state.notFoundIds.has(recordId)) return
 
         set((state) => {
-          state.pendingFetchIds.add(resourceId)
+          state.pendingFetchIds.add(recordId)
         })
 
         // Schedule batch processing (single timer for all types)
@@ -285,49 +285,49 @@ export const useRecordStore = create<RecordStoreState>()(
         const pending = get().pendingFetchIds
         if (pending.size === 0) return []
 
-        const resourceIds = Array.from(pending).slice(0, MAX_BATCH_SIZE)
+        const recordIds = Array.from(pending).slice(0, MAX_BATCH_SIZE)
 
         set((state) => {
           // Move from pending to loading
-          for (const resourceId of resourceIds) {
-            state.pendingFetchIds.delete(resourceId)
-            state.loadingIds.add(resourceId)
+          for (const recordId of recordIds) {
+            state.pendingFetchIds.delete(recordId)
+            state.loadingIds.add(recordId)
           }
         })
 
-        return resourceIds
+        return recordIds
       },
 
-      completeBatch: (resourceIds) => {
+      completeBatch: (recordIds) => {
         set((state) => {
-          for (const resourceId of resourceIds) {
-            state.loadingIds.delete(resourceId)
+          for (const recordId of recordIds) {
+            state.loadingIds.delete(recordId)
           }
         })
       },
 
-      setNotFound: (resourceIds) => {
+      setNotFound: (recordIds) => {
         set((state) => {
-          for (const resourceId of resourceIds) {
-            state.notFoundIds.add(resourceId)
-            state.loadingIds.delete(resourceId)
+          for (const recordId of recordIds) {
+            state.notFoundIds.add(recordId)
+            state.loadingIds.delete(recordId)
           }
         })
       },
 
       // ─── HELPERS ───────────────────────────────────────────────────
 
-      hasRecord: (resourceId) => {
-        const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+      hasRecord: (recordId) => {
+        const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
         return get().records[entityDefinitionId]?.has(entityInstanceId) ?? false
       },
 
-      isLoading: (resourceId) => {
-        return get().loadingIds.has(resourceId) || get().pendingFetchIds.has(resourceId)
+      isLoading: (recordId) => {
+        return get().loadingIds.has(recordId) || get().pendingFetchIds.has(recordId)
       },
 
-      isNotFound: (resourceId) => {
-        return get().notFoundIds.has(resourceId)
+      isNotFound: (recordId) => {
+        return get().notFoundIds.has(recordId)
       },
 
       // ─── INVALIDATION ──────────────────────────────────────────────

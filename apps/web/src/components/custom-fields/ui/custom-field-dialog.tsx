@@ -100,8 +100,8 @@ interface CustomFieldDialogProps {
   isPending: boolean
   /** Entity definition ID - required for creating fields */
   entityDefinitionId?: string
-  /** Resource ID for the current entity (used by relationship field editor) */
-  currentResourceId?: string
+  /** Record ID for the current entity (used by relationship field editor) */
+  currentRecordId?: string
 }
 
 /**
@@ -116,7 +116,7 @@ export function CustomFieldDialog({
   onSave,
   isPending,
   entityDefinitionId,
-  currentResourceId,
+  currentRecordId,
 }: CustomFieldDialogProps) {
   const isEditing = !!editingField
 
@@ -475,7 +475,7 @@ export function CustomFieldDialog({
           <RelationshipFieldEditor
             options={relationshipOptions}
             onChange={setRelationshipOptions}
-            currentResourceId={currentResourceId}
+            currentRecordId={currentRecordId}
             name={form.watch('name')}
             onNameChange={(v) => form.setValue('name', v)}
           />

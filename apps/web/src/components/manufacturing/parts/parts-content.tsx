@@ -25,7 +25,7 @@ import {
 } from '@auxx/ui/components/main-page'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
-import { toResourceId } from '~/components/resources'
+import { toRecordId } from '~/components/resources'
 import { PartsDrawer } from './parts-drawer'
 import { PartFormDialog } from './part-form-dialog'
 import { createPartColumns, type PartRow } from './parts-columns'
@@ -54,9 +54,9 @@ export function PartsContent() {
     [setSelectedPartId]
   )
 
-  // Convert partId to resourceId for PartsDrawer
-  const selectedResourceId = useMemo(
-    () => (selectedPartId ? toResourceId('part', selectedPartId) : null),
+  // Convert partId to recordId for PartsDrawer
+  const selectedRecordId = useMemo(
+    () => (selectedPartId ? toRecordId('part', selectedPartId) : null),
     [selectedPartId]
   )
 
@@ -265,11 +265,11 @@ export function PartsContent() {
 
   // Build docked panel content
   const dockedPanel =
-    isDocked && isDrawerOpen && selectedResourceId ? (
+    isDocked && isDrawerOpen && selectedRecordId ? (
       <PartsDrawer
         open={isDrawerOpen}
         onOpenChange={setIsDrawerOpen}
-        resourceId={selectedResourceId}
+        recordId={selectedRecordId}
         onDelete={handleDelete}
         onEdit={(part) => {
           setEditingPart(part)
@@ -377,7 +377,7 @@ export function PartsContent() {
         <PartsDrawer
           open={isDrawerOpen}
           onOpenChange={setIsDrawerOpen}
-          resourceId={selectedResourceId}
+          recordId={selectedRecordId}
           onDelete={handleDelete}
           onEdit={(part) => {
             setEditingPart(part)

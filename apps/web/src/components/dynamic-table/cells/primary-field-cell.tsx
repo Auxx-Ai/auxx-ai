@@ -9,7 +9,7 @@ import type { TypedFieldValue } from '@auxx/types/field-value'
 import { PrimaryCell } from './primary-cell'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import { useField } from '~/components/resources/hooks/use-field'
-import { toResourceId } from '~/components/resources'
+import { toRecordId } from '~/components/resources'
 
 /**
  * Props for PrimaryFieldCell component
@@ -45,14 +45,14 @@ export const PrimaryFieldCell = memo(function PrimaryFieldCell({
     [resourceFieldId]
   )
 
-  // Build resourceId from entityDefinitionId and rowId
-  const resourceId = useMemo(
-    () => toResourceId(entityDefinitionId, rowId),
+  // Build recordId from entityDefinitionId and rowId
+  const recordId = useMemo(
+    () => toRecordId(entityDefinitionId, rowId),
     [entityDefinitionId, rowId]
   )
 
   // Direct store subscription - triggers re-render when value changes
-  const { value, isLoading } = useFieldValue(resourceId, fieldId)
+  const { value, isLoading } = useFieldValue(recordId, fieldId)
 
   // Get field metadata
   const field = useField(resourceFieldId)

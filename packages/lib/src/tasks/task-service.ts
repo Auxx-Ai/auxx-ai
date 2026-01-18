@@ -14,8 +14,8 @@ import type {
 } from './types'
 import { pickDefined, hasDefinedProps } from '../utils/pick-defined'
 import type { Deadline, RelativeDate } from '@auxx/types/task'
-import type { ResourceId } from '@auxx/types/resource'
-import { parseResourceId, toResourceId } from '../field-values/relationship-field'
+import type { RecordId } from '@auxx/types/resource'
+import { parseRecordId, toRecordId } from '../field-values/relationship-field'
 
 /**
  * Convert a relative or absolute deadline to a concrete Date
@@ -143,8 +143,8 @@ export class TaskService {
       // Create references if provided
       if (referencedEntities && referencedEntities.length > 0) {
         await tx.insert(schema.TaskReference).values(
-          referencedEntities.map((resourceId) => {
-            const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+          referencedEntities.map((recordId) => {
+            const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
             return {
               organizationId,
               taskId: task.id,
@@ -191,9 +191,9 @@ export class TaskService {
       },
     })
 
-    // Convert to ResourceId[]
+    // Convert to RecordId[]
     const references = referenceRows.map((ref) =>
-      toResourceId(ref.referencedEntityDefinitionId, ref.referencedEntityInstanceId)
+      toRecordId(ref.referencedEntityDefinitionId, ref.referencedEntityInstanceId)
     )
 
     return {
@@ -359,15 +359,15 @@ export class TaskService {
     taskId: string,
     organizationId: string,
     userId: string,
-    referencedEntities: ResourceId[]
+    referencedEntities: RecordId[]
   ): Promise<void> {
     const currentRefs = await tx.query.TaskReference.findMany({
       where: (r, { eq, and, isNull }) => and(eq(r.taskId, taskId), isNull(r.deletedAt)),
     })
     const currentRefIds = new Set(currentRefs.map((r) => r.referencedEntityInstanceId))
 
-    // Parse ResourceId[] to get instance IDs for comparison
-    const parsedEntities = referencedEntities.map((resourceId) => parseResourceId(resourceId))
+    // Parse RecordId[] to get instance IDs for comparison
+    const parsedEntities = referencedEntities.map((recordId) => parseRecordId(recordId))
     const newRefIds = new Set(parsedEntities.map((e) => e.entityInstanceId))
 
     // Soft-delete removed references
@@ -427,7 +427,7 @@ export class TaskService {
       assigneeIds,
       createdById,
       priority,
-      resourceId,
+      recordId,
       search,
       includeCompleted = false,
       includeArchived = false,
@@ -499,8 +499,8 @@ export class TaskService {
     }
 
     // Filter by entity reference if needed
-    if (resourceId) {
-      const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+    if (recordId) {
+      const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
       const taskIds = filteredTasks.map((t) => t.id)
       const references = await this.db.query.TaskReference.findMany({
         where: (r, { and, inArray, eq, isNull }) =>
@@ -536,9 +536,9 @@ export class TaskService {
           },
         })
 
-        // Convert to ResourceId[]
+        // Convert to RecordId[]
         const references = referenceRows.map((ref) =>
-          toResourceId(ref.referencedEntityDefinitionId, ref.referencedEntityInstanceId)
+          toRecordId(ref.referencedEntityDefinitionId, ref.referencedEntityInstanceId)
         )
 
         return {
@@ -648,9 +648,9 @@ export class TaskService {
             },
           })
 
-          // Convert to ResourceId[]
+          // Convert to RecordId[]
           const references = referenceRows.map((ref) =>
-            toResourceId(ref.referencedEntityDefinitionId, ref.referencedEntityInstanceId)
+            toRecordId(ref.referencedEntityDefinitionId, ref.referencedEntityInstanceId)
           )
 
           return {

@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 import { CommentService } from '@auxx/lib/comments'
 import { createScopedLogger } from '@auxx/logger'
-import { resourceIdSchema } from '@auxx/types'
+import { recordIdSchema } from '@auxx/types'
 
 const logger = createScopedLogger('comment-router')
 
@@ -17,10 +17,10 @@ const fileAttachmentSchema = z.object({
   type: z.enum(['file', 'asset']),
 })
 
-// Updated to use ResourceId format
+// Updated to use RecordId format
 const createCommentSchema = z.object({
   content: z.string().min(1, 'Comment content cannot be empty'),
-  resourceId: resourceIdSchema,
+  recordId: recordIdSchema,
   parentId: z.string().nullable().optional(),
   fileAttachments: z.array(fileAttachmentSchema).optional(),
 })
@@ -43,7 +43,7 @@ export const commentRouter = createTRPCRouter({
     try {
       const { userId, organizationId } = ctx.session
       const commentService = new CommentService(organizationId, userId, ctx.db)
-      const { content, resourceId, parentId, fileAttachments } = input
+      const { content, recordId, parentId, fileAttachments } = input
 
       // Parse out mentions from content (if @username exists)
       const mentionedUserIds = await commentService.parseMentions(content, organizationId)
@@ -51,7 +51,7 @@ export const commentRouter = createTRPCRouter({
       // Create the comment
       const comment = await commentService.createComment({
         content,
-        resourceId,
+        recordId,
         createdById: userId,
         parentId,
         fileAttachments,
@@ -165,21 +165,21 @@ export const commentRouter = createTRPCRouter({
     }
   }),
   // Get comments for an entity
-  getByResourceId: protectedProcedure
+  getByRecordId: protectedProcedure
     .input(
       z.object({
-        resourceId: resourceIdSchema,
+        recordId: recordIdSchema,
       })
     )
     .query(async ({ ctx, input }) => {
       try {
         const { userId, organizationId } = ctx.session
-        const { resourceId } = input
+        const { recordId } = input
 
         const commentService = new CommentService(organizationId, userId, ctx.db)
 
         // Use efficient single query from CommentService
-        const comments = await commentService.getCommentsByResourceId(resourceId)
+        const comments = await commentService.getCommentsByRecordId(recordId)
 
         return { comments }
       } catch (error: unknown) {

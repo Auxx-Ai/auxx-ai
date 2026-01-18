@@ -20,7 +20,7 @@ import type {
   TimelineCursor,
 } from './types'
 import type { TimelineEventType } from './event-types'
-import type { ResourceId } from '@auxx/types/resource'
+import type { RecordId } from '@auxx/types/resource'
 
 const logger = createScopedLogger('timeline-service')
 
@@ -87,7 +87,7 @@ export class TimelineService {
     logger.info('Timeline event created', {
       eventId: result.value.id,
       eventType: input.eventType,
-      resourceId: input.resourceId,
+      recordId: input.recordId,
       organizationId: input.organizationId,
     })
 
@@ -100,7 +100,7 @@ export class TimelineService {
   async getTimeline(input: TimelineQueryInput): Promise<TimelineQueryResult> {
     const {
       organizationId,
-      resourceId,
+      recordId,
       cursor,
       limit = 100,
       isGroupingDisabled = false,
@@ -115,7 +115,7 @@ export class TimelineService {
     // Call service function
     const result = await getTimelineEvents({
       organizationId,
-      resourceId,
+      recordId,
       cursor: serviceCursor,
       limit,
       actorFilter,
@@ -124,7 +124,7 @@ export class TimelineService {
 
     if (result.isErr()) {
       logger.error('Failed to get timeline', {
-        resourceId,
+        recordId,
         error: result.error,
       })
       throw new Error(`Failed to get timeline: ${result.error.message}`)
@@ -155,18 +155,18 @@ export class TimelineService {
    */
   async getRelatedTimeline(
     organizationId: string,
-    relatedResourceId: ResourceId,
+    relatedRecordId: RecordId,
     limit = 50
   ): Promise<TimelineEventBase[]> {
     const result = await getRelatedTimelineEvents({
       organizationId,
-      relatedResourceId,
+      relatedRecordId,
       limit,
     })
 
     if (result.isErr()) {
       logger.error('Failed to get related timeline', {
-        relatedResourceId,
+        relatedRecordId,
         error: result.error,
       })
       throw new Error(`Failed to get related timeline: ${result.error.message}`)
@@ -180,23 +180,23 @@ export class TimelineService {
    */
   async deleteEventsForEntity(
     organizationId: string,
-    resourceId: ResourceId
+    recordId: RecordId
   ): Promise<void> {
     const result = await deleteTimelineEvents({
       organizationId,
-      resourceId,
+      recordId,
     })
 
     if (result.isErr()) {
       logger.error('Failed to delete timeline events', {
-        resourceId,
+        recordId,
         error: result.error,
       })
       throw new Error(`Failed to delete timeline events: ${result.error.message}`)
     }
 
     logger.info('Timeline events deleted', {
-      resourceId,
+      recordId,
       organizationId,
     })
   }
@@ -210,8 +210,8 @@ export class TimelineService {
       eventType: event.eventType,
       startedAt: event.startedAt,
       endedAt: event.endedAt,
-      resourceId: event.resourceId,
-      relatedResourceId: event.relatedResourceId,
+      recordId: event.recordId,
+      relatedRecordId: event.relatedRecordId,
       entityType: event.entityType,
       entityId: event.entityId,
       relatedEntityType: event.relatedEntityType,

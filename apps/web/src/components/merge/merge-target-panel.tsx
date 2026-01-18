@@ -3,15 +3,15 @@
 
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import type { ResourceId } from '@auxx/lib/resources/client'
+import type { RecordId } from '@auxx/lib/resources/client'
 import { useRecord, useResource } from '~/components/resources'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { EntityFields } from '../fields'
 // import EntityFields from '~/components/fields/entity-fields'
 
 interface MergeTargetPanelProps {
-  /** ResourceId of the target record */
-  resourceId: ResourceId
+  /** RecordId of the target record */
+  recordId: RecordId
   /** Entity definition ID */
   entityDefinitionId: string | null
   /** Loading state */
@@ -23,11 +23,11 @@ interface MergeTargetPanelProps {
  * Uses EntityFields for consistent field rendering.
  */
 export function MergeTargetPanel({
-  resourceId,
+  recordId,
   entityDefinitionId,
   isLoading: externalLoading,
 }: MergeTargetPanelProps) {
-  const { record, isLoading: recordLoading } = useRecord({ resourceId })
+  const { record, isLoading: recordLoading } = useRecord({ recordId })
   const { resource } = useResource(entityDefinitionId ?? '')
 
   const isLoading = externalLoading || recordLoading
@@ -76,7 +76,7 @@ export function MergeTargetPanel({
             {/* TODO: Render EntityFields once ready */}
             <div className="p-1">
               <EntityFields
-                resourceId={resourceId}
+                recordId={recordId}
                 className="[&_button]:hidden"
                 canEdit={false}
                 showTitle={false}

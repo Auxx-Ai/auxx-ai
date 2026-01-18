@@ -8,11 +8,11 @@ import { FormattedCell, CellPadding } from './formatted-cell'
 import { useFieldValue } from '~/components/resources/store/field-value-store'
 import { useField } from '~/components/resources/hooks/use-field'
 import { parseResourceFieldId } from '@auxx/types/field'
-import type { ResourceId } from '@auxx/lib/resources/client'
+import type { RecordId } from '@auxx/lib/resources/client'
 
 interface CustomFieldCellProps {
-  /** Resource ID (entityDefinitionId:rowId) */
-  resourceId: ResourceId
+  /** Record ID (entityDefinitionId:rowId) */
+  recordId: RecordId
   /** Column ID in ResourceFieldId format (entityDefinitionId:fieldId) */
   columnId: string
   /** @deprecated Field options - now fetched via useField hook for reactivity */
@@ -28,7 +28,7 @@ interface CustomFieldCellProps {
  * Uses useField instead of useResource for efficient field-specific updates.
  */
 export const CustomFieldCell = memo(function CustomFieldCell({
-  resourceId,
+  recordId,
   columnId, // Now in ResourceFieldId format
   options: propOptions,
 }: CustomFieldCellProps) {
@@ -39,7 +39,7 @@ export const CustomFieldCell = memo(function CustomFieldCell({
   }, [columnId])
 
   // Direct store subscription - triggers re-render when value changes
-  const { value, isLoading } = useFieldValue(resourceId, fieldId)
+  const { value, isLoading } = useFieldValue(recordId, fieldId)
 
   // Granular field subscription - only rerenders when THIS field changes
   // columnId is already in ResourceFieldId format

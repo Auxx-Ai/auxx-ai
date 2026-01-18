@@ -13,7 +13,7 @@ import {
 import { Button } from '@auxx/ui/components/button'
 import { Kbd } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
-import { getDefinitionId, type ResourceId } from '@auxx/lib/resources/client'
+import { getDefinitionId, type RecordId } from '@auxx/lib/resources/client'
 import { useResource, useRecords } from '~/components/resources'
 import { api } from '~/trpc/react'
 import { MergeSourcePanel } from './merge-source-panel'
@@ -26,12 +26,12 @@ interface MergeDialogProps {
   open: boolean
   /** Callback when dialog open state changes */
   onOpenChange: (open: boolean) => void
-  /** ResourceIds of items to merge (format: "entityDefinitionId:entityInstanceId") */
-  baseResourceIds: ResourceId[]
-  /** Target to merge into - defaults to first item in baseResourceIds */
-  targetResourceId?: ResourceId
+  /** RecordIds of items to merge (format: "entityDefinitionId:entityInstanceId") */
+  baseRecordIds: RecordId[]
+  /** Target to merge into - defaults to first item in baseRecordIds */
+  targetRecordId?: RecordId
   /** Callback after successful merge */
-  onMergeComplete?: (mergedResourceId: ResourceId) => void
+  onMergeComplete?: (mergedRecordId: RecordId) => void
 }
 
 /**
@@ -41,45 +41,45 @@ interface MergeDialogProps {
 export function MergeDialog({
   open,
   onOpenChange,
-  baseResourceIds,
-  targetResourceId: initialTargetId,
+  baseRecordIds,
+  targetRecordId: initialTargetId,
   onMergeComplete,
 }: MergeDialogProps) {
   const utils = api.useUtils()
 
-  // Derive entityDefinitionId from first resourceId
+  // Derive entityDefinitionId from first recordId
   const entityDefinitionId = useMemo(() => {
-    if (baseResourceIds.length === 0) return null
-    return getDefinitionId(baseResourceIds[0])
-  }, [baseResourceIds])
+    if (baseRecordIds.length === 0) return null
+    return getDefinitionId(baseRecordIds[0])
+  }, [baseRecordIds])
 
   // Get resource definition for label and fields
   const { resource } = useResource(entityDefinitionId ?? '')
 
   // State: target and sources (sources = everything except target)
-  const [targetResourceId, setTargetResourceId] = useState<ResourceId>(
-    () => initialTargetId ?? baseResourceIds[0]
+  const [targetRecordId, setTargetRecordId] = useState<RecordId>(
+    () => initialTargetId ?? baseRecordIds[0]
   )
-  const [sourceResourceIds, setSourceResourceIds] = useState<ResourceId[]>(() =>
-    baseResourceIds.filter((id) => id !== (initialTargetId ?? baseResourceIds[0]))
+  const [sourceRecordIds, setSourceRecordIds] = useState<RecordId[]>(() =>
+    baseRecordIds.filter((id) => id !== (initialTargetId ?? baseRecordIds[0]))
   )
-  console.log('MergeDialog sourceResourceIds:', sourceResourceIds, targetResourceId)
+  console.log('MergeDialog sourceRecordIds:', sourceRecordIds, targetRecordId)
   // Fetch all records for display
-  const allResourceIds = useMemo(
-    () => [targetResourceId, ...sourceResourceIds].filter(Boolean),
-    [targetResourceId, sourceResourceIds]
+  const allRecordIds = useMemo(
+    () => [targetRecordId, ...sourceRecordIds].filter(Boolean),
+    [targetRecordId, sourceRecordIds]
   )
-  const { records, isLoading: recordsLoading } = useRecords({ resourceIds: allResourceIds })
+  const { records, isLoading: recordsLoading } = useRecords({ recordIds: allRecordIds })
 
   // Reset state when dialog closes
   useEffect(() => {
-    if (!open && baseResourceIds.length > 0) {
+    if (!open && baseRecordIds.length > 0) {
       // Reset to initial values when dialog closes
-      const resetTarget = initialTargetId ?? baseResourceIds[0]!
-      setTargetResourceId(resetTarget)
-      setSourceResourceIds(baseResourceIds.filter((id) => id !== resetTarget))
+      const resetTarget = initialTargetId ?? baseRecordIds[0]!
+      setTargetRecordId(resetTarget)
+      setSourceRecordIds(baseRecordIds.filter((id) => id !== resetTarget))
     }
-  }, [open, baseResourceIds, initialTargetId])
+  }, [open, baseRecordIds, initialTargetId])
 
   // Merge mutation
   const mergeMutation = api.entityInstance.merge.useMutation({
@@ -88,7 +88,7 @@ export function MergeDialog({
       utils.entityInstance.list.invalidate()
 
       // Call success callback
-      onMergeComplete?.(result.mergedResourceId)
+      onMergeComplete?.(result.mergedRecordId)
       onOpenChange(false)
     },
     onError: (error) => {
@@ -101,46 +101,46 @@ export function MergeDialog({
 
   /** Add source items via RecordPicker */
   const handleAddSources = useCallback(
-    (newIds: ResourceId[]) => {
-      setSourceResourceIds((prev) => {
+    (newIds: RecordId[]) => {
+      setSourceRecordIds((prev) => {
         const existing = new Set(prev)
-        const toAdd = newIds.filter((id) => !existing.has(id) && id !== targetResourceId)
+        const toAdd = newIds.filter((id) => !existing.has(id) && id !== targetRecordId)
         return [...prev, ...toAdd]
       })
     },
-    [targetResourceId]
+    [targetRecordId]
   )
 
   /** Remove a source item */
-  const handleRemoveSource = useCallback((resourceId: ResourceId) => {
-    setSourceResourceIds((prev) => prev.filter((id) => id !== resourceId))
+  const handleRemoveSource = useCallback((recordId: RecordId) => {
+    setSourceRecordIds((prev) => prev.filter((id) => id !== recordId))
   }, [])
 
   /** Swap a source item to become the target */
   const handleSetTarget = useCallback(
-    (resourceId: ResourceId) => {
-      setSourceResourceIds((prev) => {
-        const newSources = prev.filter((id) => id !== resourceId)
-        newSources.push(targetResourceId) // old target becomes source
+    (recordId: RecordId) => {
+      setSourceRecordIds((prev) => {
+        const newSources = prev.filter((id) => id !== recordId)
+        newSources.push(targetRecordId) // old target becomes source
         return newSources
       })
-      setTargetResourceId(resourceId)
+      setTargetRecordId(recordId)
     },
-    [targetResourceId]
+    [targetRecordId]
   )
 
   /** Execute merge */
   const handleMerge = () => {
-    if (sourceResourceIds.length === 0 || !targetResourceId) return
+    if (sourceRecordIds.length === 0 || !targetRecordId) return
 
     mergeMutation.mutate({
-      targetResourceId,
-      sourceResourceIds,
+      targetRecordId,
+      sourceRecordIds,
     })
   }
 
   const resourceLabel = resource?.label ?? 'Record'
-  const canMerge = sourceResourceIds.length > 0 && targetResourceId
+  const canMerge = sourceRecordIds.length > 0 && targetRecordId
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -160,8 +160,8 @@ export function MergeDialog({
             {/* Source panel */}
             <MergeSourcePanel
               entityDefinitionId={entityDefinitionId}
-              sourceResourceIds={sourceResourceIds}
-              targetResourceId={targetResourceId}
+              sourceRecordIds={sourceRecordIds}
+              targetRecordId={targetRecordId}
               onAddSources={handleAddSources}
               onRemoveSource={handleRemoveSource}
               onSetAsTarget={handleSetTarget}
@@ -175,7 +175,7 @@ export function MergeDialog({
 
             {/* Target panel */}
             <MergeTargetPanel
-              resourceId={targetResourceId}
+              recordId={targetRecordId}
               entityDefinitionId={entityDefinitionId}
               isLoading={recordsLoading}
             />
@@ -188,8 +188,8 @@ export function MergeDialog({
 
           {/* Merged preview panel */}
           <MergePreviewPanel
-            targetResourceId={targetResourceId}
-            sourceResourceIds={sourceResourceIds}
+            targetRecordId={targetRecordId}
+            sourceRecordIds={sourceRecordIds}
             entityDefinitionId={entityDefinitionId}
             isLoading={recordsLoading}
           />
@@ -210,7 +210,7 @@ export function MergeDialog({
             loading={mergeMutation.isPending}
             loadingText="Merging..."
             disabled={!canMerge}>
-            Merge {sourceResourceIds.length + 1} Items
+            Merge {sourceRecordIds.length + 1} Items
           </Button>
         </DialogFooter>
       </DialogContent>

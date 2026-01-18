@@ -16,7 +16,7 @@ import type { TaskWithRelations } from '@auxx/lib/tasks'
 import type { TaskSortConfig } from '@auxx/lib/tasks/client'
 import type { TaskViewMode } from '@auxx/types/task'
 import type { Condition } from '~/components/conditions'
-import type { ResourceId } from '@auxx/lib/resources/client'
+import type { RecordId } from '@auxx/lib/resources/client'
 import { cn } from '@auxx/ui/lib/utils'
 
 /**
@@ -25,8 +25,8 @@ import { cn } from '@auxx/ui/lib/utils'
 interface TasksListProps {
   /** View mode - 'entity' for drawer, 'global' for full page */
   viewMode?: TaskViewMode
-  /** Filter tasks to those linked to this resource (required for 'entity' mode) */
-  resourceId?: ResourceId
+  /** Filter tasks to those linked to this record (required for 'entity' mode) */
+  recordId?: RecordId
   /** Filter conditions from TaskFilterBar */
   filters?: Condition[]
   /** Sort configuration */
@@ -52,7 +52,7 @@ const DEFAULT_SORT: TaskSortConfig = { field: 'deadline', direction: 'asc' }
  */
 export function TasksList({
   viewMode = 'entity',
-  resourceId,
+  recordId,
   filters,
   sort = DEFAULT_SORT,
   includeCompleted = true,
@@ -65,7 +65,7 @@ export function TasksList({
 
   // Fetch tasks with optional resource filter
   const { tasks, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage } = useTasks({
-    resourceId: viewMode === 'entity' ? resourceId : undefined,
+    recordId: viewMode === 'entity' ? recordId : undefined,
     assigneeIds: filterProps.assigneeIds,
     priority: filterProps.priority,
     search: filterProps.search,

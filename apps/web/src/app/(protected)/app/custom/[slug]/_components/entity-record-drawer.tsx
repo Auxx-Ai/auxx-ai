@@ -11,7 +11,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Tooltip } from '~/components/global/tooltip'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { useResource, useRecord } from '~/components/resources'
-import { parseResourceId, type ResourceId } from '@auxx/lib/field-values/client'
+import { parseRecordId, type RecordId } from '@auxx/lib/field-values/client'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
@@ -26,8 +26,8 @@ interface EntityRecordDrawerProps {
   open?: boolean
   /** Callback when open state changes */
   onOpenChange?: (open: boolean) => void
-  /** ResourceId in format "entityDefinitionId:entityInstanceId" */
-  resourceId: ResourceId | undefined
+  /** RecordId in format "entityDefinitionId:entityInstanceId" */
+  recordId: RecordId | undefined
   /** Optional handler invoked when deleting the entity instance */
   onDeleteInstance?: (instanceId: string) => Promise<void> | void
   /** Callback after successful mutation (e.g., to refetch parent data) */
@@ -42,7 +42,7 @@ interface EntityRecordDrawerProps {
 export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
   open,
   onOpenChange,
-  resourceId,
+  recordId,
   onDeleteInstance,
   onMutationSuccess,
 }: EntityRecordDrawerProps) {
@@ -53,9 +53,9 @@ export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
   const dockedWidth = useDockStore((state) => state.dockedWidth)
   const setDockedWidth = useDockStore((state) => state.setDockedWidth)
 
-  // Parse resourceId to get components
-  const { entityDefinitionId, entityInstanceId } = resourceId
-    ? parseResourceId(resourceId)
+  // Parse recordId to get components
+  const { entityDefinitionId, entityInstanceId } = recordId
+    ? parseRecordId(recordId)
     : { entityDefinitionId: '', entityInstanceId: '' }
 
   // Get resource with fields
@@ -63,8 +63,8 @@ export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
 
   // Fetch entity record from cache (populated by batch fetcher when list loads)
   const { record: cachedRecord, isLoading: isRecordLoading } = useRecord({
-    resourceId: resourceId ?? null,
-    enabled: !!open && !!resourceId,
+    recordId: recordId ?? null,
+    enabled: !!open && !!recordId,
   })
 
   // Get display field configurations from resource
@@ -84,17 +84,17 @@ export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
 
   // Subscribe to field values (reactive - updates when field values change)
   const primaryFieldValue = useFieldValue(
-    resourceId ?? ('' as ResourceId),
+    recordId ?? ('' as RecordId),
     primaryDisplayFieldId ?? ''
   )
   const secondaryFieldValue = useFieldValue(
-    resourceId ?? ('' as ResourceId),
+    recordId ?? ('' as RecordId),
     secondaryDisplayFieldId ?? ''
   )
 
   // Format values for display
   const displayName = React.useMemo(() => {
-    if (!resourceId || !primaryDisplayFieldId) {
+    if (!recordId || !primaryDisplayFieldId) {
       return (cachedRecord?.displayName as string) ?? null
     }
 
@@ -106,7 +106,7 @@ export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
     // Fall back to cached record
     return (cachedRecord?.displayName as string) ?? null
   }, [
-    resourceId,
+    recordId,
     primaryDisplayFieldId,
     primaryFieldValue.value,
     primaryField?.fieldType,
@@ -114,7 +114,7 @@ export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
   ])
 
   const secondaryDisplay = React.useMemo(() => {
-    if (!resourceId || !secondaryDisplayFieldId) {
+    if (!recordId || !secondaryDisplayFieldId) {
       return (cachedRecord?.secondaryDisplayValue as string) ?? null
     }
 
@@ -126,7 +126,7 @@ export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
     // Fall back to cached record
     return (cachedRecord?.secondaryDisplayValue as string) ?? null
   }, [
-    resourceId,
+    recordId,
     secondaryDisplayFieldId,
     secondaryFieldValue.value,
     secondaryField?.fieldType,
@@ -155,11 +155,11 @@ export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
     [cachedRecord?.createdAt]
   )
 
-  if (!open || !resourceId) return null
+  if (!open || !recordId) return null
 
   return (
     <BaseEntityDrawer
-      resourceId={resourceId}
+      recordId={recordId}
       open={open}
       onOpenChange={onOpenChange ?? (() => {})}
       isDocked={isDocked}
@@ -185,7 +185,7 @@ export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
             </Button>
           </Tooltip>
           <ManualTriggerButton
-            resourceId={resourceId}
+            recordId={recordId}
             buttonVariant="ghost"
             buttonSize="icon-xs"
             buttonClassName="rounded-full"

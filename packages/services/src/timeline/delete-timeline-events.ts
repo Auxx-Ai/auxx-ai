@@ -4,14 +4,14 @@ import { database, schema } from '@auxx/database'
 import { eq, and } from 'drizzle-orm'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import { parseResourceId, type ResourceId } from '@auxx/types/resource'
+import { parseRecordId, type RecordId } from '@auxx/types/resource'
 
 /**
  * Input for deleting timeline events
  */
 export interface DeleteTimelineEventsInput {
   organizationId: string
-  resourceId: ResourceId
+  recordId: RecordId
 }
 
 /**
@@ -22,10 +22,10 @@ export interface DeleteTimelineEventsInput {
  * @returns Result indicating success
  */
 export async function deleteTimelineEvents(input: DeleteTimelineEventsInput) {
-  const { organizationId, resourceId } = input
+  const { organizationId, recordId } = input
 
-  // Parse resourceId to get components
-  const { entityDefinitionId: entityType, entityInstanceId: entityId } = parseResourceId(resourceId)
+  // Parse recordId to get components
+  const { entityDefinitionId: entityType, entityInstanceId: entityId } = parseRecordId(recordId)
 
   const dbResult = await fromDatabase(
     database

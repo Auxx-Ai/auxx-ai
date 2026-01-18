@@ -3,7 +3,7 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
-import { parseResourceId, toResourceId, type ResourceId } from '../resource-id'
+import { parseRecordId, toRecordId, type RecordId } from '../resource-id'
 import { FieldValueService } from '../../field-values/field-value-service'
 import { formatToRawValue } from '../../field-values/client'
 import { mergeFieldValue } from './merge'
@@ -27,13 +27,13 @@ export class EntityMergeService {
    * All operations happen within a transaction for atomicity.
    */
   async merge(input: MergeEntitiesInput): Promise<MergeEntitiesResult> {
-    const { targetResourceId, sourceResourceIds } = input
+    const { targetRecordId, sourceRecordIds } = input
 
     // Validation
     await this.validateMergeInput(input)
 
-    const { entityDefinitionId, entityInstanceId: targetId } = parseResourceId(targetResourceId)
-    const sourceIds = sourceResourceIds.map((rid) => parseResourceId(rid).entityInstanceId)
+    const { entityDefinitionId, entityInstanceId: targetId } = parseRecordId(targetRecordId)
+    const sourceIds = sourceRecordIds.map((rid) => parseRecordId(rid).entityInstanceId)
 
     // Execute merge in transaction
     const result = await this.db.transaction(async (tx) => {
@@ -43,8 +43,8 @@ export class EntityMergeService {
       // 2. Load all field values (with explicit conversion to raw format)
       const allValues = await this.loadAllFieldValues(
         tx,
-        targetResourceId,
-        sourceResourceIds,
+        targetRecordId,
+        sourceRecordIds,
         fields
       )
 
@@ -53,7 +53,7 @@ export class EntityMergeService {
 
       for (const field of fields) {
         const targetValue = allValues.target[field.id] ?? null
-        const sourceValues = sourceResourceIds.map(
+        const sourceValues = sourceRecordIds.map(
           (_rid, idx) => allValues.sources[idx]?.[field.id] ?? null
         )
 
@@ -96,7 +96,7 @@ export class EntityMergeService {
         console.log('📤 Applying TAGS values:', tagsMerged)
       }
 
-      const fieldsMerged = await this.applyMergedValues(tx, targetResourceId, mergedValues, fields)
+      const fieldsMerged = await this.applyMergedValues(tx, targetRecordId, mergedValues, fields)
 
       // 5. Transfer task references
       const taskReferencesTransferred = await this.mergeTaskReferences(
@@ -118,8 +118,8 @@ export class EntityMergeService {
       await this.archiveSourceInstances(tx, sourceIds)
 
       return {
-        mergedResourceId: targetResourceId,
-        mergedCount: sourceResourceIds.length,
+        mergedRecordId: targetRecordId,
+        mergedCount: sourceRecordIds.length,
         fieldsMerged,
         taskReferencesTransferred,
         relationshipsRedirected,
@@ -142,9 +142,9 @@ export class EntityMergeService {
 
   /** Validate merge input before processing */
   private async validateMergeInput(input: MergeEntitiesInput): Promise<void> {
-    const { sourceResourceIds, targetResourceId } = input
+    const { sourceRecordIds, targetRecordId } = input
 
-    if (sourceResourceIds.length === 0) {
+    if (sourceRecordIds.length === 0) {
       throw new TRPCError({
         code: 'BAD_REQUEST',
         message: 'At least one source entity is required for merge',
@@ -152,9 +152,9 @@ export class EntityMergeService {
     }
 
     // All must be same entityDefinitionId
-    const targetParsed = parseResourceId(targetResourceId)
-    const allSameType = sourceResourceIds.every(
-      (rid) => parseResourceId(rid).entityDefinitionId === targetParsed.entityDefinitionId
+    const targetParsed = parseRecordId(targetRecordId)
+    const allSameType = sourceRecordIds.every(
+      (rid) => parseRecordId(rid).entityDefinitionId === targetParsed.entityDefinitionId
     )
     if (!allSameType) {
       throw new TRPCError({
@@ -164,7 +164,7 @@ export class EntityMergeService {
     }
 
     // Target cannot be in sources
-    if (sourceResourceIds.includes(targetResourceId)) {
+    if (sourceRecordIds.includes(targetRecordId)) {
       throw new TRPCError({
         code: 'BAD_REQUEST',
         message: 'Target entity cannot be in the source list',
@@ -174,7 +174,7 @@ export class EntityMergeService {
     // Verify all instances exist and belong to organization
     const allIds = [
       targetParsed.entityInstanceId,
-      ...sourceResourceIds.map((r) => parseResourceId(r).entityInstanceId),
+      ...sourceRecordIds.map((r) => parseRecordId(r).entityInstanceId),
     ]
     const instances = await this.db
       .select({
@@ -237,8 +237,8 @@ export class EntityMergeService {
    */
   private async loadAllFieldValues(
     tx: Transaction,
-    targetResourceId: ResourceId,
-    sourceResourceIds: ResourceId[],
+    targetRecordId: RecordId,
+    sourceRecordIds: RecordId[],
     fields: Array<{ id: string; type: string }>
   ): Promise<{
     target: Record<string, unknown>
@@ -246,33 +246,33 @@ export class EntityMergeService {
   }> {
     const fieldValueService = new FieldValueService(this.organizationId, this.userId, tx)
 
-    const allResourceIds = [targetResourceId, ...sourceResourceIds]
+    const allRecordIds = [targetRecordId, ...sourceRecordIds]
     const fieldIds = fields.map((f) => f.id)
 
     // Batch fetch all field values (returns TypedFieldValue format)
     const { values: allValues } = await fieldValueService.batchGetValues({
-      resourceIds: allResourceIds,
+      recordIds: allRecordIds,
       fieldIds,
     })
 
-    // Group by resourceId
-    const valuesByResource = new Map<string, Map<string, unknown>>()
+    // Group by recordId
+    const valuesByRecord = new Map<string, Map<string, unknown>>()
     for (const v of allValues) {
-      if (!valuesByResource.has(v.resourceId)) {
-        valuesByResource.set(v.resourceId, new Map())
+      if (!valuesByRecord.has(v.recordId)) {
+        valuesByRecord.set(v.recordId, new Map())
       }
 
       // EXPLICIT CONVERSION: TypedFieldValue → raw value
       const field = fields.find((f) => f.id === v.fieldId)
       if (field) {
         const rawValue = formatToRawValue(v.value, field.type as FieldType)
-        valuesByResource.get(v.resourceId)!.set(v.fieldId, rawValue)
+        valuesByRecord.get(v.recordId)!.set(v.fieldId, rawValue)
       }
     }
 
     // Extract target and sources
     const target: Record<string, unknown> = {}
-    const targetMap = valuesByResource.get(targetResourceId)
+    const targetMap = valuesByRecord.get(targetRecordId)
     if (targetMap) {
       for (const [fieldId, value] of targetMap) {
         target[fieldId] = value
@@ -280,9 +280,9 @@ export class EntityMergeService {
     }
 
     const sources: Array<Record<string, unknown>> = []
-    for (const sourceResourceId of sourceResourceIds) {
+    for (const sourceRecordId of sourceRecordIds) {
       const source: Record<string, unknown> = {}
-      const sourceMap = valuesByResource.get(sourceResourceId)
+      const sourceMap = valuesByRecord.get(sourceRecordId)
       if (sourceMap) {
         for (const [fieldId, value] of sourceMap) {
           source[fieldId] = value
@@ -295,7 +295,7 @@ export class EntityMergeService {
     const tagsFields = fields.filter((f) => f.type === 'TAGS')
     if (tagsFields.length > 0) {
       console.log('📥 Loaded TAGS field values:', {
-        targetResourceId,
+        targetRecordId,
         tagsFields: tagsFields.map((f) => ({
           fieldId: f.id,
           targetValue: target[f.id],
@@ -313,7 +313,7 @@ export class EntityMergeService {
    */
   private async applyMergedValues(
     tx: Transaction,
-    targetResourceId: ResourceId,
+    targetRecordId: RecordId,
     mergedValues: Array<{ fieldId: string; value: unknown }>,
     fields: Array<{ id: string; type: string }>
   ): Promise<number> {
@@ -327,7 +327,7 @@ export class EntityMergeService {
     // FieldValueService.setValue internally uses formatToTypedInput
     // to convert raw values → TypedFieldValueInput
     await fieldValueService.setValuesForEntity({
-      resourceId: targetResourceId,
+      recordId: targetRecordId,
       values: mergedValues,
       publishEvents: false,
       skipInverseSync: true, // We handle relationship redirect separately

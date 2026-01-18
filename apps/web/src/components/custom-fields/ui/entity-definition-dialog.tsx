@@ -604,7 +604,7 @@ export function EntityDefinitionDialog({
           onOpenChange={handleCustomFieldDialogClose}
           onSave={handleCustomFieldSave}
           isPending={isCreatingField}
-          currentResourceId={createdEntityId ?? undefined}
+          currentRecordId={createdEntityId ?? undefined}
         />
       )}
 

@@ -23,7 +23,7 @@ import {
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { useConfirm } from '~/hooks/use-confirm'
-import { parseResourceId } from '@auxx/lib/resources/client'
+import { parseRecordId } from '@auxx/lib/resources/client'
 import { api } from '~/trpc/react'
 import { formatMoney } from '~/utils/strings'
 import { SubpartDialog } from '~/components/manufacturing/parts/subpart-dialog'
@@ -31,14 +31,14 @@ import type { SubpartEntity as Subpart } from '@auxx/database/models'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 
 /** Subparts tab content for parts drawer */
-export function PartSubpartsTab({ resourceId }: DrawerTabProps) {
+export function PartSubpartsTab({ recordId }: DrawerTabProps) {
   const utils = api.useUtils()
   const [isSubpartDialogOpen, setIsSubpartDialogOpen] = useState(false)
   const [editingSubpart, setEditingSubpart] = useState<Subpart | null>(null)
   const [confirmDelete, ConfirmDeleteDialog] = useConfirm()
 
-  // Extract partId from resourceId
-  const { entityInstanceId: partId } = parseResourceId(resourceId)
+  // Extract partId from recordId
+  const { entityInstanceId: partId } = parseRecordId(recordId)
 
   // Fetch part data
   const { data: part, isLoading } = api.part.byId.useQuery(

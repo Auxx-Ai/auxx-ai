@@ -1,65 +1,65 @@
 // packages/types/resource/utils.ts
 
-import type { ResourceId } from './index'
+import type { RecordId } from './index'
 import { ModelTypeValues, type ModelType } from '@auxx/database/enums'
 
 /**
- * Create a ResourceId from entityDefinitionId and entityInstanceId.
+ * Create a RecordId from entityDefinitionId and entityInstanceId.
  */
-export function toResourceId(entityDefinitionId: string, entityInstanceId: string): ResourceId {
-  return `${entityDefinitionId}:${entityInstanceId}` as ResourceId
+export function toRecordId(entityDefinitionId: string, entityInstanceId: string): RecordId {
+  return `${entityDefinitionId}:${entityInstanceId}` as RecordId
 }
 
 /**
- * Parse a ResourceId back to its components.
+ * Parse a RecordId back to its components.
  */
-export function parseResourceId(resourceId: ResourceId): {
+export function parseRecordId(recordId: RecordId): {
   entityDefinitionId: string
   entityInstanceId: string
 } {
   // Defensive check for undefined/null
-  if (!resourceId) {
-    console.error('[parseResourceId] ResourceId is undefined or null:', resourceId)
+  if (!recordId) {
+    console.error('[parseRecordId] RecordId is undefined or null:', recordId)
     return { entityDefinitionId: '', entityInstanceId: '' }
   }
 
-  const colonIndex = resourceId.indexOf(':')
+  const colonIndex = recordId.indexOf(':')
   if (colonIndex === -1) {
-    console.error('[parseResourceId] Malformed ResourceId (missing colon):', resourceId)
-    return { entityDefinitionId: resourceId, entityInstanceId: '' }
+    console.error('[parseRecordId] Malformed RecordId (missing colon):', recordId)
+    return { entityDefinitionId: recordId, entityInstanceId: '' }
   }
   return {
-    entityDefinitionId: resourceId.slice(0, colonIndex),
-    entityInstanceId: resourceId.slice(colonIndex + 1),
+    entityDefinitionId: recordId.slice(0, colonIndex),
+    entityInstanceId: recordId.slice(colonIndex + 1),
   }
 }
 
 /**
- * Type guard to check if a string is a valid ResourceId format.
+ * Type guard to check if a string is a valid RecordId format.
  */
-export function isResourceId(value: unknown): value is ResourceId {
+export function isRecordId(value: unknown): value is RecordId {
   return typeof value === 'string' && value.includes(':')
 }
 
 /**
- * Create ResourceId[] from entityDefinitionId and array of instance IDs.
+ * Create RecordId[] from entityDefinitionId and array of instance IDs.
  */
-export function toResourceIds(entityDefinitionId: string, instanceIds: string[]): ResourceId[] {
-  return instanceIds.map((id) => toResourceId(entityDefinitionId, id))
+export function toRecordIds(entityDefinitionId: string, instanceIds: string[]): RecordId[] {
+  return instanceIds.map((id) => toRecordId(entityDefinitionId, id))
 }
 
 /**
- * Extract just the entityInstanceId from a ResourceId.
+ * Extract just the entityInstanceId from a RecordId.
  */
-export function getInstanceId(resourceId: ResourceId): string {
-  return parseResourceId(resourceId).entityInstanceId
+export function getInstanceId(recordId: RecordId): string {
+  return parseRecordId(recordId).entityInstanceId
 }
 
 /**
- * Extract just the entityDefinitionId from a ResourceId.
+ * Extract just the entityDefinitionId from a RecordId.
  */
-export function getDefinitionId(resourceId: ResourceId): string {
-  return parseResourceId(resourceId).entityDefinitionId
+export function getDefinitionId(recordId: RecordId): string {
+  return parseRecordId(recordId).entityDefinitionId
 }
 
 /**
@@ -77,3 +77,4 @@ export function isSystemModelType(entityDefinitionId: string): entityDefinitionI
 export function getModelType(entityDefinitionId: string): ModelType {
   return isSystemModelType(entityDefinitionId) ? entityDefinitionId : 'entity'
 }
+

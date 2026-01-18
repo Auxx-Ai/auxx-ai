@@ -5,12 +5,12 @@ import { api } from '~/trpc/react'
 import { Clock, History } from 'lucide-react'
 import { Timeline } from './timeline'
 import { EmptyState } from '~/components/global/empty-state'
-import { getDefinitionId, isSystemModelType, type ResourceId } from '@auxx/types/resource'
+import { getDefinitionId, isSystemModelType, type RecordId } from '@auxx/types/resource'
 
 /** Props for TimelineTab component */
 interface TimelineTabProps {
-  /** ResourceId in format "entityDefinitionId:entityInstanceId" */
-  resourceId: ResourceId
+  /** RecordId in format "entityDefinitionId:entityInstanceId" */
+  recordId: RecordId
   /** Optional limit for pagination */
   limit?: number
   /** Optional: disable event grouping */
@@ -96,7 +96,7 @@ const DEFAULT_CUSTOM_ENTITY_EMPTY_STATE = {
  * Shows timeline events for a specific entity with infinite scroll
  */
 export function TimelineTab({
-  resourceId,
+  recordId,
   limit = 50,
   isGroupingDisabled = false,
   emptyTitle,
@@ -106,7 +106,7 @@ export function TimelineTab({
   const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
     api.timeline.getTimeline.useInfiniteQuery(
       {
-        resourceId,
+        recordId,
         limit,
         isGroupingDisabled,
       },
@@ -132,7 +132,7 @@ export function TimelineTab({
   if (events.length === 0) {
     return (
       <TimelineEmpty
-        resourceId={resourceId}
+        recordId={recordId}
         customTitle={emptyTitle}
         customDescription={emptyDescription}
       />
@@ -154,16 +154,16 @@ export function TimelineTab({
  * Empty state component
  */
 function TimelineEmpty({
-  resourceId,
+  recordId,
   customTitle,
   customDescription,
 }: {
-  resourceId: ResourceId
+  recordId: RecordId
   customTitle?: string
   customDescription?: React.ReactNode
 }) {
-  // Get entityDefinitionId from resourceId
-  const entityDefinitionId = getDefinitionId(resourceId)
+  // Get entityDefinitionId from recordId
+  const entityDefinitionId = getDefinitionId(recordId)
 
   // Get config - use custom if provided, else look up by type, else use default for custom entities
   const config = isSystemModelType(entityDefinitionId)

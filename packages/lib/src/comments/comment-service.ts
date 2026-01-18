@@ -18,7 +18,7 @@ import type {
   CommentDeletedEvent,
   CommentRepliedEvent,
 } from '../events/types'
-import { parseResourceId, type ResourceId } from '../resources/resource-id'
+import { parseRecordId, type RecordId } from '../resources/resource-id'
 
 // System entity types (hardcoded)
 export const SYSTEM_ENTITY_TYPES = ['Ticket', 'Thread', 'Contact'] as const
@@ -72,7 +72,7 @@ export interface CommentWithAttachments extends Comment {
 // Define interface for creating a comment
 export interface CreateCommentInput {
   content: string
-  resourceId: ResourceId
+  recordId: RecordId
   createdById: string
   organizationId?: string
   parentId?: string | null
@@ -135,8 +135,8 @@ export class CommentService {
     try {
       data.organizationId = this.organizationId
 
-      // Parse resourceId to get components
-      const { entityDefinitionId, entityInstanceId } = parseResourceId(data.resourceId)
+      // Parse recordId to get components
+      const { entityDefinitionId, entityInstanceId } = parseRecordId(data.recordId)
       const entityId = entityInstanceId
       const entityType = entityDefinitionId
 
@@ -422,10 +422,10 @@ export class CommentService {
    * Used when deleting parent entities like Contact, EntityInstance, etc.
    * Note: Ticket/Thread comments are handled via FK cascade in the database
    */
-  async deleteCommentsByResourceId(resourceId: ResourceId): Promise<void> {
+  async deleteCommentsByRecordId(recordId: RecordId): Promise<void> {
     try {
-      // Parse resourceId to get components
-      const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+      // Parse recordId to get components
+      const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
       const entityId = entityInstanceId
       const entityType = entityDefinitionId
 
@@ -441,7 +441,7 @@ export class CommentService {
 
       logger.info('Deleted comments for entity', { entityId, entityType })
     } catch (error) {
-      logger.error('Error deleting comments by entity', { error, resourceId })
+      logger.error('Error deleting comments by entity', { error, recordId })
       throw error
     }
   }
@@ -502,8 +502,8 @@ export class CommentService {
   /**
    * Get comments by entity with optimized reactions
    */
-  async getCommentsByResourceId(
-    resourceId: ResourceId,
+  async getCommentsByRecordId(
+    recordId: RecordId,
     options: {
       includeReplies?: boolean
       page?: number
@@ -511,8 +511,8 @@ export class CommentService {
     } = {}
   ): Promise<Comment[]> {
     try {
-      // Parse resourceId to get components
-      const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+      // Parse recordId to get components
+      const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
       const entityId = entityInstanceId
       const entityType = entityDefinitionId
 
@@ -611,7 +611,7 @@ export class CommentService {
       })
       return processedComments
     } catch (error) {
-      logger.error('Error getting comments by entity', { error, resourceId })
+      logger.error('Error getting comments by entity', { error, recordId })
       throw error
     }
   }

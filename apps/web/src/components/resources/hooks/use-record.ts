@@ -2,14 +2,14 @@
 
 import { useEffect, useRef, useCallback } from 'react'
 import { useRecordStore, type RecordMeta } from '../store/record-store'
-import { parseResourceId, type ResourceId } from '@auxx/lib/resources/client'
+import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 
 /**
  * Options for useRecord hook.
  */
 interface UseRecordOptions {
-  /** ResourceId (branded string format: entityDefinitionId:entityInstanceId) */
-  resourceId: ResourceId | null | undefined
+  /** RecordId (branded string format: entityDefinitionId:entityInstanceId) */
+  recordId: RecordId | null | undefined
   /** Disable fetching */
   enabled?: boolean
 }
@@ -32,18 +32,18 @@ interface UseRecordResult<T> {
  * Hook for components that need a record with fetch-on-demand.
  * Queues fetch via batching system if record not in cache.
  *
- * @param resourceId - ResourceId in format "entityDefinitionId:entityInstanceId"
+ * @param recordId - RecordId in format "entityDefinitionId:entityInstanceId"
  * @param enabled - Whether to enable fetching (default: true)
  *
  * @example
- * const { record } = useRecord({ resourceId: toResourceId('contact', contactId) })
+ * const { record } = useRecord({ recordId: toRecordId('contact', contactId) })
  */
 export function useRecord<T extends RecordMeta = RecordMeta>({
-  resourceId,
+  recordId,
   enabled = true,
 }: UseRecordOptions): UseRecordResult<T> {
-  // Parse resourceId to get entityDefinitionId and entityInstanceId
-  const parsed = resourceId ? parseResourceId(resourceId) : null
+  // Parse recordId to get entityDefinitionId and entityInstanceId
+  const parsed = recordId ? parseRecordId(recordId) : null
   const defId = parsed?.entityDefinitionId ?? ''
   const instId = parsed?.entityInstanceId ?? ''
 
@@ -55,39 +55,39 @@ export function useRecord<T extends RecordMeta = RecordMeta>({
     )
   )
 
-  // Subscribe to loading state (uses Set<ResourceId> now)
+  // Subscribe to loading state (uses Set<RecordId> now)
   const isLoading = useRecordStore(
     useCallback(
-      (state) => (resourceId ? state.loadingIds.has(resourceId) || state.pendingFetchIds.has(resourceId) : false),
-      [resourceId]
+      (state) => (recordId ? state.loadingIds.has(recordId) || state.pendingFetchIds.has(recordId) : false),
+      [recordId]
     )
   )
 
   // Subscribe to not found state
   const isNotFound = useRecordStore(
-    useCallback((state) => (resourceId ? state.notFoundIds.has(resourceId) : false), [resourceId])
+    useCallback((state) => (recordId ? state.notFoundIds.has(recordId) : false), [recordId])
   )
 
   // Track IDs we've already requested to prevent infinite loops
-  const requestedRef = useRef<Set<ResourceId>>(new Set())
+  const requestedRef = useRef<Set<RecordId>>(new Set())
 
   // Get request action
   const requestRecord = useRecordStore((s) => s.requestRecord)
 
   // Request fetch if not cached and not already requested
   useEffect(() => {
-    if (!enabled || !resourceId) return
+    if (!enabled || !recordId) return
     if (record) return // Already have it
-    if (requestedRef.current.has(resourceId)) return // Already requested
+    if (requestedRef.current.has(recordId)) return // Already requested
 
-    requestedRef.current.add(resourceId)
-    requestRecord(resourceId)
-  }, [enabled, resourceId, record, requestRecord])
+    requestedRef.current.add(recordId)
+    requestRecord(recordId)
+  }, [enabled, recordId, record, requestRecord])
 
-  // Clear requested set when resourceId changes
+  // Clear requested set when recordId changes
   useEffect(() => {
     requestedRef.current.clear()
-  }, [resourceId])
+  }, [recordId])
 
   return {
     record,
@@ -100,11 +100,11 @@ export function useRecord<T extends RecordMeta = RecordMeta>({
 /**
  * Check if a record is currently being loaded (pending or fetching).
  */
-export function useIsRecordLoading(resourceId: ResourceId): boolean {
+export function useIsRecordLoading(recordId: RecordId): boolean {
   return useRecordStore(
     useCallback(
-      (state) => state.loadingIds.has(resourceId) || state.pendingFetchIds.has(resourceId),
-      [resourceId]
+      (state) => state.loadingIds.has(recordId) || state.pendingFetchIds.has(recordId),
+      [recordId]
     )
   )
 }
@@ -112,17 +112,17 @@ export function useIsRecordLoading(resourceId: ResourceId): boolean {
 /**
  * Check if a record is pending fetch (queued but not started).
  */
-export function useIsRecordPending(resourceId: ResourceId): boolean {
+export function useIsRecordPending(recordId: RecordId): boolean {
   return useRecordStore(
-    useCallback((state) => state.pendingFetchIds.has(resourceId), [resourceId])
+    useCallback((state) => state.pendingFetchIds.has(recordId), [recordId])
   )
 }
 
 /**
  * Check if a record was not found (deleted/invalid).
  */
-export function useIsRecordNotFound(resourceId: ResourceId): boolean {
+export function useIsRecordNotFound(recordId: RecordId): boolean {
   return useRecordStore(
-    useCallback((state) => state.notFoundIds.has(resourceId), [resourceId])
+    useCallback((state) => state.notFoundIds.has(recordId), [recordId])
   )
 }

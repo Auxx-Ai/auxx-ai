@@ -10,7 +10,7 @@ import { useFieldNavigationOptional } from './field-navigation-context'
 import { Button } from '@auxx/ui/components/button'
 import { useEffect, useRef, useCallback } from 'react'
 import { cn } from '@auxx/ui/lib/utils'
-import type { ResourceId } from '@auxx/lib/resources/client'
+import type { RecordId } from '@auxx/lib/resources/client'
 
 /**
  * Props for SortablePropertyRow component
@@ -36,8 +36,8 @@ interface SortablePropertyRowProps {
   registerOpen?: (providerId: string, openFn: () => void) => void
   /** Unregister open function when row unmounts */
   unregisterOpen?: (providerId: string) => void
-  /** ResourceId in format "entityDefinitionId:entityInstanceId" */
-  resourceId: ResourceId
+  /** RecordId in format "entityDefinitionId:entityInstanceId" */
+  recordId: RecordId
   /** Whether all fields are read-only (default: false) */
   readOnly?: boolean
   /** Whether to show field titles/labels (default: true) */
@@ -65,7 +65,7 @@ export function SortablePropertyRow({
   unregisterClose,
   registerOpen,
   unregisterOpen,
-  resourceId,
+  recordId,
   readOnly = false,
   showTitle = true,
 }: SortablePropertyRowProps) {
@@ -180,7 +180,7 @@ export function SortablePropertyRow({
         field={field}
         value={value}
         loading={loading}
-        resourceId={resourceId}
+        recordId={recordId}
         readOnly={readOnly}
         showTitle={showTitle}>
         <PropertyRowWithNavigation

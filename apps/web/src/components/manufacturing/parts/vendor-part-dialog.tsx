@@ -14,7 +14,7 @@ import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Button } from '@auxx/ui/components/button'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
-import { toResourceId, getInstanceId, type ResourceId } from '@auxx/lib/field-values/client'
+import { toRecordId, getInstanceId, type RecordId } from '@auxx/lib/field-values/client'
 import { api } from '~/trpc/react'
 import { toastError } from '@auxx/ui/components/toast'
 import type { VendorPartEntity as VendorPart } from '@auxx/database/models'
@@ -183,8 +183,8 @@ export function VendorPartDialog({
               validationType="error">
               <MultiRelationInput
                 entityDefinitionId="part"
-                value={values.partId ? [toResourceId('part', values.partId)] : []}
-                onChange={(resourceIds: ResourceId[]) => handleChange('partId', resourceIds[0] ? getInstanceId(resourceIds[0]) : '')}
+                value={values.partId ? [toRecordId('part', values.partId)] : []}
+                onChange={(recordIds: RecordId[]) => handleChange('partId', recordIds[0] ? getInstanceId(recordIds[0]) : '')}
                 placeholder="Select part..."
                 disabled={isPending || isEditMode}
                 multi={false}

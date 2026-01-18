@@ -5,7 +5,7 @@
 //   updateEntityInstance,
 //   deleteEntityInstance,
 // } from '@auxx/services/entity-instances'
-// import { isSystemModelType, toResourceId } from '@auxx/types/resource'
+// import { isSystemModelType, toRecordId } from '@auxx/types/resource'
 // import { publisher } from '../../../events'
 // import type {
 //   EntityInstanceCreatedEvent,
@@ -54,8 +54,8 @@
 
 //     // Set custom fields in batch
 //     if (Object.keys(customFields).length > 0) {
-//       const resourceId = toResourceId(entityDefinitionId, record.id)
-//       await setCustomFields(resourceId, customFields, ctx)
+//       const recordId = toRecordId(entityDefinitionId, record.id)
+//       await setCustomFields(recordId, customFields, ctx)
 //     }
 
 //     // Publish event
@@ -101,8 +101,8 @@
 
 //     // Set custom fields in batch
 //     if (Object.keys(customFields).length > 0) {
-//       const resourceId = toResourceId(entityDefinitionId, id)
-//       await setCustomFields(resourceId, customFields, ctx)
+//       const recordId = toRecordId(entityDefinitionId, id)
+//       await setCustomFields(recordId, customFields, ctx)
 //     }
 
 //     // Publish event

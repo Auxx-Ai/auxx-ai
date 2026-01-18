@@ -4,11 +4,11 @@ import React from 'react'
 import { CommentItem, CommentSkeleton } from './comment-item'
 import { useComments, type Comment } from '~/hooks/use-comments'
 import { getGroupPosition, groupConsecutiveComments } from '@auxx/utils'
-import type { ResourceId } from '@auxx/lib/field-values/client'
+import type { RecordId } from '@auxx/lib/field-values/client'
 
 interface CommentListProps {
   // Required props
-  resourceId: ResourceId
+  recordId: RecordId
 
   // Optional props
   initialComments?: any[]
@@ -17,13 +17,13 @@ interface CommentListProps {
 }
 
 export function CommentList({
-  resourceId,
+  recordId,
   initialComments,
   onCommentAdded,
   className,
 }: CommentListProps) {
   // Use the hook directly
-  const { comments, isFetchingComments } = useComments({ resourceId, onCommentAdded })
+  const { comments, isFetchingComments } = useComments({ recordId, onCommentAdded })
 
   if (isFetchingComments) {
     return (
@@ -53,7 +53,7 @@ export function CommentList({
               <CommentItem
                 key={comment.id}
                 comment={comment as Comment}
-                resourceId={resourceId}
+                recordId={recordId}
                 isReply={false}
                 disableReplies={false}
                 isFirstInGroup={idx === 0}

@@ -26,8 +26,8 @@ export {
 //   buildFieldValueKey,
 //   buildFieldValueKeyFromParts,
 //   parseFieldValueKey,
-//   toResourceId,
-//   parseResourceId,
+//   toRecordId,
+//   parseRecordId,
 //   type FieldValueKey,
-//   type ResourceId,
+//   type RecordId,
 // } from '../components/resources/store/custom-field-value-store'

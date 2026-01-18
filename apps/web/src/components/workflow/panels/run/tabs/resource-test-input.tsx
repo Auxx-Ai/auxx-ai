@@ -8,8 +8,8 @@ import { Button } from '@auxx/ui/components/button'
 import { Loader2, AlertCircle } from 'lucide-react'
 import type { ResourceId } from '@auxx/lib/workflow-engine/client'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
-import { toResourceId, getInstanceId } from '@auxx/lib/resources/client'
-import type { ResourceId as ResourceIdType } from '@auxx/lib/resources/client'
+import { toRecordId, getInstanceId } from '@auxx/lib/resources/client'
+import type { RecordId } from '@auxx/lib/resources/client'
 import { CodeEditor, CodeLanguage } from '~/components/workflow/ui/code-editor'
 import Field from '~/components/workflow/ui/field'
 import Section from '~/components/workflow/ui/section'
@@ -42,11 +42,11 @@ export function ResourceTestInput({
 
   console.log('ResourceTestInput render', { resourceType, resource, inputs })
 
-  // Construct ResourceId from entityDefinitionId and entityInstanceId
-  // Note: inputs.selectedResourceId is the entityInstanceId (string), not a full ResourceId
-  const selectedResourceId = useMemo(
-    () => (inputs.selectedResourceId ? toResourceId(resourceType, inputs.selectedResourceId) : null),
-    [resourceType, inputs.selectedResourceId]
+  // Construct RecordId from entityDefinitionId and entityInstanceId
+  // Note: inputs.selectedRecordId is the entityInstanceId (string), not a full RecordId
+  const selectedRecordId = useMemo(
+    () => (inputs.selectedRecordId ? toRecordId(resourceType, inputs.selectedRecordId) : null),
+    [resourceType, inputs.selectedRecordId]
   )
 
   // Fetch resource data when user picks a resource (uses batching system)
@@ -55,8 +55,8 @@ export function ResourceTestInput({
     isLoading: isLoadingResource,
     isNotFound,
   } = useRecord({
-    resourceId: selectedResourceId,
-    enabled: !!inputs.selectedResourceId && !!resource,
+    recordId: selectedRecordId ?? undefined,
+    enabled: !!inputs.selectedRecordId && !!resource,
   })
 
   // Memoize onChange wrapper to prevent unnecessary re-renders
@@ -71,12 +71,12 @@ export function ResourceTestInput({
   const handleResourceSelect = useCallback(
     (value: { referenceId: string } | null) => {
       if (!value) {
-        handleChange('selectedResourceId', null)
+        handleChange('selectedRecordId', null)
         handleChange('resourceData', {})
         return
       }
 
-      handleChange('selectedResourceId', value.referenceId)
+      handleChange('selectedRecordId', value.referenceId)
       // Resource data will be loaded by the query and set via useEffect
     },
     [handleChange]
@@ -92,14 +92,14 @@ export function ResourceTestInput({
 
   // Show error toast if resource not found
   useEffect(() => {
-    if (isNotFound && inputs.selectedResourceId) {
+    if (isNotFound && inputs.selectedRecordId) {
       toastError({
         title: 'Resource not found',
         description: 'The selected resource could not be found. It may have been deleted.',
       })
-      handleChange('selectedResourceId', null)
+      handleChange('selectedRecordId', null)
     }
-  }, [isNotFound, inputs.selectedResourceId, handleChange])
+  }, [isNotFound, inputs.selectedRecordId, handleChange])
 
   // Show loading state while resources load
   if (isLoadingResources) {
@@ -143,15 +143,15 @@ export function ResourceTestInput({
                 <MultiRelationInput
                   className="flex-1"
                   entityDefinitionId={resourceType}
-                  value={selectedResourceId ? [selectedResourceId] : []}
-                  onChange={(resourceIds: ResourceIdType[]) =>
+                  value={selectedRecordId ? [selectedRecordId] : []}
+                  onChange={(recordIds: RecordId[]) =>
                     handleResourceSelect(
-                      resourceIds[0] ? { referenceId: getInstanceId(resourceIds[0]) } : null
+                      recordIds[0] ? { referenceId: getInstanceId(recordIds[0]) } : null
                     )
                   }
                   multi={false}
                 />
-                {selectedResourceId && (
+                {selectedRecordId && (
                   <Button variant="ghost" size="sm" onClick={() => handleResourceSelect(null)}>
                     Clear
                   </Button>

@@ -34,7 +34,7 @@ import { FileSelectPicker } from '~/components/pickers/file-select-picker'
 import { CommentFile } from './comment-file'
 import { useDropzone } from 'react-dropzone'
 import { ENTITY_TYPES } from '@auxx/lib/files/types'
-import type { ResourceId } from '@auxx/lib/field-values/client'
+import type { RecordId } from '@auxx/lib/field-values/client'
 
 import { EmojiPicker } from '~/components/pickers/emoji-picker'
 import { MentionNode } from '~/components/editor/extensions/mention-node'
@@ -53,7 +53,7 @@ interface FileAttachment {
  * Props for the CommentComposer tiptap wrapper component.
  */
 interface CommentComposerProps {
-  resourceId: ResourceId
+  recordId: RecordId
   parentId?: string
   onSubmitted?: () => void
   onCancel?: () => void
@@ -166,7 +166,7 @@ export const SubmitOnEnter = Extension.create<SubmitOnEnterOptions>({
  * CommentComposer renders the shared rich text composer used in drawers.
  */
 const CommentComposer = ({
-  resourceId,
+  recordId,
   parentId,
   commentId,
   onSubmitted,
@@ -202,7 +202,7 @@ const CommentComposer = ({
   // Refs (none needed currently)
   // Set up useComments hook
   const commentOptions: UseCommentsOptions = {
-    resourceId,
+    recordId,
   }
 
   const {

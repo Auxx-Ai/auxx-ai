@@ -17,10 +17,10 @@ import { useConfirm } from '~/hooks/use-confirm'
 import { EntityFieldsContent } from './entity-fields-content'
 import { useResourceFields } from '~/components/resources'
 import {
-  parseResourceId,
+  parseRecordId,
   sortFieldsForDisplay,
   type ResourceField,
-  type ResourceId,
+  type RecordId,
 } from '@auxx/lib/resources/client'
 import { useDynamicFieldOptions } from './hooks/use-dynamic-field-options'
 import { toResourceFieldId } from '@auxx/types/field'
@@ -29,8 +29,8 @@ import { toResourceFieldId } from '@auxx/types/field'
  * Props for EntityFields component
  */
 interface EntityFieldsProps {
-  /** ResourceId in format "entityDefinitionId:entityInstanceId" */
-  resourceId: ResourceId
+  /** RecordId in format "entityDefinitionId:entityInstanceId" */
+  recordId: RecordId
   /** Callback after successful mutation (e.g., to refetch parent data) */
   onMutationSuccess?: () => void
   /** Additional className for the outer container */
@@ -53,7 +53,7 @@ interface EntityFieldsProps {
  * with proper isSystem, showInPanel, and systemSortOrder properties.
  */
 function EntityFields({
-  resourceId,
+  recordId,
   onMutationSuccess,
   className,
   canEdit = true,
@@ -61,8 +61,8 @@ function EntityFields({
   showTitle = true,
   excludeFields,
 }: EntityFieldsProps) {
-  // Parse resourceId to get entityDefinitionId
-  const { entityDefinitionId } = parseResourceId(resourceId)
+  // Parse recordId to get entityDefinitionId
+  const { entityDefinitionId } = parseRecordId(recordId)
 
   // State management
   const closeHandlersRef = useRef<Record<string, () => void>>({})
@@ -263,7 +263,7 @@ function EntityFields({
         registerProviderClose={registerProviderClose}
         unregisterProviderClose={unregisterProviderClose}
         ConfirmDeleteDialog={ConfirmDeleteDialog}
-        resourceId={resourceId}
+        recordId={recordId}
         canEdit={canEdit}
         readOnly={readOnly}
         showTitle={showTitle}

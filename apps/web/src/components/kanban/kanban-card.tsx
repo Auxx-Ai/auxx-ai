@@ -11,7 +11,7 @@ import { formatRelativeTime } from '@auxx/utils/date'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
 import type { CustomField } from '~/components/dynamic-table/types'
 import { KanbanCardField } from './kanban-card-field'
-import { useFieldValue, toResourceId } from '~/components/resources/store/field-value-store'
+import { useFieldValue, toRecordId } from '~/components/resources/store/field-value-store'
 
 /** Props for KanbanCard component */
 interface KanbanCardProps {
@@ -62,11 +62,11 @@ export const KanbanCard = memo(function KanbanCard({
   primaryFieldId,
   editable = true,
 }: KanbanCardProps) {
-  // Build resourceId for store lookups
-  const resourceId = toResourceId(entityDefinitionId, id)
+  // Build recordId for store lookups
+  const recordId = toRecordId(entityDefinitionId, id)
 
   // Fetch title directly from store (same pattern as KanbanCardField)
-  const { value: primaryValue } = useFieldValue(resourceId, primaryFieldId ?? '')
+  const { value: primaryValue } = useFieldValue(recordId, primaryFieldId ?? '')
 
   // Format title for display
   const title =

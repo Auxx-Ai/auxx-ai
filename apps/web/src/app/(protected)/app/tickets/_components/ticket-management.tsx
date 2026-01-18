@@ -17,7 +17,7 @@ import type { VisibilityState } from '@tanstack/react-table'
 import { EmptyState } from '~/components/global/empty-state'
 import { Ticket as TicketIcon, Plus, Trash2, Users, CircleDot, Flag, Play } from 'lucide-react'
 import { parseAsBoolean, parseAsString, useQueryState } from 'nuqs'
-import { useRecordList, useResources, toResourceId } from '~/components/resources'
+import { useRecordList, useResources, toRecordId } from '~/components/resources'
 import { useCustomFieldValueSyncer } from '~/components/resources/hooks/use-custom-field-value-syncer'
 import { TicketDetailDrawer } from './ticket-detail-drawer'
 import { createTicketColumns } from './ticket-columns'
@@ -144,8 +144,8 @@ export function TicketManagement({
     return customFieldsRef.current
   }, [resources])
 
-  // Convert to ResourceIds for syncer
-  const resourceIds = useMemo(() => tickets.map((t) => toResourceId('ticket', t.id)), [tickets])
+  // Convert to RecordIds for syncer
+  const recordIds = useMemo(() => tickets.map((t) => toRecordId('ticket', t.id)), [tickets])
 
   // Build column IDs in ResourceFieldId format
   const columnIds = useMemo(
@@ -156,7 +156,7 @@ export function TicketManagement({
   // Custom field value syncer - triggers batch fetches for visible columns
   // Cells subscribe directly to store via CustomFieldCell
   useCustomFieldValueSyncer({
-    resourceIds,
+    recordIds,
     columnVisibility,
     resourceFieldIds: columnIds,
     enabled: columnIds.length > 0,
@@ -434,7 +434,7 @@ export function TicketManagement({
         open={massWorkflowDialogOpen}
         onOpenChange={setMassWorkflowDialogOpen}
         resourceType="ticket"
-        resourceIds={selectedTicketsForBulk.map((t) => toResourceId('ticket', t.id))}
+        recordIds={selectedTicketsForBulk.map((t) => toRecordId('ticket', t.id))}
         onSuccess={() => {
           refetchTickets()
           setSelectedTicketsForBulk([])

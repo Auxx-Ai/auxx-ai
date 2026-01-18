@@ -1,19 +1,19 @@
 // packages/lib/src/resources/crud/utils/custom-fields.ts
 
 import { FieldValueService } from '../../../field-values'
-import type { ResourceId } from '@auxx/types/resource'
+import type { RecordId } from '@auxx/types/resource'
 import type { CrudContext } from '../types'
 
 /**
  * Set custom field values in batch for an entity.
  * Uses FieldValueService.setValuesForEntity() for efficiency.
  *
- * @param resourceId - Full ResourceId (entityDefinitionId:entityInstanceId)
+ * @param recordId - Full RecordId (entityDefinitionId:entityInstanceId)
  * @param customFields - Custom field values keyed by field ID
  * @param ctx - CRUD context with db, organizationId, userId
  */
 export async function setCustomFields(
-  resourceId: ResourceId,
+  recordId: RecordId,
   customFields: Record<string, unknown>,
   ctx: CrudContext
 ): Promise<void> {
@@ -26,7 +26,7 @@ export async function setCustomFields(
   const service = new FieldValueService(ctx.organizationId, ctx.userId ?? '', ctx.db)
 
   await service.setValuesForEntity({
-    resourceId,
+    recordId,
     values: entries.map(([fieldId, value]) => ({ fieldId, value })),
   })
 }

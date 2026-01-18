@@ -1,10 +1,10 @@
-// apps/web/src/hooks/use-custom-field-invalidation.ts
+// apps/web/src/components/resources/hooks/use-custom-field-invalidation.ts
 
 import { useCallback } from 'react'
 import {
   useFieldValueStore,
-  toResourceId,
-  type ResourceId,
+  toRecordId,
+  type RecordId,
 } from '~/components/resources/store/field-value-store'
 
 /**
@@ -23,8 +23,8 @@ export function useCustomFieldInvalidation() {
    */
   const onValueUpdated = useCallback(
     (entityDefinitionId: string, entityInstanceId: string) => {
-      const resourceId = toResourceId(entityDefinitionId, entityInstanceId)
-      invalidateResource(resourceId)
+      const recordId = toRecordId(entityDefinitionId, entityInstanceId)
+      invalidateResource(recordId)
     },
     [invalidateResource]
   )
@@ -35,8 +35,8 @@ export function useCustomFieldInvalidation() {
    */
   const onBulkValuesUpdated = useCallback(
     (entityDefinitionId: string, entityInstanceIds: string[]) => {
-      const resourceIds = entityInstanceIds.map((id) => toResourceId(entityDefinitionId, id))
-      invalidateResources(resourceIds)
+      const recordIds = entityInstanceIds.map((id) => toRecordId(entityDefinitionId, id))
+      invalidateResources(recordIds)
     },
     [invalidateResources]
   )

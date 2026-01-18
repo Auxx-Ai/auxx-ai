@@ -30,7 +30,7 @@ import {
 } from '@auxx/lib/workflow-engine'
 import { generateId } from '@auxx/utils/generateId'
 import { and, eq } from 'drizzle-orm'
-import { type ResourceId, resourceIdSchema } from '@auxx/types/resource'
+import { type RecordId, recordIdSchema } from '@auxx/types/resource'
 
 /**
  * Convert database workflow format to workflow-engine format for validation
@@ -783,13 +783,13 @@ export const workflowRouter = createTRPCRouter({
     .input(
       z.object({
         workflowAppId: z.string(),
-        resourceId: resourceIdSchema,
+        recordId: recordIdSchema,
       })
     )
     .mutation(async ({ ctx, input }) => {
       const result = await triggerManualResourceWorkflow({
         workflowAppId: input.workflowAppId,
-        resourceId: input.resourceId as ResourceId,
+        recordId: input.recordId as RecordId,
         organizationId: ctx.session.organizationId,
         createdBy: ctx.session.userId,
       })
@@ -837,13 +837,13 @@ export const workflowRouter = createTRPCRouter({
     .input(
       z.object({
         workflowAppId: z.string(),
-        resourceIds: z.array(resourceIdSchema).min(1).max(100), // Limit to 100 resources
+        recordIds: z.array(recordIdSchema).min(1).max(100), // Limit to 100 resources
       })
     )
     .mutation(async ({ ctx, input }) => {
       const result = await triggerManualResourceWorkflowBulk({
         workflowAppId: input.workflowAppId,
-        resourceIds: input.resourceIds as ResourceId[],
+        recordIds: input.recordIds as RecordId[],
         organizationId: ctx.session.organizationId,
         createdBy: ctx.session.userId,
       })

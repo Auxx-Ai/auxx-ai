@@ -19,7 +19,7 @@ import {
 } from '@auxx/lib/workflow-engine'
 import { type Database, schema } from '@auxx/database'
 import { eq, and, isNull } from 'drizzle-orm'
-import { resourceIdSchema, type ResourceId } from '@auxx/types/resource'
+import { recordIdSchema, type RecordId } from '@auxx/types/resource'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import type { ResourceField } from '@auxx/lib/resources'
 import { createScopedLogger } from '@auxx/logger'
@@ -135,7 +135,7 @@ export const recordRouter = createTRPCRouter({
   getByIds: protectedProcedure
     .input(
       z.object({
-        items: z.array(resourceIdSchema).max(100),
+        items: z.array(recordIdSchema).max(100),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -143,7 +143,7 @@ export const recordRouter = createTRPCRouter({
 
       try {
         const service = new RecordPickerService(organizationId, userId, ctx.db)
-        return await service.getResourcesByIds(input.items as ResourceId[])
+        return await service.getResourcesByIds(input.items as RecordId[])
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         throw new TRPCError({

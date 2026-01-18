@@ -6,17 +6,17 @@ import { Blocks, Edit, PlusCircle } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
 import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { parseResourceId } from '@auxx/lib/resources/client'
+import { parseRecordId } from '@auxx/lib/resources/client'
 import { api } from '~/trpc/react'
 import { InventoryDialog } from '~/components/manufacturing/parts/inventory-dialog'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 
 /** Inventory tab content for parts drawer */
-export function PartInventoryTab({ resourceId }: DrawerTabProps) {
+export function PartInventoryTab({ recordId }: DrawerTabProps) {
   const [isInventoryDialogOpen, setIsInventoryDialogOpen] = useState(false)
 
-  // Extract partId from resourceId
-  const { entityInstanceId: partId } = parseResourceId(resourceId)
+  // Extract partId from recordId
+  const { entityInstanceId: partId } = parseRecordId(recordId)
 
   // Fetch part data
   const { data: part, isLoading } = api.part.byId.useQuery(

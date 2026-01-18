@@ -39,7 +39,7 @@ import {
   type FieldValueKey,
 } from '~/components/resources/store/field-value-store'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
-import { getModelType, toResourceId } from '@auxx/lib/resources/client'
+import { getModelType, toRecordId } from '@auxx/lib/resources/client'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
 import { FieldType } from '@auxx/database/enums'
 import { toResourceFieldId } from '@auxx/types/field'
@@ -450,9 +450,9 @@ export function KanbanView<TData extends KanbanRow>({
         }
 
         // Move all cards in single API call with optimistic updates
-        const resourceIds = cardsToMove.map((card) => toResourceId(entityDefinitionId, card.id))
+        const recordIds = cardsToMove.map((card) => toRecordId(entityDefinitionId, card.id))
         saveBulkValues(
-          resourceIds,
+          recordIds,
           config.groupByFieldId,
           newValue,
           groupByField.fieldType ?? 'SINGLE_SELECT'

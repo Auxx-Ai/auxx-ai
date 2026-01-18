@@ -51,7 +51,7 @@ import {
 import { getFullName, getInitials } from '@auxx/utils'
 import { Avatar, AvatarFallback } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
-import { useRecord, toResourceId } from '~/components/resources'
+import { useRecord, toRecordId } from '~/components/resources'
 import { useTicketMutations } from './use-ticket-mutations'
 import type { Ticket } from './ticket-types'
 import { useRouter } from 'next/navigation'
@@ -184,12 +184,12 @@ export function TicketDetailDrawer({ ticketId, open, onOpenChange }: TicketDetai
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [confirm, ConfirmDialog] = useConfirm()
 
-  // Create resourceId for use throughout component
-  const resourceId = ticketId ? toResourceId('ticket', ticketId) : null
+  // Create recordId for use throughout component
+  const recordId = ticketId ? toRecordId('ticket', ticketId) : null
 
   // Cache-first: instant if opened from table
   const { record: ticket, isLoading } = useRecord<Ticket>({
-    resourceId: resourceId,
+    recordId: recordId,
     enabled: !!open && !!ticketId,
   })
 
@@ -398,7 +398,7 @@ export function TicketDetailDrawer({ ticketId, open, onOpenChange }: TicketDetai
                 </Tooltip>
 
                 <ManualTriggerButton
-                  resourceId={toResourceId('ticket', ticket.id)}
+                  recordId={toRecordId('ticket', ticket.id)}
                   buttonVariant="ghost"
                   buttonSize="icon-sm"
                   buttonClassName="rounded-full"
@@ -599,7 +599,7 @@ export function TicketDetailDrawer({ ticketId, open, onOpenChange }: TicketDetai
                 <div className="space-y-1">
                   <h4 className="text-sm ">Information</h4>
 
-                  <EntityFields resourceId={toResourceId('ticket', ticket.id)} />
+                  <EntityFields recordId={toRecordId('ticket', ticket.id)} />
                 </div>
                 <div className="space-y-1">
                   <h4 className="text-sm ">Customer</h4>
@@ -622,13 +622,13 @@ export function TicketDetailDrawer({ ticketId, open, onOpenChange }: TicketDetai
 
             {/* Timeline Tab */}
             <TabsContent value="timeline" className="flex-1 flex flex-col min-h-0">
-              {resourceId && <TimelineTab resourceId={resourceId} />}
+              {recordId && <TimelineTab recordId={recordId} />}
             </TabsContent>
 
             {/* Comments Tab */}
             <TabsContent value="comments" className="flex-1 flex flex-col h-full">
               <DrawerComments
-                resourceId={resourceId!}
+                recordId={recordId!}
                 emptyTitle="No internal notes yet"
                 emptyDescription="Add internal notes to collaborate with your team on this ticket"
                 headerTitle="Internal Notes"

@@ -4,4 +4,4 @@
 export * from './custom-field'
 export * from './field-value'
 export * from './pagination'
-export { type ResourceId, resourceIdSchema } from './resource'
+export { type RecordId, recordIdSchema } from './resource'

@@ -5,14 +5,14 @@ import { TRPCError } from '@trpc/server'
 import { TimelineService } from '@auxx/lib/timeline'
 import { and, eq } from 'drizzle-orm'
 import * as schema from '@auxx/database'
-import { resourceIdSchema, parseResourceId, getDefinitionId, isSystemModelType } from '@auxx/types/resource'
+import { recordIdSchema, parseRecordId, getDefinitionId, isSystemModelType } from '@auxx/types/resource'
 
 export const timelineRouter = createTRPCRouter({
   /** Get timeline for an entity */
   getTimeline: protectedProcedure
     .input(
       z.object({
-        resourceId: resourceIdSchema,
+        recordId: recordIdSchema,
         cursor: z.string().optional(),
         limit: z.number().min(1).max(200).default(100),
         isGroupingDisabled: z.boolean().optional().default(false),
@@ -25,12 +25,12 @@ export const timelineRouter = createTRPCRouter({
         const { organizationId } = ctx.session
         const timelineService = new TimelineService(ctx.db)
 
-        // Parse resourceId to get components for permission check
-        const entityDefinitionId = getDefinitionId(input.resourceId)
+        // Parse recordId to get components for permission check
+        const entityDefinitionId = getDefinitionId(input.recordId)
 
         // Permission check for custom entities (non-system types)
         if (!isSystemModelType(entityDefinitionId)) {
-          const { entityInstanceId } = parseResourceId(input.resourceId)
+          const { entityInstanceId } = parseRecordId(input.recordId)
 
           // Verify the entity instance belongs to this organization
           const instance = await ctx.db.query.EntityInstance.findFirst({
@@ -58,7 +58,7 @@ export const timelineRouter = createTRPCRouter({
 
         return await timelineService.getTimeline({
           organizationId,
-          resourceId: input.resourceId,
+          recordId: input.recordId,
           cursor: input.cursor,
           limit: input.limit,
           isGroupingDisabled: input.isGroupingDisabled,
@@ -78,7 +78,7 @@ export const timelineRouter = createTRPCRouter({
   getRelatedTimeline: protectedProcedure
     .input(
       z.object({
-        relatedResourceId: resourceIdSchema,
+        relatedRecordId: recordIdSchema,
         limit: z.number().min(1).max(100).default(50),
       })
     )
@@ -89,7 +89,7 @@ export const timelineRouter = createTRPCRouter({
 
         return await timelineService.getRelatedTimeline(
           organizationId,
-          input.relatedResourceId,
+          input.relatedRecordId,
           input.limit
         )
       } catch (error: any) {

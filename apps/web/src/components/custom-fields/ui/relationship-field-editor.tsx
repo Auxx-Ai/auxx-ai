@@ -32,8 +32,8 @@ const RELATIONSHIP_TYPES = RELATIONSHIP_TYPE_VALUES.map((value) => ({
 interface RelationshipFieldEditorProps {
   options: RelationshipOptions
   onChange: (options: RelationshipOptions) => void
-  /** Resource ID to look up current resource in resources list */
-  currentResourceId?: string
+  /** Record ID to look up current resource in resources list */
+  currentRecordId?: string
   /** Field name value from parent form */
   name?: string
   /** Callback to update field name in parent form */
@@ -47,7 +47,7 @@ interface RelationshipFieldEditorProps {
 export function RelationshipFieldEditor({
   options,
   onChange,
-  currentResourceId,
+  currentRecordId,
   name,
   onNameChange,
 }: RelationshipFieldEditorProps) {
@@ -63,7 +63,7 @@ export function RelationshipFieldEditor({
   }
 
   // Look up both resources from the same list
-  const currentResource = resources?.find((r) => r.id === currentResourceId)
+  const currentResource = resources?.find((r) => r.id === currentRecordId)
   const selectedResource = resources?.find((r) => r.id === options.relatedResourceId)
 
   /**

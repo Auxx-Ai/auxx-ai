@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react'
 import { api } from '~/trpc/react'
 import { getRelationshipStoreState, useRelationshipStore, getRecordStoreState } from '../store'
 import { getResourceStoreState } from '../store/resource-store'
-import type { ResourceId } from '@auxx/lib/resources/client'
+import type { RecordId } from '@auxx/lib/resources/client'
 import { useRecordBatchFetcher } from '../hooks/use-record-batch-fetcher'
 
 /**
@@ -50,17 +50,17 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
   }, [resourcesQuery.isLoading])
 
   // === RELATIONSHIP ITEMS BATCHING ===
-  const [relationshipBatch, setRelationshipBatch] = useState<ResourceId[]>([])
+  const [relationshipBatch, setRelationshipBatch] = useState<RecordId[]>([])
   const relationshipPendingSize = useRelationshipStore((s) => s.pendingIds.size)
 
   useEffect(() => {
     if (relationshipPendingSize === 0 || relationshipBatch.length > 0) return
     const timeout = setTimeout(() => {
       const state = getRelationshipStoreState()
-      const resourceIds = state.getItemsToFetch().slice(0, MAX_RELATIONSHIP_BATCH)
-      if (resourceIds.length === 0) return
-      state.markLoading(resourceIds)
-      setRelationshipBatch(resourceIds)
+      const recordIds = state.getItemsToFetch().slice(0, MAX_RELATIONSHIP_BATCH)
+      if (recordIds.length === 0) return
+      state.markLoading(recordIds)
+      setRelationshipBatch(recordIds)
     }, BATCH_DELAY)
     return () => clearTimeout(timeout)
   }, [relationshipPendingSize, relationshipBatch.length])

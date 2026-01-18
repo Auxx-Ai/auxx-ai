@@ -5,17 +5,17 @@ import { useMemo } from 'react'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Tooltip } from '~/components/global/tooltip'
-import { type ResourceId } from '@auxx/lib/resources/client'
+import { type RecordId } from '@auxx/lib/resources/client'
 import { useRecords, useResource } from '~/components/resources'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { FieldDisplay } from '~/components/fields/field-display'
 import { useMergePreview } from './use-merge-preview'
 
 interface MergePreviewPanelProps {
-  /** Target ResourceId */
-  targetResourceId: ResourceId
-  /** Source ResourceIds to merge from */
-  sourceResourceIds: ResourceId[]
+  /** Target RecordId */
+  targetRecordId: RecordId
+  /** Source RecordIds to merge from */
+  sourceRecordIds: RecordId[]
   /** Entity definition ID */
   entityDefinitionId: string | null
   /** Loading state */
@@ -29,31 +29,31 @@ interface MergePreviewPanelProps {
  * - Multi-value: union of all values
  */
 export function MergePreviewPanel({
-  targetResourceId,
-  sourceResourceIds,
+  targetRecordId,
+  sourceRecordIds,
   entityDefinitionId,
   isLoading: externalLoading,
 }: MergePreviewPanelProps) {
   const allIds = useMemo(
-    () => [targetResourceId, ...sourceResourceIds],
-    [targetResourceId, sourceResourceIds]
+    () => [targetRecordId, ...sourceRecordIds],
+    [targetRecordId, sourceRecordIds]
   )
 
-  const { records, isLoading: recordsLoading } = useRecords({ resourceIds: allIds })
+  const { records, isLoading: recordsLoading } = useRecords({ recordIds: allIds })
   const { resource } = useResource(entityDefinitionId ?? '')
 
   const isLoading = externalLoading || recordsLoading
   // Use merge preview hook
   const { mergedFields } = useMergePreview({
-    targetResourceId,
-    sourceResourceIds,
+    targetRecordId,
+    sourceRecordIds,
     fields: resource?.fields ?? [],
   })
   console.log(
     'MergePreviewPanel mergedFields:',
     mergedFields,
-    targetResourceId,
-    sourceResourceIds,
+    targetRecordId,
+    sourceRecordIds,
     resource?.fields
   )
   // Get target record info

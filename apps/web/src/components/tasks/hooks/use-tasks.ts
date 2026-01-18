@@ -7,14 +7,14 @@ import { api } from '~/trpc/react'
 import { useTaskStore } from '../stores/task-store'
 import type { TaskWithRelations, TaskPriority } from '@auxx/lib/tasks'
 import type { TaskSortConfig } from '@auxx/lib/tasks/client'
-import type { ResourceId } from '@auxx/lib/resources/client'
+import type { RecordId } from '@auxx/lib/resources/client'
 
 /**
  * Options for useTasks hook
  */
 interface UseTasksOptions {
   /** Filter to tasks linked to this resource (omit for global view) */
-  resourceId?: ResourceId
+  recordId?: RecordId
   /** Filter by assignee IDs */
   assigneeIds?: string[]
   /** Filter by priority levels */
@@ -59,10 +59,10 @@ const DEFAULT_SORT: TaskSortConfig = { field: 'deadline', direction: 'asc' }
 /**
  * Hook to fetch and cache a list of tasks.
  * Supports filtering by resource, custom conditions, and sorting.
- * Omit resourceId for global task view.
+ * Omit recordId for global task view.
  */
 export function useTasks({
-  resourceId,
+  recordId,
   assigneeIds,
   priority,
   search,
@@ -78,7 +78,7 @@ export function useTasks({
   // Build query input
   const queryInput = useMemo(
     () => ({
-      resourceId,
+      recordId,
       assigneeIds,
       priority,
       search,
@@ -86,7 +86,7 @@ export function useTasks({
       includeArchived,
       limit,
     }),
-    [resourceId, assigneeIds, priority, search, includeCompleted, includeArchived, limit]
+    [recordId, assigneeIds, priority, search, includeCompleted, includeArchived, limit]
   )
 
   // Fetch tasks using query (not infinite for now - keeping it simple)

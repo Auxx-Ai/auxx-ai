@@ -13,7 +13,7 @@ import { SortablePropertyRow } from './sortable-property-row'
 import { AddFieldRow } from './add-field-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { useFieldNavigation } from './field-navigation-context'
-import { parseResourceId, type ResourceField, type ResourceId } from '@auxx/lib/resources/client'
+import { parseRecordId, type ResourceField, type RecordId } from '@auxx/lib/resources/client'
 
 /**
  * Props for EntityFieldsContent component (unified version)
@@ -42,8 +42,8 @@ export interface EntityFieldsContentProps {
   registerProviderClose: (providerId: string, closeFn: () => void) => void
   unregisterProviderClose: (providerId: string) => void
   ConfirmDeleteDialog: React.FC
-  /** ResourceId in format "entityDefinitionId:entityInstanceId" */
-  resourceId: ResourceId
+  /** RecordId in format "entityDefinitionId:entityInstanceId" */
+  recordId: RecordId
   /** Whether fields can be edited (default: true) */
   canEdit?: boolean
   /** Whether all fields are read-only (default: false) */
@@ -77,13 +77,13 @@ export function EntityFieldsContent({
   registerProviderClose,
   unregisterProviderClose,
   ConfirmDeleteDialog,
-  resourceId,
+  recordId,
   canEdit = true,
   readOnly = false,
   showTitle = true,
 }: EntityFieldsContentProps) {
-  // Parse resourceId to get entityDefinitionId
-  const { entityDefinitionId } = parseResourceId(resourceId)
+  // Parse recordId to get entityDefinitionId
+  const { entityDefinitionId } = parseRecordId(recordId)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const { focusedRowId, moveFocus, openFocusedRow, isPopoverCapturing, registerOpenHandler } =
@@ -234,7 +234,7 @@ export function EntityFieldsContent({
                     unregisterClose={unregisterProviderClose}
                     registerOpen={registerRowOpen}
                     unregisterOpen={unregisterRowOpen}
-                    resourceId={resourceId}
+                    recordId={recordId}
                     readOnly={readOnly}
                     showTitle={showTitle}
                   />

@@ -7,7 +7,7 @@ export {
   executeResourceQuery,
   fetchResourceById,
   getResourceTypeFromEvent,
-  getResourceIdField,
+  getRecordIdField,
 } from './resource-fetcher'
 
 // Record picker service (server-side)
@@ -83,7 +83,7 @@ export type {
   SystemResource,
   CustomResource,
   DisplayFieldConfig,
-  ResourceId,
+  ResourceId, // Note: This is registry's ResourceId (TableId | CustomResourceId), different from RecordId
   CustomResourceId,
 } from './registry'
 

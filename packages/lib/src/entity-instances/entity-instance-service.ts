@@ -16,7 +16,7 @@ import { getCustomFields, checkUniqueValue } from '@auxx/services/custom-fields'
 import { publisher } from '../events/publisher'
 import { CommentService } from '../comments'
 import { invalidateSnapshots } from '../snapshot'
-import { toResourceId } from '../resources/resource-id'
+import { toRecordId } from '../resources/resource-id'
 
 /**
  * Helper to unwrap neverthrow Result and throw on error
@@ -219,7 +219,7 @@ export class EntityInstanceService {
 
     // Soft delete associated comments (entityType is the entityDefinitionId for custom entities)
     const commentService = new CommentService(this.organizationId, this.userId, database)
-    const resourceId = toResourceId(instance.entityDefinitionId, id)
+    const resourceId = toRecordId(instance.entityDefinitionId, id)
     await commentService.deleteCommentsByResourceId(resourceId)
 
     const result = await deleteEntityInstance({
@@ -342,7 +342,7 @@ export class EntityInstanceService {
 
       if (valueArray.length > 0) {
         await fieldValueService.setValuesForEntity({
-          resourceId: toResourceId(entityDefinitionId, instance.id),
+          resourceId: toRecordId(entityDefinitionId, instance.id),
           values: valueArray,
         })
       }
@@ -398,7 +398,7 @@ export class EntityInstanceService {
 
       if (valueArray.length > 0) {
         await fieldValueService.setValuesForEntity({
-          resourceId: toResourceId(instance.entityDefinitionId, instanceId),
+          resourceId: toRecordId(instance.entityDefinitionId, instanceId),
           values: valueArray,
         })
       }

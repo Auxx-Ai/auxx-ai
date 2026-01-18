@@ -22,7 +22,7 @@ import {
 } from '@auxx/ui/components/select'
 import { api } from '~/trpc/react'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
-import { toResourceId, getInstanceId, type ResourceId } from '@auxx/lib/field-values/client'
+import { toRecordId, getInstanceId, type RecordId } from '@auxx/lib/field-values/client'
 
 /**
  * Relation types with human-readable labels
@@ -105,15 +105,15 @@ function TicketLinkDialogContent({
     [ticketId, relatedTicketIds]
   )
 
-  // Convert selectedTicketId to ResourceId[]
-  const selectedResourceIds = useMemo(
-    () => (selectedTicketId ? [toResourceId('ticket', selectedTicketId)] : []),
+  // Convert selectedTicketId to RecordId[]
+  const selectedRecordIds = useMemo(
+    () => (selectedTicketId ? [toRecordId('ticket', selectedTicketId)] : []),
     [selectedTicketId]
   )
 
   // Handle selection change from MultiRelationInput
-  const handleChange = useCallback((resourceIds: ResourceId[]) => {
-    setSelectedTicketId(resourceIds[0] ? getInstanceId(resourceIds[0]) : null)
+  const handleChange = useCallback((recordIds: RecordId[]) => {
+    setSelectedTicketId(recordIds[0] ? getInstanceId(recordIds[0]) : null)
   }, [])
 
   // Mutation to add a relation
@@ -165,7 +165,7 @@ function TicketLinkDialogContent({
           <label className="text-sm font-medium">Select ticket</label>
           <MultiRelationInput
             entityDefinitionId="ticket"
-            value={selectedResourceIds}
+            value={selectedRecordIds}
             onChange={handleChange}
             excludeIds={excludeIds}
             placeholder="Search tickets..."

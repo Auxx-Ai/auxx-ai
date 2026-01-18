@@ -16,7 +16,7 @@ import { api } from '~/trpc/react'
 import { useWorkflowRunStatusStore } from '~/stores/workflow-run-status-store'
 import { showWorkflowProgressToast } from './workflow-progress-toast'
 import { createWorkflowInvalidator } from '~/lib/workflow'
-import { type ResourceId, parseResourceId } from '@auxx/types/resource'
+import { type RecordId, parseRecordId } from '@auxx/types/resource'
 
 /**
  * ManualTriggerButton: Trigger workflows manually for a resource
@@ -48,8 +48,8 @@ interface ManualTriggerButtonProps {
   /** Entity definition ID: 'contact', 'ticket', 'thread', or custom entity ID */
   // entityDefinitionId: string
 
-  /** Resource ID */
-  resourceId: ResourceId
+  /** Record ID */
+  recordId: RecordId
 
   /** Button variant (default: 'ghost') */
   buttonVariant?: 'ghost' | 'outline' | 'default'
@@ -75,7 +75,7 @@ interface ManualTriggerButtonProps {
  */
 export function ManualTriggerButton({
   // entityDefinitionId,
-  resourceId,
+  recordId,
   buttonVariant = 'ghost',
   buttonSize = 'icon-sm',
   tooltipContent = 'Trigger workflow',
@@ -83,8 +83,8 @@ export function ManualTriggerButton({
   onSuccess,
   children,
 }: ManualTriggerButtonProps) {
-  const { entityDefinitionId, entityInstanceId } = resourceId
-    ? parseResourceId(resourceId)
+  const { entityDefinitionId, entityInstanceId } = recordId
+    ? parseRecordId(recordId)
     : { entityDefinitionId: '', entityInstanceId: '' }
 
   // Store ref to selected workflow for use in onSuccess
@@ -92,7 +92,7 @@ export function ManualTriggerButton({
   // Query available workflows for this entity
   const { data: workflows, isLoading: workflowsLoading } = api.workflow.getManualWorkflows.useQuery(
     { entityDefinitionId },
-    { enabled: resourceId.length > 0 && entityDefinitionId.length > 0 }
+    { enabled: recordId.length > 0 && entityDefinitionId.length > 0 }
   )
 
   // Trigger mutation
@@ -135,7 +135,7 @@ export function ManualTriggerButton({
     selectedWorkflowRef.current = workflow
     triggerWorkflow({
       workflowAppId: workflow.id,
-      resourceId,
+      recordId,
     })
   }
 

@@ -5,15 +5,15 @@ import { api } from '~/trpc/react'
 import { useRecordStore, getRecordStoreState, type RecordMeta } from '../store/record-store'
 import { useResourceStore } from '../store/resource-store'
 import { hydrateMultipleRecords } from '~/components/resources/store/hydrate-field-values'
-import type { ResourceId } from '@auxx/lib/resources/client'
-import { toResourceId, getDefinitionId } from '@auxx/lib/resources/client'
+import type { RecordId } from '@auxx/lib/resources/client'
+import { toRecordId, getDefinitionId } from '@auxx/lib/resources/client'
 
 const BATCH_DELAY = 50
-const EMPTY_ITEMS: ResourceId[] = []
+const EMPTY_ITEMS: RecordId[] = []
 
 /**
  * Hook that subscribes to record store pending fetches and executes them.
- * Fetches mixed ResourceIds (multiple entity types) in a single API call.
+ * Fetches mixed RecordIds (multiple entity types) in a single API call.
  * Should be rendered once in ResourceProvider via RecordBatchFetcher component.
  *
  * Pattern: subscribe to pendingFetchIds.size → schedule batch → fetch all types together → distribute to store → hydrate
@@ -21,8 +21,8 @@ const EMPTY_ITEMS: ResourceId[] = []
 export function useRecordBatchFetcher() {
   // Get getResourceById from store (stable reference)
   const getResourceById = useResourceStore((s) => s.getResourceById)
-  // Track current batch being fetched (mixed ResourceIds)
-  const [currentBatch, setCurrentBatch] = useState<ResourceId[]>([])
+  // Track current batch being fetched (mixed RecordIds)
+  const [currentBatch, setCurrentBatch] = useState<RecordId[]>([])
 
   // Subscribe to pending count (triggers re-render when items are added)
   const pendingCount = useRecordStore((s) => s.pendingFetchIds.size)
@@ -32,9 +32,9 @@ export function useRecordBatchFetcher() {
     if (pendingCount === 0 || currentBatch.length > 0) return
 
     const timer = setTimeout(() => {
-      const resourceIds = getRecordStoreState().startBatch()
-      if (resourceIds.length > 0) {
-        setCurrentBatch(resourceIds)
+      const recordIds = getRecordStoreState().startBatch()
+      if (recordIds.length > 0) {
+        setCurrentBatch(recordIds)
       }
     }, BATCH_DELAY)
 
@@ -42,7 +42,7 @@ export function useRecordBatchFetcher() {
   }, [pendingCount, currentBatch.length])
 
   // Stable query input
-  const queryItems = useMemo<ResourceId[]>(() => {
+  const queryItems = useMemo<RecordId[]>(() => {
     return currentBatch.length > 0 ? currentBatch : EMPTY_ITEMS
   }, [currentBatch])
 
@@ -62,7 +62,7 @@ export function useRecordBatchFetcher() {
 
     // Group results by entityDefinitionId for store update
     const byEntityDefinitionId = new Map<string, RecordMeta[]>()
-    const foundIds = new Set<ResourceId>()
+    const foundIds = new Set<RecordId>()
 
     for (const item of Object.values(data)) {
       const record: RecordMeta = {
@@ -72,14 +72,14 @@ export function useRecordBatchFetcher() {
         ...item.data,
       }
 
-      const entityDefinitionId = getDefinitionId(item.resourceId)
+      const entityDefinitionId = getDefinitionId(item.recordId)
 
       const list = byEntityDefinitionId.get(entityDefinitionId) ?? []
       list.push(record)
       byEntityDefinitionId.set(entityDefinitionId, list)
 
-      // Track found ResourceIds
-      foundIds.add(item.resourceId)
+      // Track found RecordIds
+      foundIds.add(item.recordId)
     }
 
     // Identify missing items (requested but not returned = deleted/invalid)
@@ -109,7 +109,7 @@ export function useRecordBatchFetcher() {
         hydrateMultipleRecords(
           resource,
           records.map((r) => ({
-            resourceId: toResourceId(entityDefinitionId, r.id),
+            recordId: toRecordId(entityDefinitionId, r.id),
             data: r as Record<string, unknown>,
           }))
         )

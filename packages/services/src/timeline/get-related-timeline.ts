@@ -5,23 +5,23 @@ import { eq, and, desc } from 'drizzle-orm'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import type { TimelineEventEntity } from '@auxx/database/models'
-import { parseResourceId, toResourceId, type ResourceId } from '@auxx/types/resource'
+import { parseRecordId, toRecordId, type RecordId } from '@auxx/types/resource'
 
 /**
  * Input for getting related timeline events
  */
 export interface GetRelatedTimelineEventsInput {
   organizationId: string
-  relatedResourceId: ResourceId
+  relatedRecordId: RecordId
   limit?: number
 }
 
 /**
- * Timeline event with resourceId attached
+ * Timeline event with recordId attached
  */
-export interface TimelineEventWithResourceId extends TimelineEventEntity {
-  resourceId: ResourceId
-  relatedResourceId?: ResourceId
+export interface TimelineEventWithRecordId extends TimelineEventEntity {
+  recordId: RecordId
+  relatedRecordId?: RecordId
 }
 
 /**
@@ -32,13 +32,13 @@ export interface TimelineEventWithResourceId extends TimelineEventEntity {
  * @returns Result with timeline events
  */
 export async function getRelatedTimelineEvents(input: GetRelatedTimelineEventsInput) {
-  const { organizationId, relatedResourceId, limit = 50 } = input
+  const { organizationId, relatedRecordId, limit = 50 } = input
 
-  // Parse relatedResourceId to get components
+  // Parse relatedRecordId to get components
   const {
     entityDefinitionId: relatedEntityType,
     entityInstanceId: relatedEntityId
-  } = parseResourceId(relatedResourceId)
+  } = parseRecordId(relatedRecordId)
 
   const dbResult = await fromDatabase(
     database
@@ -60,14 +60,14 @@ export async function getRelatedTimelineEvents(input: GetRelatedTimelineEventsIn
     return dbResult
   }
 
-  // Attach resourceId to each event
-  const eventsWithResourceId: TimelineEventWithResourceId[] = dbResult.value.map((event) => ({
+  // Attach recordId to each event
+  const eventsWithRecordId: TimelineEventWithRecordId[] = dbResult.value.map((event) => ({
     ...event,
-    resourceId: toResourceId(event.entityType, event.entityId),
+    recordId: toRecordId(event.entityType, event.entityId),
     ...(event.relatedEntityType && event.relatedEntityId
-      ? { relatedResourceId: toResourceId(event.relatedEntityType, event.relatedEntityId) }
+      ? { relatedRecordId: toRecordId(event.relatedEntityType, event.relatedEntityId) }
       : {}),
-  })) as TimelineEventWithResourceId[]
+  })) as TimelineEventWithRecordId[]
 
-  return ok(eventsWithResourceId)
+  return ok(eventsWithRecordId)
 }

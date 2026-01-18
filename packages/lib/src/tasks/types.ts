@@ -2,7 +2,7 @@
 
 import type { TaskEntity, TaskAssignmentEntity, TaskReferenceEntity } from '@auxx/database'
 import type { Deadline } from '@auxx/types/task'
-import type { ResourceId } from '@auxx/types/resource'
+import type { RecordId } from '@auxx/types/resource'
 
 /**
  * Priority levels for tasks
@@ -14,9 +14,9 @@ export type TaskPriority = 'low' | 'medium' | 'high'
 
 /**
  * Entity reference for linking tasks to entity instances.
- * @deprecated Use ResourceId from @auxx/types/resource instead
+ * @deprecated Use RecordId from @auxx/types/resource instead
  */
-export type EntityReference = ResourceId
+export type EntityReference = RecordId
 
 /**
  * Input for creating a new task
@@ -80,7 +80,7 @@ export interface TaskFilterOptions {
   assigneeIds?: string[]
   createdById?: string
   priority?: TaskPriority[]
-  resourceId?: ResourceId
+  recordId?: RecordId
   search?: string
   includeCompleted?: boolean
   includeArchived?: boolean
@@ -111,7 +111,7 @@ export interface GroupedTasksResponse {
  */
 export interface TaskWithRelations extends TaskEntity {
   assignments: TaskAssignmentWithUser[]
-  references: ResourceId[]
+  references: RecordId[]
 }
 
 /**

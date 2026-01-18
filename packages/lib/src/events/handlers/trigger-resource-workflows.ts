@@ -8,10 +8,10 @@ import { WorkflowNodeType } from '../../workflow-engine/core/types'
 import {
   fetchResourceById,
   getResourceTypeFromEvent,
-  getResourceIdField,
+  getRecordIdField,
 } from '../../resources/resource-fetcher'
 import { getWorkflowAppsByTrigger } from '@auxx/services/workflows'
-import { toResourceId } from '@auxx/types/resource'
+import { toRecordId } from '@auxx/types/resource'
 
 const logger = createScopedLogger('trigger-resource-workflows')
 
@@ -71,16 +71,16 @@ export const triggerResourceWorkflows = async ({ data: event }: { data: AuxxEven
 
   // 3. Fetch complete resource data
   const resourceType = getResourceTypeFromEvent(event.type)
-  const resourceIdField = getResourceIdField(event.type)
+  const recordIdField = getRecordIdField(event.type)
 
-  if (!resourceType || !resourceIdField) {
+  if (!resourceType || !recordIdField) {
     logger.error('Invalid event type mapping', { eventType: event.type })
     return
   }
 
-  const resourceInstanceId = (event.data as any)[resourceIdField] as string
-  const fullResourceId = toResourceId(resourceType, resourceInstanceId)
-  const resourceData = await fetchResourceById(fullResourceId, event.data.organizationId)
+  const resourceInstanceId = (event.data as any)[recordIdField] as string
+  const fullRecordId = toRecordId(resourceType, resourceInstanceId)
+  const resourceData = await fetchResourceById(fullRecordId, event.data.organizationId)
 
   if (!resourceData) {
     logger.warn('Resource not found, skipping workflows', {

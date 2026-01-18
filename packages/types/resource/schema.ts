@@ -1,14 +1,14 @@
 // packages/types/resource/schema.ts
 
 import { z } from 'zod'
-import type { ResourceId } from './index'
+import type { RecordId } from './index'
 
 /**
- * Zod schema for ResourceId validation.
+ * Zod schema for RecordId validation.
  * Validates format: `entityDefinitionId:entityInstanceId`
  */
-export const resourceIdSchema = z
+export const recordIdSchema = z
   .string()
   .refine((val) => val.includes(':') && val.split(':').length >= 2, {
-    message: 'ResourceId must be in format entityDefinitionId:entityInstanceId',
-  }) as z.ZodType<ResourceId>
+    message: 'RecordId must be in format entityDefinitionId:entityInstanceId',
+  }) as z.ZodType<RecordId>

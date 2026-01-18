@@ -7,7 +7,7 @@ import { MultiRelationInput } from '~/components/shared/multi-relation-input'
 import { useResourceFields } from '~/components/resources'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { createNodeInput, type NodeInputProps } from './base-node-input'
-import { toResourceIds, getInstanceId, type ResourceId } from '@auxx/lib/field-values/client'
+import { toRecordIds, getInstanceId, type RecordId } from '@auxx/lib/field-values/client'
 
 interface RelationInputProps extends NodeInputProps {
   /** Field name */
@@ -67,16 +67,16 @@ export const RelationInput = createNodeInput<RelationInputProps>(
       return []
     }, [value])
 
-    // Convert arrayValue to ResourceId[] for MultiRelationInput
-    const selectedResourceIds = useMemo(
-      () => (targetResourceId ? toResourceIds(targetResourceId, arrayValue) : []),
+    // Convert arrayValue to RecordId[] for MultiRelationInput
+    const selectedRecordIds = useMemo(
+      () => (targetResourceId ? toRecordIds(targetResourceId, arrayValue) : []),
       [arrayValue, targetResourceId]
     )
 
-    // Handle change - convert ResourceId[] back to string ID
+    // Handle change - convert RecordId[] back to string ID
     const handleChange = useCallback(
-      (resourceIds: ResourceId[]) => {
-        const id = resourceIds[0] ? getInstanceId(resourceIds[0]) : ''
+      (recordIds: RecordId[]) => {
+        const id = recordIds[0] ? getInstanceId(recordIds[0]) : ''
         onChange(name, id)
       },
       [onChange, name]
@@ -99,7 +99,7 @@ export const RelationInput = createNodeInput<RelationInputProps>(
     return (
       <MultiRelationInput
         entityDefinitionId={targetResourceId}
-        value={selectedResourceIds}
+        value={selectedRecordIds}
         onChange={handleChange}
         disabled={isLoading}
         placeholder={placeholder}

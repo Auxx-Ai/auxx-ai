@@ -3,7 +3,7 @@
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { createTaskService, type TaskPriority } from '@auxx/lib/tasks'
-import { resourceIdSchema } from '@auxx/types/resource'
+import { recordIdSchema } from '@auxx/types/resource'
 
 /**
  * Schema for relative date (days, weeks, months, years offset)
@@ -43,7 +43,7 @@ export const taskRouter = createTRPCRouter({
         deadline: absoluteDateSchema.optional(),
         priority: prioritySchema.optional(),
         assignedUserIds: z.array(z.string()).optional(),
-        referencedEntities: z.array(resourceIdSchema).optional(),
+        referencedEntities: z.array(recordIdSchema).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -92,7 +92,7 @@ export const taskRouter = createTRPCRouter({
         archivedAt: z.string().datetime().optional().nullable(),
         // Relations
         assignedUserIds: z.array(z.string()).optional(),
-        referencedEntities: z.array(resourceIdSchema).optional(),
+        referencedEntities: z.array(recordIdSchema).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -138,7 +138,7 @@ export const taskRouter = createTRPCRouter({
         assigneeIds: z.array(z.string()).optional(),
         createdById: z.string().optional(),
         priority: z.array(prioritySchema).optional(),
-        resourceId: resourceIdSchema.optional(),
+        recordId: recordIdSchema.optional(),
         search: z.string().optional(),
         includeCompleted: z.boolean().optional(),
         includeArchived: z.boolean().optional(),
@@ -158,7 +158,7 @@ export const taskRouter = createTRPCRouter({
         assigneeIds: input.assigneeIds,
         createdById: input.createdById,
         priority: input.priority as TaskPriority[] | undefined,
-        resourceId: input.resourceId,
+        recordId: input.recordId,
         search: input.search,
         includeCompleted: input.includeCompleted,
         includeArchived: input.includeArchived,

@@ -5,7 +5,7 @@ import { database as db } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { getPublishingClient } from '@auxx/redis'
 import { createScopedLogger } from '@auxx/logger'
-import { toResourceId } from '@auxx/types/resource'
+import { toRecordId } from '@auxx/types/resource'
 import type { Job } from 'bullmq'
 import {
   executePlan,
@@ -148,16 +148,16 @@ export async function executePlanJob(job: Job<ExecutePlanJobProps>): Promise<voi
         ...data.customFields,
       }
 
-      const resourceId = toResourceId(entityDefinitionId, id)
-      logger.debug('Calling crudHandler.update', { resourceId, entityDefinitionId, id })
+      const recordId = toRecordId(entityDefinitionId, id)
+      logger.debug('Calling crudHandler.update', { recordId, entityDefinitionId, id })
 
       // Use UnifiedCrudHandler with skipEvents and skipSnapshotInvalidation
-      const instance = await crudHandler.update(resourceId, mergedData, {
+      const instance = await crudHandler.update(recordId, mergedData, {
         skipEvents: true,
         skipSnapshotInvalidation: true,
       })
 
-      logger.debug('Updated record', { resourceId, entityDefinitionId })
+      logger.debug('Updated record', { recordId, entityDefinitionId })
       return { id: instance.id }
     }
 

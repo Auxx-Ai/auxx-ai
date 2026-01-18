@@ -24,7 +24,7 @@ import { CustomFieldCell } from './components/custom-field-cell'
 import type { ExtendedColumnDef } from './types'
 import type { ResourceField } from '@auxx/lib/resources/client'
 import { mapBaseTypeToFieldType } from '@auxx/lib/workflow-engine/client'
-import { toResourceId } from '~/components/resources'
+import { toRecordId } from '~/components/resources'
 import type { FieldPath } from '@auxx/types/field'
 import { encodeDirectFieldColumnId, encodeFieldPathColumnId } from './utils/column-id'
 
@@ -183,7 +183,7 @@ export function createCustomFieldColumns<T extends { id: string }>(
       },
       cell: ({ row }) => (
         <CustomFieldCell
-          resourceId={toResourceId(entityDefinitionId, row.original.id)}
+          recordId={toRecordId(entityDefinitionId, row.original.id)}
           columnId={columnId}
           options={cellOptions}
         />

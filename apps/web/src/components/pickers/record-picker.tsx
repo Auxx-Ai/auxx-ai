@@ -18,10 +18,10 @@ import { cn } from '@auxx/ui/lib/utils'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import {
   isCustomResource,
-  toResourceId,
+  toRecordId,
   getDefinitionId,
   type RecordPickerItem,
-  type ResourceId,
+  type RecordId,
 } from '@auxx/lib/resources/client'
 import { useRelationship, useResource, useResourceStore } from '~/components/resources'
 import { api } from '~/trpc/react'
@@ -32,7 +32,7 @@ import { api } from '~/trpc/react'
 interface RecordItemProps {
   item: RecordPickerItem
   isSelected: boolean
-  onToggle: (resourceId: ResourceId) => void
+  onToggle: (recordId: RecordId) => void
   showEntityType?: boolean
 }
 
@@ -41,11 +41,11 @@ interface RecordItemProps {
  * Displays avatar or entity icon with name and secondary info.
  */
 function RecordItem({ item, isSelected, onToggle, showEntityType }: RecordItemProps) {
-  const { resource } = useResource(getDefinitionId(item.resourceId))
+  const { resource } = useResource(getDefinitionId(item.recordId))
   const iconColor = resource && isCustomResource(resource) ? resource.color : undefined
 
   const handleSelect = () => {
-    onToggle(item.resourceId)
+    onToggle(item.recordId)
   }
 
   return (
@@ -86,11 +86,11 @@ function RecordItem({ item, isSelected, onToggle, showEntityType }: RecordItemPr
  * Props for the RecordPicker component
  */
 export interface RecordPickerProps {
-  /** Currently selected ResourceIds */
-  value: ResourceId[]
+  /** Currently selected RecordIds */
+  value: RecordId[]
 
   /** Called when selection changes */
-  onChange: (selected: ResourceId[]) => void
+  onChange: (selected: RecordId[]) => void
 
   /** Single entity type to search */
   entityDefinitionId?: string
@@ -102,7 +102,7 @@ export interface RecordPickerProps {
   multi?: boolean
 
   /** Called after selection in single-select mode */
-  onSelectSingle?: (resourceId: ResourceId) => void
+  onSelectSingle?: (recordId: RecordId) => void
 
   /** Callback when arrow key capture state changes */
   onCaptureChange?: (capturing: boolean) => void
@@ -128,8 +128,8 @@ export interface RecordPickerProps {
   /** Additional className */
   className?: string
 
-  /** ResourceIds to exclude from results (filtered client-side) */
-  excludeIds?: ResourceId[]
+  /** RecordIds to exclude from results (filtered client-side) */
+  excludeIds?: RecordId[]
 }
 
 /**
@@ -168,8 +168,8 @@ export function RecordPicker({
     return () => onCaptureChange?.(false)
   }, [onCaptureChange])
 
-  // Track initial selected resourceIds (snapshot at mount) - prevents layout shifts
-  const [initialSelectedIds, setInitialSelectedIds] = useState<ResourceId[]>(() => value)
+  // Track initial selected recordIds (snapshot at mount) - prevents layout shifts
+  const [initialSelectedIds, setInitialSelectedIds] = useState<RecordId[]>(() => value)
 
   // Determine search mode
   const isGlobalSearch = !entityDefinitionId && !entityDefinitionIds
@@ -224,18 +224,18 @@ export function RecordPicker({
     return map
   }, [initialSelectedIds, hydratedItems])
 
-  // Check if a resourceId is currently selected
+  // Check if a recordId is currently selected
   const isSelected = useCallback(
-    (resourceId: ResourceId) => {
-      return value.includes(resourceId)
+    (recordId: RecordId) => {
+      return value.includes(recordId)
     },
     [value]
   )
 
-  // Check if a resourceId was initially selected (for layout stability)
+  // Check if a recordId was initially selected (for layout stability)
   const wasInitiallySelected = useCallback(
-    (resourceId: ResourceId) => {
-      return initialSelectedIds.includes(resourceId)
+    (recordId: RecordId) => {
+      return initialSelectedIds.includes(recordId)
     },
     [initialSelectedIds]
   )
@@ -270,28 +270,28 @@ export function RecordPicker({
    * Toggle selection of a record
    */
   const handleToggle = useCallback(
-    (resourceId: ResourceId) => {
+    (recordId: RecordId) => {
       if (multi) {
         // Toggle in array
-        const exists = isSelected(resourceId)
-        let newValue: ResourceId[]
+        const exists = isSelected(recordId)
+        let newValue: RecordId[]
 
         if (exists) {
-          newValue = value.filter((v) => v !== resourceId)
+          newValue = value.filter((v) => v !== recordId)
         } else {
-          newValue = [...value, resourceId]
+          newValue = [...value, recordId]
         }
 
         onChange(newValue)
       } else {
         // Single select - replace or deselect if same
-        const exists = isSelected(resourceId)
+        const exists = isSelected(recordId)
 
         if (exists) {
           onChange([])
         } else {
-          onChange([resourceId])
-          onSelectSingle?.(resourceId)
+          onChange([recordId])
+          onSelectSingle?.(recordId)
         }
       }
     },

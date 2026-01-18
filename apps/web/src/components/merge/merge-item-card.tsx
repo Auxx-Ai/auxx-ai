@@ -6,12 +6,12 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import { parseResourceId, isCustomResource, type ResourceId } from '@auxx/lib/resources/client'
+import { parseRecordId, isCustomResource, type RecordId } from '@auxx/lib/resources/client'
 import { useRecord, useResource } from '~/components/resources'
 
 interface MergeItemCardProps {
-  /** ResourceId of the item to display */
-  resourceId: ResourceId
+  /** RecordId of the item to display */
+  recordId: RecordId
   /** Action buttons (remove, set as target, etc.) */
   actions?: ReactNode
   /** Additional CSS classes */
@@ -22,9 +22,9 @@ interface MergeItemCardProps {
  * Compact card for displaying a merge source item.
  * Shows avatar/icon, display name, and secondary info.
  */
-export function MergeItemCard({ resourceId, actions, className }: MergeItemCardProps) {
-  const { entityDefinitionId } = parseResourceId(resourceId)
-  const { record, isLoading } = useRecord({ resourceId })
+export function MergeItemCard({ recordId, actions, className }: MergeItemCardProps) {
+  const { entityDefinitionId } = parseRecordId(recordId)
+  const { record, isLoading } = useRecord({ recordId })
   const { resource } = useResource(entityDefinitionId)
 
   if (isLoading) {

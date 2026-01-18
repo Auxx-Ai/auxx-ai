@@ -7,7 +7,7 @@ import Link from 'next/link'
 import { cn } from '@auxx/ui/lib/utils'
 
 // Type imports
-import type { ResourceId } from '@auxx/lib/resources/client'
+import type { RecordId } from '@auxx/lib/resources/client'
 
 // Utility imports
 import { getDefinitionId } from '@auxx/lib/resources/client'
@@ -44,8 +44,8 @@ export const resourceBadgeVariants = cva(
  * Props for the ResourceBadge component.
  */
 interface ResourceBadgeProps extends VariantProps<typeof resourceBadgeVariants> {
-  /** ResourceId in format "entityDefinitionId:entityInstanceId" */
-  resourceId: ResourceId
+  /** RecordId in format "entityDefinitionId:entityInstanceId" */
+  recordId: RecordId
   /** Whether to show icon/avatar (default: true) */
   showIcon?: boolean
   /** Additional CSS classes */
@@ -58,7 +58,7 @@ interface ResourceBadgeProps extends VariantProps<typeof resourceBadgeVariants> 
  * A reusable badge component that displays a resource with an optional icon/avatar and its display name.
  * Fetches data using the existing resource hooks and shows appropriate loading states.
  *
- * @param resourceId - ResourceId in format "entityDefinitionId:entityInstanceId"
+ * @param recordId - RecordId in format "entityDefinitionId:entityInstanceId"
  * @param showIcon - Whether to show icon/avatar (default: true)
  * @param className - Additional CSS classes
  * @param variant - Visual variant (default | link)
@@ -66,43 +66,43 @@ interface ResourceBadgeProps extends VariantProps<typeof resourceBadgeVariants> 
  *
  * @example
  * // Basic usage with icon
- * <ResourceBadge resourceId={toResourceId('contact', contactId)} />
+ * <ResourceBadge recordId={toRecordId('contact', contactId)} />
  *
  * @example
  * // Without icon
- * <ResourceBadge resourceId={resourceId} showIcon={false} />
+ * <ResourceBadge recordId={recordId} showIcon={false} />
  *
  * @example
  * // With custom styling
- * <ResourceBadge resourceId={resourceId} className="ring-blue-500" />
+ * <ResourceBadge recordId={recordId} className="ring-blue-500" />
  *
  * @example
  * // As a link with default options
- * <ResourceBadge resourceId={resourceId} variant="link" link={true} />
+ * <ResourceBadge recordId={recordId} variant="link" link={true} />
  *
  * @example
  * // As a link with custom options
- * <ResourceBadge resourceId={resourceId} variant="link" link={{ tab: 'activity', action: 'edit' }} />
+ * <ResourceBadge recordId={recordId} variant="link" link={{ tab: 'activity', action: 'edit' }} />
  */
 export function ResourceBadge({
-  resourceId,
+  recordId,
   showIcon = true,
   className,
   variant,
   link,
 }: ResourceBadgeProps) {
   // Fetch record data (displayName, avatarUrl)
-  const { record, isLoading: isLoadingRecord, isNotFound } = useRecord({ resourceId })
+  const { record, isLoading: isLoadingRecord, isNotFound } = useRecord({ recordId })
 
-  // Extract entityDefinitionId from resourceId
-  const entityDefinitionId = getDefinitionId(resourceId)
+  // Extract entityDefinitionId from recordId
+  const entityDefinitionId = getDefinitionId(recordId)
 
   // Fetch resource metadata (icon, color) - only used when no avatar exists
   const { resource, isLoading: isLoadingResource } = useResource(entityDefinitionId)
 
   // Generate link if link prop is provided
   const linkOptions = typeof link === 'object' ? link : undefined
-  const href = useResourceLink(link ? resourceId : null, linkOptions)
+  const href = useResourceLink(link ? recordId : null, linkOptions)
 
   // Determine display name
   const displayName = isNotFound ? 'Unknown' : (record?.displayName ?? 'Unknown')

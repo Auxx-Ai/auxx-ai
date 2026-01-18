@@ -1,6 +1,6 @@
 // packages/lib/src/resources/picker/types.ts
 
-import type { ResourceId } from '@auxx/types/resource'
+import type { RecordId } from '@auxx/types/resource'
 
 /**
  * Input for paginated resource picker queries
@@ -30,11 +30,11 @@ export interface GetResourcesInput {
  * Record item formatted for picker display
  */
 export interface RecordPickerItem {
-  /** Instance ID (just the entity instance ID, not the full ResourceId) */
+  /** Instance ID (just the entity instance ID, not the full RecordId) */
   id: string
 
-  /** Full ResourceId in format "entityDefinitionId:entityInstanceId" */
-  resourceId: ResourceId
+  /** Full RecordId in format "entityDefinitionId:entityInstanceId" */
+  recordId: RecordId
 
   /** Display name (from primaryDisplayField) */
   displayName: string

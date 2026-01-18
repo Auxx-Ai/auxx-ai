@@ -8,7 +8,7 @@ import {
   buildFieldValueKey,
 } from '~/components/resources/store/field-value-store'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
-import type { ResourceId } from '@auxx/lib/resources/client'
+import type { RecordId } from '@auxx/lib/resources/client'
 import type { FieldType } from '@auxx/database/types'
 
 /**
@@ -16,12 +16,12 @@ import type { FieldType } from '@auxx/database/types'
  * from target and source entities.
  */
 export function useMergePreview({
-  targetResourceId,
-  sourceResourceIds,
+  targetRecordId,
+  sourceRecordIds,
   fields,
 }: {
-  targetResourceId: ResourceId
-  sourceResourceIds: ResourceId[]
+  targetRecordId: RecordId
+  sourceRecordIds: RecordId[]
   fields: Array<{
     id: string
     label: string
@@ -41,15 +41,15 @@ export function useMergePreview({
       if (!field.capabilities?.updatable) continue
 
       // Get target value from store (TypedFieldValue format)
-      const targetStoreKey = buildFieldValueKey(targetResourceId, field.id)
+      const targetStoreKey = buildFieldValueKey(targetRecordId, field.id)
       const targetStoreValue = storeValues[targetStoreKey]
 
       // EXPLICIT CONVERSION: TypedFieldValue → raw value
       const targetValue = formatToRawValue(targetStoreValue, field.fieldType)
 
       // Get source values from store (TypedFieldValue format)
-      const sourceValues = sourceResourceIds.map((resourceId) => {
-        const sourceStoreKey = buildFieldValueKey(resourceId, field.id)
+      const sourceValues = sourceRecordIds.map((recordId) => {
+        const sourceStoreKey = buildFieldValueKey(recordId, field.id)
         const sourceStoreValue = storeValues[sourceStoreKey]
 
         // EXPLICIT CONVERSION: TypedFieldValue → raw value
@@ -79,5 +79,5 @@ export function useMergePreview({
     }
 
     return { mergedFields, fieldsMerged }
-  }, [targetResourceId, sourceResourceIds, fields, storeValues])
+  }, [targetRecordId, sourceRecordIds, fields, storeValues])
 }

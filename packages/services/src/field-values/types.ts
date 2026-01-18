@@ -1,7 +1,7 @@
 // packages/services/src/field-values/types.ts
 
 import type { TypedFieldValue, TypedFieldValueInput } from '@auxx/types'
-import type { ResourceId } from '@auxx/types/resource'
+import type { RecordId } from '@auxx/types/resource'
 
 // =============================================================================
 // ERROR TYPES
@@ -81,9 +81,9 @@ export interface ExistingFieldValueRow {
   sortKey: string
 }
 
-/** Input for inserting a field value - uses ResourceId */
+/** Input for inserting a field value - uses RecordId */
 export interface InsertFieldValueInput {
-  resourceId: ResourceId
+  recordId: RecordId
   fieldId: string
   organizationId: string
   sortKey: string

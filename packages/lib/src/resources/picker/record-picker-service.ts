@@ -21,8 +21,8 @@ import type {
   GlobalSearchParams,
   GlobalSearchResult,
 } from './types'
-import type { ResourceId } from '@auxx/types/resource'
-import { parseResourceId, toResourceId } from '../resource-id'
+import type { RecordId } from '@auxx/types/resource'
+import { parseRecordId, toRecordId } from '../resource-id'
 
 const logger = createScopedLogger('record-picker-service')
 
@@ -469,7 +469,7 @@ export class RecordPickerService {
 
     return {
       id: row.id,
-      resourceId: toResourceId(tableId, entityInstanceId),
+      recordId: toRecordId(tableId, entityInstanceId),
       displayName,
       secondaryInfo,
       avatarUrl,
@@ -584,7 +584,7 @@ export class RecordPickerService {
   ): RecordPickerItem {
     return {
       id: instance.id,
-      resourceId: toResourceId(resource.id, instance.id),
+      recordId: toRecordId(resource.id, instance.id),
       displayName: instance.displayName || instance.id,
       secondaryInfo: instance.secondaryDisplayValue || undefined,
       avatarUrl: instance.avatarUrl || undefined,
@@ -598,18 +598,18 @@ export class RecordPickerService {
    * Get multiple resources by IDs (batch)
    * Works with both system resources (TableId) and custom entities (UUID-based)
    *
-   * @param resourceIds - Array of ResourceId (format: entityDefinitionId:entityInstanceId)
-   * @returns Record keyed by ResourceId
+   * @param recordIds - Array of RecordId (format: entityDefinitionId:entityInstanceId)
+   * @returns Record keyed by RecordId
    */
   async getResourcesByIds(
-    resourceIds: ResourceId[]
-  ): Promise<Record<ResourceId, RecordPickerItem>> {
-    const result: Record<ResourceId, RecordPickerItem> = {}
+    recordIds: RecordId[]
+  ): Promise<Record<RecordId, RecordPickerItem>> {
+    const result: Record<RecordId, RecordPickerItem> = {}
 
     // Group by entityDefinitionId for efficient batching
     const grouped = new Map<string, string[]>()
-    for (const resourceId of resourceIds) {
-      const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+    for (const recordId of recordIds) {
+      const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
       if (!grouped.has(entityDefinitionId)) grouped.set(entityDefinitionId, [])
       grouped.get(entityDefinitionId)!.push(entityInstanceId)
     }
@@ -620,7 +620,7 @@ export class RecordPickerService {
           // Custom entity - fetch EntityInstances by IDs
           const resource = await this.registryService.getById(entityDefinitionId)
           const fetched = await this.fetchEntityInstancesByIds(resource!, ids)
-          for (const item of fetched) result[item.resourceId] = item
+          for (const item of fetched) result[item.recordId] = item
         } else if (RESOURCE_TABLE_MAP[entityDefinitionId as TableId]) {
           // System resource - use existing fetchResourcesFromDb with ID filter
           const { items: fetched } = await this.fetchResourcesFromDb(
@@ -630,7 +630,7 @@ export class RecordPickerService {
             undefined,
             { id: ids }
           )
-          for (const item of fetched) result[item.resourceId] = item
+          for (const item of fetched) result[item.recordId] = item
         }
       })
     )
@@ -816,7 +816,7 @@ export class RecordPickerService {
     // Transform to RecordPickerItem format
     const items: RecordPickerItem[] = searchResults.map((row) => ({
       id: row.id,
-      resourceId: toResourceId(row.entityDefinitionId, row.id),
+      recordId: toRecordId(row.entityDefinitionId, row.id),
       displayName: row.displayName || row.id,
       secondaryInfo: row.secondaryDisplayValue || undefined,
       avatarUrl: row.avatarUrl || undefined,
@@ -929,7 +929,7 @@ export class RecordPickerService {
     // Transform to RecordPickerItem format
     const items: RecordPickerItem[] = results.map((row) => ({
       id: row.id,
-      resourceId: toResourceId(row.entityDefinitionId, row.id),
+      recordId: toRecordId(row.entityDefinitionId, row.id),
       displayName: row.displayName || row.id,
       secondaryInfo: row.secondaryDisplayValue || undefined,
       avatarUrl: row.avatarUrl || undefined,

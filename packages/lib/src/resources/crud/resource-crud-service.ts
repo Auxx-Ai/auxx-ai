@@ -2,7 +2,7 @@
 
 // import type { Database } from '@auxx/database'
 // import { createScopedLogger } from '@auxx/logger'
-// import { parseResourceId, type ResourceId } from '@auxx/types/resource'
+// import { parseRecordId, type RecordId } from '@auxx/types/resource'
 // import { ResourceRegistryService } from '../registry/resource-registry-service'
 // import { getHandler } from './handlers'
 // import type { CrudContext, CrudResult, TransformedData, BulkResult } from './types'
@@ -54,27 +54,27 @@
 //   }
 
 //   /**
-//    * Update an existing record using ResourceId
-//    * @param resourceId - Full ResourceId (entityDefinitionId:entityInstanceId)
+//    * Update an existing record using RecordId
+//    * @param recordId - Full RecordId (entityDefinitionId:entityInstanceId)
 //    * @param data - Field data to update
 //    * @param options - Additional options (userId, skipEvents)
 //    */
 //   async update(
-//     resourceId: ResourceId,
+//     recordId: RecordId,
 //     data: Record<string, unknown>,
 //     options: { userId?: string; skipEvents?: boolean } = {}
 //   ): Promise<CrudResult> {
-//     logger.debug('update called', { resourceId, hasResourceId: !!resourceId })
+//     logger.debug('update called', { recordId, hasRecordId: !!recordId })
 
-//     const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+//     const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
-//     logger.debug('update parsed resourceId', { entityDefinitionId, entityInstanceId })
+//     logger.debug('update parsed recordId', { entityDefinitionId, entityInstanceId })
 
 //     if (!entityDefinitionId) {
-//       return { success: false, error: `Invalid resourceId - no entityDefinitionId: ${resourceId}` }
+//       return { success: false, error: `Invalid recordId - no entityDefinitionId: ${recordId}` }
 //     }
 //     if (!entityInstanceId) {
-//       return { success: false, error: `Invalid resourceId - no entityInstanceId: ${resourceId}` }
+//       return { success: false, error: `Invalid recordId - no entityInstanceId: ${recordId}` }
 //     }
 
 //     const handler = getHandler(entityDefinitionId)
@@ -90,15 +90,15 @@
 //   }
 
 //   /**
-//    * Delete a record using ResourceId
-//    * @param resourceId - Full ResourceId (entityDefinitionId:entityInstanceId)
+//    * Delete a record using RecordId
+//    * @param recordId - Full RecordId (entityDefinitionId:entityInstanceId)
 //    * @param options - Additional options (userId, skipEvents)
 //    */
 //   async delete(
-//     resourceId: ResourceId,
+//     recordId: RecordId,
 //     options: { userId?: string; skipEvents?: boolean } = {}
 //   ): Promise<CrudResult> {
-//     const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+//     const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
 //     const handler = getHandler(entityDefinitionId)
 //     if (!handler) {
@@ -184,12 +184,12 @@
 //   }
 
 //   /**
-//    * Bulk update records using ResourceId in each record
-//    * @param records - Array of { resourceId, data } to update
+//    * Bulk update records using RecordId in each record
+//    * @param records - Array of { recordId, data } to update
 //    * @param options - Additional options (userId, skipEvents)
 //    */
 //   async bulkUpdate(
-//     records: Array<{ resourceId: ResourceId; data: Record<string, unknown> }>,
+//     records: Array<{ recordId: RecordId; data: Record<string, unknown> }>,
 //     options: { userId?: string; skipEvents?: boolean } = {}
 //   ): Promise<BulkResult> {
 //     if (records.length === 0) {
@@ -202,8 +202,8 @@
 //     let failed = 0
 
 //     for (let i = 0; i < records.length; i++) {
-//       const { resourceId, data } = records[i]!
-//       const { entityDefinitionId, entityInstanceId } = parseResourceId(resourceId)
+//       const { recordId, data } = records[i]!
+//       const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
 //       const handler = getHandler(entityDefinitionId)
 //       if (!handler) {

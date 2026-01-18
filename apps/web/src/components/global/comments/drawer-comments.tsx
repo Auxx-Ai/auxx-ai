@@ -8,13 +8,13 @@ import { CommentList } from '~/components/global/comments/comment-list'
 import CommentComposer from '~/components/global/comments/comment-composer'
 import { api } from '~/trpc/react'
 import { isSystemEntityType } from '~/hooks/use-comments'
-import { parseResourceId, getDefinitionId, type ResourceId } from '@auxx/lib/field-values/client'
+import { parseRecordId, getDefinitionId, type RecordId } from '@auxx/lib/field-values/client'
 
 /**
  * Props for the DrawerComments wrapper component.
  */
 interface DrawerCommentsProps {
-  resourceId: ResourceId
+  recordId: RecordId
   emptyTitle?: string
   emptyDescription?: string
   headerTitle?: string
@@ -29,15 +29,15 @@ interface DrawerCommentsProps {
  * Supports Contact, Ticket, Thread, and custom entity types.
  */
 const DrawerComments = ({
-  resourceId,
+  recordId,
   emptyTitle,
   emptyDescription,
   headerTitle,
   composerPlaceholder,
   focusComposerTrigger,
 }: DrawerCommentsProps) => {
-  // Parse resourceId once for display logic
-  const entityDefinitionId = getDefinitionId(resourceId)
+  // Parse recordId once for display logic
+  const entityDefinitionId = getDefinitionId(recordId)
 
   // Smart default description based on entity type
   const defaultEmptyTitle = emptyTitle || 'No comments yet'
@@ -50,9 +50,9 @@ const DrawerComments = ({
   const defaultPlaceholder = composerPlaceholder || 'Add comment...'
 
   // Fetch comments using tRPC
-  const { data: commentsData, isLoading } = api.comment.getByResourceId.useQuery(
-    { resourceId },
-    { enabled: !!resourceId }
+  const { data: commentsData, isLoading } = api.comment.getByRecordId.useQuery(
+    { recordId },
+    { enabled: !!recordId }
   )
 
   // Loading state
@@ -89,14 +89,14 @@ const DrawerComments = ({
         />
       ) : (
         <div className="flex-1 overflow-y-auto pt-0 p-4">
-          <CommentList resourceId={resourceId} initialComments={commentsData.comments} />
+          <CommentList recordId={recordId} initialComments={commentsData.comments} />
         </div>
       )}
 
       {/* Comment Composer - always visible at bottom */}
       <div className="px-4 pb-4 pt-2">
         <CommentComposer
-          resourceId={resourceId}
+          recordId={recordId}
           expanded
           expandHeight="100px"
           focusTrigger={focusComposerTrigger}

@@ -9,7 +9,7 @@ import { useRouter } from 'next/navigation'
 
 import { Button } from '@auxx/ui/components/button'
 import { api } from '~/trpc/react'
-import { useRecord, toResourceId } from '~/components/resources'
+import { useRecord, toRecordId } from '~/components/resources'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Tooltip } from '~/components/global/tooltip'
 import NewMessageDialog from '~/components/mail/email-editor/new-message-dialog'
@@ -50,15 +50,15 @@ export function ContactDrawer({
   // Counter that signals the comments composer to focus when incremented.
   const [focusComposerTrigger, setFocusComposerTrigger] = React.useState(0)
 
-  // Create resourceId for use throughout component
-  const resourceId = React.useMemo(
-    () => (contactId ? toResourceId('contact', contactId) : null),
+  // Create recordId for use throughout component
+  const recordId = React.useMemo(
+    () => (contactId ? toRecordId('contact', contactId) : null),
     [contactId]
   )
 
   // Get record data for contact-specific UI
   const { record: contact } = useRecord({
-    resourceId,
+    recordId,
     enabled: !!open && !!contactId,
   })
 
@@ -105,7 +105,7 @@ export function ContactDrawer({
 
   return (
     <BaseEntityDrawer
-      resourceId={resourceId}
+      recordId={recordId}
       open={open}
       onOpenChange={onOpenChange ?? (() => {})}
       entityType="contact"
@@ -144,7 +144,7 @@ export function ContactDrawer({
           </Tooltip>
           <ManualTriggerButton
             resourceType="contact"
-            resourceId={resourceId}
+            recordId={recordId}
             buttonVariant="ghost"
             buttonSize="icon-sm"
             buttonClassName="rounded-full"

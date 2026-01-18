@@ -2,7 +2,7 @@
 
 // import * as contactDb from '@auxx/services/contacts'
 // import type { UpdateContactInput } from '@auxx/services/contacts'
-// import { toResourceId } from '@auxx/types/resource'
+// import { toRecordId } from '@auxx/types/resource'
 // import { publisher } from '../../../events'
 // import type {
 //   ContactCreatedEvent,
@@ -61,8 +61,8 @@
 
 //     // Set custom fields in batch
 //     if (Object.keys(customFields).length > 0) {
-//       const resourceId = toResourceId('contact', contact.id)
-//       await setCustomFields(resourceId, customFields, ctx)
+//       const recordId = toRecordId('contact', contact.id)
+//       await setCustomFields(recordId, customFields, ctx)
 //     }
 
 //     // Publish event
@@ -128,8 +128,8 @@
 
 //     // Set custom fields in batch
 //     if (Object.keys(customFields).length > 0) {
-//       const resourceId = toResourceId('contact', id)
-//       await setCustomFields(resourceId, customFields, ctx)
+//       const recordId = toRecordId('contact', id)
+//       await setCustomFields(recordId, customFields, ctx)
 //     }
 
 //     // Publish event if changes occurred

@@ -25,7 +25,7 @@ import {
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { useConfirm } from '~/hooks/use-confirm'
-import { parseResourceId } from '@auxx/lib/resources/client'
+import { parseRecordId } from '@auxx/lib/resources/client'
 import { api } from '~/trpc/react'
 import { formatMoney } from '~/utils/strings'
 import { pluralize, getContactDisplayName } from '@auxx/utils'
@@ -35,14 +35,14 @@ import { Tooltip } from '~/components/global/tooltip'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 
 /** Vendors tab content for parts drawer */
-export function PartVendorsTab({ resourceId }: DrawerTabProps) {
+export function PartVendorsTab({ recordId }: DrawerTabProps) {
   const utils = api.useUtils()
   const [isVendorDialogOpen, setIsVendorDialogOpen] = useState(false)
   const [editingVendorPart, setEditingVendorPart] = useState<VendorPart | null>(null)
   const [confirmDelete, ConfirmDeleteDialog] = useConfirm()
 
-  // Extract partId from resourceId
-  const { entityInstanceId: partId } = parseResourceId(resourceId)
+  // Extract partId from recordId
+  const { entityInstanceId: partId } = parseRecordId(recordId)
 
   // Fetch part data
   const { data: part, isLoading } = api.part.byId.useQuery(

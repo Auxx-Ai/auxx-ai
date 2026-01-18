@@ -32,7 +32,7 @@ import { TextDateParser, DateLanguageModule } from '@auxx/lib/tasks/client'
 import type { TaskWithRelations, CreateTaskInput, UpdateTaskInput } from '@auxx/lib/tasks'
 import { SubmitOnEnter } from '~/components/global/comments/comment-composer'
 import { toastSuccess } from '@auxx/ui/components/toast'
-import { getInstanceId, getDefinitionId, type ResourceId } from '@auxx/lib/field-values/client'
+import { getInstanceId, getDefinitionId, type RecordId } from '@auxx/lib/field-values/client'
 
 /**
  * Props for TaskDialog component
@@ -47,7 +47,7 @@ interface TaskDialogProps {
   /** Task to edit (required for edit mode) */
   task?: TaskWithRelations
   /** Default entity reference when creating from entity drawer */
-  defaultReferencedEntity?: ResourceId
+  defaultReferencedEntity?: RecordId
 }
 
 /**
@@ -78,7 +78,7 @@ export function TaskDialog({
   const [deadline, setDeadline] = useState<Date | undefined>(undefined)
   const [deadlineManuallySet, setDeadlineManuallySet] = useState(false)
   const [assignedUserIds, setAssignedUserIds] = useState<string[]>([])
-  const [linkedRecords, setLinkedRecords] = useState<ResourceId[]>([])
+  const [linkedRecords, setLinkedRecords] = useState<RecordId[]>([])
   const [createMore, setCreateMore] = useState(false)
 
   // Mutations
@@ -204,7 +204,7 @@ export function TaskDialog({
         setAssignedUserIds(
           (task.assignments?.map((a) => a.assignedTo?.id).filter(Boolean) as string[]) ?? []
         )
-        // Load existing linked records from task references (already ResourceId[])
+        // Load existing linked records from task references (already RecordId[])
         setLinkedRecords(task.references ?? [])
       } else {
         // Create mode: start fresh or with default entity reference

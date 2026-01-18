@@ -145,7 +145,7 @@ export function CustomFieldsList({ resource }: CustomFieldsListProps) {
           onSave={handleSave}
           isPending={isPending}
           entityDefinitionId={resource.entityDefinitionId}
-          currentResourceId={resource.id}
+          currentRecordId={resource.id}
         />
       )}
 

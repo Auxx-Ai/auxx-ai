@@ -56,8 +56,8 @@ import {
   useTableSorting,
   useColumnVisibility,
 } from '~/components/dynamic-table/stores/store-selectors'
-import { useRecordList, useResource, toResourceId, type RecordMeta } from '~/components/resources'
-import { isCustomResource, type ResourceField, type ResourceId } from '@auxx/lib/resources/client'
+import { useRecordList, useResource, toRecordId, type RecordMeta } from '~/components/resources'
+import { isCustomResource, type ResourceField, type RecordId } from '@auxx/lib/resources/client'
 import { toResourceFieldId, toFieldId, parseResourceFieldId } from '@auxx/types/field'
 
 /** Page size for infinite query */
@@ -229,9 +229,9 @@ export function EntityRecordsContent() {
     onRefetch: refresh,
   })
 
-  // Convert to ResourceIds for syncer
-  const resourceIds = useMemo(
-    () => (entityDefinitionId ? items.map((i) => toResourceId(entityDefinitionId, i.id)) : []),
+  // Convert to RecordIds for syncer
+  const recordIds = useMemo(
+    () => (entityDefinitionId ? items.map((i) => toRecordId(entityDefinitionId, i.id)) : []),
     [items, entityDefinitionId]
   )
 
@@ -243,7 +243,7 @@ export function EntityRecordsContent() {
 
   // Custom field value syncer - reads from store for reactive updates
   const { getValue, isValueLoading } = useCustomFieldValueSyncer({
-    resourceIds,
+    recordIds,
     columnVisibility,
     resourceFieldIds: columnIds,
     enabled: !!entityDefinitionId && columnIds.length > 0,
@@ -337,7 +337,7 @@ export function EntityRecordsContent() {
         size: field.fieldType === 'RELATIONSHIP' ? 180 : 150,
         cell: ({ row }) => (
           <CustomFieldCell
-            resourceId={toResourceId(entityDefinitionId!, row.original.id)}
+            recordId={toRecordId(entityDefinitionId!, row.original.id)}
             columnId={columnId}
           />
         ),
@@ -487,12 +487,12 @@ export function EntityRecordsContent() {
         if (columnId.startsWith('_')) return undefined
 
         if (!entityDefinitionId) return undefined
-        return getValue(toResourceId(entityDefinitionId, rowId), columnId)
+        return getValue(toRecordId(entityDefinitionId, rowId), columnId)
       },
-      // ResourceId for optimistic updates via PropertyProvider
-      getResourceId: (rowId: string) => {
-        if (!entityDefinitionId) return null as unknown as ResourceId
-        return toResourceId(entityDefinitionId, rowId)
+      // RecordId for optimistic updates via PropertyProvider
+      getRecordId: (rowId: string) => {
+        if (!entityDefinitionId) return null as unknown as RecordId
+        return toRecordId(entityDefinitionId, rowId)
       },
     }),
     [customFields, getValue, entityDefinitionId]
@@ -566,7 +566,7 @@ export function EntityRecordsContent() {
       <EntityRecordDrawer
         open={isDrawerOpen}
         onOpenChange={handleDrawerOpenChange}
-        resourceId={toResourceId(entityDefinitionId, selectedInstanceId)}
+        recordId={toRecordId(entityDefinitionId, selectedInstanceId)}
         onDeleteInstance={handleDrawerDelete}
         onMutationSuccess={refresh}
       />
@@ -651,8 +651,8 @@ export function EntityRecordsContent() {
           open={isCreateDialogOpen}
           onOpenChange={handleDialogOpenChange}
           entityDefinitionId={entityDefinitionId}
-          resourceId={
-            editingInstance ? toResourceId(entityDefinitionId, editingInstance.id) : undefined
+          recordId={
+            editingInstance ? toRecordId(entityDefinitionId, editingInstance.id) : undefined
           }
           onSaved={handleDialogSaved}
         />
@@ -663,7 +663,7 @@ export function EntityRecordsContent() {
         <BulkUpdateEntityInstanceDialog
           open={isBulkUpdateDialogOpen}
           onOpenChange={setIsBulkUpdateDialogOpen}
-          resourceIds={Array.from(selectedRowIds).map((id) => toResourceId(entityDefinitionId, id))}
+          recordIds={Array.from(selectedRowIds).map((id) => toRecordId(entityDefinitionId, id))}
           onSaved={() => {
             refresh()
             setSelectedRowIds(new Set())
@@ -688,7 +688,7 @@ export function EntityRecordsContent() {
         <MassWorkflowTriggerDialog
           open={isWorkflowDialogOpen}
           onOpenChange={setIsWorkflowDialogOpen}
-          resourceIds={Array.from(selectedRowIds).map((id) => toResourceId(entityDefinitionId, id))}
+          recordIds={Array.from(selectedRowIds).map((id) => toRecordId(entityDefinitionId, id))}
           onSuccess={() => {
             setSelectedRowIds(new Set())
             refresh()
@@ -701,8 +701,8 @@ export function EntityRecordsContent() {
         <MergeDialog
           open={isMergeDialogOpen}
           onOpenChange={setIsMergeDialogOpen}
-          baseResourceIds={Array.from(selectedRowIds).map((id) =>
-            toResourceId(entityDefinitionId, id)
+          baseRecordIds={Array.from(selectedRowIds).map((id) =>
+            toRecordId(entityDefinitionId, id)
           )}
           onMergeComplete={() => {
             setSelectedRowIds(new Set())
@@ -719,9 +719,9 @@ export function EntityRecordsContent() {
         <EntityRecordDrawer
           open={isDrawerOpen}
           onOpenChange={handleDrawerOpenChange}
-          resourceId={
+          recordId={
             selectedInstanceId && entityDefinitionId
-              ? toResourceId(entityDefinitionId, selectedInstanceId)
+              ? toRecordId(entityDefinitionId, selectedInstanceId)
               : undefined
           }
           onDeleteInstance={handleDrawerDelete}

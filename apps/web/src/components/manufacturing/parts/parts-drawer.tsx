@@ -13,9 +13,9 @@ import { useDockStore } from '~/stores/dock-store'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { BaseEntityDrawer } from '~/components/drawers/base-entity-drawer'
 import { useRouter } from 'next/navigation'
-import { parseResourceId } from '@auxx/lib/resources/client'
+import { parseRecordId } from '@auxx/lib/resources/client'
 import type { RouterOutputs } from '~/trpc/react'
-import type { ResourceId } from '@auxx/types/resource'
+import type { RecordId } from '@auxx/types/resource'
 
 /** Part type from the API */
 type Part = NonNullable<RouterOutputs['part']['byId']>
@@ -26,8 +26,8 @@ interface PartsDrawerProps {
   open: boolean
   /** Callback when open state changes */
   onOpenChange: (open: boolean) => void
-  /** ResourceId of the part to display */
-  resourceId: ResourceId | null
+  /** RecordId of the part to display */
+  recordId: RecordId | null
   /** Handler for delete action */
   onDelete?: (partId: string) => Promise<void> | void
   /** Handler for edit action */
@@ -39,22 +39,22 @@ interface PartsDrawerProps {
  * Supports both overlay and docked modes.
  * Uses BaseEntityDrawer with registry-based configuration.
  */
-export function PartsDrawer({ open, onOpenChange, resourceId, onDelete, onEdit }: PartsDrawerProps) {
+export function PartsDrawer({ open, onOpenChange, recordId, onDelete, onEdit }: PartsDrawerProps) {
   const router = useRouter()
   const isDocked = useEffectiveDockState()
   const dockedWidth = useDockStore((state) => state.dockedWidth)
   const setDockedWidth = useDockStore((state) => state.setDockedWidth)
 
-  // Extract partId from resourceId
+  // Extract partId from recordId
   const partId = React.useMemo(
-    () => (resourceId ? parseResourceId(resourceId).entityInstanceId : null),
-    [resourceId]
+    () => (recordId ? parseRecordId(recordId).entityInstanceId : null),
+    [recordId]
   )
 
   // Get record data for part-specific UI
   const { record } = useRecord({
-    resourceId: resourceId,
-    enabled: !!open && !!resourceId,
+    recordId: recordId ?? undefined,
+    enabled: !!open && !!recordId,
   })
   const part = record as Part | undefined
 
@@ -63,11 +63,11 @@ export function PartsDrawer({ open, onOpenChange, resourceId, onDelete, onEdit }
     onOpenChange(false)
   }, [onOpenChange])
 
-  if (!open || !resourceId) return null
+  if (!open || !recordId) return null
 
   return (
     <BaseEntityDrawer
-      resourceId={resourceId}
+      recordId={recordId}
       open={open}
       onOpenChange={onOpenChange}
       entityType="part"

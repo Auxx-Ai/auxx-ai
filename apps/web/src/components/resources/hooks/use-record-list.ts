@@ -11,7 +11,7 @@ import {
   type RecordMeta,
 } from '../store/record-store'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
-import { toResourceId } from '@auxx/lib/resources/client'
+import { toRecordId } from '@auxx/lib/resources/client'
 
 /** Stable empty array for default return */
 const EMPTY_IDS: string[] = []
@@ -176,7 +176,7 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
     const recordCache = useRecordStore.getState().records[entityDefinitionId]
     for (const id of allIds) {
       if (!recordCache?.has(id)) {
-        requestRecord(toResourceId(entityDefinitionId, id))
+        requestRecord(toRecordId(entityDefinitionId, id))
       }
     }
   }, [data, listKey, setList, entityDefinitionId, requestRecord])
@@ -224,8 +224,8 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
     // Records are loading if we have fewer items than IDs, and some are pending/loading
     if (items.length < recordIds.length) {
       const hasLoading = recordIds.some((id: string) => {
-        const resourceId = toResourceId(entityDefinitionId, id)
-        return loadingIds.has(resourceId) || pendingIds.has(resourceId)
+        const recordId = toRecordId(entityDefinitionId, id)
+        return loadingIds.has(recordId) || pendingIds.has(recordId)
       })
       return hasLoading
     }
