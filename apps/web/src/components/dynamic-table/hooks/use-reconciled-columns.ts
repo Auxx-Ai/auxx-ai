@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import type { ExtendedColumnDef } from '../types'
 import { isFieldColumnId } from '../utils/column-id'
 import { createDynamicFieldColumn } from '../utils/create-dynamic-column'
+import { doesColumnFieldExist } from '../utils/field-exists'
 
 interface UseReconciledColumnsOptions<T> {
   /** Base columns from createCustomFieldColumns and other sources */
@@ -39,7 +40,10 @@ export function useReconciledColumns<T extends { id: string }>({
       // Skip special columns (checkbox, etc.)
       if (id.startsWith('_')) return false
       // Only create for field columns (contain colon)
-      return isFieldColumnId(id)
+      if (!isFieldColumnId(id)) return false
+      // Skip if field doesn't exist (ghost column prevention)
+      if (!doesColumnFieldExist(id)) return false
+      return true
     })
 
     // No missing columns - return original

@@ -133,7 +133,9 @@ function ContactDetailSidebar({
 export function ContactDetail({ id }: { id: string }) {
   const router = useRouter()
   const [tab, setTab] = useQueryState('tab', { defaultValue: 'tickets' })
+  console.log('ContactDetail render with id:', id)
 
+  const recordId = toRecordId('contact', id)
   // Dock state for resizable sidebar
   const dockedWidth = useDockStore((state) => state.dockedWidth)
   const setDockedWidth = useDockStore((state) => state.setDockedWidth)
@@ -241,7 +243,7 @@ export function ContactDetail({ id }: { id: string }) {
           <TabsContent value="timeline" className="flex flex-col flex-1 min-h-0">
             <ScrollArea className="flex-1">
               <div className="p-6 flex-1 flex-col flex">
-                <TimelineTab entityType="contact" entityId={id} />
+                <TimelineTab recordId={recordId} />
               </div>
             </ScrollArea>
           </TabsContent>

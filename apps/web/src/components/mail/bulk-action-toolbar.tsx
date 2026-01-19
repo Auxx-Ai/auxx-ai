@@ -11,6 +11,7 @@ import { ActionBar, type ActionBarAction } from '@auxx/ui/components/action-bar'
 import { AssigneePicker } from '~/components/pickers/assignee-picker'
 import { TagPicker } from '~/components/pickers/tag-picker'
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
+import { toRecordId } from '~/components/resources'
 
 /**
  * Props for the BulkActionToolbar component.
@@ -78,12 +79,30 @@ export default function BulkActionToolbar({
       toastSuccess({ title: `${selectedThreadIds.length} threads ${msg}` })
       utils.thread.list.invalidate({ contextType, contextId, statusSlug, searchQuery })
       if (contextType !== 'personal_assigned' && contextType !== 'personal_inbox') {
-        utils.thread.list.invalidate({ contextType, contextId, statusSlug: 'assigned', searchQuery })
-        utils.thread.list.invalidate({ contextType, contextId, statusSlug: 'unassigned', searchQuery })
+        utils.thread.list.invalidate({
+          contextType,
+          contextId,
+          statusSlug: 'assigned',
+          searchQuery,
+        })
+        utils.thread.list.invalidate({
+          contextType,
+          contextId,
+          statusSlug: 'unassigned',
+          searchQuery,
+        })
       }
       if (contextType === 'personal_assigned') {
-        utils.thread.list.invalidate({ contextType: 'personal_assigned', statusSlug: 'open', searchQuery })
-        utils.thread.list.invalidate({ contextType: 'personal_assigned', statusSlug: 'done', searchQuery })
+        utils.thread.list.invalidate({
+          contextType: 'personal_assigned',
+          statusSlug: 'open',
+          searchQuery,
+        })
+        utils.thread.list.invalidate({
+          contextType: 'personal_assigned',
+          statusSlug: 'done',
+          searchQuery,
+        })
       }
       onClearSelection()
     },
@@ -108,19 +127,25 @@ export default function BulkActionToolbar({
   })
 
   // --- Handlers ---
-  const handleAssigneeChange = useCallback((selected: any[]) => {
-    const assigneeId = selected?.[0]?.id
-    if (selectedThreadIds.length > 0 && assigneeId) {
-      assignBulk.mutate({ threadIds: selectedThreadIds, assigneeId })
-    }
-  }, [selectedThreadIds, assignBulk])
+  const handleAssigneeChange = useCallback(
+    (selected: any[]) => {
+      const assigneeId = selected?.[0]?.id
+      if (selectedThreadIds.length > 0 && assigneeId) {
+        assignBulk.mutate({ threadIds: selectedThreadIds, assigneeId })
+      }
+    },
+    [selectedThreadIds, assignBulk]
+  )
 
-  const handleTagChange = useCallback((tagIds: string[]) => {
-    const cleanTagIds = tagIds.filter(Boolean)
-    if (cleanTagIds.length > 0 && selectedThreadIds.length > 0) {
-      tagBulk.mutate({ threadIds: selectedThreadIds, tagIds: cleanTagIds, operation: 'set' })
-    }
-  }, [selectedThreadIds, tagBulk])
+  const handleTagChange = useCallback(
+    (tagIds: string[]) => {
+      const cleanTagIds = tagIds.filter(Boolean)
+      if (cleanTagIds.length > 0 && selectedThreadIds.length > 0) {
+        tagBulk.mutate({ threadIds: selectedThreadIds, tagIds: cleanTagIds, operation: 'set' })
+      }
+    },
+    [selectedThreadIds, tagBulk]
+  )
 
   const handlePermanentlyDelete = useCallback(async () => {
     const confirmed = await confirm({
@@ -137,93 +162,96 @@ export default function BulkActionToolbar({
   const disabled = selectedThreadIds.length === 0
 
   // --- Build actions array ---
-  const actions: ActionBarAction[] = useMemo(() => [
-    {
-      id: 'archive',
-      label: 'Archive',
-      icon: Archive,
-      onClick: () => archiveBulk.mutate({ threadIds: selectedThreadIds }),
-      disabled: archiveBulk.isPending || disabled,
-      shortcut: 'D',
-      tooltip: 'Archive selected',
-    },
-    {
-      id: 'trash',
-      label: 'Trash',
-      icon: Trash2,
-      onClick: () => moveToTrashBulk.mutate({ threadIds: selectedThreadIds }),
-      disabled: moveToTrashBulk.isPending || disabled,
-      tooltip: 'Move selected to trash',
-    },
-    {
-      id: 'spam',
-      label: 'Spam',
-      icon: Ban,
-      onClick: () => markAsSpamBulk.mutate({ threadIds: selectedThreadIds }),
-      disabled: markAsSpamBulk.isPending || disabled,
-      tooltip: 'Mark selected as spam',
-    },
-    {
-      id: 'tags',
-      label: 'Tags',
-      icon: Tags,
-      disabled: tagBulk.isPending || disabled,
-      tooltip: 'Apply tags',
-      picker: {
-        component: TagPicker,
-        props: {
-          onChange: handleTagChange,
-          selectedTags: [],
-          allowMultiple: true,
-          align: 'end',
+  const actions: ActionBarAction[] = useMemo(
+    () => [
+      {
+        id: 'archive',
+        label: 'Archive',
+        icon: Archive,
+        onClick: () => archiveBulk.mutate({ threadIds: selectedThreadIds }),
+        disabled: archiveBulk.isPending || disabled,
+        shortcut: 'D',
+        tooltip: 'Archive selected',
+      },
+      {
+        id: 'trash',
+        label: 'Trash',
+        icon: Trash2,
+        onClick: () => moveToTrashBulk.mutate({ threadIds: selectedThreadIds }),
+        disabled: moveToTrashBulk.isPending || disabled,
+        tooltip: 'Move selected to trash',
+      },
+      {
+        id: 'spam',
+        label: 'Spam',
+        icon: Ban,
+        onClick: () => markAsSpamBulk.mutate({ threadIds: selectedThreadIds }),
+        disabled: markAsSpamBulk.isPending || disabled,
+        tooltip: 'Mark selected as spam',
+      },
+      {
+        id: 'tags',
+        label: 'Tags',
+        icon: Tags,
+        disabled: tagBulk.isPending || disabled,
+        tooltip: 'Apply tags',
+        picker: {
+          component: TagPicker,
+          props: {
+            onChange: handleTagChange,
+            selectedTags: [],
+            allowMultiple: true,
+            align: 'end',
+          },
         },
       },
-    },
-    {
-      id: 'workflow',
-      label: 'Workflow',
-      icon: Play,
-      onClick: () => setWorkflowDialogOpen(true),
-      disabled: disabled,
-      tooltip: 'Run workflow',
-    },
-    {
-      id: 'assign',
-      label: 'Assign',
-      icon: UserPlus,
-      disabled: assignBulk.isPending || disabled,
-      tooltip: 'Assign to team member',
-      picker: {
-        component: AssigneePicker,
-        props: {
-          onChange: handleAssigneeChange,
-          placeholder: 'Assign',
-          selected: undefined,
-          align: 'end',
+      {
+        id: 'workflow',
+        label: 'Workflow',
+        icon: Play,
+        onClick: () => setWorkflowDialogOpen(true),
+        disabled: disabled,
+        tooltip: 'Run workflow',
+      },
+      {
+        id: 'assign',
+        label: 'Assign',
+        icon: UserPlus,
+        disabled: assignBulk.isPending || disabled,
+        tooltip: 'Assign to team member',
+        picker: {
+          component: AssigneePicker,
+          props: {
+            onChange: handleAssigneeChange,
+            placeholder: 'Assign',
+            selected: undefined,
+            align: 'end',
+          },
         },
       },
-    },
-    {
-      id: 'delete',
-      label: 'Delete',
-      icon: Trash,
-      onClick: handlePermanentlyDelete,
-      disabled: deletePermanentlyBulk.isPending || disabled,
-      variant: 'destructive',
-      tooltip: 'Permanently delete',
-    },
-  ], [
-    selectedThreadIds,
-    disabled,
-    archiveBulk,
-    moveToTrashBulk,
-    markAsSpamBulk,
-    tagBulk,
-    assignBulk,
-    deletePermanentlyBulk,
-    handleAssigneeChange,
-    handlePermanentlyDelete,
-  ])
+      {
+        id: 'delete',
+        label: 'Delete',
+        icon: Trash,
+        onClick: handlePermanentlyDelete,
+        disabled: deletePermanentlyBulk.isPending || disabled,
+        variant: 'destructive',
+        tooltip: 'Permanently delete',
+      },
+    ],
+    [
+      selectedThreadIds,
+      disabled,
+      archiveBulk,
+      moveToTrashBulk,
+      markAsSpamBulk,
+      tagBulk,
+      assignBulk,
+      deletePermanentlyBulk,
+      handleAssigneeChange,
+      handlePermanentlyDelete,
+    ]
+  )
 
   return (
     <>
@@ -231,7 +259,9 @@ export default function BulkActionToolbar({
 
       <ActionBar
         open={open}
-        onOpenChange={(isOpen) => { if (!isOpen) onClearSelection() }}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) onClearSelection()
+        }}
         selectedCount={selectedThreadIds.length}
         selectedLabel="selected"
         actions={actions}
@@ -242,8 +272,7 @@ export default function BulkActionToolbar({
       <MassWorkflowTriggerDialog
         open={workflowDialogOpen}
         onOpenChange={setWorkflowDialogOpen}
-        resourceType="thread"
-        resourceIds={selectedThreadIds}
+        recordIds={Array.from(selectedThreadIds).map((id) => toRecordId('thread', id))}
         onSuccess={() => {
           utils.thread.list.invalidate({ contextType, contextId, statusSlug, searchQuery })
         }}

@@ -433,7 +433,6 @@ export function TicketManagement({
       <MassWorkflowTriggerDialog
         open={massWorkflowDialogOpen}
         onOpenChange={setMassWorkflowDialogOpen}
-        resourceType="ticket"
         recordIds={selectedTicketsForBulk.map((t) => toRecordId('ticket', t.id))}
         onSuccess={() => {
           refetchTickets()

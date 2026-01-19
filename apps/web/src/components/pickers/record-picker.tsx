@@ -134,7 +134,7 @@ export interface RecordPickerProps {
 
 /**
  * RecordPicker - A context-agnostic record picker component.
- * Supports searching entities and selecting ResourceId values.
+ * Supports searching entities and selecting recordId values.
  *
  * Features:
  * - Search across single entity type, multiple entity types, or all entities
@@ -201,13 +201,10 @@ export function RecordPicker({
   }, [entityDefinitionId, entityDefinitionIds, search])
 
   // Search query
-  const { data: searchResults, isLoading: isSearching } = api.record.search.useQuery(
-    searchParams,
-    {
-      enabled: true,
-      staleTime: 30_000,
-    }
-  )
+  const { data: searchResults, isLoading: isSearching } = api.record.search.useQuery(searchParams, {
+    enabled: true,
+    staleTime: 30_000,
+  })
 
   // Hydrate selected items
   const { items: hydratedItems, isLoading: isHydrating } = useRelationship(initialSelectedIds)
@@ -215,10 +212,10 @@ export function RecordPicker({
   // Build map of hydrated items for quick lookup
   const hydratedMap = useMemo(() => {
     const map: Record<string, RecordPickerItem> = {}
-    initialSelectedIds.forEach((resourceId, idx) => {
+    initialSelectedIds.forEach((recordId, idx) => {
       const item = hydratedItems[idx]
       if (item) {
-        map[resourceId] = item
+        map[recordId] = item
       }
     })
     return map
@@ -245,8 +242,8 @@ export function RecordPicker({
     const searchLower = search.toLowerCase()
     const items: RecordPickerItem[] = []
 
-    for (const resourceId of initialSelectedIds) {
-      const item = hydratedMap[resourceId]
+    for (const recordId of initialSelectedIds) {
+      const item = hydratedMap[recordId]
       if (item) {
         // Apply search filter
         if (!search || item.displayName?.toLowerCase().includes(searchLower)) {
@@ -262,7 +259,7 @@ export function RecordPicker({
   const availableItems = useMemo(() => {
     if (!searchResults?.items) return []
     return searchResults.items.filter((item) => {
-      return !wasInitiallySelected(item.resourceId) && !excludeIds.includes(item.resourceId)
+      return !wasInitiallySelected(item.recordId) && !excludeIds.includes(item.recordId)
     })
   }, [searchResults, wasInitiallySelected, excludeIds])
 
@@ -332,9 +329,9 @@ export function RecordPicker({
                 {filteredSelectedItems.map((item) => {
                   return (
                     <RecordItem
-                      key={item.resourceId}
+                      key={item.recordId}
                       item={item}
-                      isSelected={isSelected(item.resourceId)}
+                      isSelected={isSelected(item.recordId)}
                       onToggle={handleToggle}
                       showEntityType={showEntityType}
                     />
@@ -352,9 +349,9 @@ export function RecordPicker({
                 {availableItems.map((item) => {
                   return (
                     <RecordItem
-                      key={item.resourceId}
+                      key={item.recordId}
                       item={item}
-                      isSelected={isSelected(item.resourceId)}
+                      isSelected={isSelected(item.recordId)}
                       onToggle={handleToggle}
                       showEntityType={showEntityType}
                     />

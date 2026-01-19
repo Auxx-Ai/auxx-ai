@@ -52,6 +52,7 @@ import { EditColumnFormattingDialog } from '../dialogs/edit-column-formatting-di
 import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
 import { ResourcePickerInnerContent } from '~/components/pickers/resource-picker'
 import { decodeColumnId, encodeFieldPathColumnId } from '../../utils/column-id'
+import { doesColumnFieldExist } from '../../utils/field-exists'
 import { useFields } from '~/components/resources/hooks/use-field'
 import type { ResourcePickerNavigationItem } from '~/components/pickers/resource-picker'
 import type { Column } from '@tanstack/react-table'
@@ -111,9 +112,18 @@ function RootStack<TData = any>() {
     return [...ordered, ...unordered]
   }, [table, columnVisibility, columnOrder])
 
+  // Filter out ghost columns (fields that no longer exist)
+  const validVisibleColumns = useMemo(() => {
+    return visibleColumns.filter((col) => {
+      // Keep non-field columns (like special columns without colon)
+      if (!col.id.includes(':')) return true
+      return doesColumnFieldExist(col.id)
+    })
+  }, [visibleColumns])
+
   // Detect which columns are paths (for field metadata lookup)
   const pathColumnIds = useMemo(() => {
-    return visibleColumns
+    return validVisibleColumns
       .filter((col) => {
         const decoded = decodeColumnId(col.id)
         return decoded.type === 'path'
@@ -192,13 +202,13 @@ function RootStack<TData = any>() {
     <CommandList>
       {/* Visible Columns Group - Sortable */}
       <CommandGroup heading="Visible Columns">
-        {visibleColumns.length === 0 ? (
+        {validVisibleColumns.length === 0 ? (
           <div className="text-sm text-muted-foreground px-2 py-6 text-center">
             No visible columns
           </div>
         ) : (
-          <CommandSortable items={visibleColumns.map((c) => c.id)} onReorder={handleReorder}>
-            {visibleColumns.map((column) => {
+          <CommandSortable items={validVisibleColumns.map((c) => c.id)} onReorder={handleReorder}>
+            {validVisibleColumns.map((column) => {
               const display = getColumnDisplay(column)
               console.log('column display:', column.id, display)
               return (

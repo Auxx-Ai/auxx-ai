@@ -480,8 +480,7 @@ export default function CustomerListPage() {
             <MassWorkflowTriggerDialog
               open={isWorkflowDialogOpen}
               onOpenChange={setIsWorkflowDialogOpen}
-              resourceType="contact"
-              resourceIds={selectedCustomerIds}
+              recordIds={Array.from(selectedCustomerIds).map((id) => toRecordId('contact', id))}
               onSuccess={() => {
                 resetSelection()
                 refetch()

@@ -3,7 +3,12 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { usePropertyContext } from '../property-provider'
 import { useFieldNavigationOptional } from '../field-navigation-context'
-import { toRecordId, getRelationshipStoreState, useResourceStore } from '~/components/resources'
+import {
+  toRecordId,
+  getRelationshipStoreState,
+  useResourceStore,
+  useResource,
+} from '~/components/resources'
 import { useRecordIdFromField } from '../hooks/use-record-id-from-field'
 import {
   extractRelationshipRecordIds,
@@ -46,21 +51,23 @@ export function RelationshipInputField() {
 
   // Determine recordId using hook - returns { tableId, entityDefinitionId? } or null
   const resourceRef = useRecordIdFromField(field)
+  const relatedResource = useResource(relatedEntityDefinitionId)
+  console.log(field, relationship, relatedResource)
 
   // Dialog state for inline create
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
 
   // Get resource by ID to determine label and if inline create is supported
-  const getResourceById = useResourceStore((s) => s.getResourceById)
+  // const getResourceById = useResourceStore((s) => s.getResourceById)
 
   // Get the related resource for label and inline create capability
-  const relatedResource = useMemo(() => {
-    if (!resourceRef) return null
-    return getResourceById(resourceRef.entityDefinitionId)
-  }, [resourceRef, getResourceById])
+  // const relatedResource = useMemo(() => {
+  //   if (!resourceRef) return null
+  //   return getResourceById(resourceRef.entityDefinitionId)
+  // }, [resourceRef, getResourceById])
 
   // Only custom resources support inline create (system resources have dedicated flows)
-  const canInlineCreate = true //relatedResource && isCustomResource(relatedResource)
+  const canInlineCreate = true
 
   // Convert field value to RecordId[] for RecordPicker
   const currentRecordIds = useMemo<RecordId[]>(() => {
