@@ -7,6 +7,7 @@ import { fromDatabase } from '../shared/utils'
 import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
 import { getInverseCardinality } from '@auxx/utils'
 import { getModelType } from '@auxx/types/resource'
+import { toResourceFieldId } from '@auxx/types/field'
 import {
   ModelTypes,
   type ModelType,
@@ -333,6 +334,7 @@ async function createRelationshipFieldWithInverse(
     const inverseSortOrder = generateKeyBetween(inverseSortResult[0]?.sortOrder ?? null, null)
 
     // Create primary field using tx
+    // Initially set inverseResourceFieldId to null - will be updated after inverse field creation
     const primaryFieldResult = await tx
       .insert(schema.CustomField)
       .values({
@@ -349,8 +351,7 @@ async function createRelationshipFieldWithInverse(
           icon,
           isCustom: true,
           relationship: {
-            relatedEntityDefinitionId,
-            inverseFieldId: null,
+            inverseResourceFieldId: null,
             relationshipType,
             isInverse: false,
           } as RelationshipConfig,
@@ -364,7 +365,7 @@ async function createRelationshipFieldWithInverse(
     }
 
     // Create inverse field using tx
-    // Inverse field's relatedEntityDefinitionId points back to the primary's entityDefinitionId
+    // Inverse field's inverseResourceFieldId points back to the primary field
     const inverseRelatedEntityDefinitionId = entityDefinitionId!
 
     const inverseFieldResult = await tx
@@ -383,8 +384,7 @@ async function createRelationshipFieldWithInverse(
           icon: inverseIcon,
           isCustom: true,
           relationship: {
-            relatedEntityDefinitionId: inverseRelatedEntityDefinitionId,
-            inverseFieldId: primaryField.id,
+            inverseResourceFieldId: toResourceFieldId(inverseRelatedEntityDefinitionId, primaryField.id),
             relationshipType: inverseCardinality,
             isInverse: true,
           } as RelationshipConfig,
@@ -397,7 +397,7 @@ async function createRelationshipFieldWithInverse(
       throw new Error('Failed to create inverse relationship field')
     }
 
-    // Update primary field with inverseFieldId using tx
+    // Update primary field with inverseResourceFieldId using tx
     const primaryOptions = primaryField.options as { relationship: RelationshipConfig }
     const updatedPrimaryFieldResult = await tx
       .update(schema.CustomField)
@@ -406,7 +406,7 @@ async function createRelationshipFieldWithInverse(
           ...primaryOptions,
           relationship: {
             ...primaryOptions.relationship,
-            inverseFieldId: inverseField.id,
+            inverseResourceFieldId: toResourceFieldId(relatedEntityDefinitionId, inverseField.id),
           },
         },
         updatedAt: new Date(),

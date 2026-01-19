@@ -130,7 +130,6 @@ export {
   getInverseCardinality,
   isMultiRelationship,
   isSingleRelationship,
-  isSingleValueRelationship,
   type RelationshipType,
 } from './relationships'
 

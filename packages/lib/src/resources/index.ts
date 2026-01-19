@@ -90,10 +90,6 @@ export type {
 // CRUD service and handlers
 export {
   UnifiedCrudHandler,
-  getHandler,
-  contactHandler,
-  ticketHandler,
-  entityHandler,
   trackChanges,
   hasChanges,
   setCustomFields,

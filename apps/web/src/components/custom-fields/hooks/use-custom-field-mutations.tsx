@@ -9,9 +9,15 @@ import type { ResourceFieldId } from '@auxx/types/field'
 import type { ResourceField, FieldCapabilities } from '@auxx/lib/resources/client'
 import type { FieldType as FieldTypeEnum } from '@auxx/database/types'
 import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
-import { mapFieldTypeToBaseType } from '@auxx/lib/workflow-engine/utils/field-type-mapper'
+import { mapFieldTypeToBaseType } from '@auxx/lib/workflow-engine/client'
 import { useField } from '~/components/resources/hooks/use-field'
-import type { SelectOption, TargetTimeInStatus } from '@auxx/types/custom-field'
+import {
+  type SelectOption,
+  type TargetTimeInStatus,
+  type RelationshipConfig,
+  getRelatedEntityDefinitionId,
+  getInverseFieldId,
+} from '@auxx/types/custom-field'
 
 /** Props for useCustomFieldMutations hook */
 interface UseCustomFieldMutationsProps {
@@ -122,12 +128,16 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
       // Extract options from server response
       const rawOptions = result.options as {
         options?: { value: string; label: string; color?: string }[]
-        relationship?: {
-          relatedEntityDefinitionId?: string
-          relationshipType?: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
-          inverseFieldId?: string
-        }
+        relationship?: RelationshipConfig
       }
+
+      // Extract derived relationship info using helpers
+      const relatedEntityDefId = rawOptions?.relationship
+        ? getRelatedEntityDefinitionId(rawOptions.relationship)
+        : null
+      const inverseFieldIdValue = rawOptions?.relationship
+        ? getInverseFieldId(rawOptions.relationship)
+        : null
 
       // Transform server response to ResourceField format
       const serverField: ResourceField = {
@@ -148,12 +158,19 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
         capabilities,
         options: {
           options: rawOptions?.options,
-          relationship: rawOptions?.relationship,
+          // Normalize relationship for UI consumers (provide derived values)
+          relationship: rawOptions?.relationship
+            ? {
+                relatedEntityDefinitionId: relatedEntityDefId ?? undefined,
+                inverseFieldId: inverseFieldIdValue ?? undefined,
+                relationshipType: rawOptions.relationship.relationshipType,
+              }
+            : undefined,
         },
-        relationship: rawOptions?.relationship
+        relationship: relatedEntityDefId
           ? {
-              relatedEntityDefinitionId: rawOptions.relationship.relatedEntityDefinitionId,
-              relationshipType: rawOptions.relationship.relationshipType || 'belongs_to',
+              relatedEntityDefinitionId: relatedEntityDefId,
+              relationshipType: rawOptions?.relationship?.relationshipType || 'belongs_to',
             }
           : undefined,
       }
@@ -162,21 +179,23 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
       store.confirmFieldCreate(context.tempKey, serverKey, serverField)
 
       // For relationship fields, fetch the inverse field to add to store
-      if (result.type === 'RELATIONSHIP' && rawOptions?.relationship?.inverseFieldId) {
-        utils.customField
-          .getByIds.fetch({
-            fieldIds: [toFieldId(rawOptions.relationship.inverseFieldId)],
+      if (result.type === 'RELATIONSHIP' && inverseFieldIdValue) {
+        utils.customField.getByIds
+          .fetch({
+            fieldIds: [toFieldId(inverseFieldIdValue)],
           })
           .then((fields) => {
             for (const field of fields) {
               const invBaseType = mapFieldTypeToBaseType(field.type)
               const invOptions = field.options as {
                 options?: { value: string; label: string; color?: string }[]
-                relationship?: {
-                  relatedEntityDefinitionId?: string
-                  relationshipType?: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
-                }
+                relationship?: RelationshipConfig
               }
+
+              // Extract derived relationship info for inverse field
+              const invRelatedEntityDefId = invOptions?.relationship
+                ? getRelatedEntityDefinitionId(invOptions.relationship)
+                : null
 
               const invField: ResourceField = {
                 id: toFieldId(field.id),
@@ -205,12 +224,20 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
                 },
                 options: {
                   options: invOptions?.options,
-                  relationship: invOptions?.relationship,
+                  relationship: invOptions?.relationship
+                    ? {
+                        relatedEntityDefinitionId: invRelatedEntityDefId ?? undefined,
+                        inverseFieldId: invOptions.relationship
+                          ? (getInverseFieldId(invOptions.relationship) ?? undefined)
+                          : undefined,
+                        relationshipType: invOptions.relationship.relationshipType,
+                      }
+                    : undefined,
                 },
-                relationship: invOptions?.relationship
+                relationship: invRelatedEntityDefId
                   ? {
-                      relatedEntityDefinitionId: invOptions.relationship.relatedEntityDefinitionId,
-                      relationshipType: invOptions.relationship.relationshipType || 'belongs_to',
+                      relatedEntityDefinitionId: invRelatedEntityDefId,
+                      relationshipType: invOptions?.relationship?.relationshipType || 'belongs_to',
                     }
                   : undefined,
               }
@@ -480,7 +507,9 @@ export function useFieldSelectOptionMutations(resourceFieldId: ResourceFieldId |
       const optionMap = new Map(currentOptions.map((o) => [o.value, o]))
 
       // Build reordered array
-      const reordered = newOrder.map((value) => optionMap.get(value)).filter(Boolean) as SelectOption[]
+      const reordered = newOrder
+        .map((value) => optionMap.get(value))
+        .filter(Boolean) as SelectOption[]
 
       // Append any options not in newOrder
       const orderedSet = new Set(newOrder)

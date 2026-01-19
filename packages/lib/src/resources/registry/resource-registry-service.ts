@@ -15,6 +15,7 @@ import { mapFieldTypeToBaseType } from '../../workflow-engine/utils/field-type-m
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import { getEntityInstanceFields } from './entity-instance-fields'
 import { toFieldId, toResourceFieldId } from '@auxx/types/field'
+import { type RelationshipConfig, getRelatedEntityDefinitionId, getInverseFieldId } from '@auxx/types/custom-field'
 
 /** CustomField entity from database */
 type CustomFieldRecord = {
@@ -656,10 +657,7 @@ export class ResourceRegistryService {
           targetTimeInStatus?: { value: number; unit: 'days' | 'months' | 'years' }
           celebration?: boolean
         }[]
-        relationship?: {
-          relatedEntityDefinitionId?: string
-          relationshipType?: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
-        }
+        relationship?: RelationshipConfig
       }
 
       // Build relationship config for workflow engine (top-level)
@@ -668,6 +666,7 @@ export class ResourceRegistryService {
       let optionsRelationship:
         | {
             relatedEntityDefinitionId?: string
+            inverseFieldId?: string
             relationshipType?: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
           }
         | undefined
@@ -675,16 +674,23 @@ export class ResourceRegistryService {
       if (field.type === FieldTypeEnum.RELATIONSHIP) {
         const rel = rawOptions?.relationship
 
-        if (rel?.relatedEntityDefinitionId) {
-          // Direct passthrough - schemas are identical now!
+        // Use helpers to extract relatedEntityDefinitionId and inverseFieldId from inverseResourceFieldId
+        const relatedEntityDefId = rel ? getRelatedEntityDefinitionId(rel) : null
+        const inverseFieldIdValue = rel ? getInverseFieldId(rel) : null
+
+        if (relatedEntityDefId) {
           relationship = {
-            relatedEntityDefinitionId: rel.relatedEntityDefinitionId,
-            relationshipType: rel.relationshipType || 'belongs_to',
+            relatedEntityDefinitionId: relatedEntityDefId,
+            relationshipType: rel?.relationshipType || 'belongs_to',
           }
         }
 
-        // Pass through relationship config for UI consumers
-        optionsRelationship = rel
+        // Normalize relationship config for UI consumers (provide derived values)
+        optionsRelationship = rel ? {
+          relatedEntityDefinitionId: relatedEntityDefId ?? undefined,
+          inverseFieldId: inverseFieldIdValue ?? undefined,
+          relationshipType: rel.relationshipType,
+        } : undefined
       }
 
       // Build enumValues for workflow engine (uses dbValue)

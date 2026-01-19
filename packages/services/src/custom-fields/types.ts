@@ -43,6 +43,8 @@ export {
   type RelationshipType,
   type RelationshipConfig,
   type RelationshipOptions,
+  getRelatedEntityDefinitionId,
+  getInverseFieldId,
   // Uniqueness
   UNIQUEABLE_FIELD_TYPES,
   canFieldBeUnique,

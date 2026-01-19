@@ -19,15 +19,19 @@ import {
 import { getInverseCardinality, type RelationshipType } from '@auxx/utils'
 
 import { type FieldType } from '@auxx/database/types'
-import type { RelationshipConfig } from '@auxx/types/custom-field'
+
+/** Normalized relationship info for sync (derived from ResourceField.options.relationship) */
+interface NormalizedRelationship {
+  inverseFieldId?: string
+  relationshipType?: RelationshipType
+  relatedEntityDefinitionId?: string
+  isInverse?: boolean
+}
 
 /** Field metadata for relationship sync */
 interface FieldMetadata {
   type: string
-  relationship?: Pick<
-    RelationshipConfig,
-    'isInverse' | 'inverseFieldId' | 'relationshipType' | 'relatedEntityDefinitionId'
-  >
+  relationship?: NormalizedRelationship
 }
 
 interface UseSaveFieldValueOptions {
@@ -230,6 +234,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
           },
         }
       )
+      console.log('[useSaveFieldValue] Fired mutation for')
     },
     [mutation, onSuccess, getFieldMetadata, syncInverseCache]
   )
@@ -260,38 +265,32 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
           inverseInfo: prep.inverseInfo,
         })
       }
+      console.log('[useSaveFieldValue] Fired async mutation for', { recordId, fieldId, value })
+      // try {
+      const result = await mutation.mutateAsync({ recordId, fieldId, value })
 
-      try {
-        const result = await mutation.mutateAsync({ recordId, fieldId, value })
-
-        // Check if stale (a newer mutation was fired)
-        const store = useFieldValueStore.getState()
-        if (prep.mutationVersion < store.getMutationVersion(prep.key)) {
-          return { success: true }
-        }
-
-        // Apply server result
-        const firstValueId = result?.values?.[0]?.id
-        handleMutationSuccess(prep.key, prep.mutationVersion, result, fieldType)
-        onSuccess?.()
-        return { success: true, id: firstValueId }
-      } catch (error: unknown) {
-        // Check if superseded
-        const store = useFieldValueStore.getState()
-        if (prep.mutationVersion < store.getMutationVersion(prep.key)) {
-          return undefined
-        }
-
-        handleMutationError(
-          prep.key,
-          prep.mutationVersion,
-          prep,
-          recordId,
-          syncInverseCache,
-          error
-        )
-        return undefined
+      // Check if stale (a newer mutation was fired)
+      const store = useFieldValueStore.getState()
+      if (prep.mutationVersion < store.getMutationVersion(prep.key)) {
+        return { success: true }
       }
+
+      // Apply server result
+      const firstValueId = result?.values?.[0]?.id
+      handleMutationSuccess(prep.key, prep.mutationVersion, result, fieldType)
+      onSuccess?.()
+      return { success: true, id: firstValueId }
+      // } catch (error: unknown) {
+      //   console.log('ON ERROR ASYNC:', { error })
+      //   // Check if superseded
+      //   const store = useFieldValueStore.getState()
+      //   if (prep.mutationVersion < store.getMutationVersion(prep.key)) {
+      //     return undefined
+      //   }
+
+      //   handleMutationError(prep.key, prep.mutationVersion, prep, recordId, syncInverseCache, error)
+      //   return undefined
+      // }
     },
     [mutation, onSuccess, getFieldMetadata, syncInverseCache]
   )
@@ -379,6 +378,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
         { recordIds, values: [{ fieldId, value }] },
         {
           onSuccess: () => {
+            console.log('BULK MUTATION')
             const currentStore = useFieldValueStore.getState()
             for (const { key, version } of keyVersions) {
               if (version >= currentStore.getMutationVersion(key)) {
@@ -437,6 +437,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
         { recordIds, values: apiValues },
         {
           onSuccess: () => {
+            console.log('saveBulkMultipleFields SUCCESS')
             const currentStore = useFieldValueStore.getState()
             for (const { key, version } of keyVersions) {
               if (version >= currentStore.getMutationVersion(key)) {

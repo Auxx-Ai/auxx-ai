@@ -7,7 +7,7 @@ import { and, eq } from 'drizzle-orm'
 import { type TypedFieldValue, type TypedFieldValueInput, getValueType } from '@auxx/types'
 import { getFieldWithDefinition, type FieldWithDefinition } from '@auxx/services'
 import { formatToDisplayValue } from './formatter'
-import type { RelationshipConfig, RelationshipType } from '@auxx/types/custom-field'
+import { type RelationshipConfig, type RelationshipType, getInverseFieldId } from '@auxx/types/custom-field'
 import { FieldValueValidator, fieldValueSchemas } from './field-value-validator'
 import { ResourceRegistryService } from '../resources/registry/resource-registry-service'
 import { parseRecordId } from '../resources/resource-id'
@@ -101,10 +101,11 @@ export async function getInverseInfoFromField(
   const relationship = (field.options as Record<string, unknown>)?.relationship as
     | RelationshipConfig
     | undefined
-  if (!relationship?.inverseFieldId) return null
+  const inverseFieldId = relationship ? getInverseFieldId(relationship) : null
+  if (!inverseFieldId) return null
 
   // Use existing cached getField() for the inverse field
-  const inverseField = await getField(ctx, relationship.inverseFieldId)
+  const inverseField = await getField(ctx, inverseFieldId)
   const inverseRelationship = (inverseField.options as Record<string, unknown>)?.relationship as
     | RelationshipConfig
     | undefined
@@ -120,7 +121,7 @@ export async function getInverseInfoFromField(
     inverseRelationship?.relationshipType ?? 'has_many'
 
   return {
-    inverseFieldId: relationship.inverseFieldId,
+    inverseFieldId,
     inverseRelationshipType,
     sourceEntityDefinitionId,
     targetEntityDefinitionId,

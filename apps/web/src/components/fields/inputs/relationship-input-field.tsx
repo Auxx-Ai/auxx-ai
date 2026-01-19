@@ -3,24 +3,16 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { usePropertyContext } from '../property-provider'
 import { useFieldNavigationOptional } from '../field-navigation-context'
-import {
-  toRecordId,
-  getRelationshipStoreState,
-  useResourceStore,
-  useResource,
-} from '~/components/resources'
-import { useRecordIdFromField } from '../hooks/use-record-id-from-field'
+import { toRecordId, getRelationshipStoreState, useResource } from '~/components/resources'
 import {
   extractRelationshipRecordIds,
   getInstanceId,
-  isMultiRelationship,
   parseRecordId,
   type RecordId,
 } from '@auxx/lib/field-values/client'
-import { api } from '~/trpc/react'
 import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
 import { RecordPicker } from '~/components/pickers/record-picker'
-import { isSingleValueRelationship } from '@auxx/utils'
+import { isSingleRelationship } from '@auxx/utils'
 
 /**
  * Input component for RELATIONSHIP field type.
@@ -36,8 +28,7 @@ export function RelationshipInputField() {
   const nav = useFieldNavigationOptional()
 
   const relationship = field.options?.relationship
-  const isSingleSelect = isSingleValueRelationship(relationship?.relationshipType)
-  // relationship?.relationshipType === 'belongs_to' || relationship?.relationshipType === 'has_one'
+  const isSingleSelect = isSingleRelationship(relationship?.relationshipType)
 
   // Get relatedEntityDefinitionId for storing with values
   // relatedEntityDefinitionId is the unified ID for both system and custom resources
@@ -49,31 +40,19 @@ export function RelationshipInputField() {
     return ''
   }, [relationship])
 
-  // Determine recordId using hook - returns { tableId, entityDefinitionId? } or null
-  const resourceRef = useRecordIdFromField(field)
   const relatedResource = useResource(relatedEntityDefinitionId)
-  console.log(field, relationship, relatedResource)
 
   // Dialog state for inline create
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
-
-  // Get resource by ID to determine label and if inline create is supported
-  // const getResourceById = useResourceStore((s) => s.getResourceById)
-
-  // Get the related resource for label and inline create capability
-  // const relatedResource = useMemo(() => {
-  //   if (!resourceRef) return null
-  //   return getResourceById(resourceRef.entityDefinitionId)
-  // }, [resourceRef, getResourceById])
 
   // Only custom resources support inline create (system resources have dedicated flows)
   const canInlineCreate = true
 
   // Convert field value to RecordId[] for RecordPicker
   const currentRecordIds = useMemo<RecordId[]>(() => {
-    if (!resourceRef) return []
+    if (!relatedEntityDefinitionId) return []
     return extractRelationshipRecordIds(value)
-  }, [value, resourceRef])
+  }, [value, relatedEntityDefinitionId])
 
   // Track current selection in local state for save-on-close pattern
   const [localRecordIds, setLocalRecordIds] = useState<RecordId[]>(currentRecordIds)
@@ -148,7 +127,7 @@ export function RelationshipInputField() {
   const computePresetValues = useCallback((): Record<string, unknown> | undefined => {
     // Only preset if we have an inverse relationship configured
     const inverseFieldId = relationship?.inverseFieldId
-    if (!inverseFieldId || !resourceRef || !recordId) {
+    if (!inverseFieldId || !relatedEntityDefinitionId || !recordId) {
       return undefined
     }
 
@@ -170,41 +149,20 @@ export function RelationshipInputField() {
         },
       ],
     }
-  }, [relationship, resourceRef, recordId])
-
-  // Get tRPC utils for fetching
-  const utils = api.useUtils()
+  }, [relationship, relatedEntityDefinitionId, recordId])
 
   /**
-   * Handle newly created entity instance
-   * - Fetches the new item for hydration
-   * - Adds to relationship store
-   * - Selects the new item
-   * - Closes the dialog
+   * Handle newly created entity instance.
+   * Requests hydration and selects the new item.
    */
   const handleCreatedInstance = useCallback(
-    async (instanceId: string) => {
-      if (!resourceRef) return
+    (instanceId: string) => {
+      if (!relatedEntityDefinitionId) return
 
-      try {
-        // Fetch the newly created item to get display info
-        const newItem = await utils.resource.getById.fetch({
-          entityDefinitionId: resourceRef.entityDefinitionId,
-          id: instanceId,
-        })
+      const newRecordId = toRecordId(relatedEntityDefinitionId, instanceId)
 
-        if (newItem) {
-          // Add to relationship store for immediate hydration
-          const key = toRecordId(resourceRef.entityDefinitionId, instanceId)
-          getRelationshipStoreState().addHydratedItems({ [key]: newItem })
-        }
-      } catch (error) {
-        // Non-critical: item will be fetched on next hydration cycle
-        console.warn('Failed to fetch newly created item:', error)
-      }
-
-      // Create the new RecordId
-      const newRecordId = toRecordId(resourceRef.entityDefinitionId, instanceId)
+      // Request hydration - store will batch fetch for display
+      getRelationshipStoreState().requestHydration([newRecordId])
 
       // Select the new item
       if (isSingleSelect) {
@@ -213,13 +171,12 @@ export function RelationshipInputField() {
         setLocalRecordIds((prev) => [...prev, newRecordId])
       }
 
-      // Close dialog
       setIsCreateDialogOpen(false)
     },
-    [resourceRef, isSingleSelect, utils]
+    [relatedEntityDefinitionId, isSingleSelect]
   )
 
-  if (!resourceRef) {
+  if (!relatedEntityDefinitionId) {
     return <span className="text-muted-foreground p-2">Invalid relationship config</span>
   }
 
@@ -228,7 +185,7 @@ export function RelationshipInputField() {
       <RecordPicker
         value={localRecordIds}
         onChange={handleChange}
-        entityDefinitionId={resourceRef.entityDefinitionId}
+        entityDefinitionId={relatedEntityDefinitionId}
         multi={!isSingleSelect}
         onCaptureChange={handleCaptureChange}
         canCreate={canInlineCreate}

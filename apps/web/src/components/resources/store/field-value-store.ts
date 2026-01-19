@@ -486,6 +486,8 @@ export function useFieldValue(
   fieldRef: FieldReference
 ): { value: StoredFieldValue | undefined; isLoading: boolean } {
   const key = buildFieldValueKey(recordId, fieldRef)
+  // DEBUG: Log the key being used for subscription
+  // console.log('[useFieldValue] key:', key, 'recordId:', recordId, 'fieldRef:', fieldRef)
 
   // Stable selector that subscribes to both value and loading state
   const selector = useCallback(

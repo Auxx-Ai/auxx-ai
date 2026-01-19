@@ -2,6 +2,7 @@
 
 import { z } from 'zod'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
+import { type ResourceFieldId, parseResourceFieldId } from '@auxx/types/field'
 
 // =============================================================================
 // RE-EXPORT MODEL TYPES FROM DATABASE
@@ -246,10 +247,15 @@ export type RelationshipType = (typeof RELATIONSHIP_TYPES)[number]
  * This is the stored/persisted config for relationship fields
  */
 export interface RelationshipConfig {
-  /** Entity definition ID of the related entity (system or custom) */
-  relatedEntityDefinitionId: string
-  /** Field ID of the inverse relationship field */
-  inverseFieldId: string | null
+  /**
+   * ResourceFieldId of the inverse relationship field (format: entityDefinitionId:fieldId)
+   * The entityDefinitionId part is the related entity type (what this relationship points TO)
+   * The fieldId part is the inverse field on that entity (what points BACK)
+   *
+   * NOTE: This is briefly null during creation (between primary insert and update)
+   * but is always populated after createRelationshipFieldWithInverse completes.
+   */
+  inverseResourceFieldId: ResourceFieldId | null
   /** Cardinality of the relationship */
   relationshipType: RelationshipType
   /** Whether this field is the inverse side of the relationship */
@@ -258,11 +264,30 @@ export interface RelationshipConfig {
 
 /** Zod schema for RelationshipConfig validation */
 export const relationshipConfigSchema = z.object({
-  relatedEntityDefinitionId: z.string(),
-  inverseFieldId: z.string().nullable(),
+  inverseResourceFieldId: z.string().nullable(),
   relationshipType: relationshipTypeSchema,
   isInverse: z.boolean(),
 })
+
+/**
+ * Extract the related entity definition ID from a RelationshipConfig.
+ * @param config - The relationship configuration
+ * @returns The entity definition ID of the related entity, or null if not set
+ */
+export function getRelatedEntityDefinitionId(config: RelationshipConfig): string | null {
+  if (!config.inverseResourceFieldId) return null
+  return parseResourceFieldId(config.inverseResourceFieldId).entityDefinitionId
+}
+
+/**
+ * Extract the inverse field ID from a RelationshipConfig.
+ * @param config - The relationship configuration
+ * @returns The field ID of the inverse relationship field, or null if not set
+ */
+export function getInverseFieldId(config: RelationshipConfig): string | null {
+  if (!config.inverseResourceFieldId) return null
+  return parseResourceFieldId(config.inverseResourceFieldId).fieldId
+}
 
 /**
  * Input options for creating a new relationship field

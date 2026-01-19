@@ -19,7 +19,7 @@ interface SortablePropertyRowProps {
   id: string
   providerId: string
   field: any
-  value?: any
+  // value?: any
   loading: boolean
   isEditMode: boolean
   isSortable: boolean
@@ -53,7 +53,7 @@ export function SortablePropertyRow({
   id,
   providerId,
   field,
-  value,
+  // value,
   loading,
   isEditMode,
   isSortable,
@@ -180,7 +180,7 @@ export function SortablePropertyRow({
         registerClose={registerClose}
         unregisterClose={unregisterClose}
         field={field}
-        value={value}
+        // value={value}
         loading={loading}
         recordId={recordId}
         readOnly={readOnly}

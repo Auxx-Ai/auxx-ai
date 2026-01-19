@@ -4,7 +4,7 @@ import { database, schema } from '@auxx/database'
 import { eq, and } from 'drizzle-orm'
 import { ok, err } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import type { RelationshipConfig } from './types'
+import { type RelationshipConfig, getInverseFieldId } from './types'
 import type { CustomFieldNotFoundError, AccessDeniedError } from './errors'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 
@@ -62,7 +62,7 @@ export async function deleteCustomField(input: DeleteCustomFieldInput) {
   // Check if it's a relationship field with an inverse
   const isRelationship = field.type === 'RELATIONSHIP'
   const relationshipConfig = (field.options as { relationship?: RelationshipConfig })?.relationship
-  const inverseFieldId = isRelationship ? relationshipConfig?.inverseFieldId : null
+  const inverseFieldId = isRelationship && relationshipConfig ? getInverseFieldId(relationshipConfig) : null
 
   // Delete in transaction
   const deleteResult = await fromDatabase(

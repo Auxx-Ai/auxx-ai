@@ -47,8 +47,3 @@ export function isSingleRelationship(relationshipType?: RelationshipType | strin
   return relationshipType === 'belongs_to' || relationshipType === 'has_one'
 }
 
-/**
- * Alias for isSingleRelationship for backward compatibility.
- * @deprecated Use isSingleRelationship instead
- */
-export const isSingleValueRelationship = isSingleRelationship

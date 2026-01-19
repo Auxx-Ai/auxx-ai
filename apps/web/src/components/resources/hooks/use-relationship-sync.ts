@@ -8,7 +8,7 @@ import {
   type StoredFieldValue,
 } from '~/components/resources/store/field-value-store'
 import { parseRecordId, toRecordId, type RecordId } from '@auxx/lib/resources/client'
-import { isSingleValueRelationship, type RelationshipType } from '@auxx/utils'
+import { isSingleRelationship, type RelationshipType } from '@auxx/utils'
 import type { RelationshipFieldValue } from '@auxx/types/field-value'
 
 /** Info needed to sync inverse relationships (mirrors DB options.relationship structure) */
@@ -77,7 +77,7 @@ export function useRelationshipSync() {
         return
       }
 
-      const isSingleValue = isSingleValueRelationship(inverseRelationshipType)
+      const isSingleValue = isSingleRelationship(inverseRelationshipType)
 
       // Get current state (need to access store directly for current values)
       const currentValues = useFieldValueStore.getState().values
@@ -117,16 +117,17 @@ export function useRelationshipSync() {
       // This works even when the target entity itself isn't in cache.
       if (isSingleValue && addedRecordIds.length > 0) {
         const { sourceFieldId } = inverseInfo
-        // Key format: ${entityDefinitionId}:${entityInstanceId}:${fieldId}
+        // Key format: ${entityDefId}:${entityInstId}:${fieldEntityDefId}:${fieldId}
         const keyPrefix = `${sourceEntityDefinitionId}:`
-        const keySuffix = `:${sourceFieldId}`
+        // keySuffix must include the full ResourceFieldId (fieldEntityDefId:fieldId)
+        const keySuffix = `:${sourceEntityDefinitionId}:${sourceFieldId}`
 
         // Find all cached keys for this field type (e.g., all Vendor.products caches)
         for (const [cacheKey, cacheValue] of Object.entries(currentValues)) {
-          // Skip if not matching pattern: {entityDefId}:{entityId}:{fieldId}
+          // Skip if not matching pattern
           if (!cacheKey.startsWith(keyPrefix) || !cacheKey.endsWith(keySuffix)) continue
 
-          // Extract the owner ID from the cache key
+          // Extract the owner ID from the cache key (between prefix and suffix)
           const ownerInstanceId = cacheKey.slice(keyPrefix.length, -keySuffix.length)
           if (!ownerInstanceId || ownerInstanceId === sourceInstanceId) continue // Skip self
 

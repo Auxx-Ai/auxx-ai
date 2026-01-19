@@ -9,13 +9,16 @@ import {
   useEffect,
   useRef,
 } from 'react'
+
 import {
   useFieldValueStore,
   buildFieldValueKey,
   type FieldValueKey,
   type StoredFieldValue,
 } from '~/components/resources/store/field-value-store'
+
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
+
 import { formatToRawValue } from '@auxx/lib/field-values/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import type { FieldType } from '@auxx/database/types'
@@ -107,7 +110,6 @@ const PropertyContext = createContext<PropertyContextValue | undefined>(undefine
 
 interface PropertyProviderProps {
   field: any
-  value?: any
   providerId: string
   loading?: boolean
   onOpenChange?: (providerId: string, isOpen: boolean) => void
@@ -191,7 +193,6 @@ function hasValueChanged(newValue: any, originalVal: any): boolean {
 
 export function PropertyProvider({
   field,
-  value: initialValue,
   providerId,
   loading = false,
   onOpenChange,
@@ -230,10 +231,7 @@ export function PropertyProvider({
 
   // Determine the actual initial value: store value takes precedence
   // storeValue is TypedFieldValue - extract raw value for component use
-  const effectiveInitialValue =
-    storeValue !== undefined
-      ? extractRawValue(storeValue, field.fieldType)
-      : extractRawValue(initialValue, field.fieldType)
+  const effectiveInitialValue = extractRawValue(storeValue, field.fieldType)
 
   // ─── State ───
   const [currentValue, setCurrentValue] = useState<any>(effectiveInitialValue)
