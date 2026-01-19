@@ -177,7 +177,7 @@ export function EntityRecordsContent() {
 
   // Query entity instances using unified record list
   const {
-    items,
+    records,
     isLoading: instancesLoading,
     isLoadingRecords,
     isFetchingNextPage,
@@ -231,8 +231,8 @@ export function EntityRecordsContent() {
 
   // Convert to RecordIds for syncer
   const recordIds = useMemo(
-    () => (entityDefinitionId ? items.map((i) => toRecordId(entityDefinitionId, i.id)) : []),
-    [items, entityDefinitionId]
+    () => (entityDefinitionId ? records.map((i) => toRecordId(entityDefinitionId, i.id)) : []),
+    [records, entityDefinitionId]
   )
 
   // Build column IDs in ResourceFieldId format
@@ -597,7 +597,7 @@ export function EntityRecordsContent() {
           dockedPanelMaxWidth={maxWidth}>
           <div className="flex-1 overflow-hidden rounded-lg bg-white dark:bg-muted/10 flex-col flex">
             <DynamicView
-              data={items}
+              data={records}
               className="h-full flex-1"
               tableId={`entity-${entityDefinitionId}`}
               bulkActions={bulkActions}
@@ -626,8 +626,8 @@ export function EntityRecordsContent() {
               <DynamicTableFooter>
                 <div className="flex items-center justify-between px-4 py-2 text-sm">
                   <div>
-                    {items.length}{' '}
-                    {items.length === 1
+                    {records.length}{' '}
+                    {records.length === 1
                       ? resource.label.toLowerCase()
                       : resource.plural.toLowerCase()}
                     {hasNextPage && <span className="ml-2">(more available)</span>}

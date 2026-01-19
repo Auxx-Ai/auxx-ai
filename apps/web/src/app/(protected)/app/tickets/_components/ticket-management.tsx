@@ -86,7 +86,7 @@ export function TicketManagement({
   // ══════════════════════════════════════════════════════════════════════════
 
   const {
-    items: tickets,
+    records: tickets,
     isLoading: isTicketsLoading,
     hasNextPage,
     fetchNextPage,

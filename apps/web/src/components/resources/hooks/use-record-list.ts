@@ -32,8 +32,8 @@ interface UseRecordListOptions {
 interface UseRecordListResult<T = RecordMeta> {
   /** Record IDs for current page - rows use useRecord(id) individually */
   recordIds: string[]
-  /** Resolved items from record store (may be partial while loading) */
-  items: T[]
+  /** Resolved records from record store (may be partial while loading) */
+  records: T[]
   /** True if records are still being fetched */
   isLoadingRecords: boolean
   /** The list key (for cache reference) */
@@ -204,25 +204,25 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
   const recordIds = cachedList?.ids ?? (data?.pages?.flatMap((p: { ids: string[] }) => p.ids) || EMPTY_IDS)
   const total = cachedList?.total ?? data?.pages?.[data.pages.length - 1]?.total ?? 0
 
-  // ─── RESOLVE ITEMS FROM RECORD STORE ─────────────────────────────────
+  // ─── RESOLVE RECORDS FROM RECORD STORE ─────────────────────────────────
   // Subscribe to record cache for this entity definition
   const recordCache = useRecordStore((s) => s.records[entityDefinitionId])
   const loadingIds = useRecordStore((s) => s.loadingIds)
   const pendingIds = useRecordStore((s) => s.pendingFetchIds)
 
-  // Resolve items from cache - filter out undefined (not yet loaded)
-  const items = useMemo(() => {
+  // Resolve records from cache - filter out undefined (not yet loaded)
+  const records = useMemo(() => {
     if (!recordCache) return [] as T[]
     return recordIds
       .map((id: string) => recordCache.get(id) as T | undefined)
-      .filter((item: T | undefined): item is T => item !== undefined)
+      .filter((record: T | undefined): record is T => record !== undefined)
   }, [recordCache, recordIds])
 
   // Check if any records are still loading
   const isLoadingRecords = useMemo(() => {
     if (!recordIds.length) return false
-    // Records are loading if we have fewer items than IDs, and some are pending/loading
-    if (items.length < recordIds.length) {
+    // Records are loading if we have fewer records than IDs, and some are pending/loading
+    if (records.length < recordIds.length) {
       const hasLoading = recordIds.some((id: string) => {
         const recordId = toRecordId(entityDefinitionId, id)
         return loadingIds.has(recordId) || pendingIds.has(recordId)
@@ -230,11 +230,11 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
       return hasLoading
     }
     return false
-  }, [recordIds, items.length, loadingIds, pendingIds, entityDefinitionId])
+  }, [recordIds, records.length, loadingIds, pendingIds, entityDefinitionId])
 
   return {
     recordIds,
-    items,
+    records,
     isLoadingRecords,
     listKey,
     total,

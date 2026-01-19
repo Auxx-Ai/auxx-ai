@@ -168,7 +168,7 @@ export default function CustomerListPage() {
 
   // Query contacts using unified record list
   const {
-    items,
+    records,
     isLoading,
     isLoadingRecords,
     isFetchingNextPage,
@@ -206,7 +206,7 @@ export default function CustomerListPage() {
   }, [resources])
 
   // Convert to RecordIds for syncer
-  const recordIds = useMemo(() => items.map((c) => toRecordId('contact', c.id)), [items])
+  const recordIds = useMemo(() => records.map((c) => toRecordId('contact', c.id)), [records])
 
   // Build column IDs in ResourceFieldId format
   const columnIds = useMemo(
@@ -422,7 +422,7 @@ export default function CustomerListPage() {
           <div className="flex-1 overflow-hidden bg-white dark:bg-muted/10 rounded-lg">
             {/* Dynamic Table Component */}
             <DynamicTable
-              data={items}
+              data={records}
               className="h-full flex-1"
               entityDefinitionId="contact"
               tableId={TABLE_ID}
@@ -444,7 +444,7 @@ export default function CustomerListPage() {
               <DynamicTableFooter>
                 <div className="flex items-center justify-between px-4 py-2 text-sm">
                   <div>
-                    {items.length} contacts loaded
+                    {records.length} contacts loaded
                     {hasNextPage && <span className="ml-2">(more available)</span>}
                   </div>
                   {isFetchingNextPage && (
