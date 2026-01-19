@@ -5,7 +5,6 @@ import { useCallback, useRef } from 'react'
 import { api } from '~/trpc/react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { toastError } from '@auxx/ui/components/toast'
-import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
 import type { EntityRow } from '~/app/(protected)/app/custom/[slug]/_components/types'
 
 /**
@@ -40,16 +39,9 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
     onRefetch,
   } = options
 
-  const utils = api.useUtils()
-
   // Confirm dialogs
   const [confirmDelete, ConfirmDeleteDialog] = useConfirm()
   const [confirmArchive, ConfirmArchiveDialog] = useConfirm()
-
-  // Custom field mutations
-  const { create: createField } = useCustomFieldMutations({
-    entityDefinitionId,
-  })
 
   // ============================================================
   // Mutations
@@ -189,19 +181,6 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
     [confirmDelete, resourceLabel, onDrawerClose]
   )
 
-  /** Handle saving a new custom field */
-  const handleSaveField = useCallback(
-    async (fieldData: Record<string, unknown>) => {
-      // entityDefinitionId is now included by CustomFieldDialog
-      await createField.mutateAsync(fieldData)
-      // Invalidate custom fields query
-      utils.customField.getByEntityDefinition.invalidate({ entityDefinitionId })
-      // Also refresh data to pick up new column
-      onRefetch?.()
-    },
-    [createField, entityDefinitionId, utils, onRefetch]
-  )
-
   return {
     // Single instance operations
     handleArchive,
@@ -211,10 +190,6 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
     // Bulk operations
     handleBulkDelete,
     handleBulkArchive,
-
-    // Custom field operations
-    handleSaveField,
-    isCreatingField: createField.isPending,
 
     // Dialog components (must be rendered in JSX)
     ConfirmDeleteDialog,

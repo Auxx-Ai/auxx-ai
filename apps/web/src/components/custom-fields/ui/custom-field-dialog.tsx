@@ -4,7 +4,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import { v4 as uuidv4 } from 'uuid'
 import { ChevronDown } from 'lucide-react'
 
 import {
@@ -71,37 +70,25 @@ import {
   PhoneFormattingEditor,
 } from './formatting-editors'
 import type { FieldOptions } from '@auxx/lib/field-values/client'
+import { toResourceFieldId, parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
+import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
+import { useField } from '~/components/resources'
+import { toastError } from '@auxx/ui/components/toast'
 
 /** Display options type for internal state */
 type DisplayOptions = FieldOptions
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
 
-/** Field data for editing */
-interface CustomFieldData {
-  id: string
-  name: string
-  type: string
-  description?: string | null
-  required?: boolean
-  isUnique?: boolean
-  defaultValue?: string | null
-  icon?: string | null
-  isCustom?: boolean
-  options?: any
-}
-
 /** Props for CustomFieldDialog */
 interface CustomFieldDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** Pass existing field for edit mode, null/undefined for create mode */
-  editingField?: CustomFieldData | null
-  onSave: (field: any) => Promise<void>
-  isPending: boolean
-  /** Entity definition ID - required for creating fields */
+  /** ResourceFieldId for edit mode (replaces editingField), null/undefined for create mode */
+  resourceFieldId?: ResourceFieldId | null
+  /** Entity definition ID - required for creating fields. For edit mode, derived from resourceFieldId if not provided */
   entityDefinitionId?: string
-  /** Record ID for the current entity (used by relationship field editor) */
-  currentRecordId?: string
+  /** Called after successful save - receives the created/updated field */
+  onSuccess?: (field: { id: string; name: string }) => void
 }
 
 /**
@@ -112,13 +99,36 @@ interface CustomFieldDialogProps {
 export function CustomFieldDialog({
   open,
   onOpenChange,
-  editingField = null,
-  onSave,
-  isPending,
-  entityDefinitionId,
-  currentRecordId,
+  resourceFieldId,
+  entityDefinitionId: entityDefinitionIdProp,
+  onSuccess,
 }: CustomFieldDialogProps) {
-  const isEditing = !!editingField
+  // Fetch field from store using useField hook
+  const editingField = useField(resourceFieldId)
+  const isEditing = !!resourceFieldId
+
+  // Derive entityDefinitionId from resourceFieldId if in edit mode
+  const effectiveEntityDefId = useMemo(() => {
+    if (resourceFieldId) {
+      const { entityDefinitionId: parsedId } = parseResourceFieldId(resourceFieldId)
+      return parsedId
+    }
+    return entityDefinitionIdProp ?? ''
+  }, [resourceFieldId, entityDefinitionIdProp])
+
+  // Handle case where field is not found when editing
+  useEffect(() => {
+    if (open && resourceFieldId && !editingField) {
+      toastError({
+        title: 'Field not found',
+        description: 'The field may have been deleted.',
+      })
+      onOpenChange(false)
+    }
+  }, [open, resourceFieldId, editingField, onOpenChange])
+
+  // Use custom field mutations hook for create/update
+  const { create, update, isPending } = useCustomFieldMutations({ entityDefinitionId: effectiveEntityDefId })
 
   // Form setup
   const form = useForm<CustomFieldFormValues>({
@@ -256,19 +266,19 @@ export function CustomFieldDialog({
       let initDisplayOptions: DisplayOptions = {}
 
       if (editingField) {
-        // Edit mode: populate form with existing field data
-        const fieldType =
-          (editingField.fieldType as FieldTypeType) || editingField.type || FieldType.TEXT
+        // Edit mode: populate form with existing field data from ResourceField
+        // ResourceField uses 'label' for display name, 'fieldType' for type, 'isSystem' (inverse of isCustom)
+        const fieldType = (editingField.fieldType as FieldTypeType) || FieldType.TEXT
         form.reset({
-          name: editingField.name || '',
+          name: editingField.label || '',
           type: fieldType,
           fieldType: fieldType,
           description: editingField.description || '',
           required: editingField.required || false,
           isUnique: editingField.isUnique || false,
           defaultValue: editingField.defaultValue || '',
-          icon: editingField.icon || '',
-          isCustom: editingField.isCustom !== undefined ? editingField.isCustom : true,
+          icon: editingField.options?.icon || '',
+          isCustom: !editingField.isSystem,
         })
 
         // Set complex options
@@ -386,7 +396,7 @@ export function CustomFieldDialog({
         displayOptions: initDisplayOptions,
       })
     }
-  }, [open, editingField, form])
+  }, [open, resourceFieldId, editingField, form])
 
   // Watch selected type
   const selectedType = form.watch('type')
@@ -413,8 +423,7 @@ export function CustomFieldDialog({
   const handleSubmit = async (values: CustomFieldFormValues) => {
     const submitObj: any = {
       ...values,
-      id: editingField?.id || uuidv4(),
-      entityDefinitionId,
+      entityDefinitionId: effectiveEntityDefId,
     }
 
     // Add type-specific options
@@ -454,8 +463,28 @@ export function CustomFieldDialog({
       }
     }
 
-    await onSave(submitObj)
-    onOpenChange(false)
+    try {
+      let resultField: { id: string; name: string }
+
+      if (isEditing && resourceFieldId && editingField?.id) {
+        // Update existing field - use resourceFieldId directly
+        await update.mutateAsync({
+          ...submitObj,
+          resourceFieldId,
+        })
+        resultField = { id: editingField.id, name: values.name }
+      } else {
+        // Create new field
+        const newField = await create.mutateAsync(submitObj)
+        resultField = { id: newField.id, name: newField.name }
+      }
+
+      onOpenChange(false)
+      onSuccess?.(resultField)
+    } catch (error) {
+      // Error toast already handled by useCustomFieldMutations
+      console.error('Failed to save field:', error)
+    }
   }
 
   /** Render type-specific editors */
@@ -475,7 +504,7 @@ export function CustomFieldDialog({
           <RelationshipFieldEditor
             options={relationshipOptions}
             onChange={setRelationshipOptions}
-            currentRecordId={currentRecordId}
+            entityDefinitionId={effectiveEntityDefId}
             name={form.watch('name')}
             onNameChange={(v) => form.setValue('name', v)}
           />

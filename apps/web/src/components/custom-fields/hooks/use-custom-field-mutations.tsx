@@ -59,6 +59,18 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
         unique: variables.isUnique ?? false,
       }
 
+      // Calculate sortOrder to place new field at the end of the list
+      const existingFields = Object.values(store.fieldMap).filter((field) => {
+        const { entityDefinitionId: fieldEntityDefId } = parseResourceFieldId(field.resourceFieldId)
+        return fieldEntityDefId === effectiveEntityDefId
+      })
+      const sortedFields = existingFields.sort((a, b) =>
+        (a.sortOrder ?? '').localeCompare(b.sortOrder ?? '')
+      )
+      const lastSortOrder =
+        sortedFields.length > 0 ? (sortedFields[sortedFields.length - 1]?.sortOrder ?? null) : null
+      const newSortOrder = generateKeyBetween(lastSortOrder, null)
+
       // Create optimistic field shape matching ResourceField
       const optimisticField: ResourceField = {
         id: toFieldId(tempId),
@@ -71,7 +83,7 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
         description: variables.description ?? undefined,
         required: variables.required ?? false,
         isUnique: variables.isUnique ?? false,
-        sortOrder: generateKeyBetween(null, null), // Will be adjusted on server
+        sortOrder: newSortOrder,
         active: true,
         isSystem: false,
         showInPanel: true,

@@ -216,8 +216,6 @@ export function EntityRecordsContent() {
     handleDrawerDelete,
     handleBulkDelete,
     handleBulkArchive,
-    handleSaveField,
-    isCreatingField,
     ConfirmDeleteDialog,
     ConfirmArchiveDialog,
   } = useEntityInstanceOperations({
@@ -676,10 +674,7 @@ export function EntityRecordsContent() {
         <CustomFieldDialog
           open={isFieldDialogOpen}
           onOpenChange={setIsFieldDialogOpen}
-          onSave={handleSaveField}
-          isPending={isCreatingField}
           entityDefinitionId={entityDefinitionId}
-          currentResourceId={resource?.id}
         />
       )}
 

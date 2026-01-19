@@ -14,6 +14,7 @@ import { AddFieldRow } from './add-field-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { useFieldNavigation } from './field-navigation-context'
 import { parseRecordId, type ResourceField, type RecordId } from '@auxx/lib/resources/client'
+import type { ResourceFieldId } from '@auxx/types/field'
 
 /**
  * Props for EntityFieldsContent component (unified version)
@@ -24,9 +25,7 @@ export interface EntityFieldsContentProps {
   setIsEditMode: (value: boolean) => void
   dialogOpen: boolean
   setDialogOpen: (value: boolean) => void
-  editingField: any | null
-  handleSaveField: (fieldData: any) => Promise<void>
-  isPending: boolean
+  editingResourceFieldId: ResourceFieldId | null
   sensors: SensorDescriptor<SensorOptions>[]
   handleDragEnd: (event: DragEndEvent) => void
   /** Unified sorted fields (system + custom) */
@@ -50,6 +49,8 @@ export interface EntityFieldsContentProps {
   readOnly?: boolean
   /** Whether to show field titles/labels (default: true) */
   showTitle?: boolean
+  /** Callback after successful mutation */
+  onMutationSuccess?: () => void
 }
 
 /**
@@ -62,9 +63,7 @@ export function EntityFieldsContent({
   setIsEditMode,
   dialogOpen,
   setDialogOpen,
-  editingField,
-  handleSaveField,
-  isPending,
+  editingResourceFieldId,
   sensors,
   handleDragEnd,
   fields,
@@ -78,6 +77,7 @@ export function EntityFieldsContent({
   unregisterProviderClose,
   ConfirmDeleteDialog,
   recordId,
+  onMutationSuccess,
   canEdit = true,
   readOnly = false,
   showTitle = true,
@@ -155,11 +155,9 @@ export function EntityFieldsContent({
         <CustomFieldDialog
           open={dialogOpen}
           onOpenChange={setDialogOpen}
-          editingField={editingField}
-          onSave={handleSaveField}
-          isPending={isPending}
+          resourceFieldId={editingResourceFieldId}
           entityDefinitionId={entityDefinitionId}
-          currentRecordId={recordId}
+          onSuccess={onMutationSuccess}
         />
       )}
 

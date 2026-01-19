@@ -1,7 +1,7 @@
 // packages/services/src/custom-fields/create-field.ts
 
 import { database, schema, type Database, type Transaction } from '@auxx/database'
-import { eq, and, desc, isNull } from 'drizzle-orm'
+import { eq, and, desc } from 'drizzle-orm'
 import { ok, err } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
@@ -65,10 +65,10 @@ async function getLastFieldSortOrder(
     eq(schema.CustomField.modelType, modelType as any),
   ]
 
-  if (entityDefinitionId) {
-    conditions.push(eq(schema.CustomField.entityDefinitionId, entityDefinitionId))
-  } else {
-    conditions.push(isNull(schema.CustomField.entityDefinitionId))
+  // Only filter by entityDefinitionId for custom entities (consistent with get-fields.ts)
+  // System entities (contact, ticket, etc.) have entityDefinitionId = NULL in the database
+  if (modelType === ModelTypes.ENTITY) {
+    conditions.push(eq(schema.CustomField.entityDefinitionId, entityDefinitionId!))
   }
 
   return db
@@ -113,15 +113,17 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
   const dbModelType = modelType
 
   // Check for existing field with same name
+  // Only filter by entityDefinitionId for custom entities (consistent with get-fields.ts)
+  const duplicateConditions = [
+    eq(schema.CustomField.name, name),
+    eq(schema.CustomField.organizationId, organizationId),
+    eq(schema.CustomField.modelType, dbModelType as any),
+  ]
+  if (dbModelType === ModelTypes.ENTITY) {
+    duplicateConditions.push(eq(schema.CustomField.entityDefinitionId, entityDefinitionId!))
+  }
   const existingField = await db.query.CustomField.findFirst({
-    where: and(
-      eq(schema.CustomField.name, name),
-      eq(schema.CustomField.organizationId, organizationId),
-      eq(schema.CustomField.modelType, dbModelType as any),
-      entityDefinitionId
-        ? eq(schema.CustomField.entityDefinitionId, entityDefinitionId)
-        : isNull(schema.CustomField.entityDefinitionId)
-    ),
+    where: and(...duplicateConditions),
   })
 
   if (existingField) {

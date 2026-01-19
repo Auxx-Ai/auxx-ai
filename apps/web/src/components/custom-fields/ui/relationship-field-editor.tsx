@@ -11,11 +11,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { api } from '~/trpc/react'
-import { isSystemResource, isCustomResource } from '@auxx/lib/resources/client'
 import { Label } from '@auxx/ui/components/label'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import { RELATIONSHIP_TYPES as RELATIONSHIP_TYPE_VALUES, type RelationshipOptions } from '@auxx/types/custom-field'
+import {
+  RELATIONSHIP_TYPES as RELATIONSHIP_TYPE_VALUES,
+  type RelationshipOptions,
+} from '@auxx/types/custom-field'
+import { isSingleRelationship, getInverseCardinality } from '@auxx/utils'
+import { useResources, useResource } from '~/components/resources'
 
 // Re-export RelationshipOptions for consumers of this component
 export type { RelationshipOptions }
@@ -32,8 +35,8 @@ const RELATIONSHIP_TYPES = RELATIONSHIP_TYPE_VALUES.map((value) => ({
 interface RelationshipFieldEditorProps {
   options: RelationshipOptions
   onChange: (options: RelationshipOptions) => void
-  /** Record ID to look up current resource in resources list */
-  currentRecordId?: string
+  /** Entity definition ID to look up current resource in resources list */
+  entityDefinitionId?: string
   /** Field name value from parent form */
   name?: string
   /** Callback to update field name in parent form */
@@ -47,12 +50,16 @@ interface RelationshipFieldEditorProps {
 export function RelationshipFieldEditor({
   options,
   onChange,
-  currentRecordId,
+  entityDefinitionId,
   name,
   onNameChange,
 }: RelationshipFieldEditorProps) {
-  // Fetch all available resources (system + custom entities)
-  const { data: resources, isLoading } = api.resource.list.useQuery()
+  // Get all resources for the dropdown
+  const { resources, isLoading } = useResources()
+
+  // Get current and selected resources
+  const { resource: currentResource } = useResource(entityDefinitionId)
+  const { resource: selectedResource } = useResource(options.relatedResourceId)
 
   /** Update a single option field */
   const updateOption = <K extends keyof RelationshipOptions>(
@@ -62,30 +69,25 @@ export function RelationshipFieldEditor({
     onChange({ ...options, [key]: value })
   }
 
-  // Look up both resources from the same list
-  const currentResource = resources?.find((r) => r.id === currentRecordId)
-  const selectedResource = resources?.find((r) => r.id === options.relatedResourceId)
-
   /**
    * Get placeholder for the left (current entity) field name input
    * Based on the RELATED resource and relationship type
    */
   const getLeftPlaceholder = () => {
     if (!selectedResource) return 'Field name...'
-    const isSingular =
-      options.relationshipType === 'belongs_to' || options.relationshipType === 'has_one'
-    return isSingular ? selectedResource.label : selectedResource.plural
+    return isSingleRelationship(options.relationshipType)
+      ? selectedResource.label
+      : selectedResource.plural
   }
 
   /**
    * Get placeholder for the right (inverse) field name input
-   * Based on the CURRENT resource and relationship type
+   * Based on the CURRENT resource and inverse relationship type
    */
   const getRightPlaceholder = () => {
     if (!currentResource) return 'Field name...'
-    const isSingular =
-      options.relationshipType === 'has_many' || options.relationshipType === 'has_one'
-    return isSingular ? currentResource.label : currentResource.plural
+    const inverseType = getInverseCardinality(options.relationshipType)
+    return isSingleRelationship(inverseType) ? currentResource.label : currentResource.plural
   }
 
   return (
@@ -140,18 +142,7 @@ export function RelationshipFieldEditor({
               <SelectValue placeholder="Select resource..." />
             </SelectTrigger>
             <SelectContent>
-              {/* System Resources */}
-              {resources?.filter(isSystemResource).map((resource) => (
-                <SelectItem key={resource.id} value={resource.id}>
-                  <div className="flex items-center gap-2">
-                    <span>{resource.label}</span>
-                    <span className="text-xs text-muted-foreground">System</span>
-                  </div>
-                </SelectItem>
-              ))}
-
-              {/* Custom Entities */}
-              {resources?.filter(isCustomResource).map((resource) => (
+              {resources.map((resource) => (
                 <SelectItem key={resource.id} value={resource.id}>
                   <div className="flex items-center gap-2">
                     {resource.icon && (
@@ -162,7 +153,6 @@ export function RelationshipFieldEditor({
                       />
                     )}
                     <span>{resource.label}</span>
-                    <span className="text-xs text-muted-foreground">Custom</span>
                   </div>
                 </SelectItem>
               ))}

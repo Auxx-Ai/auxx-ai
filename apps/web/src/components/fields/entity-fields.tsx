@@ -23,7 +23,7 @@ import {
   type RecordId,
 } from '@auxx/lib/resources/client'
 import { useDynamicFieldOptions } from './hooks/use-dynamic-field-options'
-import { toResourceFieldId } from '@auxx/types/field'
+import { toResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 
 /**
  * Props for EntityFields component
@@ -71,10 +71,10 @@ function EntityFields({
   // Edit mode state
   const [isEditMode, setIsEditMode] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [editingField, setEditingField] = useState<any | null>(null)
+  const [editingResourceFieldId, setEditingResourceFieldId] = useState<ResourceFieldId | null>(null)
 
-  // Use custom field mutations hook for creating/updating/deleting fields (fields come from resource)
-  const { create, update, isPending, destroy } = useCustomFieldMutations({
+  // Use custom field mutations hook (update for reorder, destroy for delete, create handled in CustomFieldDialog)
+  const { update, destroy } = useCustomFieldMutations({
     entityDefinitionId,
   })
 
@@ -195,29 +195,15 @@ function EntityFields({
   // ─────────────────────────────────────────────────────────────────
 
   const handleAddField = () => {
-    setEditingField(null)
+    setEditingResourceFieldId(null)
     setDialogOpen(true)
   }
 
   const handleEditField = (_fieldId: string, field: any) => {
-    setEditingField(field)
+    // Build resourceFieldId from field - fields from Resource have resourceFieldId property
+    const rfId = field.resourceFieldId ?? toResourceFieldId(entityDefinitionId, field.id)
+    setEditingResourceFieldId(rfId)
     setDialogOpen(true)
-  }
-
-  const handleSaveField = async (fieldData: any) => {
-    if (editingField) {
-      await update.mutateAsync({
-        ...fieldData,
-        resourceFieldId: toResourceFieldId(entityDefinitionId, editingField.id),
-      })
-    } else {
-      // entityDefinitionId is now included by CustomFieldDialog
-      await create.mutateAsync(fieldData)
-    }
-
-    setEditingField(null)
-
-    onMutationSuccess?.()
   }
 
   const handleDeleteField = async (fieldId: string, fieldName: string) => {
@@ -254,9 +240,7 @@ function EntityFields({
         setIsEditMode={setIsEditMode}
         dialogOpen={dialogOpen}
         setDialogOpen={setDialogOpen}
-        editingField={editingField}
-        handleSaveField={handleSaveField}
-        isPending={isPending}
+        editingResourceFieldId={editingResourceFieldId}
         sensors={sensors}
         handleDragEnd={handleDragEnd}
         fields={filteredFields}
@@ -273,6 +257,7 @@ function EntityFields({
         canEdit={canEdit}
         readOnly={readOnly}
         showTitle={showTitle}
+        onMutationSuccess={onMutationSuccess}
       />
     </FieldNavigationProvider>
   )

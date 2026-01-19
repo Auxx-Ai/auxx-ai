@@ -31,7 +31,6 @@ import { IconPicker, type IconPickerValue } from '@auxx/ui/components/icon-picke
 import { api } from '~/trpc/react'
 import { toastError } from '@auxx/ui/components/toast'
 import { useEntityDefinitionMutations } from '~/components/resources/hooks'
-import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
 import { Check, DivideSquare, X } from 'lucide-react'
 import { Spinner } from '@auxx/ui/components/spinner'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
@@ -280,12 +279,6 @@ export function EntityDefinitionDialog({
   const { createEntity: createEntityMutation, updateEntity: updateEntityMutation } =
     useEntityDefinitionMutations()
 
-  // Custom field mutation hook (used after entity creation)
-  // Note: entityDefinitionId is set to createdEntityId which is populated after entity creation
-  const { create: createCustomField, isPending: isCreatingField } = useCustomFieldMutations({
-    entityDefinitionId: createdEntityId ?? undefined,
-  })
-
   /** Handle create success - open custom field dialog */
   const handleCreateSuccess = (data: { id: string }) => {
     // Mark form as clean so unsaved changes guard doesn't trigger
@@ -298,16 +291,6 @@ export function EntityDefinitionDialog({
   const handleUpdateSuccess = () => {
     onOpenChange(false)
     onSuccess?.()
-  }
-
-  /** Handle custom field save - creates field with optimistic updates */
-  const handleCustomFieldSave = async (fieldData: any) => {
-    if (!createdEntityId) return
-    // modelType is derived from entityDefinitionId on the server
-    await createCustomField.mutateAsync({
-      ...fieldData,
-      entityDefinitionId: createdEntityId,
-    })
   }
 
   /** Handle custom field dialog close - close both dialogs */
@@ -598,13 +581,11 @@ export function EntityDefinitionDialog({
       </Dialog>
 
       {/* Custom field dialog shown after entity creation */}
-      {customFieldDialogOpen && (
+      {customFieldDialogOpen && createdEntityId && (
         <CustomFieldDialog
           open={customFieldDialogOpen}
           onOpenChange={handleCustomFieldDialogClose}
-          onSave={handleCustomFieldSave}
-          isPending={isCreatingField}
-          currentRecordId={createdEntityId ?? undefined}
+          entityDefinitionId={createdEntityId}
         />
       )}
 

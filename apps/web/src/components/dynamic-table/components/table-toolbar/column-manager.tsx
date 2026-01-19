@@ -49,7 +49,6 @@ import {
 import { Tooltip } from '~/components/global/tooltip'
 import { EditColumnLabelDialog } from '../dialogs/edit-column-label-dialog'
 import { EditColumnFormattingDialog } from '../dialogs/edit-column-formatting-dialog'
-import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
 import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
 import { ResourcePickerInnerContent } from '~/components/pickers/resource-picker'
 import { decodeColumnId, encodeFieldPathColumnId } from '../../utils/column-id'
@@ -568,52 +567,6 @@ export function ColumnManager<TData = any>() {
   const setColumnVisibility = useSetColumnVisibility(tableId)
   const setColumnOrder = useSetColumnOrder(tableId)
 
-  // Custom field mutations hook (handles invalidation & toasts automatically)
-  const { create: createField, isPending } = useCustomFieldMutations({ entityDefinitionId })
-
-  // Handler for saving new field with auto-show behavior
-  const handleSaveField = useCallback(
-    async (fieldData: any) => {
-      if (!entityDefinitionId) return
-
-      try {
-        // Create field (mutation hook handles invalidation and toasts)
-        const newField = await createField.mutateAsync(fieldData)
-
-        // AUTO-ADD: Automatically show new field in table
-        if (newField?.id) {
-          const fieldColumnId = toResourceFieldId(entityDefinitionId, toFieldId(newField.id))
-
-          // Update visibility
-          setColumnVisibility({
-            ...(columnVisibility ?? {}),
-            [fieldColumnId]: true, // Show the new field
-          })
-
-          // Add to column order if not already there
-          if (!columnOrder?.includes(fieldColumnId)) {
-            setColumnOrder([...(columnOrder ?? []), fieldColumnId])
-          }
-        }
-
-        // Close dialog
-        setIsFieldDialogOpen(false)
-      } catch (error) {
-        // Error toast already handled by useCustomFieldMutations
-        // Keep dialog open for retry
-        console.error('Failed to create field:', error)
-      }
-    },
-    [
-      createField,
-      entityDefinitionId,
-      columnVisibility,
-      columnOrder,
-      setColumnVisibility,
-      setColumnOrder,
-    ]
-  )
-
   // Handler to open field dialog and close popover
   const handleCreateFieldClick = useCallback(() => {
     setIsOpen(false) // Close popover
@@ -652,10 +605,18 @@ export function ColumnManager<TData = any>() {
         <CustomFieldDialog
           open={isFieldDialogOpen}
           onOpenChange={setIsFieldDialogOpen}
-          onSave={handleSaveField}
-          isPending={isPending}
           entityDefinitionId={entityDefinitionId}
-          currentResourceId={entityDefinitionId}
+          onSuccess={(field) => {
+            // Auto-add new field to visible columns
+            const fieldColumnId = toResourceFieldId(entityDefinitionId, toFieldId(field.id))
+            setColumnVisibility({
+              ...(columnVisibility ?? {}),
+              [fieldColumnId]: true,
+            })
+            if (!columnOrder?.includes(fieldColumnId)) {
+              setColumnOrder([...(columnOrder ?? []), fieldColumnId])
+            }
+          }}
         />
       )}
     </>

@@ -584,6 +584,33 @@ export const useResourceStore = create<ResourceStoreState>()(
         // Add to server field map
         const newServerFieldMap = { ...state.serverFieldMap, [serverKey]: serverField }
 
+        // Add the new field to the resource's fields array
+        const { entityDefinitionId } = parseResourceFieldId(serverKey)
+        const newResources = state.resources.map((resource) => {
+          if (resource.id !== entityDefinitionId && resource.entityDefinitionId !== entityDefinitionId) {
+            return resource
+          }
+          // Check if field already exists (avoid duplicates)
+          const fieldExists = resource.fields.some(
+            (f) => f.id === serverField.id || f.resourceFieldId === serverKey
+          )
+          if (fieldExists) return resource
+
+          return {
+            ...resource,
+            fields: [...resource.fields, serverField],
+          }
+        })
+
+        // Update resourceMap with new resources
+        const newResourceMap = new Map(state.resourceMap)
+        for (const resource of newResources) {
+          newResourceMap.set(resource.id, resource)
+          if (resource.apiSlug) {
+            newResourceMap.set(resource.apiSlug, resource)
+          }
+        }
+
         // Rebuild effective fieldMap
         const fieldMap = buildEffectiveFieldMap(
           newServerFieldMap,
@@ -596,6 +623,8 @@ export const useResourceStore = create<ResourceStoreState>()(
         return {
           optimisticNewFields: restOptimistic,
           serverFieldMap: newServerFieldMap,
+          resources: newResources,
+          resourceMap: newResourceMap,
           fieldMap,
         }
       })
@@ -645,6 +674,29 @@ export const useResourceStore = create<ResourceStoreState>()(
         // Remove from server field map
         const { [key]: _, ...restServerFields } = state.serverFieldMap
 
+        // Remove the field from the resource's fields array
+        const { entityDefinitionId } = parseResourceFieldId(key)
+        const newResources = state.resources.map((resource) => {
+          if (resource.id !== entityDefinitionId && resource.entityDefinitionId !== entityDefinitionId) {
+            return resource
+          }
+          return {
+            ...resource,
+            fields: resource.fields.filter(
+              (f) => (f.resourceFieldId || toResourceFieldId(resource.id, f.id)) !== key
+            ),
+          }
+        })
+
+        // Update resourceMap with new resources
+        const newResourceMap = new Map(state.resourceMap)
+        for (const resource of newResources) {
+          newResourceMap.set(resource.id, resource)
+          if (resource.apiSlug) {
+            newResourceMap.set(resource.apiSlug, resource)
+          }
+        }
+
         // Rebuild effective fieldMap
         const fieldMap = buildEffectiveFieldMap(
           restServerFields,
@@ -657,6 +709,8 @@ export const useResourceStore = create<ResourceStoreState>()(
         return {
           optimisticDeletedFields: newOptimisticDeletedFields,
           serverFieldMap: restServerFields,
+          resources: newResources,
+          resourceMap: newResourceMap,
           fieldMap,
         }
       })

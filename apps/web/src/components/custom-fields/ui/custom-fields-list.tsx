@@ -28,7 +28,7 @@ import { CustomFieldRow } from '~/components/custom-fields/ui/field-list'
 import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
 import { useConfirm } from '~/hooks/use-confirm'
 import type { Resource } from '@auxx/lib/resources/client'
-import { toResourceFieldId } from '@auxx/types/field'
+import { toResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 
 /** Props for CustomFieldsList component */
 interface CustomFieldsListProps {
@@ -42,13 +42,13 @@ interface CustomFieldsListProps {
 export function CustomFieldsList({ resource }: CustomFieldsListProps) {
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [editingField, setEditingField] = useState<any | null>(null)
+  const [editingResourceFieldId, setEditingResourceFieldId] = useState<ResourceFieldId | null>(null)
 
   // Confirm dialog for delete
   const [confirmDelete, ConfirmDeleteDialog] = useConfirm()
 
-  // Get mutations only (fields come from resource)
-  const { create, update, isPending, destroy } = useCustomFieldMutations({
+  // Get mutations (create handled in CustomFieldDialog, update for reorder, destroy for delete)
+  const { update, destroy, isPending } = useCustomFieldMutations({
     entityDefinitionId: resource.entityDefinitionId,
   })
 
@@ -62,30 +62,17 @@ export function CustomFieldsList({ resource }: CustomFieldsListProps) {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
-  /** Handle saving a field (create or update) */
-  const handleSave = async (fieldData: any) => {
-    if (editingField) {
-      // Update existing field - include the resourceFieldId
-      await update.mutateAsync({
-        ...fieldData,
-        resourceFieldId: toResourceFieldId(resource.entityDefinitionId, editingField.id),
-      })
-    } else {
-      // entityDefinitionId is now included by CustomFieldDialog
-      await create.mutateAsync(fieldData)
-    }
-    setEditingField(null)
-  }
-
   /** Handle clicking Add Field button */
   const handleAddNew = () => {
-    setEditingField(null)
+    setEditingResourceFieldId(null)
     setDialogOpen(true)
   }
 
   /** Handle clicking Edit on a field */
   const handleEdit = (field: any) => {
-    setEditingField(field)
+    // Build resourceFieldId from field - fields from Resource have resourceFieldId property
+    const rfId = field.resourceFieldId ?? toResourceFieldId(resource.entityDefinitionId, field.id)
+    setEditingResourceFieldId(rfId)
     setDialogOpen(true)
   }
 
@@ -141,11 +128,9 @@ export function CustomFieldsList({ resource }: CustomFieldsListProps) {
         <CustomFieldDialog
           open={dialogOpen}
           onOpenChange={setDialogOpen}
-          editingField={editingField}
-          onSave={handleSave}
-          isPending={isPending}
+          resourceFieldId={editingResourceFieldId}
           entityDefinitionId={resource.entityDefinitionId}
-          currentRecordId={resource.id}
+          onSuccess={() => setEditingResourceFieldId(null)}
         />
       )}
 
