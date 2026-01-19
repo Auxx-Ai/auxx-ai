@@ -175,10 +175,31 @@ export class FieldValueService {
   }
 
   /**
-   * Efficiently get field values for multiple entities in a single batch query.
+   * Get field values for multiple entities with relationship traversal support.
+   *
+   * Handles both direct fields (ResourceFieldId) and relationship paths (FieldPath).
+   * For paths, traverses relationships and collects terminal field values.
+   *
+   * Query efficiency: O(max path depth) queries regardless of record count.
    *
    * @param params - Batch get values input
+   * @param params.recordIds - Array of RecordIds
+   * @param params.fieldReferences - Array of FieldReferences (ResourceFieldId or FieldPath)
    * @returns BatchFieldValueResult containing values array
+   *
+   * @example
+   * // Direct field fetch
+   * const result = await service.batchGetValues({
+   *   recordIds: ["contact:abc123"],
+   *   fieldReferences: ["contact:email", "contact:name"]
+   * });
+   *
+   * @example
+   * // Relationship path fetch
+   * const result = await service.batchGetValues({
+   *   recordIds: ["product:xyz"],
+   *   fieldReferences: [["product:vendor", "vendor:name"]]
+   * });
    */
   batchGetValues(params: BatchGetValuesInput): Promise<BatchFieldValueResult> {
     return queries.batchGetValues(this.ctx, this.registryService, params)

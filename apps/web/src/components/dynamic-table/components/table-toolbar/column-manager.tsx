@@ -29,6 +29,7 @@ import {
   useCommandNavigation,
   type NavigationItem,
 } from '@auxx/ui/components/command'
+import { SmartBreadcrumb, type BreadcrumbSegment } from '@auxx/ui/components/smart-breadcrumb'
 
 import { useTableConfig } from '../../context/table-config-context'
 import { useTableInstance } from '../../context/table-instance-context'
@@ -51,12 +52,14 @@ import { EditColumnFormattingDialog } from '../dialogs/edit-column-formatting-di
 import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
 import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
 import { ResourcePickerInnerContent } from '~/components/pickers/resource-picker'
+import { decodeColumnId, encodeFieldPathColumnId } from '../../utils/column-id'
+import { useFields } from '~/components/resources/hooks/use-field'
 import type { ResourcePickerNavigationItem } from '~/components/pickers/resource-picker'
 import type { Column } from '@tanstack/react-table'
 import type { ExtendedColumnDef, FormattableFieldType } from '../../types'
 import { FORMATTABLE_FIELD_TYPES } from '../../types'
 import { toResourceFieldId, toFieldId, isFieldPath } from '@auxx/types/field'
-import type { FieldReference } from '@auxx/types/field'
+import type { FieldReference, FieldPath } from '@auxx/types/field'
 
 /** Base navigation item for "Add column" action */
 interface AddColumnNavigationItem extends NavigationItem {
@@ -109,6 +112,32 @@ function RootStack<TData = any>() {
     return [...ordered, ...unordered]
   }, [table, columnVisibility, columnOrder])
 
+  // Detect which columns are paths (for field metadata lookup)
+  const pathColumnIds = useMemo(() => {
+    return visibleColumns
+      .filter((col) => {
+        const decoded = decodeColumnId(col.id)
+        return decoded.type === 'path'
+      })
+      .map((col) => {
+        const decoded = decodeColumnId(col.id)
+        return decoded.type === 'path' ? decoded.fieldPath : []
+      })
+      .flat()
+  }, [visibleColumns])
+
+  // Get field metadata for all path fields (for breadcrumb labels)
+  const pathFields = useFields(pathColumnIds)
+  const pathFieldMap = useMemo(() => {
+    const map = new Map<string, string>()
+    pathColumnIds.forEach((rfId, index) => {
+      if (pathFields[index]) {
+        map.set(rfId, pathFields[index]!.label)
+      }
+    })
+    return map
+  }, [pathColumnIds, pathFields])
+
   // Handle column reorder
   const handleReorder = useCallback(
     (newOrder: string[]) => {
@@ -128,20 +157,38 @@ function RootStack<TData = any>() {
     [columnVisibility, setColumnVisibility]
   )
 
-  // Get column name
-  const getColumnName = useCallback(
-    (column: Column<TData, unknown>) => {
-      const label = columnLabels?.[column.id]
-      if (label) return label
+  // Get column name or breadcrumb segments
+  const getColumnDisplay = useCallback(
+    (
+      column: Column<TData, unknown>
+    ): { type: 'text'; label: string } | { type: 'breadcrumb'; segments: BreadcrumbSegment[] } => {
+      // Custom label takes precedence
+      const customLabel = columnLabels?.[column.id]
+      if (customLabel) {
+        return { type: 'text', label: customLabel }
+      }
 
+      // Check if it's a path column
+      const decoded = decodeColumnId(column.id)
+      if (decoded.type === 'path') {
+        const segments: BreadcrumbSegment[] = decoded.fieldPath.map((rfId) => ({
+          id: rfId,
+          label: pathFieldMap.get(rfId) ?? rfId,
+        }))
+        return { type: 'breadcrumb', segments }
+      }
+
+      // Direct field - use header or fallback to id
       const header = column.columnDef.header
-      if (typeof header === 'string') return header
+      if (typeof header === 'string') {
+        return { type: 'text', label: header }
+      }
 
-      return column.id
+      return { type: 'text', label: column.id }
     },
-    [columnLabels]
+    [columnLabels, pathFieldMap]
   )
-
+  console.log('column manager: ', columnLabels, pathFieldMap)
   return (
     <CommandList>
       {/* Visible Columns Group - Sortable */}
@@ -152,15 +199,29 @@ function RootStack<TData = any>() {
           </div>
         ) : (
           <CommandSortable items={visibleColumns.map((c) => c.id)} onReorder={handleReorder}>
-            {visibleColumns.map((column) => (
-              <CommandSortableItem key={column.id} id={column.id} className="py-0 pe-0.5">
-                <span className="truncate flex-1 flex items-center">{getColumnName(column)}</span>
-                <ColumnOptionsDropdown<TData>
-                  column={column}
-                  onRemove={() => handleRemoveColumn(column.id)}
-                />
-              </CommandSortableItem>
-            ))}
+            {visibleColumns.map((column) => {
+              const display = getColumnDisplay(column)
+              return (
+                <CommandSortableItem key={column.id} id={column.id} className="py-0 pe-0.5">
+                  <span className="truncate flex-1 flex items-center">
+                    {display.type === 'breadcrumb' ? (
+                      <SmartBreadcrumb
+                        segments={display.segments}
+                        mode="display"
+                        size="sm"
+                        className="flex-1 min-w-0"
+                      />
+                    ) : (
+                      display.label
+                    )}
+                  </span>
+                  <ColumnOptionsDropdown<TData>
+                    column={column}
+                    onRemove={() => handleRemoveColumn(column.id)}
+                  />
+                </CommandSortableItem>
+              )
+            })}
           </CommandSortable>
         )}
       </CommandGroup>
@@ -295,14 +356,14 @@ function AddColumnStack({ onCreateField }: { onCreateField: () => void }) {
   // Handle field selection - add as column
   const handleSelectField = useCallback(
     (fieldReference: FieldReference) => {
-      // For now, only support direct fields (not nested paths)
-      // FieldPath support can be added later for relationship columns
-      // FieldPath always has at least 1 element, so last element is always defined
+      // Encode the field reference as a column ID
+      // For paths: "product:vendor::vendor:name"
+      // For direct fields: "contact:email"
       const columnId: string = isFieldPath(fieldReference)
-        ? (fieldReference[fieldReference.length - 1] as string) // Use last segment
+        ? encodeFieldPathColumnId(fieldReference as FieldPath)
         : (fieldReference as string)
 
-      console.log('fieldReference selected:', fieldReference, '-> columnId:', columnId)
+      console.log('Adding column with ID:', columnId, fieldReference)
       // Make column visible
       setColumnVisibility({
         ...(columnVisibility ?? {}),
@@ -350,6 +411,7 @@ function AddColumnStack({ onCreateField }: { onCreateField: () => void }) {
   if (!entityDefinitionId) {
     return <LegacyAddColumnStack onCreateField={onCreateField} />
   }
+  console.log('AddColumnStack render with visibleColumnIds:', visibleColumnIds)
 
   return (
     <ResourcePickerInnerContent

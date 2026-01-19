@@ -1,22 +1,35 @@
 // apps/web/src/stores/custom-field-value-store.ts
 
-import { useCallback, useMemo } from 'react'
+import { useCallback } from 'react'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { useShallow } from 'zustand/react/shallow'
 import type { TypedFieldValue } from '@auxx/types/field-value'
 import { toRecordId, parseRecordId, type RecordId } from '@auxx/lib/resources/client'
-import { toFieldId, type FieldId } from '@auxx/types/field'
+import {
+  type FieldId,
+  type FieldReference,
+  type FieldPath,
+  type ResourceFieldId,
+  fieldRefToKey,
+  keyToFieldRef,
+  isFieldPath,
+  isResourceFieldId,
+  isPlainFieldId,
+  toResourceFieldId,
+} from '@auxx/types/field'
 
 /**
  * Composite key for field values.
- * Format: `${recordId}:${fieldId}` where:
+ * Format: `${recordId}:${fieldRefKey}` where:
  * - recordId = `${entityDefinitionId}:${entityInstanceId}`
- * - fieldId = field identifier
+ * - fieldRefKey = fieldRefToKey(fieldRef) (either ResourceFieldId or path with :: separator)
  *
- * Full format: `${entityDefinitionId}:${entityInstanceId}:${fieldId}`
+ * Examples:
+ * - Direct: "contact:abc123:contact:email" (recordId + ResourceFieldId)
+ * - Path: "product:xyz789:product:vendor::vendor:name" (recordId + path)
  */
-export type FieldValueKey = `${RecordId}:${FieldId}`
+export type FieldValueKey = `${RecordId}:${string}`
 
 /**
  * Stored value type - can be:
@@ -87,8 +100,8 @@ interface CustomFieldValueState {
   /** Invalidate a single resource (after updating a contact/ticket/entity) */
   invalidateResource: (recordId: RecordId) => void
 
-  /** Invalidate a specific field across all resources (after field definition change) */
-  invalidateField: (fieldId: FieldId | string) => void
+  /** Invalidate a specific field reference across all resources (after field definition change) */
+  invalidateField: (fieldRef: FieldReference) => void
 
   /** Invalidate multiple resources (after bulk update) */
   invalidateResources: (recordIds: RecordId[]) => void
@@ -125,15 +138,72 @@ interface CustomFieldValueState {
 // ─────────────────────────────────────────────────────────────────
 
 /**
- * Build a field value key from RecordId and fieldId.
- * Format: `${entityDefinitionId}:${entityInstanceId}:${fieldId}`
+ * Normalize a FieldReference to ResourceFieldId or FieldPath.
+ *
+ * If `ref` is a plain FieldId, resolves to ResourceFieldId using entityDefinitionId from recordId.
+ * If already ResourceFieldId or FieldPath, returns as-is.
+ *
+ * @example
+ * normalizeFieldRef('contact:abc123', 'email')
+ * // => 'contact:email' (ResourceFieldId)
+ *
+ * @example
+ * normalizeFieldRef('contact:abc123', 'contact:email')
+ * // => 'contact:email' (already ResourceFieldId, unchanged)
+ *
+ * @example
+ * normalizeFieldRef('product:xyz', ['product:vendor', 'vendor:name'])
+ * // => ['product:vendor', 'vendor:name'] (FieldPath, unchanged)
+ */
+export function normalizeFieldRef(
+  recordId: RecordId,
+  fieldRef: FieldReference
+): ResourceFieldId | FieldPath {
+  // FieldPath - return as-is
+  if (isFieldPath(fieldRef)) {
+    return fieldRef
+  }
+
+  // ResourceFieldId - return as-is (has colon)
+  if (isResourceFieldId(fieldRef)) {
+    return fieldRef
+  }
+
+  // Plain FieldId - resolve to ResourceFieldId
+  const { entityDefinitionId } = parseRecordId(recordId)
+  return toResourceFieldId(entityDefinitionId, fieldRef)
+}
+
+/**
+ * Build a field value key from RecordId and FieldReference.
+ *
+ * Automatically normalizes FieldId to ResourceFieldId using the recordId context.
+ * This ensures consistent cache keys regardless of whether caller passes
+ * FieldId or ResourceFieldId.
+ *
+ * @example
+ * // Plain FieldId - auto-resolved
+ * buildFieldValueKey('contact:abc123', 'email')
+ * // => 'contact:abc123:contact:email'
+ *
+ * @example
+ * // ResourceFieldId - used directly
+ * buildFieldValueKey('contact:abc123', 'contact:email')
+ * // => 'contact:abc123:contact:email'
+ *
+ * @example
+ * // FieldPath - used directly
+ * buildFieldValueKey('product:xyz789', ['product:vendor', 'vendor:name'])
+ * // => 'product:xyz789:product:vendor::vendor:name'
  */
 export function buildFieldValueKey(
   recordId: RecordId,
-  fieldId: FieldId | string
+  fieldRef: FieldReference
 ): FieldValueKey {
-  const typedFieldId = typeof fieldId === 'string' ? toFieldId(fieldId) : fieldId
-  return `${recordId}:${typedFieldId}` as FieldValueKey
+  // Normalize FieldId → ResourceFieldId using recordId context
+  const normalizedRef = normalizeFieldRef(recordId, fieldRef)
+  const refKey = fieldRefToKey(normalizedRef)
+  return `${recordId}:${refKey}` as FieldValueKey
 }
 
 /**
@@ -150,38 +220,40 @@ export function buildFieldValueKeyFromParts(
 }
 
 /**
- * Parse a field value key back to RecordId and fieldId.
+ * Parse a field value key back to RecordId and FieldReference.
  * Use parseRecordId() on the returned recordId if you need entityDefinitionId/entityInstanceId.
  */
 export function parseFieldValueKey(key: FieldValueKey): {
   recordId: RecordId
-  fieldId: FieldId
+  fieldRef: FieldReference
   entityDefinitionId: string
   entityInstanceId: string
 } {
-  const parts = key.split(':')
-  if (parts.length < 3) {
+  // Format: entityDefId:entityInstId:fieldRefKey
+  // fieldRefKey can be:
+  // - ResourceFieldId (e.g., "contact:email") - contains single colon
+  // - FieldPath (e.g., "product:vendor::vendor:name") - contains ::
+  const firstColon = key.indexOf(':')
+  const secondColon = key.indexOf(':', firstColon + 1)
+
+  if (firstColon === -1 || secondColon === -1) {
     console.error('[parseFieldValueKey] Malformed key:', key)
     return {
       recordId: key as unknown as RecordId,
-      fieldId: '' as FieldId,
+      fieldRef: key as ResourceFieldId,
       entityDefinitionId: '',
       entityInstanceId: '',
     }
   }
-  const entityDefinitionId = parts[0]!
-  const entityInstanceId = parts[1]!
-  const fieldId = parts.slice(2).join(':') as FieldId // Handle fieldIds that might contain colons
-  const { entityDefinitionId: parsedDefId, entityInstanceId: parsedInstId } = parseRecordId(
-    toRecordId(entityDefinitionId, entityInstanceId)
-  )
 
-  return {
-    recordId: toRecordId(entityDefinitionId, entityInstanceId),
-    fieldId,
-    entityDefinitionId: parsedDefId,
-    entityInstanceId: parsedInstId,
-  }
+  const entityDefinitionId = key.slice(0, firstColon)
+  const entityInstanceId = key.slice(firstColon + 1, secondColon)
+  const fieldRefKey = key.slice(secondColon + 1)
+
+  const recordId = toRecordId(entityDefinitionId, entityInstanceId)
+  const fieldRef = keyToFieldRef(fieldRefKey)
+
+  return { recordId, fieldRef, entityDefinitionId, entityInstanceId }
 }
 
 /**
@@ -192,10 +264,11 @@ export function fieldValueKeyMatchesResource(key: FieldValueKey, recordId: Recor
 }
 
 /**
- * Check if a key matches a specific field (on any resource).
+ * Check if a key matches a specific field reference (on any resource).
  */
-export function fieldValueKeyMatchesField(key: FieldValueKey, fieldId: FieldId | string): boolean {
-  return key.endsWith(`:${fieldId}`)
+export function fieldValueKeyMatchesField(key: FieldValueKey, fieldRef: FieldReference): boolean {
+  const refKey = fieldRefToKey(fieldRef)
+  return key.endsWith(`:${refKey}`)
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -303,13 +376,13 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
       })
     },
 
-    invalidateField: (fieldId) => {
+    invalidateField: (fieldRef) => {
       set((state) => {
         const newValues = { ...state.values }
         const newUpdatedAt = { ...state.updatedAt }
 
         for (const key of Object.keys(newValues)) {
-          if (fieldValueKeyMatchesField(key as FieldValueKey, fieldId)) {
+          if (fieldValueKeyMatchesField(key as FieldValueKey, fieldRef)) {
             delete newValues[key as FieldValueKey]
             delete newUpdatedAt[key as FieldValueKey]
           }
@@ -403,27 +476,19 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
  * Subscribe to a field value and its loading state.
  * Component only re-renders when this specific value or loading state changes.
  *
- * Supports two call signatures:
- * - useFieldValue(key: FieldValueKey)
- * - useFieldValue(recordId: RecordId, fieldId: FieldId | string)
+ * @example
+ * // Direct field
+ * const { value, isLoading } = useFieldValue(recordId, 'contact:email')
+ *
+ * @example
+ * // Field path (relationship traversal)
+ * const { value, isLoading } = useFieldValue(recordId, ['product:vendor', 'vendor:name'])
  */
-export function useFieldValue(key: FieldValueKey): {
-  value: StoredFieldValue | undefined
-  isLoading: boolean
-}
 export function useFieldValue(
   recordId: RecordId,
-  fieldId: FieldId | string
-): { value: StoredFieldValue | undefined; isLoading: boolean }
-export function useFieldValue(
-  keyOrRecordId: FieldValueKey | RecordId,
-  fieldId?: FieldId | string
+  fieldRef: FieldReference
 ): { value: StoredFieldValue | undefined; isLoading: boolean } {
-  // Determine the actual key based on arguments
-  const key =
-    fieldId !== undefined
-      ? buildFieldValueKey(keyOrRecordId as RecordId, fieldId)
-      : (keyOrRecordId as FieldValueKey)
+  const key = buildFieldValueKey(recordId, fieldRef)
 
   // Stable selector that subscribes to both value and loading state
   const selector = useCallback(
@@ -439,27 +504,29 @@ export function useFieldValue(
 }
 
 /**
- * Get multiple values for a single resource (e.g., for entity-fields.tsx drawer).
+ * Get multiple values for a single resource by FieldReferences.
  * Uses stable selector with useShallow for memoization to prevent infinite loops.
+ * Returns Record keyed by fieldRefKey (use fieldRefToKey for consistent keys).
  */
 export function useResourceFieldValues(
   recordId: RecordId,
-  fieldIds: (FieldId | string)[]
+  fieldRefs: FieldReference[]
 ): Record<string, StoredFieldValue | undefined> {
-  // Stabilize inputs - only change selector when actual content changes
-  const fieldIdsKey = fieldIds.join(',')
+  // Use fieldRefToKey for stable string keys
+  const refsKey = fieldRefs.map(fieldRefToKey).join(',')
 
   // Create stable selector that only changes when inputs change
   const selector = useCallback(
     (state: CustomFieldValueState) => {
       const result: Record<string, StoredFieldValue | undefined> = {}
-      for (const fieldId of fieldIds) {
-        const key = buildFieldValueKey(recordId, fieldId)
-        result[fieldId] = state.values[key]
+      for (const fieldRef of fieldRefs) {
+        const key = buildFieldValueKey(recordId, fieldRef)
+        const refKey = fieldRefToKey(fieldRef)
+        result[refKey] = state.values[key]
       }
       return result
     },
-    [fieldIdsKey, recordId]
+    [refsKey, recordId]
   )
 
   // Wrap stable selector with useShallow for shallow comparison
@@ -472,3 +539,11 @@ export function useResourceFieldValues(
 // RE-EXPORTS for convenience
 // ─────────────────────────────────────────────────────────────────
 export { toRecordId, parseRecordId, type RecordId } from '@auxx/lib/resources/client'
+export {
+  type FieldReference,
+  type FieldPath,
+  type ResourceFieldId,
+  fieldRefToKey,
+  keyToFieldRef,
+  isFieldPath,
+} from '@auxx/types/field'

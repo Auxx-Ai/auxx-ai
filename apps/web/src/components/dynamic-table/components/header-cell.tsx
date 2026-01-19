@@ -2,7 +2,7 @@
 
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import {
   ChevronDown,
   Filter,
@@ -23,6 +23,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
+import { SmartBreadcrumb, type BreadcrumbSegment } from '@auxx/ui/components/smart-breadcrumb'
 import { cn } from '@auxx/ui/lib/utils'
 import { getSortOptionsForFieldType, SORT_OPTIONS } from '../utils/constants'
 import { useTableConfig } from '../context/table-config-context'
@@ -41,6 +42,8 @@ import {
 } from '../stores/store-actions'
 import { EditColumnLabelDialog } from './dialogs/edit-column-label-dialog'
 import { EditColumnFormattingDialog } from './dialogs/edit-column-formatting-dialog'
+import { decodeColumnId } from '../utils/column-id'
+import { useFields } from '~/components/resources/hooks/use-field'
 import type { Header } from '@tanstack/react-table'
 import type { ExtendedColumnDef, ColumnFormatting, FormattableFieldType } from '../types'
 import { FORMATTABLE_FIELD_TYPES } from '../types'
@@ -276,6 +279,24 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
     [header.headerGroup.headers]
   )
 
+  // ─── FIELD PATH DETECTION ────────────────────────────────────────────────────
+  // Decode column ID to check if it's a path
+  const decoded = useMemo(() => decodeColumnId(column.id), [column.id])
+  const isPathColumn = decoded.type === 'path'
+
+  // For path columns, get all field definitions for breadcrumb
+  const pathFields = useFields(isPathColumn ? decoded.fieldPath : [])
+
+  // Build breadcrumb segments for path columns
+  const breadcrumbSegments = useMemo((): BreadcrumbSegment[] => {
+    if (!isPathColumn) return []
+
+    return decoded.fieldPath.map((resourceFieldId, index) => ({
+      id: resourceFieldId,
+      label: pathFields[index]?.label ?? resourceFieldId,
+    }))
+  }, [isPathColumn, decoded, pathFields])
+
   // ─── ACTIONS (use centralized action hooks) ────────────────────────────────
   const setFilters = useSetFilters(tableId)
   const setColumnLabel = useSetColumnLabel(tableId)
@@ -299,6 +320,9 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
   // Show "New" button only for primary columns with onAddNew callback
   const isPrimaryColumn = columnDef.primaryCell === true
   const showNewButton = isPrimaryColumn && onAddNew
+
+  // Determine if we should show breadcrumb (path column without custom label)
+  const showBreadcrumb = isPathColumn && !columnLabels[column.id] && breadcrumbSegments.length > 0
 
   return (
     <div
@@ -335,8 +359,17 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
           {/* Column type icon */}
           {Icon && <Icon className="mr-1 inline-block size-3 text-zinc-400" />}
 
-          {/* Column name */}
-          <span className="font-medium text-xs">{headerContent}</span>
+          {/* SmartBreadcrumb for paths, text for direct fields */}
+          {showBreadcrumb ? (
+            <SmartBreadcrumb
+              segments={breadcrumbSegments}
+              mode="display"
+              size="sm"
+              className="flex-1 min-w-0"
+            />
+          ) : (
+            <span className="font-medium text-xs">{headerContent}</span>
+          )}
 
           {/* New button (only for primary column with onAddNew) */}
           {showNewButton && (

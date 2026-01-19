@@ -4,7 +4,14 @@ import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { FieldValueService } from '@auxx/lib/field-values'
 import type { RecordId } from '@auxx/types/resource'
-import { fieldIdSchema } from '@auxx/types/field'
+import { fieldIdSchema, resourceFieldIdSchema } from '@auxx/types/field'
+import type { FieldReference } from '@auxx/types/field'
+
+/** Schema for FieldReference - either ResourceFieldId or FieldPath */
+const fieldReferenceSchema = z.union([
+  resourceFieldIdSchema, // Direct field: "contact:email"
+  z.array(resourceFieldIdSchema).min(1), // Path: ["product:vendor", "vendor:name"]
+])
 
 /** Typed value input schema for multi-value fields */
 const typedValueInputSchema = z.object({
@@ -89,22 +96,26 @@ export const fieldValueRouter = createTRPCRouter({
     }),
 
   /**
-   * Batch get values for syncer.
+   * Batch get values with relationship traversal support.
    * Uses RecordId format (entityDefinitionId:entityInstanceId).
-   * Returns TypedFieldValue directly (no legacy wrapper).
+   *
+   * @param recordIds - Array of RecordIds (max 500)
+   * @param fieldReferences - Array of FieldReferences (max 50):
+   *   - ResourceFieldId: "contact:email" (direct field)
+   *   - FieldPath: ["product:vendor", "vendor:name"] (relationship traversal)
    */
   batchGet: protectedProcedure
     .input(
       z.object({
         recordIds: z.array(z.string()).max(500), // RecordId format
-        fieldIds: z.array(fieldIdSchema).max(50),
+        fieldReferences: z.array(fieldReferenceSchema).max(50),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const service = new FieldValueService(ctx.session.organizationId, ctx.session.user.id, ctx.db)
       return await service.batchGetValues({
-        recordIds: input.recordIds as any, // Cast to RecordId[]
-        fieldIds: input.fieldIds,
+        recordIds: input.recordIds as RecordId[],
+        fieldReferences: input.fieldReferences as FieldReference[],
       })
     }),
 

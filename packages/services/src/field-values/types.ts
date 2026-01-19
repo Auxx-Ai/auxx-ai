@@ -1,5 +1,6 @@
 // packages/services/src/field-values/types.ts
 
+import type { FieldType } from '@auxx/database/types'
 import type { TypedFieldValue, TypedFieldValueInput } from '@auxx/types'
 import type { RecordId } from '@auxx/types/resource'
 
@@ -30,10 +31,7 @@ export type EntityNotFoundError = {
 }
 
 /** All field value errors */
-export type FieldValueError =
-  | FieldNotFoundError
-  | FieldValueNotFoundError
-  | EntityNotFoundError
+export type FieldValueError = FieldNotFoundError | FieldValueNotFoundError | EntityNotFoundError
 
 // =============================================================================
 // QUERY INPUT/OUTPUT TYPES
@@ -49,7 +47,7 @@ export interface GetFieldWithDefinitionInput {
 export interface FieldWithDefinition {
   id: string
   name: string
-  type: string
+  type: FieldType
   options: unknown
   entityDefinitionId: string | null
   entityDefinition: {

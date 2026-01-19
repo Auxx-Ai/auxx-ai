@@ -5,45 +5,60 @@
 import { memo, useMemo } from 'react'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { FormattedCell, CellPadding } from './formatted-cell'
-import { useFieldValue } from '~/components/resources/store/field-value-store'
+import {
+  useFieldValue,
+  type FieldReference,
+  type FieldPath,
+  type ResourceFieldId,
+  isFieldPath,
+} from '~/components/resources/store/field-value-store'
 import { useField } from '~/components/resources/hooks/use-field'
-import { parseResourceFieldId } from '@auxx/types/field'
+import { decodeColumnId } from '../utils/column-id'
 import type { RecordId } from '@auxx/lib/resources/client'
 
 interface CustomFieldCellProps {
   /** Record ID (entityDefinitionId:rowId) */
   recordId: RecordId
-  /** Column ID in ResourceFieldId format (entityDefinitionId:fieldId) */
+  /** Column ID - can be ResourceFieldId or encoded FieldPath (with ::) */
   columnId: string
   /** @deprecated Field options - now fetched via useField hook for reactivity */
   options?: unknown
 }
 
 /**
- * Custom field cell that subscribes directly to:
- * 1. Value from Zustand store (for reactive value updates)
- * 2. Field metadata from useField hook (O(1) lookup, granular reactivity)
+ * Custom field cell - extracts FieldReference from columnId, delegates rendering to FormattedCell.
+ * Handles both direct fields and paths uniformly.
  *
- * This bypasses row memoization issues by subscribing directly to data sources.
- * Uses useField instead of useResource for efficient field-specific updates.
+ * For paths, displays the terminal field value using the terminal field's type for rendering.
+ * Supports has_many relationships that return arrays.
  */
 export const CustomFieldCell = memo(function CustomFieldCell({
   recordId,
-  columnId, // Now in ResourceFieldId format
+  columnId,
   options: propOptions,
 }: CustomFieldCellProps) {
-  // Extract fieldId from ResourceFieldId format (columnId)
-  const fieldId = useMemo(() => {
-    const { fieldId } = parseResourceFieldId(columnId)
-    return fieldId
+  // Decode columnId to FieldReference
+  const { fieldRef, isPath } = useMemo(() => {
+    const decoded = decodeColumnId(columnId)
+    if (decoded.type === 'path') {
+      return { fieldRef: decoded.fieldPath as FieldReference, isPath: true }
+    }
+    return { fieldRef: decoded.resourceFieldId as FieldReference, isPath: false }
   }, [columnId])
 
-  // Direct store subscription - triggers re-render when value changes
-  const { value, isLoading } = useFieldValue(recordId, fieldId)
+  // Direct store subscription using FieldReference
+  const { value, isLoading } = useFieldValue(recordId, fieldRef)
 
-  // Granular field subscription - only rerenders when THIS field changes
-  // columnId is already in ResourceFieldId format
-  const field = useField(columnId)
+  // Get target field metadata (last element for paths)
+  const targetResourceFieldId = useMemo(() => {
+    if (isPath) {
+      const path = fieldRef as FieldPath
+      return path[path.length - 1]
+    }
+    return fieldRef as ResourceFieldId
+  }, [fieldRef, isPath])
+
+  const field = useField(targetResourceFieldId)
   const options = field?.options ?? propOptions
   const fieldType = field?.fieldType
 
@@ -55,5 +70,14 @@ export const CustomFieldCell = memo(function CustomFieldCell({
     )
   }
 
-  return <FormattedCell value={value} fieldType={fieldType} columnId={columnId} options={options} />
+  // Delegate ALL rendering to FormattedCell (including array handling)
+  return (
+    <FormattedCell
+      value={value}
+      fieldType={fieldType}
+      columnId={columnId}
+      options={options}
+      isFieldPath={isPath}
+    />
+  )
 })

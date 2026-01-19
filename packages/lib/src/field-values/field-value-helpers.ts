@@ -2,24 +2,19 @@
 
 import { database, schema, type Database } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
+import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import { and, eq } from 'drizzle-orm'
-import {
-  type TypedFieldValue,
-  type TypedFieldValueInput,
-  getValueType,
-} from '@auxx/types'
-import {
-  getFieldWithDefinition,
-  type FieldWithDefinition,
-} from '@auxx/services'
+import { type TypedFieldValue, type TypedFieldValueInput, getValueType } from '@auxx/types'
+import { getFieldWithDefinition, type FieldWithDefinition } from '@auxx/services'
 import { formatToDisplayValue } from './formatter'
 import type { RelationshipConfig, RelationshipType } from '@auxx/types/custom-field'
 import { FieldValueValidator, fieldValueSchemas } from './field-value-validator'
 import { ResourceRegistryService } from '../resources/registry/resource-registry-service'
 import { parseRecordId } from '../resources/resource-id'
 import type { RecordId } from '@auxx/types/resource'
-import type { FieldValueRow } from './types'
+import type { FieldValueRow, FieldReference } from './types'
 import type { InverseFieldInfo } from './relationship-sync'
+import { isFieldPath, parseResourceFieldId } from '@auxx/types/field'
 
 // Re-export for convenience
 export type { InverseFieldInfo }
@@ -115,10 +110,10 @@ export async function getInverseInfoFromField(
     | undefined
 
   // Source = entity being updated (has this field)
-  const sourceEntityDefinitionId = field.entityDefinitionId ?? field.modelType ?? ''
+  const sourceEntityDefinitionId = field.entityDefinitionId
 
   // Target = entity with inverse field
-  const targetEntityDefinitionId = inverseField.entityDefinitionId ?? inverseField.modelType ?? ''
+  const targetEntityDefinitionId = inverseField.entityDefinitionId
 
   // Default to 'has_many' if not specified (valid RelationshipType)
   const inverseRelationshipType: RelationshipType =
@@ -154,8 +149,7 @@ export function rowToTypedValue(row: FieldValueRow, fieldType: FieldType): Typed
 
   if (!valueType) {
     throw new Error(
-      `[rowToTypedValue] Unknown fieldType: ${fieldType}. ` +
-        `Cannot determine value storage type.`
+      `[rowToTypedValue] Unknown fieldType: ${fieldType}. ` + `Cannot determine value storage type.`
     )
   }
 
@@ -273,7 +267,7 @@ export function validateRowReferences(row: FieldValueRow, fieldType: FieldType):
 export async function validateAndConvertValue(
   ctx: FieldValueContext,
   value: unknown,
-  fieldType: string,
+  fieldType: FieldType,
   field: FieldWithDefinition
 ): Promise<TypedFieldValueInput | TypedFieldValueInput[] | null> {
   // Handle null/undefined
@@ -305,7 +299,7 @@ export async function validateAndConvertValue(
 export async function validateSingleValue(
   ctx: FieldValueContext,
   value: unknown,
-  fieldType: string
+  fieldType: FieldType
 ): Promise<TypedFieldValueInput | null> {
   // Helper to throw validation error with proper message
   const throwValidationError = (result: { success: false; error: any }) => {
@@ -443,7 +437,7 @@ export async function validateSingleValue(
 export async function preBatchValidateRelationships(
   ctx: FieldValueContext,
   values: unknown[],
-  fieldTypes: string[]
+  fieldTypes: FieldType[]
 ): Promise<void> {
   // Collect all relationships from values
   const relationships: Array<{ relatedEntityId: string; relatedEntityDefinitionId: string }> = []
@@ -596,4 +590,71 @@ export async function getFieldTypeMapByDefinition(
   }
 
   return typeMap
+}
+
+// =============================================================================
+// FIELD PATH VALIDATION
+// =============================================================================
+
+/** Maximum allowed path depth to prevent infinite loops */
+const MAX_PATH_DEPTH = 5
+
+/**
+ * Validate all field references before fetching.
+ * Throws descriptive errors for invalid paths.
+ */
+export async function validateFieldReferences(
+  registryService: ResourceRegistryService,
+  fieldReferences: FieldReference[]
+): Promise<void> {
+  for (const ref of fieldReferences) {
+    const path = isFieldPath(ref) ? ref : [ref]
+
+    // Enforce max depth limit
+    if (path.length > MAX_PATH_DEPTH) {
+      throw new Error(`Path exceeds maximum depth of ${MAX_PATH_DEPTH} hops (got ${path.length})`)
+    }
+
+    for (let i = 0; i < path.length; i++) {
+      const { entityDefinitionId, fieldId } = parseResourceFieldId(path[i])
+      const resource = await registryService.getById(entityDefinitionId)
+
+      if (!resource) {
+        throw new Error(`Entity "${entityDefinitionId}" not found`)
+      }
+
+      const field = resource.fields.find((f) => f.id === fieldId)
+      if (!field) {
+        throw new Error(`Field "${fieldId}" not found in "${entityDefinitionId}"`)
+      }
+
+      // All but last hop must be relationship fields
+      if (i < path.length - 1 && field.fieldType !== FieldTypeEnum.RELATIONSHIP) {
+        throw new Error(
+          `Field "${fieldId}" in "${entityDefinitionId}" is not a relationship (step ${i + 1} of path)`
+        )
+      }
+    }
+  }
+}
+
+/**
+ * Get field type from registry for a specific field.
+ */
+export async function getFieldTypeFromRegistry(
+  registryService: ResourceRegistryService,
+  entityDefinitionId: string,
+  fieldId: string
+): Promise<FieldType> {
+  const resource = await registryService.getById(entityDefinitionId)
+  if (!resource) {
+    throw new Error(`Entity "${entityDefinitionId}" not found`)
+  }
+
+  const field = resource.fields.find((f) => f.id === fieldId)
+  if (!field || !field.fieldType) {
+    throw new Error(`Field "${fieldId}" not found or missing fieldType`)
+  }
+
+  return field.fieldType
 }

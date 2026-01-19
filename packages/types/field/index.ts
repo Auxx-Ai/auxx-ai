@@ -47,9 +47,15 @@ export type ResourceFieldId = string & { readonly __brand: 'ResourceFieldId' }
 export type FieldPath = [ResourceFieldId, ...ResourceFieldId[]] // At least 1 element
 
 /**
- * Flexible field reference - either direct ResourceFieldId or relationship path
+ * Flexible field reference for data layer operations.
+ *
+ * Accepts:
+ * - FieldId: Plain field identifier (e.g., "email", "cm123abc")
+ *   → Auto-resolved to ResourceFieldId using recordId context
+ * - ResourceFieldId: Scoped field identifier (e.g., "contact:email")
+ * - FieldPath: Relationship traversal path (e.g., ["product:vendor", "vendor:name"])
  */
-export type FieldReference = ResourceFieldId | FieldPath
+export type FieldReference = FieldId | ResourceFieldId | FieldPath
 
 export { resourceFieldIdSchema, fieldIdSchema } from './schema'
 export {
@@ -63,8 +69,11 @@ export {
   toResourceFieldIds,
   toFieldPath,
   isFieldPath,
+  isPlainFieldId,
   validateFieldPath,
   fieldPathToString,
   getRootEntityId,
   getTargetFieldId,
+  fieldRefToKey,
+  keyToFieldRef,
 } from './utils'

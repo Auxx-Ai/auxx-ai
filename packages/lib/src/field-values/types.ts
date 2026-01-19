@@ -3,6 +3,10 @@
 import type { FieldType } from '@auxx/database/types'
 import type { TypedFieldValue, TypedFieldValueInput } from '@auxx/types'
 import type { RecordId } from '@auxx/types/resource'
+import type { FieldReference, FieldPath, ResourceFieldId } from '@auxx/types/field'
+
+// Re-export for convenience
+export type { FieldReference, FieldPath, ResourceFieldId }
 
 // =============================================================================
 // MODEL TYPES
@@ -122,10 +126,26 @@ export interface GetValuesInput {
   fieldIds?: string[]
 }
 
-/** Input for batch getting values (uses RecordId format: entityDefinitionId:entityInstanceId) */
+/**
+ * Input for batch getting values.
+ * Uses RecordId format: entityDefinitionId:entityInstanceId.
+ *
+ * @example
+ * // Direct fields:
+ * { recordIds: ["contact:abc123"], fieldReferences: ["contact:email", "contact:name"] }
+ *
+ * // Relationship paths:
+ * { recordIds: ["product:xyz"], fieldReferences: [["product:vendor", "vendor:name"]] }
+ */
 export interface BatchGetValuesInput {
   recordIds: RecordId[]
-  fieldIds: string[]
+
+  /**
+   * Field references to fetch. Each can be:
+   * - ResourceFieldId: "contact:email" (direct field, depth 1)
+   * - FieldPath: ["product:vendor", "vendor:name"] (relationship traversal, depth 2+)
+   */
+  fieldReferences: FieldReference[]
 }
 
 /** Input for deleting values */
@@ -138,12 +158,28 @@ export interface DeleteValueInput {
 // SERVICE RETURN TYPES
 // =============================================================================
 
-/** Single result from batch get */
+/**
+ * Single result from batch get.
+ * Contains the field reference that was requested and the resolved value.
+ */
 export interface TypedFieldValueResult {
   recordId: RecordId
-  fieldId: string
+
+  /**
+   * The field reference that was requested.
+   * - ResourceFieldId for direct fields
+   * - FieldPath for relationship traversal
+   */
+  fieldRef: FieldReference
+
+  /**
+   * The typed value(s).
+   * - Single value for direct fields and has_one/belongs_to paths
+   * - Array for has_many paths or multi-value fields
+   */
   value: TypedFieldValue | TypedFieldValue[] | null
-  /** Issues found with this field (only present if there are issues) */
+
+  /** Issues found during fetch (optional) */
   issues?: string[]
 }
 

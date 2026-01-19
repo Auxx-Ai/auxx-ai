@@ -10,6 +10,7 @@ import { mergeFieldValue } from './merge'
 import type { MergeEntitiesInput, MergeEntitiesResult } from './types'
 import type { FieldType } from '@auxx/database/types'
 import { invalidateSnapshots } from '../../snapshot'
+import { toResourceFieldIds, getFieldId, isFieldPath } from '@auxx/types/field'
 
 /**
  * Service for merging multiple entity instances into a single target.
@@ -249,10 +250,13 @@ export class EntityMergeService {
     const allRecordIds = [targetRecordId, ...sourceRecordIds]
     const fieldIds = fields.map((f) => f.id)
 
+    // Get entityDefinitionId from target record
+    const { entityDefinitionId } = parseRecordId(targetRecordId)
+
     // Batch fetch all field values (returns TypedFieldValue format)
     const { values: allValues } = await fieldValueService.batchGetValues({
       recordIds: allRecordIds,
-      fieldIds,
+      fieldReferences: toResourceFieldIds(entityDefinitionId, fieldIds),
     })
 
     // Group by recordId
@@ -262,11 +266,14 @@ export class EntityMergeService {
         valuesByRecord.set(v.recordId, new Map())
       }
 
+      // Extract fieldId from fieldRef (handles both direct and path references)
+      const fieldId = isFieldPath(v.fieldRef) ? getFieldId(v.fieldRef[v.fieldRef.length - 1]) : getFieldId(v.fieldRef)
+
       // EXPLICIT CONVERSION: TypedFieldValue → raw value
-      const field = fields.find((f) => f.id === v.fieldId)
+      const field = fields.find((f) => f.id === fieldId)
       if (field) {
         const rawValue = formatToRawValue(v.value, field.type as FieldType)
-        valuesByRecord.get(v.recordId)!.set(v.fieldId, rawValue)
+        valuesByRecord.get(v.recordId)!.set(fieldId, rawValue)
       }
     }
 

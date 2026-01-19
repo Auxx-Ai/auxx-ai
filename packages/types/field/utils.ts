@@ -159,3 +159,41 @@ export function getRootEntityId(path: FieldPath): string {
 export function getTargetFieldId(path: FieldPath): FieldId {
   return getFieldId(path[path.length - 1])
 }
+
+/**
+ * Convert a FieldReference to a string key for Maps/caching.
+ * - ResourceFieldId: "vendor:name" → "vendor:name"
+ * - FieldPath: ["product:vendor", "vendor:name"] → "product:vendor::vendor:name"
+ */
+export function fieldRefToKey(ref: FieldReference): string {
+  return isFieldPath(ref) ? ref.join('::') : ref
+}
+
+/**
+ * Parse a fieldRefKey back to a FieldReference.
+ * Inverse of fieldRefToKey.
+ *
+ * @example
+ * keyToFieldRef("contact:email") // => "contact:email" (ResourceFieldId)
+ * keyToFieldRef("product:vendor::vendor:name") // => ["product:vendor", "vendor:name"] (FieldPath)
+ */
+export function keyToFieldRef(key: string): FieldReference {
+  if (key.includes('::')) {
+    return key.split('::') as FieldPath
+  }
+  return key as ResourceFieldId
+}
+
+/**
+ * Check if a field reference is a plain FieldId (needs resolution).
+ *
+ * Detection logic:
+ * - Array → FieldPath
+ * - String with ':' → ResourceFieldId
+ * - String without ':' → FieldId
+ *
+ * This is a pure type guard with no external dependencies.
+ */
+export function isPlainFieldId(ref: FieldReference): ref is FieldId {
+  return typeof ref === 'string' && !ref.includes(':')
+}

@@ -8,6 +8,13 @@ import type { FieldWithDefinition } from '@auxx/services'
 import { parseRecordId, toRecordId } from '../resources/resource-id'
 import type { RecordId } from '@auxx/types/resource'
 import { ResourceRegistryService } from '../resources/registry/resource-registry-service'
+import {
+  type FieldPath,
+  type FieldReference,
+  type ResourceFieldId,
+  isFieldPath,
+  parseResourceFieldId,
+} from '@auxx/types/field'
 import type {
   GetValueInput,
   GetValuesInput,
@@ -24,6 +31,8 @@ import {
   isValidTypedValue,
   validateRowReferences,
   getFieldTypeMapByDefinition,
+  validateFieldReferences,
+  getFieldTypeFromRegistry,
 } from './field-value-helpers'
 
 // =============================================================================
@@ -141,27 +150,37 @@ export async function getValues(
 }
 
 /**
- * Efficiently get field values for multiple entities in a single batch query.
+ * Get field values for multiple entities.
+ * Handles both direct fields (ResourceFieldId) and relationship paths (FieldPath).
  *
- * Uses the RecordId format (entityDefinitionId:entityInstanceId) which encodes
- * both the entity type and instance in a single value.
+ * For paths like ["product:vendor", "vendor:name"]:
+ * 1. Fetch product:vendor relationships for all products
+ * 2. Collect all vendor IDs from step 1
+ * 3. Fetch vendor:name for all vendors
+ * 4. Map results back to source products
  *
- * Returns a normalized array with one result per entity+field combination that has a value.
- * Missing combinations are omitted (rather than returning null for each missing field).
+ * Query count = max path depth (e.g., depth 2 = 2 queries, regardless of record count)
  *
  * @param ctx - Field value context
  * @param registryService - Resource registry service for field type lookups
  * @param params - The BatchGetValuesInput object
  * @param params.recordIds - Array of RecordIds in format "entityDefinitionId:entityInstanceId"
- * @param params.fieldIds - Array of field UUIDs to retrieve
+ * @param params.fieldReferences - Array of FieldReference (ResourceFieldId or FieldPath)
  *
- * @returns BatchFieldValueResult containing:
- *          - values: Array of TypedFieldValueResult, one per entity+field with actual data
+ * @returns BatchFieldValueResult containing values array
  *
  * @example
+ * // Direct field fetch
  * const result = await batchGetValues(ctx, registryService, {
  *   recordIds: ["contact:contact-1", "contact:contact-2"],
- *   fieldIds: ["field-email", "field-name"]
+ *   fieldReferences: ["contact:email", "contact:name"]
+ * });
+ *
+ * @example
+ * // Relationship path fetch
+ * const result = await batchGetValues(ctx, registryService, {
+ *   recordIds: ["product:prod-1"],
+ *   fieldReferences: [["product:vendor", "vendor:name"]]
  * });
  */
 export async function batchGetValues(
@@ -169,122 +188,281 @@ export async function batchGetValues(
   registryService: ResourceRegistryService,
   params: BatchGetValuesInput
 ): Promise<BatchFieldValueResult> {
-  const { recordIds, fieldIds } = params
+  const { recordIds, fieldReferences } = params
 
-  if (recordIds.length === 0 || fieldIds.length === 0) {
+  if (recordIds.length === 0 || fieldReferences.length === 0) {
     return { values: [] }
   }
 
-  // Parse RecordIds to extract entityInstanceIds for DB query
-  const parsedResources = recordIds.map((rid) => parseRecordId(rid))
-  const entityInstanceIds = parsedResources.map((p) => p.entityInstanceId)
+  // Validate all field references upfront (fail-fast)
+  await validateFieldReferences(registryService, fieldReferences)
 
-  // Create lookup: instanceId -> RecordId
-  const instanceToRecordId = new Map<string, RecordId>()
-  for (const parsed of parsedResources) {
-    instanceToRecordId.set(
-      parsed.entityInstanceId,
-      toRecordId(parsed.entityDefinitionId, parsed.entityInstanceId)
-    )
+  const results: TypedFieldValueResult[] = []
+
+  for (const ref of fieldReferences) {
+    const refResults = await resolveFieldReference(ctx, registryService, recordIds, ref)
+    results.push(...refResults)
   }
 
-  // Get unique entityDefinitionIds for field type lookups
-  const uniqueEntityDefIds = [...new Set(parsedResources.map((p) => p.entityDefinitionId))]
+  return { values: results }
+}
 
-  // Query field values using instance IDs
+// =============================================================================
+// FIELD PATH RESOLUTION
+// =============================================================================
+
+/**
+ * Resolve a single field reference (direct or path) for multiple source records.
+ *
+ * - Direct field "product:price": fetch directly
+ * - Path ["product:vendor", "vendor:name"]: traverse relationships, then fetch terminal
+ */
+async function resolveFieldReference(
+  ctx: FieldValueContext,
+  registryService: ResourceRegistryService,
+  sourceRecordIds: RecordId[],
+  ref: FieldReference
+): Promise<TypedFieldValueResult[]> {
+  // Normalize to path (direct field becomes single-element path)
+  const path: FieldPath = isFieldPath(ref) ? ref : [ref]
+
+  if (path.length === 0) {
+    return []
+  }
+
+  // Track source → intermediate mappings for final result assembly
+  // Map: sourceRecordId → relatedRecordIds at each depth
+  let currentRecordIds = sourceRecordIds
+  const traversalMaps: Map<RecordId, RecordId[]>[] = []
+
+  // Process all hops except the last (which is the terminal field)
+  for (let depth = 0; depth < path.length - 1; depth++) {
+    const resourceFieldId = path[depth]
+    const { fieldId } = parseResourceFieldId(resourceFieldId)
+
+    // Fetch relationships at this depth
+    const relationshipMap = await batchFetchRelationships(ctx, currentRecordIds, fieldId)
+
+    traversalMaps.push(relationshipMap)
+
+    // Collect all related IDs for next depth
+    const nextRecordIds: RecordId[] = []
+    for (const relatedIds of relationshipMap.values()) {
+      nextRecordIds.push(...relatedIds)
+    }
+
+    // Dedupe for efficiency
+    currentRecordIds = [...new Set(nextRecordIds)]
+
+    // Early exit if no records to fetch
+    if (currentRecordIds.length === 0) {
+      break
+    }
+  }
+
+  // Fetch terminal field values
+  const terminalResourceFieldId = path[path.length - 1]
+  const { entityDefinitionId: terminalEntityId, fieldId: terminalFieldId } =
+    parseResourceFieldId(terminalResourceFieldId)
+
+  // Get field type for the terminal field
+  const terminalFieldType = await getFieldTypeFromRegistry(
+    registryService,
+    terminalEntityId,
+    terminalFieldId
+  )
+
+  const terminalValues =
+    currentRecordIds.length > 0
+      ? await batchFetchFieldValues(ctx, currentRecordIds, terminalFieldId, terminalFieldType)
+      : new Map()
+
+  // Map terminal values back to source records
+  return mapResultsToSources(sourceRecordIds, traversalMaps, terminalValues, ref, terminalFieldType)
+}
+
+/**
+ * Batch fetch relationship field values.
+ * Returns Map: entityId → RecordId[] of related entities
+ */
+async function batchFetchRelationships(
+  ctx: FieldValueContext,
+  recordIds: RecordId[],
+  fieldId: string
+): Promise<Map<RecordId, RecordId[]>> {
+  const entityInstanceIds = recordIds.map((rid) => parseRecordId(rid).entityInstanceId)
+
+  const rows = await ctx.db
+    .select({
+      entityId: schema.FieldValue.entityId,
+      relatedEntityId: schema.FieldValue.relatedEntityId,
+      relatedEntityDefinitionId: schema.FieldValue.relatedEntityDefinitionId,
+    })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, ctx.organizationId),
+        eq(schema.FieldValue.fieldId, fieldId),
+        inArray(schema.FieldValue.entityId, entityInstanceIds)
+      )
+    )
+    .orderBy(asc(schema.FieldValue.sortKey))
+
+  // Group by source entityId → related RecordIds
+  const result = new Map<RecordId, RecordId[]>()
+
+  // Build lookup: instanceId → full RecordId
+  const instanceToRecordId = new Map<string, RecordId>()
+  for (const rid of recordIds) {
+    const { entityInstanceId } = parseRecordId(rid)
+    instanceToRecordId.set(entityInstanceId, rid)
+  }
+
+  for (const row of rows) {
+    const sourceRecordId = instanceToRecordId.get(row.entityId)
+    if (!sourceRecordId || !row.relatedEntityId || !row.relatedEntityDefinitionId) continue
+
+    const relatedRecordId = toRecordId(row.relatedEntityDefinitionId, row.relatedEntityId)
+
+    const existing = result.get(sourceRecordId) ?? []
+    existing.push(relatedRecordId)
+    result.set(sourceRecordId, existing)
+  }
+
+  return result
+}
+
+/**
+ * Batch fetch terminal (non-relationship) field values.
+ */
+async function batchFetchFieldValues(
+  ctx: FieldValueContext,
+  recordIds: RecordId[],
+  fieldId: string,
+  fieldType: FieldType
+): Promise<Map<RecordId, TypedFieldValue | TypedFieldValue[]>> {
+  const entityInstanceIds = recordIds.map((rid) => parseRecordId(rid).entityInstanceId)
+
   const rows = await ctx.db
     .select()
     .from(schema.FieldValue)
     .where(
       and(
         eq(schema.FieldValue.organizationId, ctx.organizationId),
-        inArray(schema.FieldValue.entityId, entityInstanceIds),
-        inArray(schema.FieldValue.fieldId, fieldIds)
+        eq(schema.FieldValue.fieldId, fieldId),
+        inArray(schema.FieldValue.entityId, entityInstanceIds)
       )
     )
     .orderBy(asc(schema.FieldValue.sortKey))
 
-  // Group by entityId + fieldId
-  const valueMap = new Map<string, typeof rows>()
+  // Build lookup: instanceId → full RecordId
+  const instanceToRecordId = new Map<string, RecordId>()
+  for (const rid of recordIds) {
+    const { entityInstanceId } = parseRecordId(rid)
+    instanceToRecordId.set(entityInstanceId, rid)
+  }
+
+  // Group rows by record
+  const rowsByRecord = new Map<RecordId, typeof rows>()
   for (const row of rows) {
-    const key = `${row.entityId}:${row.fieldId}`
-    const existing = valueMap.get(key) ?? []
+    const recordId = instanceToRecordId.get(row.entityId)
+    if (!recordId) continue
+
+    const existing = rowsByRecord.get(recordId) ?? []
     existing.push(row)
-    valueMap.set(key, existing)
+    rowsByRecord.set(recordId, existing)
   }
 
-  // Build combined field type map from all entity definitions
-  const fieldTypeMap = new Map<string, FieldType>()
-  for (const entityDefId of uniqueEntityDefIds) {
-    const typeMap = await getFieldTypeMapByDefinition(registryService, entityDefId, fieldIds)
-    for (const [fid, ftype] of typeMap) {
-      fieldTypeMap.set(fid, ftype)
-    }
+  // Convert to typed values
+  const result = new Map<RecordId, TypedFieldValue | TypedFieldValue[]>()
+  const isMulti = isArrayReturnFieldType(fieldType)
+
+  for (const [recordId, fieldRows] of rowsByRecord) {
+    const typedValues = fieldRows.map((row) =>
+      rowToTypedValue(row as unknown as FieldValueRow, fieldType)
+    )
+    result.set(recordId, isMulti ? typedValues : typedValues[0]!)
   }
 
-  // Build result with validation (only include combinations that have actual data)
+  return result
+}
+
+/**
+ * Map terminal field values back through the traversal chain to source records.
+ *
+ * This handles the case where:
+ * - Source A → Related B1, B2
+ * - B1 → value "X", B2 → value "Y"
+ * - Result: A → ["X", "Y"] (if any has_many in chain) or A → "X" (if all single)
+ */
+function mapResultsToSources(
+  sourceRecordIds: RecordId[],
+  traversalMaps: Map<RecordId, RecordId[]>[],
+  terminalValues: Map<RecordId, TypedFieldValue | TypedFieldValue[]>,
+  fieldRef: FieldReference,
+  terminalFieldType: FieldType
+): TypedFieldValueResult[] {
   const results: TypedFieldValueResult[] = []
-  for (const instanceId of entityInstanceIds) {
-    const fullRecordId = instanceToRecordId.get(instanceId)
-    if (!fullRecordId) continue
 
-    for (const fieldId of fieldIds) {
-      const key = `${instanceId}:${fieldId}`
-      const fieldRows = valueMap.get(key)
-      const issues: string[] = []
-
-      // Skip combinations with no data - only return values that exist
-      if (!fieldRows || fieldRows.length === 0) {
-        continue
-      } else {
-        const fieldType = fieldTypeMap.get(fieldId)
-
-        if (!fieldType) {
-          // Field definition not found - orphaned reference
-          issues.push(`Field type not found for field ${fieldId}`)
-          results.push({
-            recordId: fullRecordId,
-            fieldId,
-            value: null,
-            issues,
-          })
-          continue
-        }
-
-        const typedValues = fieldRows.map((row) => {
-          const typed = rowToTypedValue(row as unknown as FieldValueRow, fieldType)
-          // Check for invalid values
-          if (!isValidTypedValue(typed, fieldType)) {
-            issues.push(`Invalid value for ${fieldType} field`)
-          }
-          return typed
+  // Direct field (no traversal) - just map terminalValues directly
+  if (traversalMaps.length === 0) {
+    for (const sourceRecordId of sourceRecordIds) {
+      const value = terminalValues.get(sourceRecordId)
+      if (value !== undefined) {
+        results.push({
+          recordId: sourceRecordId,
+          fieldRef,
+          value,
         })
-
-        // Check for orphaned option/relationship references
-        for (const row of fieldRows) {
-          const rowIssues = validateRowReferences(row as unknown as FieldValueRow, fieldType)
-          issues.push(...rowIssues)
-        }
-
-        // Build the result with proper value assignment
-        const resultValue = isArrayReturnFieldType(fieldType)
-          ? typedValues
-          : typedValues[0]!
-
-        const result: TypedFieldValueResult = {
-          recordId: fullRecordId,
-          fieldId,
-          value: resultValue,
-        }
-
-        if (issues.length > 0) {
-          result.issues = issues
-        }
-
-        results.push(result)
       }
     }
+    return results
   }
 
-  return { values: results }
+  // Path with traversal - walk through maps
+  for (const sourceRecordId of sourceRecordIds) {
+    // Walk the traversal maps to collect all terminal record IDs reachable from source
+    let currentIds: RecordId[] = [sourceRecordId]
+    let hasMultiHop = false
+
+    for (const map of traversalMaps) {
+      const nextIds: RecordId[] = []
+      for (const id of currentIds) {
+        const related = map.get(id) ?? []
+        nextIds.push(...related)
+        if (related.length > 1) hasMultiHop = true
+      }
+      currentIds = nextIds
+      if (currentIds.length === 0) break
+    }
+
+    // Collect terminal values for all reachable terminal records
+    const values: TypedFieldValue[] = []
+    for (const terminalId of currentIds) {
+      const value = terminalValues.get(terminalId)
+      if (value) {
+        if (Array.isArray(value)) {
+          values.push(...value)
+        } else {
+          values.push(value)
+        }
+      }
+    }
+
+    // Determine result shape based on traversal cardinality
+    // If any hop produced multiple results, or terminal field is multi-value, return array
+    // Otherwise, return single value or null
+    if (values.length > 0) {
+      const isMultiValueField = isArrayReturnFieldType(terminalFieldType)
+      const shouldBeArray = hasMultiHop || values.length > 1 || isMultiValueField
+
+      results.push({
+        recordId: sourceRecordId,
+        fieldRef,
+        value: shouldBeArray ? values : values[0] ?? null,
+      })
+    }
+  }
+
+  return results
 }

@@ -8,8 +8,20 @@ import { useTableConfig } from '../context/table-config-context'
 import { useColumnFormatting } from '../stores/store-selectors'
 import { renderCellValue } from '../utils/cell-renderers'
 import { ExpandableCell } from './expandable-cell'
+import { ItemsCellView } from '~/components/ui/items-list-view'
 import type { ColumnFormatting } from '../types'
 import type { CurrencyDisplayOptions } from '@auxx/utils'
+
+/**
+ * Field types that already handle array values internally.
+ * These should NOT be wrapped in ItemsCellView when value is array.
+ */
+const MULTI_VALUE_FIELD_TYPES = new Set([
+  'TAGS',
+  'MULTI_SELECT',
+  'RELATIONSHIP',
+  'ITEMS',
+])
 
 /**
  * Config for field-specific data passed to renderers.
@@ -38,13 +50,15 @@ interface FormattedCellProps extends CellConfig {
   /** The value to render */
   value: unknown
   /** Field type for determining renderer */
-  fieldType: string
+  fieldType?: string
   /** Column ID for looking up formatting from context */
   columnId?: string
   /** Explicit formatting to apply (takes precedence over context formatting) */
   formatting?: ColumnFormatting
   /** Additional className for the wrapper */
   className?: string
+  /** True when value comes from a field path (relationship traversal) */
+  isFieldPath?: boolean
 }
 
 /**
@@ -53,9 +67,11 @@ interface FormattedCellProps extends CellConfig {
  * Each renderer handles its own padding via CellPadding internally.
  * This component just routes to the appropriate renderer based on fieldType.
  *
- * Memoized to prevent unnecessary re-renders when parent cell updates.
+ * For field paths (relationship traversal), handles array values:
+ * - Multi-value field types (TAGS, MULTI_SELECT, RELATIONSHIP) handle arrays internally
+ * - Other field types get wrapped in ItemsCellView to display each item
  *
- * Migrated to use split contexts and stores instead of monolithic TableContext
+ * Memoized to prevent unnecessary re-renders when parent cell updates.
  *
  * Usage:
  * ```tsx
@@ -65,13 +81,8 @@ interface FormattedCellProps extends CellConfig {
  * // Tags/Select with options
  * <FormattedCell value={tagIds} fieldType="TAGS" options={options} />
  *
- * // Custom items list
- * <FormattedCell
- *   value={null}
- *   fieldType="ITEMS"
- *   items={items}
- *   renderItem={(g) => <Badge>{g.name}</Badge>}
- * />
+ * // Field path with potential array values
+ * <FormattedCell value={vendorNames} fieldType="TEXT" isFieldPath />
  * ```
  */
 export const FormattedCell = memo(function FormattedCell({
@@ -80,8 +91,11 @@ export const FormattedCell = memo(function FormattedCell({
   columnId,
   formatting: explicitFormatting,
   className,
+  isFieldPath = false,
   ...config
 }: FormattedCellProps) {
+  const type = fieldType ?? 'TEXT'
+
   // Get formatting from store if available, explicit formatting takes precedence
   let formatting: ColumnFormatting | undefined = explicitFormatting
 
@@ -99,8 +113,23 @@ export const FormattedCell = memo(function FormattedCell({
     }
   }
 
-  // Renderers handle their own padding via CellPadding
-  return <>{renderCellValue(value, fieldType, formatting, config)}</>
+  // Check if value is an array that needs special handling
+  // (path results can return arrays for non-multi-value field types)
+  const isArrayValue = Array.isArray(value)
+  const fieldHandlesArrays = MULTI_VALUE_FIELD_TYPES.has(type)
+
+  // If array value AND field type doesn't handle arrays → wrap in ItemsCellView
+  if (isArrayValue && !fieldHandlesArrays && value.length > 0) {
+    return (
+      <ItemsCellView
+        items={value.map((v, i) => ({ id: String(i), value: v }))}
+        renderItem={(item) => renderCellValue(item.value, type, formatting, config)}
+      />
+    )
+  }
+
+  // Standard rendering (single value or field that handles arrays)
+  return <>{renderCellValue(value, type, formatting, config)}</>
 })
 
 /**
