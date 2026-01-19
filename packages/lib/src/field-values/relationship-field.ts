@@ -6,11 +6,11 @@ import type {
   TypedFieldValue,
 } from '@auxx/types/field-value'
 import type { RecordId } from '@auxx/types/resource'
-import type { RelationshipType } from '@auxx/types/custom-field'
-import { toRecordId, getInstanceId } from '../resources/resource-id'
+import { toRecordId } from '../resources/resource-id'
+import { isMultiRelationship, isSingleRelationship, type RelationshipType } from '@auxx/utils'
 
-// Re-export RelationshipType for consumers
-export type { RelationshipType }
+// Re-export relationship type utilities from @auxx/utils
+export { isMultiRelationship, isSingleRelationship, type RelationshipType }
 
 /**
  * Extracted relationship data with RecordIds ready for useRelationship
@@ -286,75 +286,6 @@ export function validateEntityDefinitionId(entityDefinitionId: string | null): b
  */
 export function extractRelationshipRecordIds(value: unknown): RecordId[] {
   return extractRelationshipData(value).recordIds
-}
-
-// ============================================================================
-// RELATIONSHIP HELPERS - Canonical utilities for relationship handling
-// ============================================================================
-
-/**
- * Determine if a relationship type allows multiple selections.
- *
- * @param relationshipType - The relationship cardinality type
- * @returns true if has_many or many_to_many, false for belongs_to/has_one/undefined
- *
- * @example
- * const multi = isMultiRelationship(field.options?.relationship?.relationshipType)
- */
-export function isMultiRelationship(relationshipType?: RelationshipType | string): boolean {
-  return relationshipType === 'has_many' || relationshipType === 'many_to_many'
-}
-
-/**
- * Determine if a relationship type allows multiple selections.
- *
- * @param relationshipType - The relationship cardinality type
- * @returns true if has_many or many_to_many, false for belongs_to/has_one/undefined
- *
- * @example
- * const single = isSingleRelationship(field.options?.relationship?.relationshipType)
- */
-export function isSingleRelationship(relationshipType?: RelationshipType | string): boolean {
-  return relationshipType === 'belongs_to' || relationshipType === 'has_one'
-}
-
-/**
- * Create a single RecordId from entityDefinitionId and entityInstanceId.
- *
- * @example
- * const recordId = toRecordIdFromParts('ticket', ticketId)
- */
-export function toRecordIdFromParts(
-  entityDefinitionId: string,
-  entityInstanceId: string
-): RecordId {
-  return toRecordId(entityDefinitionId, entityInstanceId)
-}
-
-/**
- * Create RecordId[] from entityDefinitionId and array of IDs.
- *
- * @example
- * const recordIds = toRecordIdsFromParts('contact', ['id1', 'id2'])
- */
-export function toRecordIdsFromParts(entityDefinitionId: string, ids: string[]): RecordId[] {
-  return ids.map((id) => toRecordId(entityDefinitionId, id))
-}
-
-/**
- * Create RecordId from entityDefinitionId and optional single ID.
- * Returns null if id is falsy.
- *
- * @example
- * const recordId = toRecordIdFromId('ticket', selectedTicketId)
- * // selectedTicketId = 'abc' → 'ticket:abc'
- * // selectedTicketId = null → null
- */
-export function toRecordIdFromId(
-  entityDefinitionId: string,
-  id: string | null | undefined
-): RecordId | null {
-  return id ? toRecordId(entityDefinitionId, id) : null
 }
 
 // Re-export from resource-id for convenience

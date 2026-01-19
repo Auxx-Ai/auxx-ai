@@ -1,5 +1,6 @@
 // packages/lib/src/field-values/types.ts
 
+import type { FieldType } from '@auxx/database/types'
 import type { TypedFieldValue, TypedFieldValueInput } from '@auxx/types'
 import type { RecordId } from '@auxx/types/resource'
 
@@ -94,7 +95,7 @@ export interface SetValuesResult {
 export interface SetValueWithTypeInput {
   recordId: RecordId
   fieldId: string
-  fieldType: string
+  fieldType: FieldType
   value: TypedFieldValueInput | TypedFieldValueInput[] | null
   /** Skip inverse relationship sync (used by bulk operations that handle sync separately) */
   skipInverseSync?: boolean
@@ -104,7 +105,7 @@ export interface SetValueWithTypeInput {
 export interface AddValueInput {
   recordId: RecordId
   fieldId: string
-  fieldType: string
+  fieldType: FieldType
   value: TypedFieldValueInput
   position?: 'start' | 'end' | { after: string }
 }

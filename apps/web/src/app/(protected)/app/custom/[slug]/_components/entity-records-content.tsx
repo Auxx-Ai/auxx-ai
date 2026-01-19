@@ -50,7 +50,7 @@ import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
 import { MergeDialog } from '~/components/merge'
-import { useCustomFieldValueSyncer } from '~/components/resources/hooks/use-custom-field-value-syncer'
+import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
 import {
   useTableFilters,
   useTableSorting,
@@ -241,15 +241,15 @@ export function EntityRecordsContent() {
     [customFields]
   )
 
-  // Custom field value syncer - reads from store for reactive updates
-  const { getValue, isValueLoading } = useCustomFieldValueSyncer({
+  // Field value syncer - reads from store for reactive updates
+  const { getValue, isValueLoading } = useFieldValueSyncer({
     recordIds,
     columnVisibility,
     resourceFieldIds: columnIds,
     enabled: !!entityDefinitionId && columnIds.length > 0,
   })
 
-  // Note: Store hydration is handled by useCustomFieldValueSyncer
+  // Note: Store hydration is handled by useFieldValueSyncer
   // which calls batchGetValues and returns properly formatted TypedFieldValue.
   // This eliminates the need for manual row-to-TypedFieldValue conversion here.
   // Cell value saving is handled internally by PropertyProvider via storeConfig.

@@ -128,6 +128,8 @@ export { withRetry } from './retry'
 // Relationship utilities
 export {
   getInverseCardinality,
+  isMultiRelationship,
+  isSingleRelationship,
   isSingleValueRelationship,
   type RelationshipType,
 } from './relationships'

@@ -28,10 +28,27 @@ export function getInverseCardinality(type: RelationshipType): RelationshipType 
 }
 
 /**
- * Check if a relationship type stores a single value (vs array).
- * belongs_to and has_one store a single related entity ID.
- * has_many and many_to_many store arrays of related entity IDs.
+ * Check if a relationship type allows multiple values (has_many, many_to_many).
+ *
+ * @param relationshipType - The relationship cardinality type
+ * @returns true if has_many or many_to_many, false for belongs_to/has_one/undefined
  */
-export function isSingleValueRelationship(type: RelationshipType): boolean {
-  return type === 'belongs_to' || type === 'has_one'
+export function isMultiRelationship(relationshipType?: RelationshipType | string): boolean {
+  return relationshipType === 'has_many' || relationshipType === 'many_to_many'
 }
+
+/**
+ * Check if a relationship type stores a single value (belongs_to, has_one).
+ *
+ * @param relationshipType - The relationship cardinality type
+ * @returns true if belongs_to or has_one, false for has_many/many_to_many/undefined
+ */
+export function isSingleRelationship(relationshipType?: RelationshipType | string): boolean {
+  return relationshipType === 'belongs_to' || relationshipType === 'has_one'
+}
+
+/**
+ * Alias for isSingleRelationship for backward compatibility.
+ * @deprecated Use isSingleRelationship instead
+ */
+export const isSingleValueRelationship = isSingleRelationship

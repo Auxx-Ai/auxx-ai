@@ -4,6 +4,43 @@
 export { FieldValueService } from './field-value-service'
 export { DisplayFieldService } from './display-field-service'
 
+// Helpers (context and shared utilities)
+export {
+  type FieldValueContext,
+  createFieldValueContext,
+  getField,
+  getInverseInfoFromField,
+  rowToTypedValue,
+  rowsToTypedValues,
+  isValidTypedValue,
+  validateRowReferences,
+  validateAndConvertValue,
+  validateSingleValue,
+  preBatchValidateRelationships,
+  maybeUpdateDisplayValue,
+  getFieldTypeMapByDefinition,
+} from './field-value-helpers'
+
+// Queries (for direct usage)
+export {
+  getValue,
+  getValues,
+  batchGetValues,
+} from './field-value-queries'
+
+// Mutations (for direct usage)
+export {
+  setValue,
+  setValueWithType,
+  addValue,
+  removeValue,
+  deleteValue,
+  setValueWithBuiltIn,
+  setValuesForEntity,
+  setBulkValues,
+  extractRelatedIdsFromRaw,
+} from './field-value-mutations'
+
 // NEW: Centralized Formatter API (preferred)
 export {
   formatToTypedInput,
@@ -49,13 +86,11 @@ export {
   isRelationshipFieldValueArray,
   convertRawToRelationshipInput,
   isMultiRelationship,
+  isSingleRelationship,
   toRecordId,
   parseRecordId,
   isRecordId,
   toRecordIds,
-  toRecordIdFromParts,
-  toRecordIdsFromParts,
-  toRecordIdFromId,
   getInstanceId,
   getDefinitionId,
   type RelationshipData,

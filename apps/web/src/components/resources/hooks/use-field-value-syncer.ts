@@ -1,4 +1,4 @@
-// apps/web/src/components/resources/hooks/use-custom-field-value-syncer.ts
+// apps/web/src/components/resources/hooks/use-field-value-syncer.ts
 
 import { useEffect, useMemo, useRef, useCallback } from 'react'
 import { api } from '~/trpc/react'
@@ -14,7 +14,21 @@ import type { VisibilityState } from '@tanstack/react-table'
 import { generateId } from '@auxx/utils/generateId'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 
-interface UseCustomFieldValueSyncerOptions {
+/** Maximum number of recordIds per API call */
+const BATCH_SIZE = 100
+
+/**
+ * Split an array into chunks of specified size.
+ */
+function chunkArray<T>(array: T[], size: number): T[][] {
+  const chunks: T[][] = []
+  for (let i = 0; i < array.length; i += size) {
+    chunks.push(array.slice(i, i + size))
+  }
+  return chunks
+}
+
+interface UseFieldValueSyncerOptions {
   /** RecordIds for the entities being displayed */
   recordIds: RecordId[]
 
@@ -22,7 +36,7 @@ interface UseCustomFieldValueSyncerOptions {
   columnVisibility: VisibilityState
 
   /** ResourceFieldIds for columns (e.g., ['contact:email', 'contact:abc']) */
-  resourceFieldIds: string[]
+  resourceFieldIds: ResourceFieldId[]
 
   /** Whether syncing is enabled */
   enabled?: boolean
@@ -43,13 +57,13 @@ interface SyncerResult {
 }
 
 /**
- * Hook that syncs custom field values based on visible columns and rows.
+ * Hook that syncs field values based on visible columns and rows.
  * Batches requests and deduplicates to minimize API calls.
  *
  * @example
  * ```tsx
  * // Pass resourceFieldIds in ResourceFieldId format
- * useCustomFieldValueSyncer({
+ * useFieldValueSyncer({
  *   recordIds,
  *   columnVisibility,
  *   resourceFieldIds: customFields.map(f => f.resourceFieldId),
@@ -57,7 +71,7 @@ interface SyncerResult {
  * })
  * ```
  */
-export function useCustomFieldValueSyncer(options: UseCustomFieldValueSyncerOptions): SyncerResult {
+export function useFieldValueSyncer(options: UseFieldValueSyncerOptions): SyncerResult {
   const { recordIds, columnVisibility, resourceFieldIds, enabled = true, debounceMs = 150 } = options
 
   // Get store actions (stable references)
@@ -128,8 +142,8 @@ export function useCustomFieldValueSyncer(options: UseCustomFieldValueSyncerOpti
       const batchId = generateId('batch')
       startLoading(batchId, neededKeys)
 
-      // Group by entityDefinitionId for API calls
-      const resourcesByDefinition = new Map<string, RecordId[]>()
+      // Group by entityDefinitionId for API calls (use Set to avoid duplicate recordIds)
+      const resourcesByDefinition = new Map<string, Set<RecordId>>()
       const fieldIds = new Set<string>()
 
       for (const key of neededKeys) {
@@ -137,9 +151,9 @@ export function useCustomFieldValueSyncer(options: UseCustomFieldValueSyncerOpti
         const { entityDefinitionId } = parseRecordId(recordId)
 
         if (!resourcesByDefinition.has(entityDefinitionId)) {
-          resourcesByDefinition.set(entityDefinitionId, [])
+          resourcesByDefinition.set(entityDefinitionId, new Set())
         }
-        resourcesByDefinition.get(entityDefinitionId)!.push(recordId)
+        resourcesByDefinition.get(entityDefinitionId)!.add(recordId)
         fieldIds.add(fieldId)
       }
 
@@ -149,18 +163,34 @@ export function useCustomFieldValueSyncer(options: UseCustomFieldValueSyncerOpti
       if (!firstRecordId) return
 
       const { entityDefinitionId } = parseRecordId(firstRecordId)
-      const recordIdsForFetch = resourcesByDefinition.get(entityDefinitionId) ?? []
+      const recordIdsForFetch = [...(resourcesByDefinition.get(entityDefinitionId) ?? [])]
+
+      // Chunk recordIds to avoid API limit
+      const chunks = chunkArray(recordIdsForFetch, BATCH_SIZE)
+      const fieldIdsArray = Array.from(fieldIds)
 
       try {
-        const data = await batchFetch.mutateAsync({
-          recordIds: recordIdsForFetch,
-          fieldIds: Array.from(fieldIds),
-        })
-
-        // Build entries map (API returns RecordId format)
-        const entriesMap = new Map(
-          data.values.map((v) => [buildFieldValueKey(v.recordId, v.fieldId), v.value])
+        // Fetch all chunks in parallel
+        const results = await Promise.allSettled(
+          chunks.map((chunkRecordIds) =>
+            batchFetch.mutateAsync({
+              recordIds: chunkRecordIds,
+              fieldIds: fieldIdsArray,
+            })
+          )
         )
+
+        // Build entries map from all successful results
+        const entriesMap = new Map<FieldValueKey, StoredFieldValue>()
+        for (const result of results) {
+          if (result.status === 'fulfilled') {
+            for (const v of result.value.values) {
+              entriesMap.set(buildFieldValueKey(v.recordId, v.fieldId), v.value)
+            }
+          } else {
+            console.warn('Chunk fetch failed:', result.reason)
+          }
+        }
 
         // Compute all requested combinations
         const allRequestedCombinations = new Set<FieldValueKey>()
@@ -178,7 +208,7 @@ export function useCustomFieldValueSyncer(options: UseCustomFieldValueSyncerOpti
 
         setValues(allLoadedEntries)
       } catch (error) {
-        console.error('Failed to fetch custom field values:', error)
+        console.error('Failed to fetch field values:', error)
       } finally {
         finishLoading(batchId)
       }

@@ -18,7 +18,7 @@ import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
 import { useDirtyCheck } from '~/hooks/use-dirty-state'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useResource } from '~/components/resources'
-import { useCustomFieldValueSyncer } from '~/components/resources/hooks/use-custom-field-value-syncer'
+import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 
@@ -63,7 +63,7 @@ export function BulkUpdateEntityInstanceDialog({
     [editableFields]
   )
 
-  const { getValue } = useCustomFieldValueSyncer({
+  const { getValue } = useFieldValueSyncer({
     recordIds,
     resourceFieldIds: columnIds,
     columnVisibility: {},

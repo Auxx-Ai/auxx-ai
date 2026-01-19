@@ -51,9 +51,7 @@ export {
   validateEntityDefinitionId,
   convertRawToRelationshipInput,
   isMultiRelationship,
-  toRecordIdFromParts,
-  toRecordIdsFromParts,
-  toRecordIdFromId,
+  isSingleRelationship,
   type RelationshipData,
   type RelationshipType,
 } from './relationship-field'

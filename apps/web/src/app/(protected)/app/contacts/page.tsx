@@ -23,7 +23,7 @@ import type { ExtendedColumnDef } from '~/components/dynamic-table'
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
 import { EmptyState } from '~/components/global/empty-state'
 import { useResources, useRecordList, toRecordId } from '~/components/resources'
-import { useCustomFieldValueSyncer } from '~/components/resources/hooks/use-custom-field-value-syncer'
+import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -214,9 +214,9 @@ export default function CustomerListPage() {
     [customFields]
   )
 
-  // Custom field value syncer - triggers batch fetches for visible columns
+  // Field value syncer - triggers batch fetches for visible columns
   // Cells subscribe directly to store via CustomFieldCell
-  useCustomFieldValueSyncer({
+  useFieldValueSyncer({
     recordIds,
     columnVisibility,
     resourceFieldIds: columnIds,

@@ -148,28 +148,14 @@ export const relationshipConverter: FieldValueConverter = {
 }
 
 // ============================================================================
-// TYPE GUARDS - Re-exported for convenience
+// TYPE GUARDS
 // ============================================================================
 
-/**
- * Check if value is a RelationshipFieldValue object
- */
-export function isRelationshipFieldValue(v: unknown): v is RelationshipFieldValue {
-  return (
-    typeof v === 'object' &&
-    v !== null &&
-    'relatedEntityId' in v &&
-    'type' in v &&
-    (v as Record<string, unknown>).type === 'relationship'
-  )
-}
-
-/**
- * Check if value is an array of RelationshipFieldValue objects
- */
-export function isRelationshipFieldValueArray(v: unknown): v is RelationshipFieldValue[] {
-  return Array.isArray(v) && v.every(isRelationshipFieldValue)
-}
+// Re-export type guards from relationship-field.ts (single source of truth)
+export {
+  isRelationshipFieldValue,
+  isRelationshipFieldValueArray,
+} from '../relationship-field'
 
 /**
  * Check if value is a raw relationship object (without type discriminator)

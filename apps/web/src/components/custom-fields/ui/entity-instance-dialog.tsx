@@ -20,7 +20,7 @@ import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
 import { useDirtyCheck } from '~/hooks/use-dirty-state'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useResource } from '~/components/resources'
-import { useCustomFieldValueSyncer } from '~/components/resources/hooks/use-custom-field-value-syncer'
+import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
 import { toRecordId, parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 
@@ -39,7 +39,7 @@ interface EntityInstanceDialogProps {
 
 /**
  * Dialog for creating/editing entity instances.
- * Uses useResource to get field definitions and useCustomFieldValueSyncer for values.
+ * Uses useResource to get field definitions and useFieldValueSyncer for values.
  */
 export function EntityInstanceDialog({
   open,
@@ -73,7 +73,7 @@ export function EntityInstanceDialog({
     [editableFields]
   )
 
-  const { getValue } = useCustomFieldValueSyncer({
+  const { getValue } = useFieldValueSyncer({
     recordIds,
     resourceFieldIds: columnIds,
     columnVisibility: {},

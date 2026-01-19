@@ -18,7 +18,7 @@ import { EmptyState } from '~/components/global/empty-state'
 import { Ticket as TicketIcon, Plus, Trash2, Users, CircleDot, Flag, Play } from 'lucide-react'
 import { parseAsBoolean, parseAsString, useQueryState } from 'nuqs'
 import { useRecordList, useResources, toRecordId } from '~/components/resources'
-import { useCustomFieldValueSyncer } from '~/components/resources/hooks/use-custom-field-value-syncer'
+import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
 import { TicketDetailDrawer } from './ticket-detail-drawer'
 import { createTicketColumns } from './ticket-columns'
 import { useTicketMutations } from './use-ticket-mutations'
@@ -153,9 +153,9 @@ export function TicketManagement({
     [customFields]
   )
 
-  // Custom field value syncer - triggers batch fetches for visible columns
+  // Field value syncer - triggers batch fetches for visible columns
   // Cells subscribe directly to store via CustomFieldCell
-  useCustomFieldValueSyncer({
+  useFieldValueSyncer({
     recordIds,
     columnVisibility,
     resourceFieldIds: columnIds,
