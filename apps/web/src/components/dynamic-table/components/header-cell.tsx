@@ -43,13 +43,14 @@ import {
 import { EditColumnLabelDialog } from './dialogs/edit-column-label-dialog'
 import { EditColumnFormattingDialog } from './dialogs/edit-column-formatting-dialog'
 import { decodeColumnId } from '../utils/column-id'
-import { useFields } from '~/components/resources/hooks/use-field'
+import { useField, useFields } from '~/components/resources/hooks/use-field'
 import type { Header } from '@tanstack/react-table'
 import type { ExtendedColumnDef, ColumnFormatting, FormattableFieldType } from '../types'
 import { FORMATTABLE_FIELD_TYPES } from '../types'
 
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import type { FieldType } from '@auxx/database/types'
+import { getIconForFieldType } from '../custom-field-column-factory'
 
 interface HeaderCellProps<TData> {
   header: Header<TData, unknown>
@@ -78,6 +79,8 @@ function HeaderCellOptionsDropdown<TData>({
   setColumnFormatting,
   pinnedColumnId,
   setPinnedColumn,
+  effectiveFieldType,
+  terminalDefaultFormatting,
 }: {
   column: Header<TData, unknown>['column']
   columnDef: ExtendedColumnDef<TData>
@@ -96,6 +99,8 @@ function HeaderCellOptionsDropdown<TData>({
   setColumnFormatting: (columnId: string, formatting: ColumnFormatting | null) => void
   pinnedColumnId: string | null
   setPinnedColumn: (columnId: string | null) => void
+  effectiveFieldType: FieldType | undefined
+  terminalDefaultFormatting: Record<string, unknown> | undefined
 }) {
   const [showLabelDialog, setShowLabelDialog] = useState(false)
   const [showFormattingDialog, setShowFormattingDialog] = useState(false)
@@ -103,10 +108,10 @@ function HeaderCellOptionsDropdown<TData>({
   const isPinned = pinnedColumnId === column.id
   const canPin = column.id !== '_checkbox' // Don't allow pinning special columns
 
-  // Check if this column supports formatting
-  const fieldType = columnDef.fieldType
+  // Check if this column supports formatting (uses effectiveFieldType for path columns)
   const isFormattable =
-    fieldType && (FORMATTABLE_FIELD_TYPES as readonly string[]).includes(fieldType)
+    effectiveFieldType &&
+    (FORMATTABLE_FIELD_TYPES as readonly string[]).includes(effectiveFieldType)
 
   return (
     <DropdownMenu>
@@ -242,9 +247,9 @@ function HeaderCellOptionsDropdown<TData>({
           onOpenChange={setShowFormattingDialog}
           columnId={column.id}
           columnLabel={headerContent}
-          fieldType={fieldType as FormattableFieldType}
+          fieldType={effectiveFieldType as FormattableFieldType}
           currentFormatting={columnFormatting[column.id]}
-          defaultFormatting={columnDef.defaultFormatting}
+          defaultFormatting={columnDef.defaultFormatting ?? terminalDefaultFormatting}
           onSave={(formatting) => setColumnFormatting(column.id, formatting)}
         />
       )}
@@ -287,6 +292,10 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
   // For path columns, get all field definitions for breadcrumb
   const pathFields = useFields(isPathColumn ? decoded.fieldPath : [])
 
+  // For direct fields without an icon, fetch field to get its type
+  const directFieldId = !isPathColumn && !columnDef.icon ? decoded.resourceFieldId : undefined
+  const directField = useField(directFieldId)
+
   // Build breadcrumb segments for path columns
   const breadcrumbSegments = useMemo((): BreadcrumbSegment[] => {
     if (!isPathColumn) return []
@@ -297,6 +306,21 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
     }))
   }, [isPathColumn, decoded, pathFields])
 
+  // Extract terminal field metadata for path columns
+  const terminalFieldMeta = useMemo(() => {
+    if (!isPathColumn || pathFields.length === 0) return null
+    const terminalField = pathFields[pathFields.length - 1]
+    if (!terminalField) return null
+
+    return {
+      fieldType: terminalField.fieldType,
+      defaultFormatting: terminalField.options, // Field options become default formatting
+    }
+  }, [isPathColumn, pathFields])
+
+  // Effective fieldType: from columnDef or terminal field for paths
+  const effectiveFieldType = columnDef.fieldType ?? terminalFieldMeta?.fieldType
+
   // ─── ACTIONS (use centralized action hooks) ────────────────────────────────
   const setFilters = useSetFilters(tableId)
   const setColumnLabel = useSetColumnLabel(tableId)
@@ -304,8 +328,24 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
   const setPinnedColumn = useSetPinnedColumn(tableId, getAllColumnIds)
 
   // ─── DERIVED STATE ──────────────────────────────────────────────────────────
-  const sortOptions = getSortOptionsForFieldType(columnDef.fieldType)
-  const Icon = columnDef.icon
+  const sortOptions = getSortOptionsForFieldType(effectiveFieldType)
+
+  // Get icon: prefer columnDef.icon, fallback to field's type for dynamic columns
+  const Icon = useMemo(() => {
+    if (columnDef.icon) return columnDef.icon
+    // For path columns, derive icon from terminal field's fieldType
+    if (isPathColumn && pathFields.length > 0) {
+      const terminalField = pathFields[pathFields.length - 1]
+      if (terminalField?.fieldType) {
+        return getIconForFieldType(terminalField.fieldType)
+      }
+    }
+    // For direct fields without icon, derive from field metadata
+    if (directField?.fieldType) {
+      return getIconForFieldType(directField.fieldType)
+    }
+    return undefined
+  }, [columnDef.icon, isPathColumn, pathFields, directField])
 
   // Get current sort state
   const isSorted = column.getIsSorted()
@@ -351,6 +391,8 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
             setColumnFormatting={setColumnFormatting}
             pinnedColumnId={pinnedColumnId}
             setPinnedColumn={setPinnedColumn}
+            effectiveFieldType={effectiveFieldType}
+            terminalDefaultFormatting={terminalFieldMeta?.defaultFormatting}
           />
         </div>
       )}

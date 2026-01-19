@@ -2,7 +2,7 @@
 
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import {
   DndContext,
   closestCenter,
@@ -22,12 +22,67 @@ import {
 } from '@dnd-kit/sortable'
 import type { Table, Column } from '@tanstack/react-table'
 import type { ExtendedColumnDef } from '../types'
+import { decodeColumnId } from '../utils/column-id'
+import { useFields } from '~/components/resources/hooks/use-field'
+import { getIconForFieldType } from '../custom-field-column-factory'
 
 interface ColumnDndProviderProps<TData> {
   table: Table<TData>
   children: React.ReactNode
   /** Visible columns from table - passed from parent to ensure sync */
   visibleColumns: Column<TData, unknown>[]
+}
+
+/**
+ * Drag overlay content for column reordering.
+ * Handles both regular columns and path columns with proper labels/icons.
+ */
+function ColumnDragOverlay<TData>({
+  columnId,
+  columnDef,
+}: {
+  columnId: string
+  columnDef: ExtendedColumnDef<TData>
+}) {
+  // Decode column ID to check if it's a path
+  const decoded = useMemo(() => decodeColumnId(columnId), [columnId])
+  const isPathColumn = decoded.type === 'path'
+
+  // For path columns, fetch field definitions
+  const pathFields = useFields(isPathColumn ? decoded.fieldPath : [])
+
+  // Determine icon: prefer columnDef.icon, fallback to terminal field's type for paths
+  const Icon = useMemo(() => {
+    if (columnDef.icon) return columnDef.icon
+    if (isPathColumn && pathFields.length > 0) {
+      const terminalField = pathFields[pathFields.length - 1]
+      if (terminalField?.fieldType) {
+        return getIconForFieldType(terminalField.fieldType)
+      }
+    }
+    return null
+  }, [columnDef.icon, isPathColumn, pathFields])
+
+  // Determine label: prefer columnDef.header string, fallback to path labels
+  const label = useMemo(() => {
+    if (typeof columnDef.header === 'string' && columnDef.header) return columnDef.header
+    if (isPathColumn && pathFields.length > 0) {
+      return pathFields
+        .map((f) => f?.label ?? '')
+        .filter(Boolean)
+        .join(' → ')
+    }
+    return columnId
+  }, [columnDef.header, isPathColumn, pathFields, columnId])
+
+  return (
+    <div className="bg-primary-200 border border-primary rounded-lg shadow-2xl px-2 py-2 cursor-grabbing">
+      <div className="font-medium text-xs text-zinc-700 flex items-center">
+        {Icon && <Icon className="mr-2 size-3 text-zinc-500" />}
+        <span className="font-semibold">{label}</span>
+      </div>
+    </div>
+  )
 }
 
 /**
@@ -95,18 +150,7 @@ export function ColumnDndProvider<TData>({
         style={{ width: 'auto' }}
         className="w-auto">
         {activeColumnId && activeColumnDef ? (
-          <div className="bg-primary-200 border border-primary rounded-lg shadow-2xl px-2 py-2 cursor-grabbing">
-            <div className="font-medium text-xs text-zinc-700 flex items-center">
-              {activeColumnDef.icon && (
-                <activeColumnDef.icon className="mr-2 size-3 text-zinc-500" />
-              )}
-              <span className="font-semibold">
-                {typeof activeColumnDef.header === 'string'
-                  ? activeColumnDef.header
-                  : activeColumnId}
-              </span>
-            </div>
-          </div>
+          <ColumnDragOverlay columnId={activeColumnId} columnDef={activeColumnDef} />
         ) : null}
       </DragOverlay>
     </DndContext>

@@ -197,10 +197,24 @@ export function useFieldValueSyncer(options: UseFieldValueSyncerOptions): Syncer
         }
 
         // Mark all as loaded (null for missing values)
-        const allLoadedEntries = Array.from(allRequestedCombinations).map((key) => ({
-          key,
-          value: entriesMap.get(key) ?? null,
-        }))
+        // BUT: Don't overwrite existing values with null (preserves system fields
+        // that were hydrated earlier but aren't in the field_values API response)
+        const { values: currentValues } = useFieldValueStore.getState()
+        const allLoadedEntries = Array.from(allRequestedCombinations)
+          .map((key) => {
+            const apiValue = entriesMap.get(key)
+            // If API returned a value, use it
+            if (apiValue !== undefined) {
+              return { key, value: apiValue }
+            }
+            // If no API value but we already have a value in store, skip (don't overwrite)
+            if (key in currentValues && currentValues[key] !== undefined) {
+              return null
+            }
+            // No API value and no existing value - mark as null (truly missing)
+            return { key, value: null }
+          })
+          .filter((entry): entry is { key: FieldValueKey; value: StoredFieldValue } => entry !== null)
 
         setValues(allLoadedEntries)
       } catch (error) {

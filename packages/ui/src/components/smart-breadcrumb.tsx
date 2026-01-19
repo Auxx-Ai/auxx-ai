@@ -23,7 +23,7 @@ const smartBreadcrumbVariants = cva(
   {
     variants: {
       size: {
-        sm: 'h-6 gap-1 text-xs',
+        sm: 'h-5 gap-1 text-xs',
         default: 'h-8 gap-1.5 text-sm',
         lg: 'h-10 gap-2 text-base',
       },
@@ -114,7 +114,11 @@ function useBreadcrumbLayout(
   containerWidth: number,
   font: string,
   minSegmentWidth: number
-): { visibleSegments: LayoutSegment[]; collapsedSegments: BreadcrumbSegment[]; useDoubleChevron: boolean } {
+): {
+  visibleSegments: LayoutSegment[]
+  collapsedSegments: BreadcrumbSegment[]
+  useDoubleChevron: boolean
+} {
   return React.useMemo(() => {
     if (segments.length === 0 || containerWidth === 0) {
       return { visibleSegments: [], collapsedSegments: [], useDoubleChevron: false }
@@ -151,9 +155,13 @@ function useBreadcrumbLayout(
     if (segments.length === 1) {
       const firstSegment = segments[0]!
       const displayLabel =
-        firstWidth > containerWidth ? truncateText(firstSegment.label, containerWidth, font) : firstSegment.label
+        firstWidth > containerWidth
+          ? truncateText(firstSegment.label, containerWidth, font)
+          : firstSegment.label
       return {
-        visibleSegments: [{ segment: firstSegment, width: firstWidth, displayLabel, visible: true }],
+        visibleSegments: [
+          { segment: firstSegment, width: firstWidth, displayLabel, visible: true },
+        ],
         collapsedSegments: [],
         useDoubleChevron: false,
       }
@@ -165,7 +173,10 @@ function useBreadcrumbLayout(
       return {
         visibleSegments: segments.map((segment, i) => {
           const width = widths[i] ?? 0
-          const displayLabel = width > availableForEach ? truncateText(segment.label, availableForEach, font) : segment.label
+          const displayLabel =
+            width > availableForEach
+              ? truncateText(segment.label, availableForEach, font)
+              : segment.label
           return { segment, width, displayLabel, visible: true }
         }),
         collapsedSegments: [],
@@ -211,9 +222,14 @@ function useBreadcrumbLayout(
     const lastSegment = segments[segments.length - 1]!
 
     // Calculate first segment display width
-    const firstAvailableWidth = Math.min(firstWidth, Math.max(minSegmentWidth, containerWidth * 0.3))
+    const firstAvailableWidth = Math.min(
+      firstWidth,
+      Math.max(minSegmentWidth, containerWidth * 0.3)
+    )
     const firstDisplayLabel =
-      firstWidth > firstAvailableWidth ? truncateText(firstSegment.label, firstAvailableWidth, font) : firstSegment.label
+      firstWidth > firstAvailableWidth
+        ? truncateText(firstSegment.label, firstAvailableWidth, font)
+        : firstSegment.label
 
     // Calculate last segment display width
     const lastAvailableWidth = Math.min(lastWidth, Math.max(minSegmentWidth, containerWidth * 0.3))
@@ -307,8 +323,7 @@ function SmartBreadcrumbSegment({
       <a
         href={segment.href}
         className={baseClassName}
-        onClick={segment.disabled ? (e) => e.preventDefault() : segment.onClick}
-      >
+        onClick={segment.disabled ? (e) => e.preventDefault() : segment.onClick}>
         {content}
       </a>
     )
@@ -316,7 +331,11 @@ function SmartBreadcrumbSegment({
 
   // Clickable with onClick - button
   return (
-    <button type="button" className={baseClassName} onClick={segment.onClick} disabled={segment.disabled}>
+    <button
+      type="button"
+      className={baseClassName}
+      onClick={segment.onClick}
+      disabled={segment.disabled}>
       {content}
     </button>
   )
@@ -343,19 +362,30 @@ function SmartBreadcrumbEllipsis({
 
   // Display mode - just show ellipsis icon
   if (mode === 'display') {
-    return <span role="presentation" aria-hidden="true">{buttonContent}</span>
+    return (
+      <span role="presentation" aria-hidden="true">
+        {buttonContent}
+      </span>
+    )
   }
 
   // Clickable mode without dropdown - just ellipsis
   if (mode === 'clickable') {
-    return <span role="presentation" aria-hidden="true">{buttonContent}</span>
+    return (
+      <span role="presentation" aria-hidden="true">
+        {buttonContent}
+      </span>
+    )
   }
 
   // Dropdown mode - show menu with collapsed items
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button type="button" className="focus:outline-none" aria-label="Show hidden breadcrumb items">
+        <button
+          type="button"
+          className="focus:outline-none"
+          aria-label="Show hidden breadcrumb items">
           {buttonContent}
         </button>
       </DropdownMenuTrigger>
@@ -369,8 +399,7 @@ function SmartBreadcrumbEllipsis({
               onClick={() => {
                 if (segment.onClick) segment.onClick()
                 if (onSegmentClick) onSegmentClick(segment)
-              }}
-            >
+              }}>
               {Icon && <Icon className="size-4" />}
               {segment.label}
             </DropdownMenuItem>
@@ -490,7 +519,10 @@ export function SmartBreadcrumb({
 
               {/* Separator after segment (or after ellipsis) */}
               {!isLast && (
-                <SmartBreadcrumbSeparator useDouble={showEllipsis && useDoubleChevron} custom={separator} />
+                <SmartBreadcrumbSeparator
+                  useDouble={showEllipsis && useDoubleChevron}
+                  custom={separator}
+                />
               )}
             </React.Fragment>
           )

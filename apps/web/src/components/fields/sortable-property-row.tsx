@@ -132,7 +132,9 @@ export function SortablePropertyRow({
           {...attributes}
           {...listeners}
           className="items-center self-start flex gap-[4px] h-[24px] shrink-0 cursor-grab active:cursor-grabbing">
-          <GripVertical className="size-4 text-neutral-400 shrink-0" />
+          <div className="shrink-0 size-6 flex items-center justify-center">
+            <GripVertical className="size-4 text-neutral-400 shrink-0" />
+          </div>
           <div className="w-[120px] text-sm text-neutral-400 shrink-0">
             <div className="truncate">{field.name}</div>
           </div>

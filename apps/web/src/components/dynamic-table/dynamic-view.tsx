@@ -15,6 +15,8 @@ import { TableInstanceProvider, useTableInstance } from './context/table-instanc
 import { ViewMetadataProvider, useViewMetadata } from './context/view-metadata-context'
 import { CellSelectionConfigProvider, useCellSelection } from './context/cell-selection-context'
 import { useDynamicTableStore } from './stores/dynamic-table-store'
+import { useColumnOrder } from './stores/store-selectors'
+import { useReconciledColumns } from './hooks/use-reconciled-columns'
 import { cn } from '@auxx/ui/lib/utils'
 import type {
   DynamicTableProps,
@@ -249,8 +251,18 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
     return fields.filter((f): f is CustomField => !!f.id)
   }, [fields])
 
+  // Read columnOrder from store for reconciliation
+  const columnOrder = useColumnOrder(tableProps.tableId)
+
+  // Reconcile columns with columnOrder - creates definitions for missing field columns
+  const reconciledColumns = useReconciledColumns({
+    columns: tableProps.columns,
+    columnOrder,
+    entityDefinitionId: entityDefinitionId ?? '',
+  })
+
   // Get table state from NEW hook
-  const tableState = useDynamicTable({ ...tableProps, bulkActions })
+  const tableState = useDynamicTable({ ...tableProps, columns: reconciledColumns, bulkActions })
 
   const {
     table: tableInstance,

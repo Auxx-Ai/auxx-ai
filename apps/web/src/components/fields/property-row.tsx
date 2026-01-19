@@ -14,15 +14,6 @@ import { Tooltip } from '~/components/global/tooltip'
 import type { FieldType } from '@auxx/database/types'
 
 /**
- * Returns true if the value for a given field is considered empty.
- * Uses centralized formatter for consistent empty checking.
- * @param fieldType The field type string
- * @param value The value to check (raw or TypedFieldValue)
- */
-function isFieldEmpty(fieldType: string, value: any): boolean {
-  return isValueEmpty(value, fieldType)
-}
-/**
  * Renders the interactive row for a single property, including label, icon, and value.
  */
 function PropertyRow({
@@ -65,9 +56,9 @@ function PropertyRow({
           <LoadingFieldSkeleton />
         ) : !field.readOnly ? (
           <FieldInput>
-            {!isFieldEmpty(field.fieldType, value) ? <DisplayField /> : <EmptyField />}
+            {!isValueEmpty(value, field.fieldType) ? <DisplayField /> : <EmptyField />}
           </FieldInput>
-        ) : !isFieldEmpty(field.fieldType, value) ? (
+        ) : !isValueEmpty(value, field.fieldType) ? (
           <DisplayField />
         ) : (
           <EmptyField />

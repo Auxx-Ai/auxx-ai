@@ -206,7 +206,6 @@ export function PropertyProvider({
   // Get value from store using RecordId directly
   const storeKey = buildFieldValueKey(recordId, field.id)
   const storeValue = useFieldValueStore((s) => s.values[storeKey])
-
   // Field metadata provider for relationship sync
   // The field object already contains options.relationship from the registry
   const getFieldMetadata = useCallback(

@@ -86,16 +86,21 @@ export function hydrateMultipleRecords(
       if (!field.fieldType) continue
 
       let rawValue: unknown
-
       if (isComputedField(field) && field.sourceFields) {
         rawValue = Object.fromEntries(
           field.sourceFields.map((sourceKey) => [sourceKey, record.data[sourceKey] ?? ''])
         )
       } else {
-        const valueKey = field.dbColumn || field.key
+        const valueKey = field.key
         rawValue = record.data[valueKey]
       }
-
+      // console.log('Hydrating field', {
+      //   recordId: record.recordId,
+      //   fieldKey: field.key,
+      //   rawValue,
+      //   'record.data': record.data,
+      //   field,
+      // })
       if (rawValue === undefined) continue
 
       if (Array.isArray(rawValue) && field.relationship) {
@@ -112,7 +117,6 @@ export function hydrateMultipleRecords(
       })
 
       if (typedValue !== null) {
-        // Use buildFieldValueKey with RecordId directly
         const storeKey = buildFieldValueKey(record.recordId, field.key)
         allEntries.push({ key: storeKey, value: typedValue as StoredFieldValue })
       }

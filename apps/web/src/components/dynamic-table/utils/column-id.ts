@@ -86,3 +86,12 @@ export function isFieldPathColumnId(columnId: string): boolean {
 export function isDirectFieldColumnId(columnId: string): boolean {
   return !columnId.includes('::')
 }
+
+/**
+ * Check if a column ID represents a field (direct or path).
+ * Field columns contain a colon in entity:field format.
+ * Special columns like '_checkbox' don't have colons.
+ */
+export function isFieldColumnId(columnId: string): boolean {
+  return columnId.includes(':')
+}

@@ -92,7 +92,8 @@ function EntityFields({
   // ─────────────────────────────────────────────────────────────────
 
   // Get fields with optimistic overlays - subscribes to fieldMap for instant updates
-  const { fields: effectiveFields, isLoading: fieldsLoading } = useResourceFields(entityDefinitionId)
+  const { fields: effectiveFields, isLoading: fieldsLoading } =
+    useResourceFields(entityDefinitionId)
 
   // ─────────────────────────────────────────────────────────────────
   // FIELD PROCESSING (unified system + custom)
@@ -174,6 +175,8 @@ function EntityFields({
     const beforeField = newIndex > 0 ? reorderedCustom[newIndex - 1] : null
     const afterField = newIndex < reorderedCustom.length - 1 ? reorderedCustom[newIndex + 1] : null
 
+    console.log('Updating sortOrder for field', beforeField?.sortOrder, afterField?.sortOrder)
+
     // Generate ONE key between neighbors
     const newSortOrder = generateKeyBetween(
       beforeField?.sortOrder ?? null,
@@ -181,7 +184,10 @@ function EntityFields({
     )
 
     // Update only the moved field - store handles optimistic updates via setFieldOptimistic
-    update.mutate({ resourceFieldId: toResourceFieldId(entityDefinitionId, movedField.id), sortOrder: newSortOrder })
+    update.mutate({
+      resourceFieldId: toResourceFieldId(entityDefinitionId, movedField.id),
+      sortOrder: newSortOrder,
+    })
   }
 
   // ─────────────────────────────────────────────────────────────────

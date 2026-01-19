@@ -83,10 +83,7 @@ export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
   }, [secondaryDisplayFieldId, resource?.fields])
 
   // Subscribe to field values (reactive - updates when field values change)
-  const primaryFieldValue = useFieldValue(
-    recordId ?? ('' as RecordId),
-    primaryDisplayFieldId ?? ''
-  )
+  const primaryFieldValue = useFieldValue(recordId ?? ('' as RecordId), primaryDisplayFieldId ?? '')
   const secondaryFieldValue = useFieldValue(
     recordId ?? ('' as RecordId),
     secondaryDisplayFieldId ?? ''

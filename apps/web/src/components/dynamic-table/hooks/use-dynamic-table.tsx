@@ -193,16 +193,21 @@ export function useDynamicTable<TData extends Record<string, any>>({
   // VIEW SWITCHING
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // Track initial setup separately from view changes
+  const hasInitializedRef = useRef(false)
   const lastAppliedViewIdRef = useRef<string | null>(currentView?.id ?? null)
 
   // Initialize store with proper config when view changes
   useEffect(() => {
     const viewId = currentView?.id ?? null
+    const isFirstMount = !hasInitializedRef.current
 
-    // Skip if same view (no change)
-    if (lastAppliedViewIdRef.current === viewId) {
+    // Always run on first mount, then only on view changes
+    if (!isFirstMount && lastAppliedViewIdRef.current === viewId) {
       return
     }
+
+    hasInitializedRef.current = true
 
     // Switching to "All rows" (no view) - filters already cleared by store
     if (!viewId) {

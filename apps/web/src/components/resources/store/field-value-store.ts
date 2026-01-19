@@ -196,10 +196,7 @@ export function normalizeFieldRef(
  * buildFieldValueKey('product:xyz789', ['product:vendor', 'vendor:name'])
  * // => 'product:xyz789:product:vendor::vendor:name'
  */
-export function buildFieldValueKey(
-  recordId: RecordId,
-  fieldRef: FieldReference
-): FieldValueKey {
+export function buildFieldValueKey(recordId: RecordId, fieldRef: FieldReference): FieldValueKey {
   // Normalize FieldId → ResourceFieldId using recordId context
   const normalizedRef = normalizeFieldRef(recordId, fieldRef)
   const refKey = fieldRefToKey(normalizedRef)

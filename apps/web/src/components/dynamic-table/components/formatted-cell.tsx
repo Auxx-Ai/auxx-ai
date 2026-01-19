@@ -16,12 +16,7 @@ import type { CurrencyDisplayOptions } from '@auxx/utils'
  * Field types that already handle array values internally.
  * These should NOT be wrapped in ItemsCellView when value is array.
  */
-const MULTI_VALUE_FIELD_TYPES = new Set([
-  'TAGS',
-  'MULTI_SELECT',
-  'RELATIONSHIP',
-  'ITEMS',
-])
+const MULTI_VALUE_FIELD_TYPES = new Set(['TAGS', 'MULTI_SELECT', 'RELATIONSHIP', 'ITEMS'])
 
 /**
  * Config for field-specific data passed to renderers.
@@ -115,18 +110,18 @@ export const FormattedCell = memo(function FormattedCell({
 
   // Check if value is an array that needs special handling
   // (path results can return arrays for non-multi-value field types)
-  const isArrayValue = Array.isArray(value)
-  const fieldHandlesArrays = MULTI_VALUE_FIELD_TYPES.has(type)
+  // const isArrayValue = Array.isArray(value)
+  // const fieldHandlesArrays = MULTI_VALUE_FIELD_TYPES.has(type)
 
-  // If array value AND field type doesn't handle arrays → wrap in ItemsCellView
-  if (isArrayValue && !fieldHandlesArrays && value.length > 0) {
-    return (
-      <ItemsCellView
-        items={value.map((v, i) => ({ id: String(i), value: v }))}
-        renderItem={(item) => renderCellValue(item.value, type, formatting, config)}
-      />
-    )
-  }
+  // // If array value AND field type doesn't handle arrays → wrap in ItemsCellView
+  // if (isArrayValue && !fieldHandlesArrays && value.length > 0) {
+  //   return (
+  //     <ItemsCellView
+  //       items={value.map((v, i) => ({ id: String(i), value: v }))}
+  //       renderItem={(item) => renderCellValue(item.value, type, formatting, config)}
+  //     />
+  //   )
+  // }
 
   // Standard rendering (single value or field that handles arrays)
   return <>{renderCellValue(value, type, formatting, config)}</>

@@ -201,6 +201,7 @@ function RootStack<TData = any>() {
           <CommandSortable items={visibleColumns.map((c) => c.id)} onReorder={handleReorder}>
             {visibleColumns.map((column) => {
               const display = getColumnDisplay(column)
+              console.log('column display:', column.id, display)
               return (
                 <CommandSortableItem key={column.id} id={column.id} className="py-0 pe-0.5">
                   <span className="truncate flex-1 flex items-center">
