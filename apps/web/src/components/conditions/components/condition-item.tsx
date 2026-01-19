@@ -19,9 +19,7 @@ import type { ConditionItemProps, Operator } from '../types'
 const ConditionItem = ({
   condition,
   groupId,
-  showDragHandle = false,
   showRemoveButton = true,
-  showLogicalOperator = true,
   compactMode = false,
   className,
   onUpdate,

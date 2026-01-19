@@ -31,9 +31,8 @@ export {
   type OperatorDefinition,
 }
 
-// Import TiptapJSON type for workflow mode
-import type { TiptapJSON } from '~/components/workflow/ui/input-editor'
 import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
+import type { FieldType } from '@auxx/database/types'
 
 /**
  * Group metadata for naming, descriptions, and UI state
@@ -64,6 +63,7 @@ export interface FieldDefinition {
   id: string
   label: string
   type: BaseType
+  fieldType?: FieldType
   operators?: Operator[]
   enumValues?: (string | { label: string; dbValue: string })[]
   subFields?: FieldDefinition[]
@@ -147,9 +147,7 @@ export interface ConditionContextValue {
 export interface ConditionItemProps {
   condition: Condition
   groupId?: string
-  showDragHandle?: boolean
   showRemoveButton?: boolean
-  showLogicalOperator?: boolean
   compactMode?: boolean
   className?: string
   onUpdate?: (updates: Partial<Condition>) => void
@@ -163,14 +161,13 @@ export interface ConditionGroupProps {
   group: ConditionGroup
   showDragHandle?: boolean
   showRemoveButton?: boolean
-  showLogicalOperator?: boolean
+  // showLogicalOperator?: boolean
   showNameInput?: boolean
-  showDescription?: boolean
   showSubtext?: boolean
   allowCollapse?: boolean
   isDragging?: boolean
   className?: string
-  onUpdate?: (updates: Partial<ConditionGroup>) => void
+  // onUpdate?: (updates: Partial<ConditionGroup>) => void
   onRemove?: () => void
   dragHandleAttributes?: any
   dragHandleListeners?: any

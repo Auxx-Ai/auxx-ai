@@ -92,6 +92,7 @@ export function TaskFilterBar({
         id: field.id,
         label: field.label,
         type: field.type,
+        fieldType: field.fieldType,
         operators: field.operators,
         description: field.description,
         enumValues: field.enumValues?.map((v) => ({

@@ -1,5 +1,6 @@
 // packages/lib/src/tasks/config/filter-fields.ts
 
+import type { FieldType } from '@auxx/database/types'
 import { BaseType } from '../../workflow-engine/core/types'
 
 /**
@@ -25,6 +26,7 @@ export interface TaskFilterFieldDefinition {
   id: TaskFilterFieldId
   label: string
   type: BaseType
+  fieldType: FieldType
   operators: string[]
   fieldReference?: string
   description: string
@@ -40,6 +42,7 @@ export const TASK_FILTER_FIELDS: TaskFilterFieldDefinition[] = [
     id: 'assignee',
     label: 'Assignee',
     type: BaseType.RELATION,
+    fieldType: 'RELATIONSHIP',
     operators: ['in', 'not_in', 'is_empty', 'is_not_empty'],
     fieldReference: 'user:assignee',
     description: 'Filter by assigned team member',
@@ -48,6 +51,7 @@ export const TASK_FILTER_FIELDS: TaskFilterFieldDefinition[] = [
     id: 'linkedEntity',
     label: 'Linked Record',
     type: BaseType.RELATION,
+    fieldType: 'RELATIONSHIP',
     operators: ['in', 'not_in', 'is_empty', 'is_not_empty'],
     fieldReference: 'entity:reference',
     description: 'Filter by linked entity',
@@ -56,6 +60,7 @@ export const TASK_FILTER_FIELDS: TaskFilterFieldDefinition[] = [
     id: 'createdBy',
     label: 'Created By',
     type: BaseType.RELATION,
+    fieldType: 'RELATIONSHIP',
     operators: ['in', 'not_in'],
     fieldReference: 'user:createdBy',
     description: 'Filter by task creator',
@@ -64,6 +69,7 @@ export const TASK_FILTER_FIELDS: TaskFilterFieldDefinition[] = [
     id: 'status',
     label: 'Status',
     type: BaseType.ENUM,
+    fieldType: 'SINGLE_SELECT',
     operators: ['equals', 'not_equals', 'in'],
     enumValues: [
       { label: 'Open', dbValue: 'open' },
@@ -76,6 +82,7 @@ export const TASK_FILTER_FIELDS: TaskFilterFieldDefinition[] = [
     id: 'priority',
     label: 'Priority',
     type: BaseType.ENUM,
+    fieldType: 'SINGLE_SELECT',
     operators: ['equals', 'not_equals', 'in', 'is_empty'],
     enumValues: [
       { label: 'Low', dbValue: 'low' },
@@ -88,6 +95,7 @@ export const TASK_FILTER_FIELDS: TaskFilterFieldDefinition[] = [
     id: 'deadline',
     label: 'Due Date',
     type: BaseType.DATETIME,
+    fieldType: 'DATETIME',
     operators: ['equals', 'before', 'after', 'between', 'is_empty', 'is_not_empty'],
     description: 'Filter by exact due date',
   },
@@ -95,6 +103,7 @@ export const TASK_FILTER_FIELDS: TaskFilterFieldDefinition[] = [
     id: 'deadlinePeriod',
     label: 'Due Date Period',
     type: BaseType.ENUM,
+    fieldType: 'SINGLE_SELECT',
     operators: ['equals', 'in'],
     enumValues: [
       { label: 'Overdue', dbValue: 'overdue' },

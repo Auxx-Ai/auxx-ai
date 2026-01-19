@@ -302,6 +302,7 @@ function AddColumnStack({ onCreateField }: { onCreateField: () => void }) {
         ? (fieldReference[fieldReference.length - 1] as string) // Use last segment
         : (fieldReference as string)
 
+      console.log('fieldReference selected:', fieldReference, '-> columnId:', columnId)
       // Make column visible
       setColumnVisibility({
         ...(columnVisibility ?? {}),
@@ -321,9 +322,7 @@ function AddColumnStack({ onCreateField }: { onCreateField: () => void }) {
 
   // Filter stack to only include ResourcePickerNavigationItem items (for relationship drill-down)
   const resourcePickerStack = useMemo(() => {
-    return stack.filter(
-      (item): item is ResourcePickerNavigationItem => 'resourceFieldId' in item
-    )
+    return stack.filter((item): item is ResourcePickerNavigationItem => 'resourceFieldId' in item)
   }, [stack])
 
   // Get current item for resource picker (only if it's a relationship navigation item)

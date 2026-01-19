@@ -20,10 +20,7 @@ import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variable
 import { getFieldOperators, BaseType } from '@auxx/lib/workflow-engine/client'
 import { getFindNodeOutputVariables } from './output-variables'
 import { ConditionProvider, ConditionContainer } from '~/components/conditions'
-import type {
-  ConditionGroup,
-  ConditionSystemConfig,
-} from '~/components/conditions'
+import type { ConditionGroup, ConditionSystemConfig } from '~/components/conditions'
 import { useFindGroups } from './hooks/use-find-groups'
 import {
   VarEditor,
@@ -92,6 +89,7 @@ const FindPanelComponent: React.FC<FindPanelProps> = ({ nodeId, data }) => {
       id: field.key,
       label: field.label,
       type: field.type,
+      fieldType: field.fieldType,
       operators: field.operatorOverrides || getFieldOperators(field),
       // Pass full enum objects so value-input uses dbValue for storage, label for display
       enumValues: field.enumValues,

@@ -76,6 +76,7 @@ export function useFilterFieldResolver({ nodeId, inputListValue }: UseFilterFiel
               id: field.key,
               label: field.label,
               type: field.type,
+              fieldType: field.fieldType,
               operators: getFieldOperators(field) as Operator[],
               enumValues: field.enumValues,
               // Add fieldReference for RELATION type fields

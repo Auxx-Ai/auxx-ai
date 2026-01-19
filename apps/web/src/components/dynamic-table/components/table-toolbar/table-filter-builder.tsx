@@ -96,6 +96,7 @@ export function TableFilterBuilder({
       id: field.key,
       label: field.label,
       type: field.type,
+      fieldType: field.fieldType,
       // Use operatorOverrides if defined, otherwise get defaults for field type
       operators: field.operatorOverrides || getFieldOperators(field),
       // Pass enumValues directly - value-input.tsx handles { dbValue, label } → { value, label } conversion
