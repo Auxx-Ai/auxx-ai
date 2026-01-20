@@ -4,25 +4,33 @@ import { useCallback } from 'react'
 import {
   useFieldValueStore,
   buildFieldValueKey,
+  parseFieldValueKey,
   type FieldValueKey,
   type StoredFieldValue,
 } from '~/components/resources/store/field-value-store'
 import { parseRecordId, toRecordId, type RecordId } from '@auxx/lib/resources/client'
 import { isSingleRelationship, type RelationshipType } from '@auxx/utils'
 import type { RelationshipFieldValue } from '@auxx/types/field-value'
+import {
+  parseResourceFieldId,
+  fieldRefToKey,
+  getFieldId,
+  type ResourceFieldId,
+} from '@auxx/types/field'
 
-/** Info needed to sync inverse relationships (mirrors DB options.relationship structure) */
+/**
+ * Info needed to sync inverse relationships.
+ * Uses ResourceFieldId for type-safe field identification.
+ */
 export interface InverseSyncInfo {
-  /** The field on the target entity that points back to source */
-  inverseFieldId: string
+  /** ResourceFieldId of the inverse field (e.g., "vendor:products") */
+  inverseResourceFieldId: ResourceFieldId
+  /** ResourceFieldId of the source field (e.g., "product:vendor") */
+  sourceResourceFieldId: ResourceFieldId
   /** Relationship type of the INVERSE field (derived from source's relationshipType) */
   inverseRelationshipType: RelationshipType
-  /** The entity definition ID of the SOURCE entity (for relatedEntityDefinitionId on inverse) */
-  sourceEntityDefinitionId: string
   /** The entityDefinitionId of the TARGET entity */
   targetEntityDefinitionId: string
-  /** The field ID on the SOURCE entity (for cascade cleanup) */
-  sourceFieldId: string
 }
 
 /** Input for computing inverse updates */
@@ -54,12 +62,14 @@ export function useRelationshipSync() {
   const syncInverseCache = useCallback(
     (input: SyncInput) => {
       const { sourceRecordId, oldRelatedRecordIds, newRelatedRecordIds, inverseInfo } = input
-      const {
-        inverseFieldId,
-        inverseRelationshipType,
-        sourceEntityDefinitionId,
-        targetEntityDefinitionId,
-      } = inverseInfo
+      const { inverseResourceFieldId, sourceResourceFieldId, inverseRelationshipType } = inverseInfo
+
+      // Parse source ResourceFieldId for entity definition ID
+      const { entityDefinitionId: sourceEntityDefinitionId } =
+        parseResourceFieldId(sourceResourceFieldId)
+
+      // Get the plain FieldId for the inverse field (used in buildFieldValueKey)
+      const inverseFieldId = getFieldId(inverseResourceFieldId)
 
       // Parse source for logging
       const { entityInstanceId: sourceInstanceId } = parseRecordId(sourceRecordId)
@@ -116,20 +126,18 @@ export function useRelationshipSync() {
       // Scan all cached entities of the same type to find and remove targets from old owners.
       // This works even when the target entity itself isn't in cache.
       if (isSingleValue && addedRecordIds.length > 0) {
-        const { sourceFieldId } = inverseInfo
-        // Key format: ${entityDefId}:${entityInstId}:${fieldEntityDefId}:${fieldId}
-        const keyPrefix = `${sourceEntityDefinitionId}:`
-        // keySuffix must include the full ResourceFieldId (fieldEntityDefId:fieldId)
-        const keySuffix = `:${sourceEntityDefinitionId}:${sourceFieldId}`
+        // Use fieldRefToKey for string comparison with parsed fieldRef
+        const sourceRefKey = fieldRefToKey(sourceResourceFieldId)
 
         // Find all cached keys for this field type (e.g., all Vendor.products caches)
         for (const [cacheKey, cacheValue] of Object.entries(currentValues)) {
-          // Skip if not matching pattern
-          if (!cacheKey.startsWith(keyPrefix) || !cacheKey.endsWith(keySuffix)) continue
+          const parsed = parseFieldValueKey(cacheKey as FieldValueKey)
 
-          // Extract the owner ID from the cache key (between prefix and suffix)
-          const ownerInstanceId = cacheKey.slice(keyPrefix.length, -keySuffix.length)
-          if (!ownerInstanceId || ownerInstanceId === sourceInstanceId) continue // Skip self
+          // Skip if not matching the source field
+          if (fieldRefToKey(parsed.fieldRef) !== sourceRefKey) continue
+
+          // Skip self
+          if (parsed.entityInstanceId === sourceInstanceId) continue
 
           const ownerArray = normalizeToArray(cacheValue)
           const targetRecordIdsInOwner = ownerArray

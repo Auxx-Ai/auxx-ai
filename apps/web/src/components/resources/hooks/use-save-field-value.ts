@@ -17,6 +17,7 @@ import {
   type InverseSyncInfo,
 } from './use-relationship-sync'
 import { getInverseCardinality, type RelationshipType } from '@auxx/utils'
+import { toResourceFieldId, type FieldId, type ResourceFieldId } from '@auxx/types/field'
 
 import { type FieldType } from '@auxx/database/types'
 
@@ -38,7 +39,7 @@ interface UseSaveFieldValueOptions {
   /** Optional callback after successful save */
   onSuccess?: () => void
   /** Optional field metadata provider for relationship sync */
-  getFieldMetadata?: (fieldId: string) => FieldMetadata | undefined
+  getFieldMetadata?: (fieldId: FieldId) => FieldMetadata | undefined
 }
 
 /** Result of optimistic update preparation */
@@ -54,10 +55,10 @@ interface OptimisticUpdatePrep {
 /** Prepare optimistic update and capture rollback info */
 function prepareOptimisticUpdate(
   recordId: RecordId,
-  fieldId: string,
+  fieldId: FieldId,
   value: unknown,
   fieldType: FieldType,
-  getFieldMetadata?: (fieldId: string) => FieldMetadata | undefined
+  getFieldMetadata?: (fieldId: FieldId) => FieldMetadata | undefined
 ): OptimisticUpdatePrep {
   const key = buildFieldValueKey(recordId, fieldId)
   const store = useFieldValueStore.getState()
@@ -86,12 +87,18 @@ function prepareOptimisticUpdate(
       oldRelatedRecordIds = extractRelatedRecordIds(oldValue)
       newRelatedRecordIds = extractRelatedRecordIds(typedValue)
 
+      // Build ResourceFieldIds for type-safe field identification
+      const sourceResourceFieldId = toResourceFieldId(entityDefinitionId, fieldId)
+      const inverseResourceFieldId = toResourceFieldId(
+        rel.relatedEntityDefinitionId,
+        rel.inverseFieldId as FieldId
+      )
+
       inverseInfo = {
-        inverseFieldId: rel.inverseFieldId,
+        inverseResourceFieldId,
+        sourceResourceFieldId,
         inverseRelationshipType: getInverseCardinality(rel.relationshipType),
-        sourceEntityDefinitionId: entityDefinitionId,
         targetEntityDefinitionId: rel.relatedEntityDefinitionId,
-        sourceFieldId: fieldId,
       }
     }
   }
@@ -201,7 +208,13 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       value: StoredFieldValue | unknown,
       fieldType: FieldType
     ): void => {
-      const prep = prepareOptimisticUpdate(recordId, fieldId, value, fieldType, getFieldMetadata)
+      const prep = prepareOptimisticUpdate(
+        recordId,
+        fieldId as FieldId,
+        value,
+        fieldType,
+        getFieldMetadata
+      )
 
       // Sync relationship cache
       if (prep.inverseInfo) {
@@ -254,7 +267,13 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       value: StoredFieldValue | unknown,
       fieldType: FieldType
     ): Promise<{ success: boolean; id?: string } | undefined> => {
-      const prep = prepareOptimisticUpdate(recordId, fieldId, value, fieldType, getFieldMetadata)
+      const prep = prepareOptimisticUpdate(
+        recordId,
+        fieldId as FieldId,
+        value,
+        fieldType,
+        getFieldMetadata
+      )
 
       // Sync relationship cache
       if (prep.inverseInfo) {
