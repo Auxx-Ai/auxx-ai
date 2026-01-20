@@ -3,29 +3,10 @@
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { TRPCError } from '@trpc/server'
-import {
-  RecordPickerService,
-  ResourceRegistryService,
-  RESOURCE_TABLE_REGISTRY,
-  RESOURCE_TABLE_MAP,
-  type TableId,
-} from '@auxx/lib/resources'
-import { conditionGroupSchema, type ConditionGroup } from '@auxx/lib/conditions'
-import { getOrCreateSnapshot, getSnapshotChunk, invalidateSnapshots } from '@auxx/lib/snapshot'
-import {
-  systemConditionBuilder,
-  entityConditionBuilder,
-  type EntityQueryContext,
-} from '@auxx/lib/workflow-engine'
-import { type Database, schema } from '@auxx/database'
-import { eq, and, isNull } from 'drizzle-orm'
+import { UnifiedCrudHandler, RESOURCE_TABLE_REGISTRY } from '@auxx/lib/resources'
+import { conditionGroupSchema } from '@auxx/lib/conditions'
 import { recordIdSchema, type RecordId } from '@auxx/types/resource'
-import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
-import type { ResourceField } from '@auxx/lib/resources'
-import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
-import { createScopedLogger } from '@auxx/logger'
-
-const logger = createScopedLogger('record-router')
+import { toRecordId } from '@auxx/types/resource'
 
 /**
  * Validate entity definition ID - accepts system TableId or custom entity UUID
@@ -41,19 +22,8 @@ const entityDefinitionIdSchema = z.string().refine(
   { message: 'Invalid resource ID. Must be system TableId or EntityDefinitionId (UUID).' }
 )
 
-const getRecordsInputSchema = z.object({
-  entityDefinitionId: entityDefinitionIdSchema,
-  limit: z.number().min(1).max(100).default(50),
-  cursor: z.string().nullish(),
-  search: z.string().optional(),
-  filters: z.record(z.string(), z.any()).optional(),
-  skipCache: z.boolean().optional(),
-})
-
 /**
  * Schema for global search endpoint
- * entityDefinitionId is optional - if not provided, searches all EntityInstances
- * query is optional - if empty, returns first N records
  */
 const globalSearchInputSchema = z.object({
   /** Optional - if provided, searches specific resource (system or custom entity) */
@@ -70,64 +40,82 @@ const globalSearchInputSchema = z.object({
   entityDefinitionIds: z.array(z.string()).optional(),
 })
 
-const getRecordByIdInputSchema = z.object({
+/**
+ * Input for getById using RecordId
+ */
+const getByIdInputSchema = z.object({
+  recordId: recordIdSchema,
+})
+
+/**
+ * Input for legacy getById using separate params
+ */
+const getByIdLegacyInputSchema = z.object({
   entityDefinitionId: entityDefinitionIdSchema,
   id: z.string(),
 })
 
 /**
+ * Input for create mutation
+ */
+const createInputSchema = z.object({
+  entityDefinitionId: z.string(),
+  values: z.record(z.string(), z.any()).optional(),
+})
+
+/**
+ * Input for update mutation
+ */
+const updateInputSchema = z.object({
+  recordId: recordIdSchema,
+  values: z.record(z.string(), z.any()),
+})
+
+/**
  * Record router - handles individual record operations (instances of resources)
- *
- * A "Record" is an individual instance (e.g., a specific contact "John Doe")
- * For resource type definitions, see the resource router.
+ * Unified CRUD operations for both system entities (contact, ticket) and custom entities.
  */
 export const recordRouter = createTRPCRouter({
-  /**
-   * Get paginated records for picker
-   * Accepts entityDefinitionId (system resource ID or custom entity UUID)
-   */
-  // getAll: protectedProcedure.input(getRecordsInputSchema).query(async ({ ctx, input }) => {
-  //   const { organizationId, userId } = ctx.session
-  //   const { entityDefinitionId } = input
-
-  //   try {
-  //     const service = new RecordPickerService(organizationId, userId, ctx.db)
-  //     return await service.getResources({ ...input, entityDefinitionId })
-  //   } catch (error: any) {
-  //     if (error instanceof TRPCError) throw error
-  //     throw new TRPCError({
-  //       code: 'INTERNAL_SERVER_ERROR',
-  //       message: `Failed to fetch records: ${error.message}`,
-  //     })
-  //   }
-  // }),
+  // ─────────────────────────────────────────────────────────────────
+  // QUERIES
+  // ─────────────────────────────────────────────────────────────────
 
   /**
-   * Get single record by ID
+   * Get single record by RecordId
    */
-  getById: protectedProcedure.input(getRecordByIdInputSchema).query(async ({ ctx, input }) => {
-    const { organizationId, userId } = ctx.session
+  getById: protectedProcedure
+    .input(getByIdInputSchema.or(getByIdLegacyInputSchema))
+    .query(async ({ ctx, input }) => {
+      const { organizationId, user } = ctx.session
 
-    try {
-      const service = new RecordPickerService(organizationId, userId, ctx.db)
-      const item = await service.getResourceById(input)
+      try {
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db)
 
-      if (!item) {
+        // Handle both RecordId and legacy separate params
+        let recordId: RecordId
+        if ('recordId' in input) {
+          recordId = input.recordId
+        } else {
+          recordId = toRecordId(input.entityDefinitionId, input.id)
+        }
+
+        const result = await handler.getById(recordId)
+        if (!result) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: `Record not found: ${recordId}`,
+          })
+        }
+
+        return result
+      } catch (error: any) {
+        if (error instanceof TRPCError) throw error
         throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: `Record not found: ${input.entityDefinitionId}:${input.id}`,
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Failed to fetch record: ${error.message}`,
         })
       }
-
-      return item
-    } catch (error: any) {
-      if (error instanceof TRPCError) throw error
-      throw new TRPCError({
-        code: 'INTERNAL_SERVER_ERROR',
-        message: `Failed to fetch record: ${error.message}`,
-      })
-    }
-  }),
+    }),
 
   /**
    * Get multiple records by IDs (batch)
@@ -140,11 +128,11 @@ export const recordRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
+      const { organizationId, user } = ctx.session
 
       try {
-        const service = new RecordPickerService(organizationId, userId, ctx.db)
-        return await service.getResourcesByIds(input.items as RecordId[])
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db)
+        return await handler.getByIds(input.items as RecordId[])
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         throw new TRPCError({
@@ -156,22 +144,18 @@ export const recordRouter = createTRPCRouter({
 
   /**
    * Search records with optional global search support
-   *
-   * Behavior:
-   * - With entityDefinitionId (system resource like 'contact'): Use existing getResources() with search
-   * - With entityDefinitionId (custom entity): Use new search() with full-text search
-   * - Without entityDefinitionId: Global search across all EntityInstances
    */
   search: protectedProcedure.input(globalSearchInputSchema).query(async ({ ctx, input }) => {
-    const { organizationId, userId } = ctx.session
-    let { entityDefinitionId } = input
+    const { organizationId, user } = ctx.session
     const { apiSlug, query, limit, cursor, entityDefinitionIds } = input
+    let { entityDefinitionId } = input
 
     try {
-      const service = new RecordPickerService(organizationId, userId, ctx.db)
+      const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db)
 
       // Resolve apiSlug to entityDefinitionId if provided
       if (apiSlug && !entityDefinitionId) {
+        const { ResourceRegistryService } = await import('@auxx/lib/resources')
         const registryService = new ResourceRegistryService(organizationId, ctx.db)
         const resource = await registryService.getByApiSlug(apiSlug)
         if (!resource) {
@@ -183,39 +167,9 @@ export const recordRouter = createTRPCRouter({
         entityDefinitionId = resource.id
       }
 
-      // If entityDefinitionId provided, check if it's a system resource
-      if (entityDefinitionId) {
-        const isSystemResource = RESOURCE_TABLE_MAP[entityDefinitionId as TableId]
-
-        if (isSystemResource) {
-          // System resource - use existing getResources() with client-side search
-          // Pass search only if query is non-empty
-          const result = await service.getResources({
-            entityDefinitionId,
-            limit,
-            cursor: cursor ?? null,
-            search: query || undefined,
-          })
-          return {
-            ...result,
-            hasMore: result.nextCursor !== null,
-            processingTimeMs: 0,
-            query: query || '',
-          }
-        }
-
-        // Custom entity - use new search() with full-text search
-        return await service.search({
-          query: query || '',
-          entityDefinitionId,
-          limit,
-          cursor,
-        })
-      }
-
-      // No entityDefinitionId - global search across all EntityInstances
-      return await service.search({
+      return await handler.search({
         query: query || '',
+        entityDefinitionId,
         entityDefinitionIds,
         limit,
         cursor,
@@ -230,42 +184,8 @@ export const recordRouter = createTRPCRouter({
   }),
 
   /**
-   * Invalidate cache (for testing/admin)
-   */
-  invalidateCache: protectedProcedure
-    .input(
-      z.object({
-        entityDefinitionId: entityDefinitionIdSchema,
-        id: z.string().optional(),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      try {
-        const service = new RecordPickerService(organizationId, userId, ctx.db)
-
-        if (input.id) {
-          await service.invalidateCacheById(input.entityDefinitionId, input.id)
-        } else {
-          await service.invalidateCacheByTable(input.entityDefinitionId)
-        }
-
-        return { success: true }
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : 'Unknown error'
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: `Failed to invalidate cache: ${message}`,
-        })
-      }
-    }),
-
-  /**
    * List record IDs with server-side filtering (Query Snapshot pattern)
    * Returns cached snapshot IDs for efficient pagination
-   *
-   * Supports tRPC infinite query via typed cursor object
    */
   listFiltered: protectedProcedure
     .input(
@@ -295,265 +215,224 @@ export const recordRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
-      const { organizationId } = ctx.session
+      const { organizationId, user } = ctx.session
 
-      // Extract pagination from cursor if provided
-      const snapshotId = input.cursor?.snapshotId
-      const offset = input.cursor?.offset ?? 0
-
-      // If snapshotId provided via cursor, try to fetch chunk from cacheb
-      if (snapshotId) {
-        const chunk = await getSnapshotChunk({
-          snapshotId,
-          offset,
-          limit: input.limit,
-        })
-
-        if (chunk) {
-          return {
-            snapshotId,
-            ids: chunk.ids,
-            total: chunk.total,
-            hasMore: offset + chunk.ids.length < chunk.total,
-          }
-        }
-        // Snapshot expired - fall through to create a new one
-        // Note: We'll start from offset 0 since this is a fresh snapshot
-      }
-
-      // No snapshotId - create new snapshot
-      const result = await getOrCreateSnapshot({
-        organizationId,
-        resourceType: input.entityDefinitionId,
-        filters: (input.filters ?? []) as ConditionGroup[],
-        sorting: input.sorting ?? [],
-        executeQuery: async () => {
-          // Route to appropriate query function
-          // Check if system resource first
-          if (RESOURCE_TABLE_REGISTRY.some((r) => r.id === input.entityDefinitionId)) {
-            console.log('Querying system resource IDs for', input.entityDefinitionId)
-            return querySystemResourceIds({
-              db: ctx.db,
-              tableId: input.entityDefinitionId as TableId,
-              organizationId,
-              filters: (input.filters ?? []) as ConditionGroup[],
-              sorting: input.sorting ?? [],
-            })
-          }
-
-          // Otherwise treat as custom entity (UUID)
-          return queryEntityInstanceIds({
-            db: ctx.db,
-            entityDefinitionId: input.entityDefinitionId,
-            organizationId,
-            filters: (input.filters ?? []) as ConditionGroup[],
-            sorting: input.sorting ?? [],
-          })
-        },
+      const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db)
+      return handler.listFiltered({
+        entityDefinitionId: input.entityDefinitionId,
+        filters: input.filters,
+        sorting: input.sorting,
+        limit: input.limit,
+        cursor: input.cursor,
       })
+    }),
 
-      // Return first chunk
-      const ids = result.ids.slice(offset, offset + input.limit)
+  // ─────────────────────────────────────────────────────────────────
+  // MUTATIONS
+  // ─────────────────────────────────────────────────────────────────
 
-      return {
-        snapshotId: result.snapshotId,
-        ids,
-        total: result.total,
-        hasMore: offset + ids.length < result.total,
-        fromCache: result.fromCache,
+  /**
+   * Create a new entity instance with optional field values
+   */
+  create: protectedProcedure.input(createInputSchema).mutation(async ({ ctx, input }) => {
+    const { organizationId, user } = ctx.session
+
+    try {
+      const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db)
+      return await handler.create(input.entityDefinitionId, input.values ?? {})
+    } catch (error: any) {
+      throw new TRPCError({
+        code: 'INTERNAL_SERVER_ERROR',
+        message: `Failed to create record: ${error.message}`,
+      })
+    }
+  }),
+
+  /**
+   * Update entity instance field values
+   */
+  update: protectedProcedure.input(updateInputSchema).mutation(async ({ ctx, input }) => {
+    const { organizationId, user } = ctx.session
+
+    try {
+      const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db)
+      return await handler.update(input.recordId, input.values)
+    } catch (error: any) {
+      if (error.message?.includes('not found')) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: error.message,
+        })
+      }
+      throw new TRPCError({
+        code: 'INTERNAL_SERVER_ERROR',
+        message: `Failed to update record: ${error.message}`,
+      })
+    }
+  }),
+
+  /**
+   * Archive entity instance (soft delete)
+   */
+  archive: protectedProcedure
+    .input(z.object({ recordId: recordIdSchema }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, user } = ctx.session
+
+      try {
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db)
+        return await handler.archive(input.recordId)
+      } catch (error: any) {
+        if (error.message?.includes('not found')) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: error.message,
+          })
+        }
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Failed to archive record: ${error.message}`,
+        })
+      }
+    }),
+
+  /**
+   * Restore archived entity instance
+   */
+  restore: protectedProcedure
+    .input(z.object({ recordId: recordIdSchema }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, user } = ctx.session
+
+      try {
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db)
+        return await handler.restore(input.recordId)
+      } catch (error: any) {
+        if (error.message?.includes('not found')) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: error.message,
+          })
+        }
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Failed to restore record: ${error.message}`,
+        })
+      }
+    }),
+
+  /**
+   * Permanently delete entity instance
+   */
+  delete: protectedProcedure
+    .input(z.object({ recordId: recordIdSchema }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, user } = ctx.session
+
+      try {
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db)
+        await handler.delete(input.recordId)
+        return { success: true }
+      } catch (error: any) {
+        if (error.message?.includes('not found')) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: error.message,
+          })
+        }
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Failed to delete record: ${error.message}`,
+        })
+      }
+    }),
+
+  /**
+   * Bulk archive entity instances
+   */
+  bulkArchive: protectedProcedure
+    .input(z.object({ recordIds: z.array(recordIdSchema).min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, user } = ctx.session
+
+      try {
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db)
+        return await handler.bulkArchive(input.recordIds)
+      } catch (error: any) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Failed to bulk archive records: ${error.message}`,
+        })
+      }
+    }),
+
+  /**
+   * Bulk delete entity instances
+   */
+  bulkDelete: protectedProcedure
+    .input(z.object({ recordIds: z.array(recordIdSchema).min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, user } = ctx.session
+
+      try {
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db)
+        return await handler.bulkDelete(input.recordIds)
+      } catch (error: any) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Failed to bulk delete records: ${error.message}`,
+        })
+      }
+    }),
+
+  /**
+   * Merge multiple entity instances into a target instance
+   */
+  merge: protectedProcedure
+    .input(
+      z.object({
+        targetRecordId: recordIdSchema,
+        sourceRecordIds: z.array(recordIdSchema).min(1),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, user } = ctx.session
+
+      try {
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db)
+        return await handler.merge(input.targetRecordId, input.sourceRecordIds)
+      } catch (error: any) {
+        if (error instanceof TRPCError) throw error
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Failed to merge records: ${error.message}`,
+        })
+      }
+    }),
+
+  /**
+   * Invalidate cache (for testing/admin)
+   */
+  invalidateCache: protectedProcedure
+    .input(
+      z.object({
+        entityDefinitionId: entityDefinitionIdSchema,
+        id: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, user } = ctx.session
+
+      try {
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db)
+        await handler.invalidateCache(input.entityDefinitionId, input.id)
+        return { success: true }
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Failed to invalidate cache: ${message}`,
+        })
       }
     }),
 })
-
-// ─────────────────────────────────────────────────────────────────
-// QUERY HELPER FUNCTIONS
-// ─────────────────────────────────────────────────────────────────
-
-/**
- * Scan conditions to identify which related entities are needed.
- * Returns set of relatedEntityDefinitionIds.
- */
-function extractRequiredRelatedEntities(
-  filters: ConditionGroup[],
-  sourceFields: ResourceField[]
-): Set<string> {
-  const relatedEntityIds = new Set<string>()
-
-  for (const group of filters) {
-    for (const condition of group.conditions) {
-      const fieldRef = condition.fieldId
-
-      // Only process array format (relationship paths)
-      if (!Array.isArray(fieldRef) || fieldRef.length < 2) {
-        continue
-      }
-
-      // First element is the relationship field on source entity
-      const relationshipRef = fieldRef[0]
-
-      // Parse field key (handle both ResourceFieldId and plain string)
-      const relationshipFieldKey =
-        typeof relationshipRef === 'string' && relationshipRef.includes(':')
-          ? parseResourceFieldId(relationshipRef as ResourceFieldId).fieldId
-          : relationshipRef
-
-      // Find relationship field in source fields
-      const relationshipField = sourceFields.find(
-        (f) => f.key === relationshipFieldKey || (f.id && f.id === relationshipFieldKey)
-      )
-
-      if (relationshipField?.relationship) {
-        const relatedEntityId = getRelatedEntityDefinitionId(relationshipField.relationship as RelationshipConfig)
-        if (relatedEntityId) {
-          relatedEntityIds.add(relatedEntityId)
-        }
-      }
-    }
-  }
-
-  return relatedEntityIds
-}
-
-/**
- * Query entity instance IDs using EntityConditionBuilder
- */
-async function queryEntityInstanceIds(params: {
-  db: Database
-  entityDefinitionId: string
-  organizationId: string
-  filters: ConditionGroup[]
-  sorting: Array<{ id: string; desc: boolean }>
-}): Promise<string[]> {
-  const { db, entityDefinitionId, organizationId, filters, sorting } = params
-
-  logger.debug(
-    `Querying entity instances for entityDefinitionId: ${entityDefinitionId}, filters: ${JSON.stringify(filters)}`
-  )
-
-  // Get fields for this entity via ResourceRegistryService (entityDefinitionId is now UUID, no prefix)
-  const registryService = new ResourceRegistryService(organizationId, db)
-  const fields = await registryService.getFieldsForResource(entityDefinitionId)
-
-  // Detect required related entities from filters
-  const requiredRelatedEntities = extractRequiredRelatedEntities(filters, fields)
-  logger.debug(
-    `Detected ${requiredRelatedEntities.size} required related entities: ${Array.from(requiredRelatedEntities).join(', ')}`
-  )
-
-  // Build relatedEntityFields map
-  const relatedEntityFields: Record<string, ResourceField[]> = {}
-  for (const relatedEntityId of requiredRelatedEntities) {
-    logger.debug(`Fetching fields for related entity: ${relatedEntityId}`)
-    const relatedFields = await registryService.getFieldsForResource(relatedEntityId)
-    relatedEntityFields[relatedEntityId] = relatedFields
-    logger.debug(`Loaded ${relatedFields.length} fields for entity '${relatedEntityId}'`)
-  }
-
-  // Build WHERE clause using existing EntityConditionBuilder
-  const context: EntityQueryContext = {
-    fields,
-    outerTable: schema.EntityInstance,
-    relatedEntityFields,
-  }
-
-  const whereClause = entityConditionBuilder.buildGroupedQuery(filters, context)
-
-  // Build ORDER BY
-  const orderByClauses =
-    sorting.length > 0
-      ? entityConditionBuilder.buildOrderBySql(
-          sorting[0].id,
-          sorting[0].desc ? 'desc' : 'asc',
-          context
-        )
-      : undefined
-
-  // Execute query
-  let query = db
-    .select({ id: schema.EntityInstance.id })
-    .from(schema.EntityInstance)
-    .where(
-      and(
-        eq(schema.EntityInstance.entityDefinitionId, entityDefinitionId),
-        eq(schema.EntityInstance.organizationId, organizationId),
-        isNull(schema.EntityInstance.archivedAt),
-        whereClause
-      )
-    )
-    .$dynamic()
-
-  if (orderByClauses) {
-    query = query.orderBy(...orderByClauses)
-  }
-
-  const results = await query
-  return results.map((r) => r.id)
-}
-
-/**
- * Query system resource IDs using SystemConditionBuilder
- */
-async function querySystemResourceIds(params: {
-  db: Database
-  tableId: TableId
-  organizationId: string
-  filters: ConditionGroup[]
-  sorting: Array<{ id: string; desc: boolean }>
-}): Promise<string[]> {
-  const { db, tableId, organizationId, filters, sorting } = params
-
-  // Build WHERE clause using existing SystemConditionBuilder
-  const whereClause = systemConditionBuilder.buildGroupedQuery(filters, tableId)
-
-  // Build ORDER BY
-  const orderByClauses =
-    sorting.length > 0
-      ? systemConditionBuilder.buildOrderBySql(
-          sorting[0].id,
-          sorting[0].desc ? 'desc' : 'asc',
-          tableId
-        )
-      : undefined
-
-  // Get the table schema
-  const tableSchema = getTableSchema(tableId)
-  if (!tableSchema) {
-    throw new TRPCError({ code: 'BAD_REQUEST', message: `Unknown table: ${tableId}` })
-  }
-
-  // Execute query
-  let query = db
-    .select({ id: tableSchema.id })
-    .from(tableSchema)
-    .where(and(eq(tableSchema.organizationId, organizationId), whereClause))
-    .$dynamic()
-
-  if (orderByClauses) {
-    query = query.orderBy(...orderByClauses)
-  }
-
-  const results = await query
-  return results.map((r) => r.id)
-}
-
-/**
- * Get Drizzle table schema for a system resource
- */
-function getTableSchema(tableId: TableId) {
-  const tableInfo = RESOURCE_TABLE_MAP[tableId]
-  if (!tableInfo) return undefined
-
-  const tableMap: Record<string, any> = {
-    Contact: schema.Contact,
-    Ticket: schema.Ticket,
-    Inbox: schema.Inbox,
-    User: schema.User,
-    Thread: schema.Thread,
-    Message: schema.Message,
-    Participant: schema.Participant,
-    Dataset: schema.Dataset,
-    Part: schema.Part,
-  }
-
-  return tableMap[tableInfo.dbName]
-}

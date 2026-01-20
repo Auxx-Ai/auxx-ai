@@ -5,13 +5,14 @@ import { useCallback, useRef } from 'react'
 import { api } from '~/trpc/react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { toastError } from '@auxx/ui/components/toast'
+import { toRecordId, type RecordId } from '@auxx/lib/resources/client'
 import type { EntityRow } from '~/app/(protected)/app/custom/[slug]/_components/types'
 
 /**
  * Options for useEntityInstanceOperations hook
  */
 interface UseEntityInstanceOperationsOptions {
-  /** Entity definition ID for queries */
+  /** Entity definition ID for building RecordIds */
   entityDefinitionId: string | undefined
   /** Singular resource label for dialog messages */
   resourceLabel?: string
@@ -28,6 +29,8 @@ interface UseEntityInstanceOperationsOptions {
 /**
  * Hook that handles entity instance mutation operations and confirmations.
  * Data fetching is handled separately via useRecordList in the parent component.
+ *
+ * Uses api.record.* endpoints with RecordId format.
  */
 export function useEntityInstanceOperations(options: UseEntityInstanceOperationsOptions) {
   const {
@@ -43,11 +46,24 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
   const [confirmDelete, ConfirmDeleteDialog] = useConfirm()
   const [confirmArchive, ConfirmArchiveDialog] = useConfirm()
 
+  /**
+   * Helper to build RecordId from instance ID
+   */
+  const buildRecordId = useCallback(
+    (instanceId: string): RecordId => {
+      if (!entityDefinitionId) {
+        throw new Error('entityDefinitionId is required for record operations')
+      }
+      return toRecordId(entityDefinitionId, instanceId)
+    },
+    [entityDefinitionId]
+  )
+
   // ============================================================
   // Mutations
   // ============================================================
 
-  const archiveInstance = api.entityInstance.archive.useMutation({
+  const archiveInstance = api.record.archive.useMutation({
     onSuccess: () => {
       onRefetch?.()
     },
@@ -56,7 +72,7 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
     },
   })
 
-  const deleteInstance = api.entityInstance.delete.useMutation({
+  const deleteInstance = api.record.delete.useMutation({
     onSuccess: () => {
       onRefetch?.()
     },
@@ -69,7 +85,7 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
   const deleteInstanceRef = useRef(deleteInstance)
   deleteInstanceRef.current = deleteInstance
 
-  const bulkDeleteInstances = api.entityInstance.bulkDelete.useMutation({
+  const bulkDeleteInstances = api.record.bulkDelete.useMutation({
     onSuccess: () => {
       onRefetch?.()
       onClearSelection?.()
@@ -79,7 +95,7 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
     },
   })
 
-  const bulkArchiveInstances = api.entityInstance.bulkArchive.useMutation({
+  const bulkArchiveInstances = api.record.bulkArchive.useMutation({
     onSuccess: () => {
       onRefetch?.()
       onClearSelection?.()
@@ -104,10 +120,10 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
         destructive: false,
       })
       if (confirmed) {
-        archiveInstance.mutate({ id: instanceId })
+        archiveInstance.mutate({ recordId: buildRecordId(instanceId) })
       }
     },
-    [confirmArchive, resourceLabel, archiveInstance]
+    [confirmArchive, resourceLabel, archiveInstance, buildRecordId]
   )
 
   /** Handle delete action with confirmation */
@@ -121,10 +137,10 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
         destructive: true,
       })
       if (confirmed) {
-        deleteInstance.mutate({ id: instanceId })
+        deleteInstance.mutate({ recordId: buildRecordId(instanceId) })
       }
     },
-    [confirmDelete, resourceLabel, deleteInstance]
+    [confirmDelete, resourceLabel, deleteInstance, buildRecordId]
   )
 
   /** Handle bulk delete action with confirmation */
@@ -139,10 +155,12 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
         destructive: true,
       })
       if (confirmed) {
-        await bulkDeleteInstances.mutateAsync({ ids: rows.map((r) => r.id) })
+        await bulkDeleteInstances.mutateAsync({
+          recordIds: rows.map((r) => buildRecordId(r.id)),
+        })
       }
     },
-    [confirmDelete, resourceLabel, resourcePlural, bulkDeleteInstances]
+    [confirmDelete, resourceLabel, resourcePlural, bulkDeleteInstances, buildRecordId]
   )
 
   /** Handle bulk archive action with confirmation */
@@ -157,10 +175,12 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
         destructive: false,
       })
       if (confirmed) {
-        await bulkArchiveInstances.mutateAsync({ ids: rows.map((r) => r.id) })
+        await bulkArchiveInstances.mutateAsync({
+          recordIds: rows.map((r) => buildRecordId(r.id)),
+        })
       }
     },
-    [confirmArchive, resourceLabel, resourcePlural, bulkArchiveInstances]
+    [confirmArchive, resourceLabel, resourcePlural, bulkArchiveInstances, buildRecordId]
   )
 
   /** Handle delete from drawer with confirmation (uses ref for stable callback) */
@@ -174,11 +194,11 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
         destructive: true,
       })
       if (confirmed) {
-        deleteInstanceRef.current.mutate({ id: instanceId })
+        deleteInstanceRef.current.mutate({ recordId: buildRecordId(instanceId) })
         onDrawerClose?.()
       }
     },
-    [confirmDelete, resourceLabel, onDrawerClose]
+    [confirmDelete, resourceLabel, onDrawerClose, buildRecordId]
   )
 
   return {

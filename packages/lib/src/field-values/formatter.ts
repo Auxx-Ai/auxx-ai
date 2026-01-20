@@ -63,6 +63,12 @@ export function formatToTypedInput(
     return results.length > 0 ? results : null
   }
 
+  // Handle arrays for single-value fields that use array format (SINGLE_SELECT)
+  // UI sends arrays for uniform handling, but these are single-value fields
+  if (Array.isArray(value) && isArrayReturnFieldType(fieldType)) {
+    return value.length > 0 ? converter.toTypedInput(value[0], options) : null
+  }
+
   // Single value
   return converter.toTypedInput(value, options)
 }

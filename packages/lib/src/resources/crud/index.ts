@@ -1,8 +1,21 @@
 // packages/lib/src/resources/crud/index.ts
 
-// Main services
+// Main handler
 export { UnifiedCrudHandler } from './unified-handler'
 export type { CrudOptions } from './unified-handler'
+
+// Query utilities
+export {
+  extractRequiredRelatedEntities,
+  queryEntityInstanceIds,
+  querySystemResourceIds,
+  getTableSchema,
+  isSystemResource,
+} from './unified-handler-queries'
+export type { ListFilteredInput, ListFilteredResult } from './unified-handler-queries'
+
+// Mutation utilities (for advanced use cases)
+export type { MutationContext } from './unified-handler-mutations'
 
 // Types
 export {

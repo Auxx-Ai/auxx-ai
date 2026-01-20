@@ -38,7 +38,7 @@ import { BaseType } from '../../core/types'
 import type { TableId } from '../../../resources/registry/field-registry'
 import { createResourceReference } from '../../types/resource-reference'
 import { ResourceRegistryService } from '../../../resources/registry/resource-registry-service'
-import { EntityInstanceService } from '../../../entity-instances/entity-instance-service'
+import { UnifiedCrudHandler } from '../../../resources/crud'
 import type { CustomResource } from '../../../resources/registry/types'
 import type { ResourceField } from '../../../resources/registry/field-types'
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
@@ -610,7 +610,7 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
   }
 
   /**
-   * Execute CRUD operations for custom entities using EntityInstanceService
+   * Execute CRUD operations for custom entities using UnifiedCrudHandler
    */
   private async executeEntityOperation(
     resource: CustomResource,
@@ -625,12 +625,12 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
     // Map field names (keys) to database field IDs for entity operations
     const dataWithFieldIds = this.mapFieldNamesToIds(data, resource.fields)
 
-    const entityInstanceService = new EntityInstanceService(organizationId, userId)
+    const handler = new UnifiedCrudHandler(organizationId, userId, database)
 
     switch (mode) {
       case 'create': {
         // Use the createWithValues method - handles both instance creation and field values
-        const result = await entityInstanceService.createWithValues(
+        const result = await handler.createWithValues(
           resource.entityDefinitionId,
           dataWithFieldIds
         )
@@ -646,7 +646,7 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
           throw new Error('Resource ID required for update operation')
         }
         // Use the updateValues method - handles field value updates
-        const result = await entityInstanceService.updateValues(resourceId, dataWithFieldIds)
+        const result = await handler.updateValues(resourceId, dataWithFieldIds)
         return {
           entityInstance: result.entityInstance,
           id: result.id,
@@ -658,8 +658,10 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
         if (!resourceId) {
           throw new Error('Resource ID required for delete operation')
         }
-        // Use archive method for soft delete
-        await entityInstanceService.archive(resourceId)
+        // Use archive method for soft delete - need to build RecordId first
+        const { toRecordId } = await import('../../../resources/resource-id')
+        const recordId = toRecordId(resource.entityDefinitionId, resourceId)
+        await handler.archive(recordId)
         return { deleted: true, id: resourceId }
       }
 

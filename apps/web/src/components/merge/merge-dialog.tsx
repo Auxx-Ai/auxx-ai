@@ -82,9 +82,11 @@ export function MergeDialog({
   }, [open, baseRecordIds, initialTargetId])
 
   // Merge mutation
-  const mergeMutation = api.entityInstance.merge.useMutation({
+  const mergeMutation = api.record.merge.useMutation({
     onSuccess: (result) => {
       // Invalidate queries to refresh data
+      utils.record.listFiltered.invalidate()
+      utils.record.search.invalidate()
 
       // Call success callback
       onMergeComplete?.(result.mergedRecordId)

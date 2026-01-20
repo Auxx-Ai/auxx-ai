@@ -1,48 +1,68 @@
 // packages/lib/src/resources/crud/unified-handler.ts
 
-import type { Result } from 'neverthrow'
 import type { Database } from '@auxx/database'
 import { database as defaultDatabase, schema } from '@auxx/database'
-import { eq, and, ne, sql } from 'drizzle-orm'
-import {
-  createEntityInstance,
-  getEntityInstance,
-  listEntityInstances,
-  updateEntityInstance,
-  deleteEntityInstance,
-} from '@auxx/services/entity-instances'
+import { eq, and } from 'drizzle-orm'
+import { getEntityInstance, listEntityInstances } from '@auxx/services/entity-instances'
 import { getEntityDefinition } from '@auxx/services/entity-definitions'
 import { getCustomFields, checkUniqueValue } from '@auxx/services/custom-fields'
 import { ModelTypes } from '@auxx/types/custom-field'
 import { FieldValueService } from '../../field-values'
 import { publisher } from '../../events/publisher'
-import { CommentService } from '../../comments'
-import { invalidateSnapshots } from '../../snapshot'
+import { invalidateSnapshots, getOrCreateSnapshot, getSnapshotChunk } from '../../snapshot'
 import { toRecordId, parseRecordId, type RecordId } from '../resource-id'
 import { getSystemHooks } from '../hooks'
-import type { EntityDefinitionEntity } from '@auxx/database/schema/entity-definition'
-import type { CustomFieldEntity } from '@auxx/database/schema/custom-field'
-import type { EntityInstanceEntity } from '@auxx/database/schema/entity-instance'
+import { RecordPickerService } from '../picker'
+import type { MergeEntitiesResult } from '../merge'
+import type { ConditionGroup } from '../../conditions'
+import {
+  queryEntityInstanceIds,
+  querySystemResourceIds,
+  isSystemResource,
+  type ListFilteredResult,
+} from './unified-handler-queries'
+import {
+  createEntity,
+  updateEntity,
+  archiveEntity,
+  restoreEntity,
+  deleteEntity,
+  bulkCreateEntities,
+  bulkUpdateEntities,
+  bulkArchiveEntities,
+  bulkDeleteEntities,
+  bulkSetFieldValue,
+  mergeEntities,
+  createWithValues as createWithValuesImpl,
+  updateValues as updateValuesImpl,
+  type CrudOptions,
+  type MutationContext,
+} from './unified-handler-mutations'
+import type { TableId } from '../registry/field-registry'
+// import type { EntityDefinitionEntity } from '@auxx/database/schema/entity-definition'
+// import type { EntityInstanceEntity } from '@auxx/database/schema/entity-instance'
+
+/** Inferred type for CustomField select (not exported from schema) */
+type CustomFieldEntity = typeof schema.CustomField.$inferSelect
+type EntityDefinitionEntity = typeof schema.EntityDefinition.$inferSelect
+type EntityInstanceEntity = typeof schema.EntityInstance.$inferSelect
 
 /**
  * Helper to unwrap neverthrow Result and throw on error
  */
-function unwrapResult<T, E extends { message: string }>(result: Result<T, E>): T {
+function unwrapResult<T, E extends { message: string }>(result: {
+  isErr: () => boolean
+  error: E
+  value: T
+}): T {
   if (result.isErr()) {
     throw new Error(result.error.message)
   }
   return result.value
 }
 
-/**
- * Options for CRUD operations
- */
-export interface CrudOptions {
-  /** Skip event publishing (for bulk imports) */
-  skipEvents?: boolean
-  /** Skip snapshot invalidation (caller will invalidate once at end) */
-  skipSnapshotInvalidation?: boolean
-}
+// Re-export CrudOptions for backwards compatibility
+export type { CrudOptions } from './unified-handler-mutations'
 
 /**
  * Unified CRUD handler for ALL entity types.
@@ -100,6 +120,22 @@ export class UnifiedCrudHandler {
   }
 
   /**
+   * Create mutation context for delegating to mutation functions
+   */
+  private getMutationContext(): MutationContext {
+    return {
+      db: this.db,
+      organizationId: this.organizationId,
+      userId: this.userId,
+      fieldValueService: this.fieldValueService,
+      resolveEntityDefinition: this.resolveEntityDefinition.bind(this),
+      runPreHooks: this.runPreHooks.bind(this),
+      validateUniqueFields: this.validateUniqueFields.bind(this),
+      setFieldValues: this.setFieldValues.bind(this),
+    }
+  }
+
+  /**
    * Pre-warm caches for bulk operations.
    * Call this once before processing many records of the same entity type.
    *
@@ -128,41 +164,9 @@ export class UnifiedCrudHandler {
     entityDefinitionId: string,
     values: Record<string, unknown>,
     options: CrudOptions = {}
-  ): Promise<EntityInstanceEntity> {
-    const entityDef = await this.resolveEntityDefinition(entityDefinitionId)
-
-    // Run pre-create hooks (validation, normalization)
-    const processedValues = await this.runPreHooks('create', entityDef, values)
-
-    // Check uniqueness constraints
-    await this.validateUniqueFields(entityDef.id, processedValues)
-
-    // Create EntityInstance
-    const instanceResult = await createEntityInstance({
-      entityDefinitionId: entityDef.id,
-      organizationId: this.organizationId,
-      createdById: this.userId,
-    })
-
-    const instance = unwrapResult(instanceResult)
-
-    // Build RecordId for field value operations
-    const recordId = toRecordId(entityDef.id, instance.id)
-
-    // Set field values using RecordId
-    await this.setFieldValues(recordId, processedValues)
-
-    // Invalidate snapshots (unless skipped for bulk operations)
-    if (!options.skipSnapshotInvalidation) {
-      await this.invalidateSnapshots(entityDef.id)
-    }
-
-    // Publish event (unless skipped for bulk imports)
-    if (!options.skipEvents) {
-      await this.publishEvent('created', entityDef, instance.id, processedValues)
-    }
-
-    return instance
+  ) {
+    await this.warmCache(entityDefinitionId)
+    return createEntity(this.getMutationContext(), entityDefinitionId, values, options)
   }
 
   /**
@@ -172,40 +176,10 @@ export class UnifiedCrudHandler {
    * @param values - Field values to update (map of fieldId -> value)
    * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
    */
-  async update(
-    recordId: RecordId,
-    values: Record<string, unknown>,
-    options: CrudOptions = {}
-  ): Promise<EntityInstanceEntity> {
-    const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
-
-    // Single fetch to verify existence
-    const instance = await this.getById(recordId)
-    if (!instance) throw new Error(`Entity not found: ${entityInstanceId}`)
-
-    const entityDef = await this.resolveEntityDefinition(entityDefinitionId)
-
-    // Run pre-update hooks
-    const processedValues = await this.runPreHooks('update', entityDef, values, instance)
-
-    // Check uniqueness (excluding current entity)
-    await this.validateUniqueFields(entityDef.id, processedValues, entityInstanceId)
-
-    // Set field values using RecordId
-    await this.setFieldValues(recordId, processedValues)
-
-    // Invalidate snapshots (unless skipped for bulk operations)
-    if (!options.skipSnapshotInvalidation) {
-      await this.invalidateSnapshots(entityDef.id)
-    }
-
-    // Publish event (unless skipped for bulk imports)
-    if (!options.skipEvents) {
-      await this.publishEvent('updated', entityDef, entityInstanceId, processedValues)
-    }
-
-    // Return the instance we already fetched (field values are in FieldValue table, not on instance)
-    return instance
+  async update(recordId: RecordId, values: Record<string, unknown>, options: CrudOptions = {}) {
+    const { entityDefinitionId } = parseRecordId(recordId)
+    await this.warmCache(entityDefinitionId)
+    return updateEntity(this.getMutationContext(), recordId, values, options)
   }
 
   /**
@@ -213,7 +187,7 @@ export class UnifiedCrudHandler {
    *
    * @param recordId - RecordId in format "entityDefinitionId:instanceId"
    */
-  async getById(recordId: RecordId): Promise<EntityInstanceEntity | null> {
+  async getById(recordId: RecordId) {
     const { entityInstanceId } = parseRecordId(recordId)
     const result = await getEntityInstance({
       id: entityInstanceId,
@@ -229,11 +203,7 @@ export class UnifiedCrudHandler {
    * @param fieldSystemAttribute - System attribute like 'primary_email'
    * @param value - Value to search for
    */
-  async findByField(
-    entityDefinitionId: string,
-    fieldSystemAttribute: string,
-    value: unknown
-  ): Promise<EntityInstanceEntity | null> {
+  async findByField(entityDefinitionId: string, fieldSystemAttribute: string, value: unknown) {
     const entityDef = await this.resolveEntityDefinition(entityDefinitionId)
 
     // Get field by systemAttribute
@@ -289,31 +259,10 @@ export class UnifiedCrudHandler {
    * @param recordId - RecordId in format "entityDefinitionId:instanceId"
    * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
    */
-  async archive(recordId: RecordId, options: CrudOptions = {}): Promise<EntityInstanceEntity> {
-    const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
-
-    const instance = await this.getById(recordId)
-    if (!instance) throw new Error(`Entity not found: ${entityInstanceId}`)
-
-    const entityDef = await this.resolveEntityDefinition(entityDefinitionId)
-
-    const updateResult = await updateEntityInstance({
-      id: entityInstanceId,
-      organizationId: this.organizationId,
-      data: { archivedAt: new Date().toISOString() },
-    })
-
-    unwrapResult(updateResult)
-
-    if (!options.skipSnapshotInvalidation) {
-      await this.invalidateSnapshots(entityDef.id)
-    }
-    if (!options.skipEvents) {
-      await this.publishEvent('deleted', entityDef, entityInstanceId, {}, { hardDelete: false })
-    }
-
-    // Return the instance we already fetched (archivedAt is the only change)
-    return { ...instance, archivedAt: new Date() }
+  async archive(recordId: RecordId, options: CrudOptions = {}) {
+    const { entityDefinitionId } = parseRecordId(recordId)
+    await this.warmCache(entityDefinitionId)
+    return archiveEntity(this.getMutationContext(), recordId, options)
   }
 
   /**
@@ -322,31 +271,10 @@ export class UnifiedCrudHandler {
    * @param recordId - RecordId in format "entityDefinitionId:instanceId"
    * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
    */
-  async restore(recordId: RecordId, options: CrudOptions = {}): Promise<EntityInstanceEntity> {
-    const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
-
-    const instance = await this.getById(recordId)
-    if (!instance) throw new Error(`Entity not found: ${entityInstanceId}`)
-
-    const entityDef = await this.resolveEntityDefinition(entityDefinitionId)
-
-    const updateResult = await updateEntityInstance({
-      id: entityInstanceId,
-      organizationId: this.organizationId,
-      data: { archivedAt: null },
-    })
-
-    unwrapResult(updateResult)
-
-    if (!options.skipSnapshotInvalidation) {
-      await this.invalidateSnapshots(entityDef.id)
-    }
-    if (!options.skipEvents) {
-      await this.publishEvent('updated', entityDef, entityInstanceId, {}, { restored: true })
-    }
-
-    // Return the instance we already fetched with archivedAt cleared
-    return { ...instance, archivedAt: null }
+  async restore(recordId: RecordId, options: CrudOptions = {}) {
+    const { entityDefinitionId } = parseRecordId(recordId)
+    await this.warmCache(entityDefinitionId)
+    return restoreEntity(this.getMutationContext(), recordId, options)
   }
 
   /**
@@ -356,30 +284,9 @@ export class UnifiedCrudHandler {
    * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
    */
   async delete(recordId: RecordId, options: CrudOptions = {}): Promise<void> {
-    const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
-
-    const instance = await this.getById(recordId)
-    if (!instance) throw new Error(`Entity not found: ${entityInstanceId}`)
-
-    const entityDef = await this.resolveEntityDefinition(entityDefinitionId)
-
-    // Delete comments
-    const commentService = new CommentService(this.organizationId, this.userId, this.db)
-    await commentService.deleteCommentsByEntity(entityInstanceId, entityDef.id)
-
-    const deleteResult = await deleteEntityInstance({
-      id: entityInstanceId,
-      organizationId: this.organizationId,
-    })
-
-    unwrapResult(deleteResult)
-
-    if (!options.skipSnapshotInvalidation) {
-      await this.invalidateSnapshots(entityDef.id)
-    }
-    if (!options.skipEvents) {
-      await this.publishEvent('deleted', entityDef, entityInstanceId, {}, { hardDelete: true })
-    }
+    const { entityDefinitionId } = parseRecordId(recordId)
+    await this.warmCache(entityDefinitionId)
+    return deleteEntity(this.getMutationContext(), recordId, options)
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -399,33 +306,8 @@ export class UnifiedCrudHandler {
     options: CrudOptions = {}
   ): Promise<{ created: EntityInstanceEntity[]; errors: Array<{ index: number; error: string }> }> {
     if (items.length === 0) return { created: [], errors: [] }
-
-    // Pre-warm caches once for all records
     await this.warmCache(entityDefinitionId)
-    const entityDef = await this.resolveEntityDefinition(entityDefinitionId)
-
-    const created: EntityInstanceEntity[] = []
-    const errors: Array<{ index: number; error: string }> = []
-
-    // Create all records without individual snapshot invalidation
-    for (let i = 0; i < items.length; i++) {
-      try {
-        const instance = await this.create(entityDefinitionId, items[i]!, {
-          skipEvents: options.skipEvents,
-          skipSnapshotInvalidation: true, // Always skip - we'll do it once at end
-        })
-        created.push(instance)
-      } catch (e) {
-        errors.push({ index: i, error: e instanceof Error ? e.message : 'Unknown error' })
-      }
-    }
-
-    // Single snapshot invalidation at end (unless caller skipped it)
-    if (!options.skipSnapshotInvalidation && created.length > 0) {
-      await this.invalidateSnapshots(entityDef.id)
-    }
-
-    return { created, errors }
+    return bulkCreateEntities(this.getMutationContext(), entityDefinitionId, items, options)
   }
 
   /**
@@ -439,34 +321,9 @@ export class UnifiedCrudHandler {
     options: CrudOptions = {}
   ): Promise<{ updated: number; errors: Array<{ recordId: RecordId; error: string }> }> {
     if (updates.length === 0) return { updated: 0, errors: [] }
-
-    // Pre-warm cache for the first entity's definition (assumes all are same type)
     const { entityDefinitionId } = parseRecordId(updates[0]!.recordId)
     await this.warmCache(entityDefinitionId)
-    const entityDef = await this.resolveEntityDefinition(entityDefinitionId)
-
-    let updated = 0
-    const errors: Array<{ recordId: RecordId; error: string }> = []
-
-    // Update all records without individual snapshot invalidation
-    for (const { recordId, values } of updates) {
-      try {
-        await this.update(recordId, values, {
-          skipEvents: options.skipEvents,
-          skipSnapshotInvalidation: true, // Always skip - we'll do it once at end
-        })
-        updated++
-      } catch (e) {
-        errors.push({ recordId, error: e instanceof Error ? e.message : 'Unknown error' })
-      }
-    }
-
-    // Single snapshot invalidation at end (unless caller skipped it)
-    if (!options.skipSnapshotInvalidation && updated > 0) {
-      await this.invalidateSnapshots(entityDef.id)
-    }
-
-    return { updated, errors }
+    return bulkUpdateEntities(this.getMutationContext(), updates, options)
   }
 
   /**
@@ -477,31 +334,9 @@ export class UnifiedCrudHandler {
    */
   async bulkArchive(recordIds: RecordId[], options: CrudOptions = {}): Promise<{ count: number }> {
     if (recordIds.length === 0) return { count: 0 }
-
-    // Pre-warm cache for the first entity's definition (assumes all are same type)
     const { entityDefinitionId } = parseRecordId(recordIds[0]!)
     await this.warmCache(entityDefinitionId)
-    const entityDef = await this.resolveEntityDefinition(entityDefinitionId)
-
-    let count = 0
-    for (const recordId of recordIds) {
-      try {
-        await this.archive(recordId, {
-          skipEvents: options.skipEvents,
-          skipSnapshotInvalidation: true, // Always skip - we'll do it once at end
-        })
-        count++
-      } catch {
-        // Skip failures
-      }
-    }
-
-    // Single snapshot invalidation at end (unless caller skipped it)
-    if (!options.skipSnapshotInvalidation && count > 0) {
-      await this.invalidateSnapshots(entityDef.id)
-    }
-
-    return { count }
+    return bulkArchiveEntities(this.getMutationContext(), recordIds, options)
   }
 
   /**
@@ -512,31 +347,9 @@ export class UnifiedCrudHandler {
    */
   async bulkDelete(recordIds: RecordId[], options: CrudOptions = {}): Promise<{ count: number }> {
     if (recordIds.length === 0) return { count: 0 }
-
-    // Pre-warm cache for the first entity's definition (assumes all are same type)
     const { entityDefinitionId } = parseRecordId(recordIds[0]!)
     await this.warmCache(entityDefinitionId)
-    const entityDef = await this.resolveEntityDefinition(entityDefinitionId)
-
-    let count = 0
-    for (const recordId of recordIds) {
-      try {
-        await this.delete(recordId, {
-          skipEvents: options.skipEvents,
-          skipSnapshotInvalidation: true, // Always skip - we'll do it once at end
-        })
-        count++
-      } catch {
-        // Skip failures
-      }
-    }
-
-    // Single snapshot invalidation at end (unless caller skipped it)
-    if (!options.skipSnapshotInvalidation && count > 0) {
-      await this.invalidateSnapshots(entityDef.id)
-    }
-
-    return { count }
+    return bulkDeleteEntities(this.getMutationContext(), recordIds, options)
   }
 
   /**
@@ -552,18 +365,7 @@ export class UnifiedCrudHandler {
     value: unknown
   ): Promise<{ count: number }> {
     if (recordIds.length === 0) return { count: 0 }
-
-    // Use FieldValueService.setBulkValues for efficient bulk operation
-    const result = await this.fieldValueService.setBulkValues({
-      recordIds,
-      values: [{ fieldId, value }],
-    })
-
-    // Get entityDefinitionId from first recordId for invalidation
-    const { entityDefinitionId } = parseRecordId(recordIds[0]!)
-    await this.invalidateSnapshots(entityDefinitionId)
-
-    return { count: result.count }
+    return bulkSetFieldValue(this.getMutationContext(), recordIds, fieldId, value)
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -597,6 +399,177 @@ export class UnifiedCrudHandler {
     return unwrapResult(result)
   }
 
+  /**
+   * List record IDs with server-side filtering (Query Snapshot pattern)
+   * Returns cached snapshot IDs for efficient pagination
+   *
+   * @param params - Filter parameters
+   */
+  async listFiltered(params: {
+    entityDefinitionId: string
+    filters?: ConditionGroup[]
+    sorting?: Array<{ id: string; desc: boolean }>
+    limit?: number
+    cursor?: { snapshotId: string; offset: number }
+  }): Promise<ListFilteredResult> {
+    const { entityDefinitionId, filters = [], sorting = [], limit = 100, cursor } = params
+
+    // Extract pagination from cursor if provided
+    const snapshotId = cursor?.snapshotId
+    const offset = cursor?.offset ?? 0
+
+    // If snapshotId provided via cursor, try to fetch chunk from cache
+    if (snapshotId) {
+      const chunk = await getSnapshotChunk({
+        snapshotId,
+        offset,
+        limit,
+      })
+
+      if (chunk) {
+        return {
+          snapshotId,
+          ids: chunk.ids,
+          total: chunk.total,
+          hasMore: offset + chunk.ids.length < chunk.total,
+        }
+      }
+      // Snapshot expired - fall through to create a new one
+    }
+
+    // No snapshotId - create new snapshot
+    const result = await getOrCreateSnapshot({
+      organizationId: this.organizationId,
+      resourceType: entityDefinitionId,
+      filters: filters as ConditionGroup[],
+      sorting,
+      executeQuery: async () => {
+        // Route to appropriate query function
+        if (isSystemResource(entityDefinitionId)) {
+          return querySystemResourceIds({
+            db: this.db,
+            tableId: entityDefinitionId as TableId,
+            organizationId: this.organizationId,
+            filters: filters as ConditionGroup[],
+            sorting,
+          })
+        }
+
+        // Otherwise treat as custom entity (UUID)
+        return queryEntityInstanceIds({
+          db: this.db,
+          entityDefinitionId,
+          organizationId: this.organizationId,
+          filters: filters as ConditionGroup[],
+          sorting,
+        })
+      },
+    })
+
+    // Return first chunk
+    const ids = result.ids.slice(offset, offset + limit)
+
+    return {
+      snapshotId: result.snapshotId,
+      ids,
+      total: result.total,
+      hasMore: offset + ids.length < result.total,
+      fromCache: result.fromCache,
+    }
+  }
+
+  /**
+   * Get multiple records by RecordIds (batch)
+   *
+   * @param recordIds - Array of RecordIds to fetch
+   */
+  async getByIds(recordIds: RecordId[]) {
+    if (recordIds.length === 0) return []
+
+    const service = new RecordPickerService(this.organizationId, this.userId, this.db)
+    return service.getResourcesByIds(recordIds)
+  }
+
+  /**
+   * Search records with optional global search support
+   *
+   * @param params - Search parameters
+   */
+  async search(params: {
+    query?: string
+    entityDefinitionId?: string
+    entityDefinitionIds?: string[]
+    limit?: number
+    cursor?: string
+  }) {
+    const service = new RecordPickerService(this.organizationId, this.userId, this.db)
+    return service.search({
+      query: params.query ?? '',
+      entityDefinitionId: params.entityDefinitionId,
+      entityDefinitionIds: params.entityDefinitionIds,
+      limit: params.limit,
+      cursor: params.cursor,
+    })
+  }
+
+  /**
+   * Invalidate cache for a resource type or specific record
+   *
+   * @param entityDefinitionId - Resource type to invalidate
+   * @param id - Optional specific record ID
+   */
+  async invalidateCache(entityDefinitionId: string, id?: string): Promise<void> {
+    const service = new RecordPickerService(this.organizationId, this.userId, this.db)
+
+    if (id) {
+      await service.invalidateCacheById(entityDefinitionId, id)
+    } else {
+      await service.invalidateCacheByTable(entityDefinitionId)
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MERGE OPERATIONS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Merge multiple entity instances into a single target
+   * Delegates to EntityMergeService for actual merge logic
+   *
+   * @param targetRecordId - RecordId of the target instance
+   * @param sourceRecordIds - RecordIds of instances to merge into target
+   */
+  async merge(targetRecordId: RecordId, sourceRecordIds: RecordId[]) {
+    return mergeEntities(this.getMutationContext(), targetRecordId, sourceRecordIds)
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // WORKFLOW-COMPATIBLE WRAPPERS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Create entity instance with field values (workflow-compatible)
+   * Wraps create() to match EntityInstanceService.createWithValues() signature
+   *
+   * @param entityDefinitionId - Entity definition ID
+   * @param values - Field values (fieldId -> value)
+   */
+  async createWithValues(entityDefinitionId: string, values: Record<string, unknown>) {
+    await this.warmCache(entityDefinitionId)
+    return createWithValuesImpl(this.getMutationContext(), entityDefinitionId, values)
+  }
+
+  /**
+   * Update entity instance field values (workflow-compatible)
+   * Wraps update() to match EntityInstanceService.updateValues() signature
+   *
+   * @param instanceId - Entity instance ID (not RecordId)
+   * @param values - Field values to update (fieldId -> value)
+   */
+  async updateValues(instanceId: string, values: Record<string, unknown>) {
+    return updateValuesImpl(this.getMutationContext(), instanceId, values)
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // FIELD VALUE OPERATIONS
   // ═══════════════════════════════════════════════════════════════════════════
@@ -608,11 +581,7 @@ export class UnifiedCrudHandler {
    * @param fieldId - Field ID to set
    * @param value - Value to set
    */
-  async setFieldValue(
-    recordId: RecordId,
-    fieldId: string,
-    value: unknown
-  ): Promise<void> {
+  async setFieldValue(recordId: RecordId, fieldId: string, value: unknown): Promise<void> {
     const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
     const entityDef = await this.resolveEntityDefinition(entityDefinitionId)
 
@@ -633,10 +602,7 @@ export class UnifiedCrudHandler {
    * @param recordId - RecordId in format "entityDefinitionId:instanceId"
    * @param fieldIds - Optional array of field IDs to fetch
    */
-  async getFieldValues(
-    recordId: RecordId,
-    fieldIds?: string[]
-  ): Promise<Map<string, any>> {
+  async getFieldValues(recordId: RecordId, fieldIds?: string[]) {
     // Use FieldValueService with RecordId
     return this.fieldValueService.getValues({ recordId, fieldIds })
   }
@@ -650,7 +616,7 @@ export class UnifiedCrudHandler {
    *
    * @param entityDefinitionId - 'contact', 'ticket', or UUID for custom entities
    */
-  private async resolveEntityDefinition(entityDefinitionId: string): Promise<EntityDefinitionEntity> {
+  private async resolveEntityDefinition(entityDefinitionId: string) {
     // Check cache first
     const cached = this.entityDefCache.get(entityDefinitionId)
     if (cached) return cached
@@ -698,7 +664,7 @@ export class UnifiedCrudHandler {
    *
    * @param entityDefinitionId - Entity definition UUID
    */
-  private async getCustomFieldsCached(entityDefinitionId: string): Promise<CustomFieldEntity[]> {
+  private async getCustomFieldsCached(entityDefinitionId: string) {
     const cached = this.customFieldsCache.get(entityDefinitionId)
     if (cached) return cached
 
@@ -719,10 +685,7 @@ export class UnifiedCrudHandler {
    * @param recordId - RecordId in format "entityDefinitionId:instanceId"
    * @param values - Map of fieldId -> value
    */
-  private async setFieldValues(
-    recordId: RecordId,
-    values: Record<string, unknown>
-  ): Promise<void> {
+  private async setFieldValues(recordId: RecordId, values: Record<string, unknown>): Promise<void> {
     const valueArray = Object.entries(values)
       .filter(([_, value]) => value !== undefined)
       .map(([fieldId, value]) => ({ fieldId, value }))
@@ -824,10 +787,7 @@ export class UnifiedCrudHandler {
     }
   }
 
-  private async getFieldBySystemAttribute(
-    entityDefinitionId: string,
-    systemAttribute: string
-  ): Promise<CustomFieldEntity | null> {
+  private async getFieldBySystemAttribute(entityDefinitionId: string, systemAttribute: string) {
     const fields = await this.getCustomFieldsCached(entityDefinitionId)
     return fields.find((f) => f.systemAttribute === systemAttribute) ?? null
   }

@@ -1,6 +1,8 @@
 // packages/lib/src/entity-instances/index.ts
 
-export { EntityInstanceService } from './entity-instance-service'
+// Note: EntityInstanceService has been deprecated and replaced by UnifiedCrudHandler
+// Import from '@auxx/lib/resources/crud' instead
+
 export {
   type TicketMetadata,
   type ContactMetadata,

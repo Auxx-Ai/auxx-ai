@@ -152,7 +152,7 @@ export function EntityInstanceDialog({
   }, [open, recordId, editableFields, presetValues, setInitial, getValue])
 
   // Create instance mutation
-  const createInstance = api.entityInstance.create.useMutation({
+  const createInstance = api.record.create.useMutation({
     onError: (error) => {
       toastError({ title: 'Failed to create', description: error.message })
     },

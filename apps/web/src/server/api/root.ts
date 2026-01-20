@@ -65,7 +65,6 @@ import { recordRouter } from './routers/record'
 import { attachmentRouter } from './routers/attachment'
 import { mediaAssetRouter } from './routers/mediaAsset'
 import { entityDefinitionRouter } from './routers/entityDefinition'
-import { entityInstanceRouter } from './routers/entityInstance'
 import { dataImportRouter } from './routers/data-import'
 import { fieldValueRouter } from './routers/fieldValue'
 import { taskRouter } from './routers/task'
@@ -103,7 +102,6 @@ export const appRouter = createTRPCRouter({
   emailTemplate: emailTemplateRouter,
   embedding: embeddingRouter,
   entityDefinition: entityDefinitionRouter,
-  entityInstance: entityInstanceRouter,
   featurePermission: featurePermissionsRouter,
   googleOAuth: googleOAuthRouter,
   group: groupRouter,

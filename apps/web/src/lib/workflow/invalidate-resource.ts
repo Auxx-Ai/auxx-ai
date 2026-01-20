@@ -2,13 +2,22 @@
 
 import { getQueryKey } from '@trpc/react-query'
 import { getQueryClient, api } from '~/trpc/react'
+import { toRecordId } from '@auxx/lib/resources/client'
 
 export type ResourceType = 'thread' | 'contact' | 'ticket' | 'message' | 'entity'
 
 /**
  * Invalidates React Query cache for a specific resource after workflow completion
+ *
+ * @param resourceType - Type of resource to invalidate
+ * @param resourceId - ID of the specific resource instance
+ * @param entityDefinitionId - Entity definition ID (required when resourceType is 'entity')
  */
-export function invalidateResource(resourceType: ResourceType, resourceId: string) {
+export function invalidateResource(
+  resourceType: ResourceType,
+  resourceId: string,
+  entityDefinitionId?: string
+) {
   const queryClient = getQueryClient()
 
   switch (resourceType) {
@@ -60,8 +69,23 @@ export function invalidateResource(resourceType: ResourceType, resourceId: strin
       break
 
     case 'entity':
-      // Invalidate specific entity instance
-
+      // Invalidate specific entity instance via record router
+      if (entityDefinitionId) {
+        const recordId = toRecordId(entityDefinitionId, resourceId)
+        queryClient.invalidateQueries({
+          queryKey: getQueryKey(api.record.getById, { recordId }, 'query'),
+        })
+      }
+      // Invalidate listFiltered for the entity type
+      queryClient.invalidateQueries({
+        queryKey: getQueryKey(api.record.listFiltered),
+        exact: false,
+      })
+      // Invalidate record.search for picker dialogs
+      queryClient.invalidateQueries({
+        queryKey: getQueryKey(api.record.search),
+        exact: false,
+      })
       break
   }
 }
@@ -69,15 +93,27 @@ export function invalidateResource(resourceType: ResourceType, resourceId: strin
 /**
  * Creates an onComplete callback for workflow tracking that invalidates the resource
  */
-export function createWorkflowInvalidator(resourceType: ResourceType, resourceId: string) {
-  return () => invalidateResource(resourceType, resourceId)
+export function createWorkflowInvalidator(
+  resourceType: ResourceType,
+  resourceId: string,
+  entityDefinitionId?: string
+) {
+  return () => invalidateResource(resourceType, resourceId, entityDefinitionId)
 }
 
 /**
  * Invalidates React Query cache for multiple resources after batch workflow completion
  * Optimized to only invalidate list/count queries once instead of per-resource
+ *
+ * @param resourceType - Type of resources to invalidate
+ * @param resourceIds - IDs of the specific resource instances
+ * @param entityDefinitionId - Entity definition ID (required when resourceType is 'entity')
  */
-export function invalidateBatchResources(resourceType: ResourceType, resourceIds: string[]) {
+export function invalidateBatchResources(
+  resourceType: ResourceType,
+  resourceIds: string[],
+  entityDefinitionId?: string
+) {
   if (resourceIds.length === 0) return
 
   console.log('[invalidateBatchResources] Invalidating batch', {
@@ -136,6 +172,25 @@ export function invalidateBatchResources(resourceType: ResourceType, resourceIds
       break
 
     case 'entity':
+      // Invalidate each specific entity instance via record router
+      if (entityDefinitionId) {
+        resourceIds.forEach((resourceId) => {
+          const recordId = toRecordId(entityDefinitionId, resourceId)
+          queryClient.invalidateQueries({
+            queryKey: getQueryKey(api.record.getById, { recordId }, 'query'),
+          })
+        })
+      }
+      // Invalidate listFiltered for the entity type ONCE
+      queryClient.invalidateQueries({
+        queryKey: getQueryKey(api.record.listFiltered),
+        exact: false,
+      })
+      // Invalidate record.search for picker dialogs
+      queryClient.invalidateQueries({
+        queryKey: getQueryKey(api.record.search),
+        exact: false,
+      })
       break
   }
 }
