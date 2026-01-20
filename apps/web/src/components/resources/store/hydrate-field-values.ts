@@ -55,7 +55,7 @@ export function hydrateFieldValues({ resource, recordId, recordData }: Hydration
 
     // Convert to TypedFieldValue using the converter
     const typedValue = formatToTypedInput(rawValue, field.fieldType as FieldType, {
-      selectOptions: field.enumValues?.map((e) => ({ value: e.dbValue, label: e.label })),
+      selectOptions: field.options?.options,
     })
 
     if (typedValue !== null) {
@@ -113,7 +113,7 @@ export function hydrateMultipleRecords(
       }
 
       const typedValue = formatToTypedInput(rawValue, field.fieldType as FieldType, {
-        selectOptions: field.enumValues?.map((e) => ({ value: e.dbValue, label: e.label })),
+        selectOptions: field.options?.options,
       })
 
       if (typedValue !== null) {

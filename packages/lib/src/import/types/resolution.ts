@@ -1,5 +1,7 @@
 // packages/lib/src/import/types/resolution.ts
 
+import type { SelectOption } from '@auxx/types/custom-field'
+
 /** All supported resolution types */
 export type ResolutionType =
   | 'text:value' // Plain text
@@ -28,7 +30,7 @@ export interface ResolutionConfig {
   timestampFormat?: string
   numberDecimalSeparator?: string
   arraySeparator?: string
-  enumValues?: Array<{ dbValue: string; label: string }>
+  options?: SelectOption[]
 
   /** Relation resolution config (from ResourceRegistryService) */
   relationConfig?: {
@@ -86,7 +88,7 @@ export interface ColumnFieldConfig {
   key: string
   type: string // BaseType: 'text', 'number', 'enum', 'relationship', etc.
   resolutionType: string // e.g., 'select:value', 'relation:match'
-  enumValues?: Array<{ dbValue: string; label: string }>
+  options?: SelectOption[]
   relationConfig?: {
     relatedEntityDefinitionId: string
     relationshipType: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'

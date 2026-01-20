@@ -160,7 +160,7 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
       resolutionType: finalResolutionType,
       matchField,
       relationConfig: targetField?.relationConfig,
-      enumValues: targetField?.enumValues,
+      options: targetField?.options,
     })
   }
 

@@ -16,7 +16,7 @@ export function suggestResolutionType(field: ImportableField): ResolutionType {
   }
 
   // Check for enum/select fields
-  if (field.enumValues && field.enumValues.length > 0) {
+  if (field.options && field.options.length > 0) {
     return 'select:value'
   }
 

@@ -25,5 +25,8 @@ export { useRecordBatchFetcher } from './use-record-batch-fetcher'
 // Entity field values hook
 export { useEntityValues } from './use-entity-values'
 
+// Field value hooks (extracted from store)
+export { useFieldValue, useResourceFieldValues } from './use-field-values'
+
 // Record hydration hook
 export { useRecordHydration } from './use-record-hydration'

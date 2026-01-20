@@ -2,7 +2,7 @@
 
 import type { Resource } from '../../resources/registry/types'
 import { getIdentifiableFields } from './get-identifiable-fields'
-import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
+import { getRelatedEntityDefinitionId, type RelationshipConfig, type SelectOption } from '@auxx/types/custom-field'
 
 /** Field group type for organizing fields in the UI */
 export type FieldGroup = 'identifier' | 'system' | 'custom' | 'relationship'
@@ -26,7 +26,7 @@ export interface ImportableField {
       identifierField?: string // Usually 'id'
     }
   }
-  enumValues?: Array<{ dbValue: string; label: string }>
+  options?: SelectOption[]
 }
 
 /** Options for getImportableFields */
@@ -73,7 +73,7 @@ export function getImportableFields(
         isRelation: false,
         isIdentifier: false,
         group: (isCustomField ? 'custom' : 'system') as FieldGroup,
-        enumValues: field.enumValues,
+        options: field.options?.options,
       }
     })
   fields.push(...scalarFields)

@@ -1,10 +1,6 @@
 // apps/web/src/components/workflow/utils/variable-utils.ts
 
-import type {
-  UnifiedVariable,
-  FieldReferenceMetadata,
-} from '~/components/workflow/types/variable-types'
-import type { FlowNode } from '~/components/workflow/types/node-base'
+import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
 import type { FieldDefinition } from '~/components/conditions'
 import {
   RESOURCE_FIELD_REGISTRY,
@@ -17,6 +13,7 @@ import {
 } from '@auxx/lib/workflow-engine/client'
 import { useResourceStore } from '~/components/resources/store/resource-store'
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
+import { parseResourceFieldId, isResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 
 /**
  * Regular expression pattern for matching workflow variables in the format {{variable-name}}
@@ -135,15 +132,15 @@ export function isVariableMode(
  * @example
  * ```typescript
  * // Direct resource reference
- * getVariableDisplayType({ type: BaseType.OBJECT, reference: 'contact', label: 'Contact' })
+ * getVariableDisplayType({ type: BaseType.OBJECT, resourceId: 'contact', label: 'Contact' })
  * // Returns: "Contact"
  *
  * // Relation field
- * getVariableDisplayType({ type: BaseType.RELATION, reference: 'ticket:contact' })
+ * getVariableDisplayType({ type: BaseType.RELATION, fieldReference: 'ticket:contact' })
  * // Returns: "Contact"
  *
  * // Array of resources
- * getVariableDisplayType({ type: BaseType.ARRAY, items: { type: BaseType.OBJECT, reference: 'contact', label: 'Contact' } })
+ * getVariableDisplayType({ type: BaseType.ARRAY, items: { type: BaseType.OBJECT, resourceId: 'contact', label: 'Contact' } })
  * // Returns: "Contact[]"
  * ```
  */
@@ -153,58 +150,73 @@ export function getVariableDisplayType(variable: UnifiedVariable): string {
     return `${getVariableDisplayType(variable.items)}[]`
   }
 
-  // Handle REFERENCE/RELATION with resource reference
-  if (variable.reference) {
-    // Direct resource reference (e.g., "contact")
-    if (!variable.reference.includes(':')) {
-      const resource = useResourceStore.getState().resourceMap.get(variable.reference)
-      return resource?.label || variable.label || variable.type
-    }
+  // Check new typed fieldReference first
+  if (variable.fieldReference) {
+    const { entityDefinitionId, fieldId } = parseResourceFieldId(variable.fieldReference)
+    const resource = useResourceStore.getState().resourceMap.get(entityDefinitionId)
+    const field = resource?.fields.find((f) => f.id === fieldId || f.key === fieldId)
 
-    // Relation field (e.g., "ticket:contact")
-    const parts = variable.reference.split(':')
-    const targetResourceId = parts[1]
-    if (targetResourceId) {
-      const resource = useResourceStore.getState().resourceMap.get(targetResourceId)
-      return resource?.label || variable.type
+    if (field?.relationship) {
+      const targetId = getRelatedEntityDefinitionId(field.relationship as RelationshipConfig)
+      const targetResource = useResourceStore.getState().resourceMap.get(targetId)
+      return targetResource?.label || variable.label || variable.type
     }
+  }
+
+  // Check typed resourceId (direct resource reference)
+  if (variable.resourceId) {
+    const resource = useResourceStore.getState().resourceMap.get(variable.resourceId)
+    return resource?.label || variable.label || variable.type
   }
 
   return variable.type
 }
 
 /**
- * Get enum values for a variable (for condition builders)
- * Only call this when you actually need enum values
+ * Get options for a variable (for condition builders).
+ * Only call this when you actually need options.
  *
- * @param variable - The variable to get enum values for
- * @returns Array of enum values with label and dbValue, or undefined if not an enum
+ * @param variable - The variable to get options for
+ * @returns Array of options with label and value, or undefined if not an enum
  *
  * @example
  * ```typescript
- * getVariableEnumValues({ type: BaseType.ENUM, reference: 'ticket:status', enum: ['open', 'closed'] })
- * // Returns: [{ label: 'Open', dbValue: 'open' }, { label: 'Closed', dbValue: 'closed' }]
+ * getVariableOptions({ type: BaseType.ENUM, fieldReference: 'ticket:status', enum: ['open', 'closed'] })
+ * // Returns: [{ label: 'Open', value: 'open' }, { label: 'Closed', value: 'closed' }]
  * ```
  */
-export function getVariableEnumValues(
+export function getVariableOptions(
   variable: UnifiedVariable
-): Array<{ label: string; dbValue: string }> | undefined {
-  if (variable.type !== BaseType.ENUM || !variable.enum) return undefined
+): Array<{ label: string; value: string }> | undefined {
+  if (variable.type !== BaseType.ENUM) return undefined
 
-  // If variable has a reference, look up field in store
-  if (variable.reference && variable.reference.includes(':')) {
-    const [resourceId, fieldKey] = variable.reference.split(':')
-    if (resourceId && fieldKey) {
-      const resource = useResourceStore.getState().resourceMap.get(resourceId)
-      const field = resource?.fields.find((f) => f.key === fieldKey)
-      if (field?.enumValues) {
-        return field.enumValues
-      }
+  // Check options first (unified format)
+  if (variable.options?.options) {
+    return variable.options.options.map((opt) => ({
+      label: opt.label,
+      value: opt.value,
+    }))
+  }
+
+  // Check typed fieldReference
+  if (variable.fieldReference) {
+    const { entityDefinitionId, fieldId } = parseResourceFieldId(variable.fieldReference)
+    const resource = useResourceStore.getState().resourceMap.get(entityDefinitionId)
+    const field = resource?.fields.find((f) => f.id === fieldId || f.key === fieldId)
+    if (field?.options?.options) {
+      return field.options.options.map((opt) => ({
+        label: opt.label,
+        value: opt.value,
+      }))
     }
   }
 
-  // Fallback: use enum values as both label and dbValue
-  return variable.enum.map((v) => ({ label: String(v), dbValue: String(v) }))
+  // Fallback: use enum values as both label and value
+  if (variable.enum) {
+    return variable.enum.map((v) => ({ label: String(v), value: String(v) }))
+  }
+
+  return undefined
 }
 
 /**
@@ -212,150 +224,87 @@ export function getVariableEnumValues(
  * Only call this when you need relationship info
  *
  * @param variable - The variable to get relationship metadata for
- * @returns Relationship metadata with relatedEntityDefinitionId and field, or undefined
+ * @returns Relationship metadata with relatedEntityDefinitionId, relationshipType, and field
  *
  * @example
  * ```typescript
- * getVariableRelationship({ type: BaseType.RELATION, reference: 'ticket:contact' })
- * // Returns: { relatedEntityDefinitionId: 'contact', field: {...} }
+ * getVariableRelationship({ type: BaseType.RELATION, fieldReference: 'ticket:contact' })
+ * // Returns: { relatedEntityDefinitionId: 'contact', relationshipType: 'belongs_to', field: {...} }
  * ```
  */
 export function getVariableRelationship(variable: UnifiedVariable):
   | {
       relatedEntityDefinitionId?: string
+      relationshipType?: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
       field?: ResourceField
     }
   | undefined {
-  if (!variable.reference) return undefined
+  // Check options first (new unified format)
+  if (variable.options?.relationship) {
+    return {
+      relatedEntityDefinitionId: variable.options.relationship.relatedEntityDefinitionId,
+      relationshipType: variable.options.relationship.relationshipType,
+    }
+  }
 
-  if (variable.reference.includes(':')) {
-    const [resourceId, fieldKey] = variable.reference.split(':')
-    if (resourceId && fieldKey) {
-      const resource = useResourceStore.getState().resourceMap.get(resourceId)
-      const field = resource?.fields.find((f) => f.key === fieldKey)
+  // Check typed fieldReference - use parseResourceFieldId() instead of manual split
+  if (variable.fieldReference) {
+    const { entityDefinitionId, fieldId } = parseResourceFieldId(variable.fieldReference)
+    const resource = useResourceStore.getState().resourceMap.get(entityDefinitionId)
+    const field = resource?.fields.find((f) => f.id === fieldId || f.key === fieldId)
+
+    if (field?.relationship) {
+      const rel = field.relationship as RelationshipConfig
       return {
-        relatedEntityDefinitionId: field?.relationship
-          ? getRelatedEntityDefinitionId(field.relationship as RelationshipConfig)
-          : undefined,
+        relatedEntityDefinitionId: getRelatedEntityDefinitionId(rel),
+        relationshipType: rel.relationshipType,
         field,
       }
     }
+    return undefined
   }
 
-  // Direct resource reference
-  return {
-    relatedEntityDefinitionId: variable.reference,
+  // Check typed resourceId (direct resource reference)
+  if (variable.resourceId) {
+    return { relatedEntityDefinitionId: variable.resourceId }
   }
+
+  return undefined
 }
 
 /**
- * Unified variable parser that returns all metadata about a variable
- * This is the single source of truth for understanding variable types, references, and UI metadata
+ * Get field definition for condition builders.
+ * Replaces parseVariable() with a cleaner implementation using typed ResourceFieldId system.
  *
- * @deprecated Use getVariableDisplayType, getVariableEnumValues, or getVariableRelationship instead
- * This function does too much and uses hardcoded constants
- * TODO: Remove after all consumers migrated
- *
- * @param variable - The variable to parse
- * @returns Comprehensive metadata including display type, actual type for operators, field references, enum values, etc.
+ * @param variable - The variable to get field definition for
+ * @returns FieldDefinition with operators, enum values, and relationship metadata
  *
  * @example
  * ```typescript
- * // Direct resource object (e.g., Contact from "Contact Created" trigger)
- * const parsed = parseVariable(contactVariable)
- * // Returns: { actualType: BaseType.REFERENCE, targetTable: 'contact', operators: ['is', 'is not', ...] }
- *
- * // Relation field (e.g., ticket.contact)
- * const parsed = parseVariable(ticketContactVariable)
- * // Returns: { actualType: BaseType.RELATION, targetTable: 'contact', fieldReference: 'ticket:contact', ... }
+ * const fieldDef = getVariableFieldDefinition(contactVariable)
+ * // Returns: { actualType: BaseType.RELATION, operators: ['is', 'is not'], relatedEntityDefinitionId: 'contact' }
  * ```
  */
-export function parseVariable(variable: UnifiedVariable) {
-  // Start with base variable data
-  const result = {
+export function getVariableFieldDefinition(variable: UnifiedVariable): FieldDefinition {
+  const relationship = getVariableRelationship(variable)
+  const options = getVariableOptions(variable)
+  const displayType = getVariableDisplayType(variable)
+
+  // Determine actual type for operators
+  let actualType = variable.type as BaseType
+  if (relationship?.relatedEntityDefinitionId) {
+    actualType = BaseType.RELATION
+  }
+
+  return {
     ...variable,
-    displayType: variable.type as string,
-    actualType: variable.type as BaseType,
-    operators: getOperatorsForFieldType(variable.type as BaseType).map((op) => op.key),
-    enumValues: undefined as Array<{ label: string; dbValue: string }> | undefined,
-    fieldReference: undefined as string | undefined,
-    targetTable: undefined as TableId | undefined,
-    resourceType: undefined as TableId | undefined,
-    fieldKey: undefined as string | undefined,
-    field: undefined as ResourceField | undefined,
+    displayType,
+    actualType,
+    operators: getOperatorsForFieldType(actualType).map((op) => op.key),
+    options,
+    fieldReference: variable.fieldReference,
+    relatedEntityDefinitionId: relationship?.relatedEntityDefinitionId,
   }
-
-  // Handle ARRAY type - show items type with [] suffix
-  if (variable.type === BaseType.ARRAY && variable.items) {
-    // Recursively parse the items to get their display type
-    const itemsParsed = parseVariable(variable.items)
-    result.displayType = `${itemsParsed.displayType}[]`
-    // Keep actualType as ARRAY for operator compatibility
-    result.actualType = BaseType.ARRAY
-  }
-
-  // Handle ENUM type - look up enum values from registry (with both label and dbValue)
-  if (variable.type === BaseType.ENUM && variable.enum) {
-    const parsed = parseResourceFieldFromVariableId(variable.id)
-    if (parsed) {
-      const fieldConfig = RESOURCE_FIELD_REGISTRY[parsed.resourceType]?.[parsed.fieldKey]
-      if (fieldConfig?.enumValues) {
-        // Use full enum objects for proper label/value handling in condition builder
-        result.enumValues = fieldConfig.enumValues
-      }
-    }
-    // Fallback: use enum values as both label and dbValue
-    if (!result.enumValues) {
-      result.enumValues = variable.enum.map((v) => ({ label: String(v), dbValue: String(v) }))
-    }
-  }
-
-  // Handle OBJECT/RELATION types with reference
-  if (variable.reference) {
-    // Check if it's a direct resource object (e.g., "contact") vs relation field (e.g., "ticket:contact")
-    if (!variable.reference.includes(':')) {
-      // Direct resource object (reference is just table name like "contact" or "entity_products")
-      const tableMeta = RESOURCE_TABLE_MAP[variable.reference as TableId]
-      if (tableMeta) {
-        result.displayType = tableMeta.label // e.g., "Contact"
-        result.actualType = BaseType.RELATION // Use REFERENCE type for correct operators
-        result.fieldReference = variable.reference // Store for filtering
-        result.relatedEntityDefinitionId = variable.reference as TableId
-        result.operators = getOperatorsForFieldType(BaseType.REFERENCE).map((op) => op.key)
-      } else if (variable.label) {
-        // Fallback for custom entities: use the label property
-        result.displayType = variable.label // e.g., "Product"
-        result.actualType = BaseType.RELATION
-        result.fieldReference = variable.reference
-      }
-    } else {
-      // Relation field (reference in format "resourceType:fieldKey")
-      const parts = variable.reference.split(':')
-      const resourceType = parts[0]
-      const fieldKey = parts[1]
-      if (!resourceType || !fieldKey) return result
-
-      const field = RESOURCE_FIELD_REGISTRY[resourceType]?.[fieldKey]
-
-      if (field?.type === BaseType.RELATION && field.relationship) {
-        const targetTable = getRelatedEntityDefinitionId(
-          field.relationship as RelationshipConfig
-        ) as TableId
-        const tableMeta = RESOURCE_TABLE_MAP[targetTable]
-
-        result.displayType = tableMeta?.label || variable.type // e.g., "Contact"
-        result.actualType = BaseType.RELATION // Use RELATION type for correct operators
-        result.fieldReference = variable.reference // e.g., "ticket:contact"
-        result.relatedEntityDefinitionId = targetTable
-        result.resourceType = resourceType as TableId
-        result.fieldKey = fieldKey
-        result.field = field
-        result.operators = getOperatorsForFieldType(BaseType.RELATION).map((op) => op.key)
-      }
-    }
-  }
-
-  return result
 }
 
 /**
@@ -382,18 +331,19 @@ export function isVariableTypeCompatible(
     Object.values(BaseType).includes(t as BaseType)
   ) as BaseType[]
 
-  // Check if variable IS a resource type (direct match on reference field)
+  // Check if variable IS a resource type (direct match on resourceId)
   // This matches resource object variables like trigger.ticket, findNode.contact, etc.
-  if (variable.reference && relationshipTypes.includes(variable.reference as string)) {
+  if (variable.resourceId && relationshipTypes.includes(variable.resourceId)) {
     return true
   }
 
-  // Check relationship type match via reference (for RELATION fields)
-  if (variable.reference && relationshipTypes.length > 0) {
-    const parsed = parseVariable(variable)
+  // Check relationship type match via fieldReference (for RELATION fields)
+  // Use getVariableRelationship() instead of parseVariable()
+  if (relationshipTypes.length > 0) {
+    const relationship = getVariableRelationship(variable)
     if (
-      parsed.relatedEntityDefinitionId &&
-      relationshipTypes.includes(parsed.relatedEntityDefinitionId)
+      relationship?.relatedEntityDefinitionId &&
+      relationshipTypes.includes(relationship.relatedEntityDefinitionId)
     ) {
       return true
     }
@@ -557,7 +507,7 @@ export function inferPluckOutputType(
 ): {
   type: BaseType
   items?: UnifiedVariable
-  reference?: string
+  resourceId?: string
   properties?: Record<string, UnifiedVariable>
 } | null {
   if (!inputArrayVar) return null
@@ -573,11 +523,12 @@ export function inferPluckOutputType(
   // Detect and unwrap collection wrappers (one-to-many, many-to-many relations)
   // Collection wrappers are objects with:
   // - type: 'object'
-  // - reference: 'resourceType:fieldKey' (e.g., 'contact:ticket')
+  // - fieldReference: 'resourceType:fieldKey' (e.g., 'contact:ticket')
   // - properties.values: array of actual items
   const isCollectionWrapper =
     fieldVar.type === BaseType.OBJECT &&
-    fieldVar.reference?.includes(':') &&
+    fieldVar.fieldReference &&
+    isResourceFieldId(fieldVar.fieldReference) &&
     fieldVar.properties?.values?.type === BaseType.ARRAY
 
   if (isCollectionWrapper && fieldVar.properties?.values?.items) {
@@ -586,15 +537,16 @@ export function inferPluckOutputType(
     const valuesArray = fieldVar.properties.values
     const itemProperties = valuesArray.items! // This is the properties object itself
 
-    // Parse reference to get target resource type
-    // "contact:ticket" → "ticket"
-    const parts = fieldVar.reference!.split(':')
-    const targetTable = parts[1] || parts[0]
+    // Parse reference to get target resource type using typed parsing
+    // "contact:ticket" → { entityDefinitionId: 'contact', fieldId: 'ticket' }
+    const { fieldId: targetTable } = parseResourceFieldId(
+      fieldVar.fieldReference as ResourceFieldId
+    )
 
     return {
       type: BaseType.OBJECT, // Collection items are always objects (resource types)
       items: undefined, // Objects don't have items (only arrays do)
-      reference: targetTable,
+      resourceId: targetTable,
       properties: itemProperties as any, // Properties will get IDs assigned by calling code
     }
   }
@@ -604,7 +556,7 @@ export function inferPluckOutputType(
     return {
       type: fieldVar.items.type,
       items: fieldVar.items.items, // Nested items (if any)
-      reference: fieldVar.items.reference,
+      resourceId: fieldVar.items.resourceId,
       properties: fieldVar.items.properties,
     }
   }
@@ -613,7 +565,7 @@ export function inferPluckOutputType(
   return {
     type: fieldVar.type,
     items: fieldVar.items,
-    reference: fieldVar.reference,
+    resourceId: fieldVar.resourceId,
     properties: fieldVar.properties,
   }
 }
@@ -670,19 +622,18 @@ export function getFieldDisplayType(field: FieldDefinition): string {
   if (field.fieldReference) {
     // Check if it's a direct resource object (reference is just table name like "contact")
     // vs a relation field (reference in format "resourceType:fieldKey" like "ticket:contact")
-    if (!field.fieldReference.includes(':')) {
+    if (!isResourceFieldId(field.fieldReference)) {
       // Direct resource object (reference is just table name like "contact")
       const tableMeta = RESOURCE_TABLE_MAP[field.fieldReference as TableId]
       if (tableMeta) {
         return tableMeta.label // e.g., "Contact", "Ticket", "User"
       }
     } else {
-      // Relation field (reference in format "resourceType:fieldKey")
-      const parts = field.fieldReference.split(':')
-      const targetTable = (parts.length === 2 ? parts[1] : parts[0]) as TableId
+      // Relation field - use parseResourceFieldId() instead of manual split
+      const { fieldId: targetTable } = parseResourceFieldId(field.fieldReference as ResourceFieldId)
 
       // Look up the table label from registry
-      const tableMeta = RESOURCE_TABLE_MAP[targetTable]
+      const tableMeta = RESOURCE_TABLE_MAP[targetTable as TableId]
       if (tableMeta) {
         return tableMeta.label // e.g., "Contact", "Ticket"
       }

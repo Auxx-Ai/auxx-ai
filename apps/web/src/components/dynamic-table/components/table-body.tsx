@@ -33,12 +33,12 @@ export function TableBody<TData extends object>({
   scrollContainerRef,
 }: TableBodyProps) {
   // Get config from focused contexts
-  const { isLoading, headerActions, dragDropConfig, emptyState } = useTableConfig<TData>()
+  const { isLoading, headerActions, dragDropConfig, emptyState, standalone } = useTableConfig<TData>()
   const { table } = useTableInstance<TData>()
   const { cellSelectionConfig } = useCellSelection()
 
-  // Get view loading state from store
-  const isLoadingViews = !useViewStoreInitialized()
+  // Get view loading state from store (skip check for standalone tables)
+  const isLoadingViews = standalone ? false : !useViewStoreInitialized()
 
   // Container ref for virtualization AND CSS variables
   const containerRef = useRef<HTMLDivElement>(null)

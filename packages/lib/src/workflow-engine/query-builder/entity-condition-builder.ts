@@ -3,7 +3,8 @@
 import { sql, type SQL } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
 import { schema } from '@auxx/database'
-import type { ResourceField, EnumValue } from '../../resources/registry/field-types'
+import type { ResourceField } from '../../resources/registry/field-types'
+import { type FieldOptionItem, getFieldOptions } from '../../resources/registry/option-helpers'
 import { BaseType } from '../core/types'
 import { BaseConditionBuilder, type GenericCondition } from './base-condition-builder'
 import { getValueType } from '@auxx/types'
@@ -134,9 +135,9 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
     return this.baseTypeToQueryType(field.type)
   }
 
-  protected getEnumValues(fieldId: string, context: EntityQueryContext): EnumValue[] | undefined {
+  protected getFieldOptions(fieldId: string, context: EntityQueryContext): FieldOptionItem[] | undefined {
     const field = context.fields.find((f) => f.key === fieldId)
-    return field?.enumValues
+    return getFieldOptions(field)
   }
 
   // ─────────────────────────────────────────────────────────────────
@@ -161,10 +162,11 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
 
     logger.debug(`Found field: key=${field.key}, type=${field.type}, isSystem=${field.isSystem}, dbColumn=${field.dbColumn}, dbFieldType=${field.dbFieldType}`)
 
-    // Extract ID from object format and transform enum labels
+    // Extract ID from object format and transform option labels
     let rawValue = this.extractReferenceId(condition.value)
-    if (field.type === BaseType.ENUM && field.enumValues) {
-      rawValue = this.labelToDbValue(field.enumValues, rawValue)
+    const fieldOpts = getFieldOptions(field)
+    if (field.type === BaseType.ENUM && fieldOpts.length > 0) {
+      rawValue = this.labelToStoredValue(fieldOpts, rawValue)
     }
 
     // Handle system fields (columns on EntityInstance table) differently
@@ -447,8 +449,9 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
 
     // Extract value and transform if needed
     let value = this.extractReferenceId(rawValue)
-    if (relatedField.type === BaseType.ENUM && relatedField.enumValues) {
-      value = this.labelToDbValue(relatedField.enumValues, value)
+    const relatedFieldOpts = getFieldOptions(relatedField)
+    if (relatedField.type === BaseType.ENUM && relatedFieldOpts.length > 0) {
+      value = this.labelToStoredValue(relatedFieldOpts, value)
     }
 
     // Determine which typed column to use for related field

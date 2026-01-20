@@ -61,8 +61,8 @@ export interface CellSelectionConfig {
   getFieldDefinition?: (columnId: string) => ResourceField | null
   /** Get cell value for editing */
   getCellValue?: (rowId: string, columnId: string) => any
-  /** Get RecordId for a row (required for optimistic updates) */
-  getRecordId: (rowId: string) => RecordId
+  /** Get RecordId for a row (required for optimistic updates when editing) */
+  getRecordId?: (rowId: string) => RecordId
 }
 
 /**
@@ -338,6 +338,9 @@ export interface DynamicTableProps<TData = any> {
 
   /** Entity definition ID for field creation */
   entityDefinitionId?: string
+
+  /** Standalone mode - bypasses view store initialization, useful for preview tables */
+  standalone?: boolean
 }
 
 /**

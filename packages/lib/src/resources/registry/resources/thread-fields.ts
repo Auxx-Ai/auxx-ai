@@ -93,7 +93,7 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
     systemSortOrder: 20,
     dbColumn: 'status',
     nullable: false,
-    enumValues: ThreadStatus.values,
+    options: { options: ThreadStatus.values },
     capabilities: {
       filterable: true,
       sortable: true,
@@ -290,7 +290,7 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
     showInPanel: false, // Virtual action field
     dbColumn: undefined,
     nullable: true,
-    enumValues: ReadStatus.values,
+    options: { options: ReadStatus.values },
     capabilities: {
       filterable: false,
       sortable: false,
@@ -331,7 +331,7 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
     showInPanel: false, // Internal operation field
     dbColumn: undefined,
     nullable: true,
-    enumValues: TagOperation.values,
+    options: { options: TagOperation.values },
     capabilities: {
       filterable: false,
       sortable: false,

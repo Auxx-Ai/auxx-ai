@@ -2,6 +2,8 @@
 
 import type { ValidationRules } from './unified-types'
 import { BaseType } from './unified-types'
+import type { ResourceFieldId } from '@auxx/types/field'
+import type { FieldOptions } from '@auxx/lib/field-values/converters'
 import type { TableId } from '@auxx/lib/workflow-engine/client'
 
 export { BaseType } from './unified-types'
@@ -14,8 +16,6 @@ export interface UnifiedVariable {
   // Core identification
   id: string // Unique identifier (full path: "node-123.content", "env.API_KEY")
   nodeId?: string
-  // Path information
-  // path: string // Relative path: "content", "from.email"
 
   // Display information
   label: string // Human-readable label
@@ -23,9 +23,37 @@ export interface UnifiedVariable {
 
   type: BaseType // Base type from unified type system
 
-  // For reference types: specialized picker or resource type identifier
-  // Can be TableId string (e.g., 'ticket', 'contact')
-  reference?: TableId
+  // ─────────────────────────────────────────────────────────────
+  // FIELD REFERENCE (typed, replaces untyped `reference`)
+  // ─────────────────────────────────────────────────────────────
+
+  /**
+   * Typed field reference using ResourceFieldId system.
+   * Format: `${entityDefinitionId}:${fieldId}`
+   *
+   * Examples:
+   * - "contact:email" (system field on contact)
+   * - "ticket:cm1abc123xyz" (custom field on ticket)
+   *
+   * Use parseResourceFieldId() to extract components - NO manual .split(':')
+   */
+  fieldReference?: ResourceFieldId
+
+  /**
+   * For direct resource references (e.g., "contact", "ticket")
+   * When the variable IS a resource, not a field ON a resource.
+   */
+  resourceId?: string
+
+  /**
+   * Field options using unified FieldOptions structure.
+   * Same format as custom fields for consistency.
+   */
+  options?: FieldOptions
+
+  // ─────────────────────────────────────────────────────────────
+  // STRUCTURAL TYPES
+  // ─────────────────────────────────────────────────────────────
 
   // For arrays: type of items
   items?: UnifiedVariable // Replaces itemType, now recursive
@@ -35,6 +63,10 @@ export interface UnifiedVariable {
 
   // For enums: allowed values
   enum?: (string | number)[]
+
+  // ─────────────────────────────────────────────────────────────
+  // METADATA
+  // ─────────────────────────────────────────────────────────────
 
   // Categorization
   category: 'node' | 'environment' | 'system'

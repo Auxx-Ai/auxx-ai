@@ -2,13 +2,9 @@
 'use client'
 
 import { memo, useState, useCallback, useRef, useMemo } from 'react'
-import {
-  useFieldValue,
-  toRecordId,
-  type FieldReference,
-  type FieldPath,
-  type ResourceFieldId,
-} from '~/components/resources/store/field-value-store'
+import { useFieldValue } from '~/components/resources/hooks/use-field-values'
+import { toRecordId } from '~/components/resources/store/field-value-store'
+import type { FieldReference, FieldPath, ResourceFieldId } from '@auxx/types/field'
 import { renderCellValue, type CellConfig } from '~/components/dynamic-table'
 import { CellFieldEditor } from '~/components/dynamic-table/components/cell-field-editor'
 import { useCellSelectionOptional } from '~/components/dynamic-table/context/cell-selection-context'

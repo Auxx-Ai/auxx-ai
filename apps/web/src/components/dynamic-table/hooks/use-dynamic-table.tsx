@@ -67,6 +67,7 @@ export function useDynamicTable<TData extends Record<string, any>>({
   rowSelection: controlledRowSelection,
   bulkActions,
   onColumnVisibilityChange,
+  standalone = false,
   ...props
 }: DynamicTableProps<TData>) {
   // Compute enableCheckbox from bulkActions or onRowSelectionChange
@@ -94,8 +95,11 @@ export function useDynamicTable<TData extends Record<string, any>>({
     return views.find((view) => view.isDefault) ?? null
   }, [views])
 
-  // Auto-select default view on mount if no view selected
+  // Auto-select default view on mount if no view selected (skip for standalone)
   useEffect(() => {
+    // Skip for standalone tables - they don't use views
+    if (standalone) return
+
     // Only run when store is initialized and we have views
     if (!isStoreInitialized || views.length === 0) return
 
@@ -103,7 +107,7 @@ export function useDynamicTable<TData extends Record<string, any>>({
     if (!activeViewId && defaultView) {
       setActiveViewId(defaultView.id)
     }
-  }, [isStoreInitialized, activeViewId, defaultView, views.length])
+  }, [isStoreInitialized, activeViewId, defaultView, views.length, standalone])
 
   // Sync view ID to store
   useEffect(() => {
@@ -228,13 +232,19 @@ export function useDynamicTable<TData extends Record<string, any>>({
 
       // Clear session filters
       store.setSessionFilters(tableId, [])
+
+      // For standalone tables, mark as initialized immediately
+      if (standalone && !store.initialized) {
+        store.setInitialized(true)
+      }
+
       return
     }
 
     // Switching to a view - config already loaded in store
     // Just mark that we've applied this view
     lastAppliedViewIdRef.current = viewId
-  }, [currentView, tableId, columns, enableCheckbox])
+  }, [currentView, tableId, columns, enableCheckbox, standalone])
 
   // ═══════════════════════════════════════════════════════════════════════════
   // CHECKBOX COLUMN

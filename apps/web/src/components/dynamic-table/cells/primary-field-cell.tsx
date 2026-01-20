@@ -3,7 +3,7 @@
 
 import { memo, useMemo, type ReactNode } from 'react'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { useFieldValue } from '~/components/resources/store/field-value-store'
+import { useFieldValue } from '~/components/resources/hooks/use-field-values'
 import { formatToDisplayValue } from '@auxx/lib/field-values/client'
 import type { TypedFieldValue } from '@auxx/types/field-value'
 import { PrimaryCell } from './primary-cell'

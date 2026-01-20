@@ -78,7 +78,7 @@ export function useImportFields(
         isRelation: false,
         isIdentifier: false,
         group: (f.id ? 'custom' : 'system') as FieldGroup,
-        enumValues: f.enumValues,
+        options: f.options?.options,
       }))
     result.push(...scalarFields)
 

@@ -5,6 +5,7 @@ import { useFilterFieldResolver } from './use-filter-field-resolver'
 import { BaseType } from '@auxx/lib/workflow-engine/client'
 import type { FieldDefinition } from '~/components/conditions'
 import { useResourceStore } from '~/components/resources/store/resource-store'
+import { parseResourceFieldId, isResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 
 /**
  * Sortable field types (direct)
@@ -53,9 +54,10 @@ export function useSortFieldResolver({
 
       // RELATION field - expand to show sortable subfields
       else if (field.type === BaseType.RELATION && field.fieldReference) {
-        // Parse reference: "ticket:contact" or just "contact"
-        const parts = field.fieldReference.split(':')
-        const targetTable = parts.length === 2 ? parts[1] : parts[0]
+        // Parse reference using typed parsing: "ticket:contact" or just "contact"
+        const targetTable = isResourceFieldId(field.fieldReference)
+          ? parseResourceFieldId(field.fieldReference as ResourceFieldId).fieldId
+          : field.fieldReference
 
         // Get sortable subfields from resource store
         const resource = useResourceStore.getState().resourceMap.get(targetTable)

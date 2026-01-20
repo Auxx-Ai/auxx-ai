@@ -2,7 +2,5 @@
 
 export * from './types'
 export * from './schema'
-export * from './constants'
 export { IfElseNode } from './node'
-// export { IfElsePanel } from './panel'
 export { IfElsePanel } from './panel'

@@ -91,7 +91,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
     systemSortOrder: 30,
     dbColumn: 'type',
     nullable: false,
-    enumValues: TicketType.values,
+    options: { options: TicketType.values },
     capabilities: {
       filterable: true,
       sortable: true,
@@ -115,7 +115,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
     systemSortOrder: 20,
     dbColumn: 'status',
     nullable: false,
-    enumValues: TicketStatus.values,
+    options: { options: TicketStatus.values },
     capabilities: {
       filterable: true,
       sortable: true,
@@ -137,7 +137,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
     systemSortOrder: 25,
     dbColumn: 'priority',
     nullable: false,
-    enumValues: TicketPriority.values,
+    options: { options: TicketPriority.values },
     capabilities: {
       filterable: true,
       sortable: true,

@@ -105,7 +105,7 @@ export const validateFindNodeConfig = (data: FindNodeData): ValidationResult => 
         label: fieldDef.label,
         type: fieldDef.type,
         operators: getOperatorsForType(fieldDef.type, fieldDef.operatorOverrides),
-        enumValues: fieldDef.enumValues,
+        options: fieldDef.options,
       } as const
 
       const conditionValidation = validateCondition(condition, fieldDefinition)
@@ -120,13 +120,13 @@ export const validateFindNodeConfig = (data: FindNodeData): ValidationResult => 
       }
 
       // Additional validation for enum fields
-      if (fieldDef.type === 'enum' && fieldDef.enumValues && condition.value) {
+      if (fieldDef.type === 'enum' && fieldDef.options?.length && condition.value) {
         const value = String(condition.value)
         if (!['empty', 'not empty', 'exists', 'not exists'].includes(condition.operator)) {
-          // Check if value matches any dbValue in the enum
-          const validValues = fieldDef.enumValues.map((ev) => ev.dbValue)
+          // Check if value matches any value in the options
+          const validValues = fieldDef.options.map((opt) => opt.value)
           if (!validValues.includes(value)) {
-            const validLabels = fieldDef.enumValues.map((ev) => ev.label).join(', ')
+            const validLabels = fieldDef.options.map((opt) => opt.label).join(', ')
             errors.push({
               field: `conditions.${index}.value`,
               message: `Value "${value}" is not a valid option for field "${fieldDef.label}". Valid values: ${validLabels}`,
@@ -173,7 +173,7 @@ export const validateFindNodeConfig = (data: FindNodeData): ValidationResult => 
           label: fieldDef.label,
           type: fieldDef.type,
           operators: getOperatorsForType(fieldDef.type, fieldDef.operatorOverrides),
-          enumValues: fieldDef.enumValues,
+          options: fieldDef.options,
         }
 
         const conditionValidation = validateCondition(condition, fieldDefinition)
@@ -188,12 +188,12 @@ export const validateFindNodeConfig = (data: FindNodeData): ValidationResult => 
         }
 
         // Additional validation for enum fields
-        if (fieldDef.type === 'enum' && fieldDef.enumValues && condition.value) {
+        if (fieldDef.type === 'enum' && fieldDef.options?.length && condition.value) {
           const value = String(condition.value)
           if (!['empty', 'not empty', 'exists', 'not exists'].includes(condition.operator)) {
-            const validValues = fieldDef.enumValues.map((ev) => ev.dbValue)
+            const validValues = fieldDef.options.map((opt) => opt.value)
             if (!validValues.includes(value)) {
-              const validLabels = fieldDef.enumValues.map((ev) => ev.label).join(', ')
+              const validLabels = fieldDef.options.map((opt) => opt.label).join(', ')
               errors.push({
                 field: `conditionGroups.${groupIndex}.conditions.${conditionIndex}.value`,
                 message: `Value "${value}" is not a valid option for field "${fieldDef.label}". Valid values: ${validLabels}`,

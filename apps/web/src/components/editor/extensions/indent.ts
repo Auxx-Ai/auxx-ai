@@ -2,7 +2,13 @@
 // https://github.com/ueberdosis/tiptap/issues/1036#issuecomment-981094752
 // https://github.com/django-tiptap/django_tiptap/blob/main/django_tiptap/templates/forms/tiptap_textarea.html#L453-L602
 
-import { CommandProps, Extension, Extensions, isList, KeyboardShortcutCommand } from '@tiptap/core'
+import {
+  type CommandProps,
+  Extension,
+  type Extensions,
+  isList,
+  type KeyboardShortcutCommand,
+} from '@tiptap/core'
 import { TextSelection, Transaction } from 'prosemirror-state'
 
 declare module '@tiptap/core' {

@@ -12,7 +12,7 @@ export { RESOURCE_TABLE_REGISTRY, RESOURCE_TABLE_MAP, isValidTableId } from './r
 export type { TableId } from './registry'
 export type {
   ResourceField,
-  EnumValue,
+  FieldOptionItem,
   FieldCapabilities,
   FieldValidation,
   ResourceFieldRegistry,

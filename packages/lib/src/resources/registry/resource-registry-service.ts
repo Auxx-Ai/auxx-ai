@@ -677,22 +677,11 @@ export class ResourceRegistryService {
         }
       }
 
-      // Build enumValues for workflow engine (uses dbValue)
-      const enumValues = isSelectType
-        ? rawOptions?.options?.map((o) => ({
-            dbValue: o.value,
-            label: o.label,
-            color: o.color,
-            targetTimeInStatus: o.targetTimeInStatus,
-            celebration: o.celebration,
-          }))
-        : undefined
-
       // Build normalized options for UI (uses value key, includes relationship)
       const normalizedOptions: ResourceField['options'] = {
         // Spread existing flat display options (checkboxStyle, decimals, format, etc.)
         ...(field.options as ResourceField['options']),
-        // Normalized enum options for UI (uses 'value' key instead of 'dbValue')
+        // Select options with 'value' key
         options: isSelectType
           ? rawOptions?.options?.map((o) => ({
               value: o.value,
@@ -749,9 +738,6 @@ export class ResourceRegistryService {
           computed: field.isComputed,
           unique: field.isUnique,
         },
-
-        // enumValues for workflow engine (uses dbValue)
-        enumValues,
 
         // Top-level relationship for workflow engine
         relationship,

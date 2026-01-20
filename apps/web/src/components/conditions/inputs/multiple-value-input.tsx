@@ -80,13 +80,8 @@ const MultipleValueInput: React.FC<MultipleValueInputProps> = ({
             defaultIsConstantMode={true}
             fieldOptions={(() => {
               const opts: { enum?: Array<{ label: string; value: string }>; fieldReference?: string } = {}
-              if (field.enumValues) {
-                opts.enum = field.enumValues.map((enumValue) => {
-                  if (typeof enumValue === 'string') {
-                    return { label: enumValue, value: enumValue }
-                  }
-                  return { label: enumValue.label, value: enumValue.dbValue }
-                })
+              if (field.options?.length) {
+                opts.enum = field.options
               }
               if (field.fieldReference) {
                 opts.fieldReference = field.fieldReference

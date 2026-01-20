@@ -12,7 +12,6 @@ export {
   type SaveMappingInput,
   type RelationConfig,
   type AutoMapUpdateInput,
-  type EnumValue,
 } from './save-mapping-property'
 
 export {

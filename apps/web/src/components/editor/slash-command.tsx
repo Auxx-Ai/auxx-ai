@@ -1,8 +1,8 @@
 // components/editor/SlashCommand.tsx
 import { ReactRenderer } from '@tiptap/react'
-import tippy, { Instance, Props as TippyProps } from 'tippy.js' // Import types
+import tippy, { type Instance, type Props as TippyProps } from 'tippy.js' // Import types
 import { Extension } from '@tiptap/core'
-import Suggestion, { SuggestionOptions, SuggestionProps } from '@tiptap/suggestion'
+import Suggestion, { type SuggestionOptions, type SuggestionProps } from '@tiptap/suggestion'
 import {
   Command,
   CommandEmpty,

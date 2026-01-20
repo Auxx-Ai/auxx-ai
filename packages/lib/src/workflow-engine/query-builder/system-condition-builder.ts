@@ -25,7 +25,7 @@ import {
 } from 'drizzle-orm'
 import { RESOURCE_FIELD_REGISTRY, RESOURCE_TABLE_MAP } from '../../resources/registry'
 import type { TableId } from '../../resources/registry/field-registry'
-import type { EnumValue } from '../../resources/registry/field-types'
+import { type FieldOptionItem, getFieldOptions } from '../../resources/registry/option-helpers'
 import type { Operator } from '../operators/definitions'
 import { BaseConditionBuilder, type GenericCondition } from './base-condition-builder'
 
@@ -55,12 +55,12 @@ export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
       return undefined
     }
 
-    // Extract ID from object format and transform enum labels
+    // Extract ID from object format and transform option labels
     let rawValue = this.extractReferenceId(condition.value)
     if (fieldMeta.type === 'enum') {
-      const enumValues = this.getEnumValues(condition.fieldId, resourceType)
-      if (enumValues) {
-        rawValue = this.labelToDbValue(enumValues, rawValue)
+      const fieldOpts = this.getFieldOptions(condition.fieldId, resourceType)
+      if (fieldOpts && fieldOpts.length > 0) {
+        rawValue = this.labelToStoredValue(fieldOpts, rawValue)
       }
     }
 
@@ -108,9 +108,9 @@ export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
     return this.baseTypeToQueryType(field.type)
   }
 
-  protected getEnumValues(fieldId: string, resourceType: TableId): EnumValue[] | undefined {
+  protected getFieldOptions(fieldId: string, resourceType: TableId): FieldOptionItem[] | undefined {
     const field = RESOURCE_FIELD_REGISTRY[resourceType]?.[fieldId]
-    return field?.enumValues
+    return getFieldOptions(field)
   }
 
   // ─────────────────────────────────────────────────────────────────
@@ -190,13 +190,13 @@ export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
 
       // ===== SET =====
       case 'in': {
-        const values = this.normalizeArrayWithEnums(rawValue, normalizedType, resourceType, fieldId)
+        const values = this.normalizeArrayWithOptions(rawValue, normalizedType, resourceType, fieldId)
         if (!values.length) return undefined
         return this.combineColumnPredicates(columns, (col) => inArray(col, values))
       }
 
       case 'not in': {
-        const values = this.normalizeArrayWithEnums(rawValue, normalizedType, resourceType, fieldId)
+        const values = this.normalizeArrayWithOptions(rawValue, normalizedType, resourceType, fieldId)
         if (!values.length) return undefined
         return this.combineColumnPredicates(columns, (col) => notInArray(col, values), 'and')
       }
@@ -298,23 +298,23 @@ export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
   }
 
   /**
-   * Normalize array with enum transformation
+   * Normalize array with option label transformation
    */
-  private normalizeArrayWithEnums(
+  private normalizeArrayWithOptions(
     value: any,
     expectedType: string,
     resourceType: TableId,
     fieldId: string
   ): (string | number | boolean | Date)[] {
-    const enumValues =
-      expectedType === 'enum' ? this.getEnumValues(fieldId, resourceType) : undefined
+    const fieldOpts =
+      expectedType === 'enum' ? this.getFieldOptions(fieldId, resourceType) : undefined
 
     const values = Array.isArray(value) ? value : [value]
     return values
       .map((item) => {
         item = this.extractReferenceId(item)
-        if (expectedType === 'enum' && enumValues) {
-          item = this.labelToDbValue(enumValues, item)
+        if (expectedType === 'enum' && fieldOpts && fieldOpts.length > 0) {
+          item = this.labelToStoredValue(fieldOpts, item)
         }
         return this.convertValue(item, expectedType === 'enum' ? 'string' : expectedType)
       })

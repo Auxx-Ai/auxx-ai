@@ -1,7 +1,8 @@
 // packages/lib/src/resources/registry/index.ts
 
 import { RESOURCE_FIELD_REGISTRY, type TableId, isValidTableId } from './field-registry'
-import type { ResourceField, EnumValue } from './field-types'
+import type { ResourceField } from './field-types'
+import { getFieldOptions, isValidOptionValue, getOptionLabel, hasOptions } from './option-helpers'
 
 // Re-export for easy access
 export { isValidTableId }
@@ -85,31 +86,28 @@ export function getReadOnlyFields(resourceType: TableId): ResourceField[] {
 }
 
 /**
- * Validate enum value for a field
- * Accepts both dbValue (e.g., 'MEDIUM') and label (e.g., 'Medium') formats
+ * Validate option value for a field.
+ * Accepts both value (e.g., 'MEDIUM') and label (e.g., 'Medium') formats.
  */
-export function isValidEnumValue(resourceType: TableId, fieldKey: string, value: string): boolean {
+export function isValidFieldOptionValue(resourceType: TableId, fieldKey: string, value: string): boolean {
   const field = RESOURCE_FIELD_REGISTRY[resourceType]?.[fieldKey]
-  if (!field || !field.enumValues) return true
-
-  return field.enumValues.some((ev) => ev.dbValue === value || ev.label === value)
+  return isValidOptionValue(field, value)
 }
 
 /**
- * Get enum values for a field
+ * Get options for a field.
  */
-export function getEnumValues(resourceType: TableId, fieldKey: string): EnumValue[] {
+export function getFieldOptionsForResource(resourceType: TableId, fieldKey: string) {
   const field = RESOURCE_FIELD_REGISTRY[resourceType]?.[fieldKey]
-  return field?.enumValues || []
+  return getFieldOptions(field)
 }
 
 /**
- * Get enum label for a database value
+ * Get option label for a stored value.
  */
-export function getEnumLabel(resourceType: TableId, fieldKey: string, dbValue: string): string {
-  const enumValues = getEnumValues(resourceType, fieldKey)
-  const enumValue = enumValues.find((ev) => ev.dbValue === dbValue)
-  return enumValue?.label || dbValue
+export function getFieldOptionLabel(resourceType: TableId, fieldKey: string, value: string): string {
+  const field = RESOURCE_FIELD_REGISTRY[resourceType]?.[fieldKey]
+  return getOptionLabel(field, value)
 }
 
 /**
@@ -160,12 +158,21 @@ export {
 } from './field-registry'
 export type {
   ResourceField,
-  EnumValue,
   FieldCapabilities,
   FieldValidation,
   ResourceFieldRegistry,
   ResourceTableDefinition,
 } from './field-types'
+
+// Re-export option helpers
+export {
+  getFieldOptions,
+  isValidOptionValue,
+  getOptionLabel,
+  labelToValue,
+  hasOptions,
+  type FieldOptionItem,
+} from './option-helpers'
 // export * from './enum-values'
 
 // Re-export field utility functions

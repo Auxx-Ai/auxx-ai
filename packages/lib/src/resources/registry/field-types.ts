@@ -1,29 +1,9 @@
-// packages/lib/src/workflow-engine/resources/registry/field-types.ts
+// packages/lib/src/resources/registry/field-types.ts
 
 import { BaseType } from '../types'
-import type { TargetTimeInStatus } from '@auxx/services/custom-fields'
 import type { FieldType } from '@auxx/database/types'
 import type { FieldOptions } from '../../field-values/converters'
 import type { FieldId, ResourceFieldId } from '@auxx/types/field'
-
-/**
- * Enum value with UI metadata
- * Represents a single enum option with its database value and display label
- */
-export interface EnumValue {
-  /** Value stored in database (e.g., 'OPEN', 'LOW', 'ACTIVE') */
-  dbValue: string
-  /** Human-readable label shown in UI (e.g., 'Open', 'Low', 'Active') */
-  label: string
-  /** Optional description for tooltips or help text */
-  description?: string
-  /** Color for kanban column headers and select badges */
-  color?: string
-  /** Target time for items to remain in this status (kanban time tracking) */
-  targetTimeInStatus?: TargetTimeInStatus
-  /** Trigger celebration animation when cards move to this column (kanban) */
-  celebration?: boolean
-}
 
 /**
  * Table-level metadata for a resource
@@ -135,10 +115,6 @@ export interface ResourceField {
   /** Whether field allows NULL values in database */
   nullable?: boolean
 
-  // Enum configuration (only for ENUM type)
-  /** Available enum values with labels */
-  enumValues?: EnumValue[]
-
   // Field options (display options, currency config, etc.)
   /** Field options from CustomField.options - contains display options (checkboxStyle, decimals, format, etc.) */
   options?: FieldOptions
@@ -194,7 +170,7 @@ export interface ResourceField {
   /**
    * Default value to use when resource type changes.
    * Applies in both create and update modes.
-   * For ENUM types, should be one of the enumValues dbValue strings.
+   * For ENUM types, should be one of the options value strings.
    * For other types, should match the field type (string, number, boolean, etc.).
    * Users can clear this value if the field is optional.
    * @optional

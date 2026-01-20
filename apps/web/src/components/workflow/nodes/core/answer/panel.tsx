@@ -70,9 +70,9 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
       if (!variable) return null
 
       // Check if it's a RELATION type with thread or message reference
-      if (variable.type === BaseType.RELATION) {
-        if (variable.reference === 'thread') return 'thread'
-        if (variable.reference === 'message') return 'message'
+      if (variable.type === BaseType.RELATION && variable.resourceId) {
+        if (variable.resourceId === 'thread') return 'thread'
+        if (variable.resourceId === 'message') return 'message'
       }
 
       return null

@@ -91,8 +91,8 @@ const FindPanelComponent: React.FC<FindPanelProps> = ({ nodeId, data }) => {
       type: field.type,
       fieldType: field.fieldType,
       operators: field.operatorOverrides || getFieldOperators(field),
-      // Pass full enum objects so value-input uses dbValue for storage, label for display
-      enumValues: field.enumValues,
+      // Pass options for select fields
+      options: field.options?.options,
       // Add fieldReference for RELATION type fields
       // Format: "resourceType:fieldKey" (e.g., "ticket:contact")
       ...(field.type === BaseType.RELATION &&

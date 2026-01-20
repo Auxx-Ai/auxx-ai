@@ -13,6 +13,7 @@ import { isNodeVariable } from '~/components/workflow/utils/variable-utils'
 import { useVariable } from '~/components/workflow/hooks/use-var-store-sync'
 import { useResourceStore } from '~/components/resources/store/resource-store'
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
+import { toResourceFieldId } from '@auxx/types/field'
 
 /**
  * Options for the field resolver hook
@@ -67,8 +68,8 @@ export function useFilterFieldResolver({ nodeId, inputListValue }: UseFilterFiel
       return []
     }
     // CASE 1: Item is a reference to a known resource type
-    if (itemVar.reference) {
-      const resource = useResourceStore.getState().resourceMap.get(itemVar.reference)
+    if (itemVar.resourceId) {
+      const resource = useResourceStore.getState().resourceMap.get(itemVar.resourceId)
       if (resource) {
         const filterableFields = resource.fields
           .filter((field) => field.capabilities.filterable) // Only filterable fields
@@ -79,11 +80,11 @@ export function useFilterFieldResolver({ nodeId, inputListValue }: UseFilterFiel
               type: field.type,
               fieldType: field.fieldType,
               operators: getFieldOperators(field) as Operator[],
-              enumValues: field.enumValues,
+              options: field.options?.options,
               // Add fieldReference and targetTable for RELATION type fields
               ...(field.type === BaseType.RELATION &&
                 field.relationship && {
-                  fieldReference: `${itemVar.reference}:${field.key}`,
+                  fieldReference: toResourceFieldId(itemVar.resourceId!, field.key),
                   targetTable: getRelatedEntityDefinitionId(
                     field.relationship as RelationshipConfig
                   ) ?? undefined,
@@ -102,12 +103,14 @@ export function useFilterFieldResolver({ nodeId, inputListValue }: UseFilterFiel
           label: prop.label || key,
           type: prop.type,
           operators: getOperatorsForType(prop.type),
-          enumValues: prop.enum?.map(String),
+          options: prop.options?.options,
           description: prop.description,
-          // Preserve field reference for relation types (reference is only set on RELATION fields)
-          ...(prop.reference && {
-            fieldReference: `${itemVar.reference}:${key}`,
-          }),
+          // Preserve field reference for relation types
+          ...(prop.fieldReference
+            ? { fieldReference: prop.fieldReference }
+            : prop.resourceId && itemVar.resourceId
+              ? { fieldReference: toResourceFieldId(itemVar.resourceId, key) }
+              : {}),
         })
       )
       return fields

@@ -13,7 +13,8 @@ import type { SQL } from 'drizzle-orm'
 import { FIND_RESOURCE_CONFIGS } from '../../../resources/find-definitions'
 import {
   RESOURCE_FIELD_REGISTRY,
-  isValidEnumValue,
+  isValidFieldOptionValue,
+  getFieldOptions,
   getFieldOperators,
   isValidOperatorForField,
   isSystemResourceId,
@@ -110,27 +111,27 @@ export class FindProcessor extends BaseNodeProcessor {
         continue
       }
 
-      // ✅ Validate enum values (updated to use 'is' operator)
+      // ✅ Validate option values (updated to use 'is' operator)
       if (field.type === BaseType.ENUM && condition.operator === 'is') {
         if (
-          !isValidEnumValue(resourceType as TableId, condition.fieldId, String(condition.value))
+          !isValidFieldOptionValue(resourceType as TableId, condition.fieldId, String(condition.value))
         ) {
-          const validValues = field.enumValues?.map((ev) => ev.dbValue).join(', ') || ''
+          const validValues = getFieldOptions(field).map((opt) => opt.value).join(', ')
           errors.push(
             `Invalid value for ${field.label}: "${condition.value}". Valid values: ${validValues}`
           )
         }
       }
 
-      // Validate 'in' operator enum values
+      // Validate 'in' operator option values
       if (
         field.type === BaseType.ENUM &&
         (condition.operator === 'in' || condition.operator === 'not in')
       ) {
         const values = Array.isArray(condition.value) ? condition.value : [condition.value]
         for (const val of values) {
-          if (!isValidEnumValue(resourceType as TableId, condition.fieldId, String(val))) {
-            const validValues = field.enumValues?.map((ev) => ev.dbValue).join(', ') || ''
+          if (!isValidFieldOptionValue(resourceType as TableId, condition.fieldId, String(val))) {
+            const validValues = getFieldOptions(field).map((opt) => opt.value).join(', ')
             errors.push(`Invalid value for ${field.label}: "${val}". Valid values: ${validValues}`)
           }
         }

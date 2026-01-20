@@ -151,12 +151,8 @@ export function createCustomFieldColumns<T extends { id: string }>(
       fieldType = mapBaseTypeToFieldType(field.type)
       label = field.label
 
-      // Build options object for cell renderer
-      // For SELECT fields: convert enumValues to options array format
-      // For other fields: pass field.options directly (contains display options)
-      cellOptions = field.enumValues
-        ? { options: field.enumValues.map((e) => ({ label: e.label, value: e.dbValue })) }
-        : field.options
+      // Pass field.options directly (contains options array and display options)
+      cellOptions = field.options
 
       canSort = field.capabilities?.sortable ?? true
       canFilter = field.capabilities?.filterable ?? true

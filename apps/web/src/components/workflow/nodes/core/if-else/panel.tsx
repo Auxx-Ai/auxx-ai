@@ -9,7 +9,7 @@ import { ifElseDefinition } from './schema'
 import { ConditionProvider, ConditionContainer } from '~/components/conditions'
 import { useIfElseConditionAdapter } from './adapters/condition-adapter'
 import { useAvailableVariables } from '~/components/workflow/hooks'
-import { parseVariable } from '~/components/workflow/utils/variable-utils'
+import { getVariableFieldDefinition } from '~/components/workflow/utils/variable-utils'
 
 interface IfElsePanelProps {
   nodeId: string
@@ -47,8 +47,8 @@ const IfElsePanelComponent: React.FC<IfElsePanelProps> = ({ nodeId, data }) => {
     const variable = allVariablesRef.current.find((v) => v.id === fieldId)
     if (!variable) return undefined
 
-    // Use unified parseVariable function that handles all the type detection and metadata
-    return parseVariable(variable)
+    // Use getVariableFieldDefinition for typed parsing (replaces parseVariable)
+    return getVariableFieldDefinition(variable)
   }, [])
 
   return (
@@ -70,9 +70,6 @@ const IfElsePanelComponent: React.FC<IfElsePanelProps> = ({ nodeId, data }) => {
           />
         </div>
       </ConditionProvider>
-      {/* <IfElseProvider nodeId={nodeId} data={inputs} setInputs={setInputs} readOnly={isReadOnly}>
-        <ConditionWrap cases={inputs.cases} />
-      </IfElseProvider> */}
 
       <OutputVariablesDisplay
         outputVariables={ifElseDefinition.outputVariables?.(data, nodeId) || []}

@@ -14,6 +14,7 @@ import type { ResourceField } from './registry/field-types'
 import { BaseType } from './types'
 import { createRelationshipCollection } from './registry/relationship-utils'
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
+import { toResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 
 // Import types - these will resolve at runtime in the frontend
 type UnifiedVariable = any
@@ -86,18 +87,18 @@ function getFieldsForResource(
  * Get resource metadata for a resource (system or custom)
  */
 function getResourceMeta(
-  resourceId: string,
+  entityDefinitionId: string,
   options?: VariableGeneratorOptions
 ): ResourceMeta | undefined {
   // Try static registry first (system resources)
-  const tableMeta = RESOURCE_TABLE_MAP[resourceId as TableId]
+  const tableMeta = RESOURCE_TABLE_MAP[entityDefinitionId as TableId]
   if (tableMeta) {
-    return { id: resourceId, label: tableMeta.label, plural: tableMeta.plural }
+    return { id: entityDefinitionId, label: tableMeta.label, plural: tableMeta.plural }
   }
 
   // Fall back to resourcesMap (custom entities)
   if (options?.resourcesMap) {
-    const resource = options.resourcesMap.get(resourceId)
+    const resource = options.resourcesMap.get(entityDefinitionId)
     if (resource) {
       return { id: resource.id, label: resource.label, plural: resource.plural }
     }
@@ -116,7 +117,16 @@ function createNestedVariable(config: {
   type: BaseType
   label?: string
   description?: string
-  reference?: TableId | string // Allow reference field for resource type marking (TableId or field reference string)
+  /**
+   * Typed field reference.
+   * Format: `${entityDefinitionId}:${fieldId}`
+   */
+  fieldReference?: ResourceFieldId
+  /**
+   * Direct resource ID.
+   * For when the variable IS a resource, not a field ON a resource.
+   */
+  resourceId?: string
   properties?: Record<
     string,
     {
@@ -125,7 +135,8 @@ function createNestedVariable(config: {
       label?: string
       properties?: any
       items?: any
-      reference?: TableId | string // Allow reference in nested properties
+      fieldReference?: ResourceFieldId
+      resourceId?: string
     }
   >
   items?: {
@@ -133,21 +144,23 @@ function createNestedVariable(config: {
     description?: string
     label?: string
     properties?: any
-    reference?: TableId | string // Allow reference in array items
+    fieldReference?: ResourceFieldId
+    resourceId?: string
   }
 }): UnifiedVariable {
   const fullPath = `${config.nodeId}.${config.basePath}`
-  const label = config.label // || config.basePath.split('.').pop() || config.basePath
+  const label = config.label
 
   // Only include specific props from config if they exist
   const variable: UnifiedVariable = {
     id: fullPath,
-    // nodeId: config.nodeId,
     type: config.type,
     label: label,
     category: 'node',
     ...(config.description && { description: config.description }),
-    ...(config.reference && { reference: config.reference }),
+    // Typed field references
+    ...(config.fieldReference && { fieldReference: config.fieldReference }),
+    ...(config.resourceId && { resourceId: config.resourceId }),
   }
 
   // Recursively create property variables with full paths
@@ -202,7 +215,7 @@ export function createResourceVariables(resourceType: TableId, nodeId: string): 
     label: tableMeta.label,
     description: `${tableMeta.label} that triggered this workflow`,
     properties,
-    reference: resourceType, // Mark as resource type for type filtering
+    resourceId: resourceType,
   })
 }
 
@@ -428,7 +441,7 @@ function convertFieldToVariableProperty(
         label: field.label,
         description: field.description,
         properties,
-        reference: `${tableId}:${field.key}`,
+        fieldReference: toResourceFieldId(tableId, field.key),
       }
     }
 
@@ -480,8 +493,7 @@ function convertFieldToVariableProperty(
 
       // Use helper function to create collection structure
       const collectionProperties = createRelationshipCollection(
-        targetMeta?.label || relatedEntityDefinitionId || 'entity',
-        relationshipType
+        targetMeta?.label || relatedEntityDefinitionId || 'entity'
       )
 
       // Set the values property with proper item structure for UI rendering
@@ -489,7 +501,7 @@ function convertFieldToVariableProperty(
         type: BaseType.OBJECT,
         label: targetMeta?.label || relatedEntityDefinitionId || 'entity',
         properties: itemProperties,
-        reference: relatedEntityDefinitionId,
+        resourceId: relatedEntityDefinitionId,
       }
 
       return {
@@ -497,7 +509,7 @@ function convertFieldToVariableProperty(
         label: field.label,
         description: field.description,
         properties: collectionProperties,
-        reference: relatedEntityDefinitionId,
+        resourceId: relatedEntityDefinitionId,
       }
     }
 
@@ -524,8 +536,7 @@ function convertFieldToVariableProperty(
       }
 
       const collectionProperties = createRelationshipCollection(
-        targetMeta?.label || relatedEntityDefinitionId || 'entity',
-        relationshipType
+        targetMeta?.label || relatedEntityDefinitionId || 'entity'
       )
 
       // Set the values property with proper item structure for UI rendering
@@ -533,7 +544,7 @@ function convertFieldToVariableProperty(
         type: BaseType.OBJECT,
         label: targetMeta?.label || relatedEntityDefinitionId || 'entity',
         properties: itemProperties,
-        reference: relatedEntityDefinitionId,
+        resourceId: relatedEntityDefinitionId,
       }
 
       return {
@@ -541,28 +552,30 @@ function convertFieldToVariableProperty(
         label: field.label,
         description: field.description,
         properties: collectionProperties,
-        reference: relatedEntityDefinitionId,
+        resourceId: relatedEntityDefinitionId,
       }
     }
   }
 
   // Handle other types (STRING, EMAIL, ENUM, etc.)
+  const fieldOptions = field.options?.options
   return {
     type: field.type,
     label: field.label,
     description: field.description || `${field.label} of the resource`,
-    // Include enum values if this is an enum field
-    ...(field.enumValues && {
-      enum: field.enumValues.map((ev) => ev.dbValue),
-      // Optional: Add enum labels for UI
-      enumLabels: field.enumValues.reduce(
-        (acc, ev) => {
-          acc[ev.dbValue] = ev.label
-          return acc
-        },
-        {} as Record<string, string>
-      ),
-    }),
+    // Include enum values if this is an enum field with options
+    ...(fieldOptions &&
+      fieldOptions.length > 0 && {
+        enum: fieldOptions.map((opt) => opt.value),
+        // Optional: Add enum labels for UI
+        enumLabels: fieldOptions.reduce(
+          (acc, opt) => {
+            acc[opt.value] = opt.label
+            return acc
+          },
+          {} as Record<string, string>
+        ),
+      }),
   }
 }
 
@@ -621,7 +634,7 @@ export function generateResourceOutputVariables(
         label: resourceType.charAt(0).toUpperCase() + resourceType.slice(1),
         description: `${resourceType} record from the database`,
         properties,
-        reference: resourceType,
+        resourceId: resourceType,
       })
 
     case 'array':
@@ -633,7 +646,7 @@ export function generateResourceOutputVariables(
         label: resourceType.charAt(0).toUpperCase() + resourceType.slice(1),
         description: `${resourceType} record`,
         properties,
-        reference: resourceType,
+        resourceId: resourceType,
       })
 
     case 'crud-create':
@@ -646,7 +659,7 @@ export function generateResourceOutputVariables(
         label: resourceType.charAt(0).toUpperCase() + resourceType.slice(1),
         description: `The ${mode === 'crud-create' ? 'created' : 'updated'} ${resourceType}`,
         properties,
-        reference: resourceType,
+        resourceId: resourceType,
       })
 
     case 'crud-delete':
@@ -816,7 +829,7 @@ export function generateFindNodeVariablesFromFields(
         label: resourceMeta.label,
         description: `Found ${resourceMeta.label.toLowerCase()} (null if not found)`,
         properties,
-        reference: resourceMeta.id,
+        resourceId: resourceMeta.id,
       })
     )
   } else {
@@ -829,7 +842,7 @@ export function generateFindNodeVariablesFromFields(
       label: resourceMeta.label,
       description: `${resourceMeta.label} record`,
       properties,
-      reference: resourceMeta.id,
+      resourceId: resourceMeta.id,
     })
 
     variables.push({
@@ -993,7 +1006,7 @@ export function generateCrudNodeVariablesFromFields(
         label: resourceMeta.label,
         description: `The ${modeLabel} ${resourceMeta.label.toLowerCase()}`,
         properties,
-        reference: resourceMeta.id,
+        resourceId: resourceMeta.id,
       })
     )
   }
@@ -1160,7 +1173,7 @@ export function generateResourceTriggerVariablesFromFields(
       label: resourceMeta.label,
       description: `The ${resourceMeta.label.toLowerCase()} that was ${operation}`,
       properties,
-      reference: resourceMeta.id,
+      resourceId: resourceMeta.id,
     })
   )
 

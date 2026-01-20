@@ -10,10 +10,8 @@ import {
   useRef,
 } from 'react'
 
-import {
-  useFieldValue,
-  type StoredFieldValue,
-} from '~/components/resources/store/field-value-store'
+import { useFieldValue } from '~/components/resources/hooks/use-field-values'
+import type { StoredFieldValue } from '~/components/resources/store/field-value-store'
 
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 

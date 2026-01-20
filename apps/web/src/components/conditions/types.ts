@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react'
 import { BaseType } from '@auxx/lib/workflow-engine/types'
+import type { SelectOption } from '@auxx/types/custom-field'
 
 // Import from shared conditions module - single source of truth
 import type { Condition, ConditionGroup as BaseConditionGroup } from '@auxx/lib/conditions/client'
@@ -65,7 +66,7 @@ export interface FieldDefinition {
   type: BaseType
   fieldType?: FieldType
   operators?: Operator[]
-  enumValues?: (string | { label: string; dbValue: string })[]
+  options?: SelectOption[]
   subFields?: FieldDefinition[]
   placeholder?: string
   description?: string

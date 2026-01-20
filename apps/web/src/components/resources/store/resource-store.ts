@@ -177,12 +177,7 @@ function isFieldContentEqual(a: ResourceField, b: ResourceField): boolean {
     return false
   }
 
-  // Compare enum values (deep)
-  if (!deepEqual(a.enumValues, b.enumValues)) {
-    return false
-  }
-
-  // Compare options
+  // Compare options (includes select options)
   if (!deepEqual(a.options, b.options)) {
     return false
   }

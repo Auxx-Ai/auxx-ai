@@ -121,20 +121,6 @@ export function useDynamicFieldOptions(fields: ResourceField[]): {
           }
         }
       }
-      // Wrap static options in nested structure for compatibility
-      if (field.enumValues && !field.options?.options) {
-        return {
-          ...field,
-          options: {
-            ...field.options,
-            options: field.enumValues.map((e) => ({
-              value: e.dbValue,
-              label: e.label,
-              color: e.color,
-            })),
-          },
-        }
-      }
       return field
     })
   }, [fields, optionsMap])

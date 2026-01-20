@@ -5,13 +5,8 @@
 import { memo, useMemo } from 'react'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { FormattedCell, CellPadding } from './formatted-cell'
-import {
-  useFieldValue,
-  type FieldReference,
-  type FieldPath,
-  type ResourceFieldId,
-  isFieldPath,
-} from '~/components/resources/store/field-value-store'
+import { useFieldValue } from '~/components/resources/hooks/use-field-values'
+import { type FieldReference, type FieldPath, type ResourceFieldId, isFieldPath } from '@auxx/types/field'
 import { useField } from '~/components/resources/hooks/use-field'
 import { decodeColumnId } from '../utils/column-id'
 import type { RecordId } from '@auxx/lib/resources/client'

@@ -4,7 +4,7 @@ import { and, or, type SQL } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
 import type { Operator } from '../operators/definitions'
 import { operatorRequiresValue } from '../operators/definitions'
-import type { EnumValue } from '../../resources/registry/field-types'
+import { type FieldOptionItem, labelToValue } from '../../resources/registry/option-helpers'
 import { BaseType } from '../core/types'
 
 // Import from shared conditions module
@@ -145,13 +145,14 @@ export abstract class BaseConditionBuilder<TContext> {
         }
       }
 
-      // Validate enum values if applicable
-      const enumValues = this.getEnumValues(fieldKey, context)
-      if (enumValues && condition.value) {
-        const validLabels = enumValues.map((ev) => ev.label)
+      // Validate option values if applicable
+      const fieldOptions = this.getFieldOptions(fieldKey, context)
+      if (fieldOptions && fieldOptions.length > 0 && condition.value) {
+        const validValues = fieldOptions.map((opt) => opt.value)
+        const validLabels = fieldOptions.map((opt) => opt.label)
         const values = Array.isArray(condition.value) ? condition.value : [condition.value]
         for (const val of values) {
-          if (typeof val === 'string' && !validLabels.includes(val)) {
+          if (typeof val === 'string' && !validValues.includes(val) && !validLabels.includes(val)) {
             const displayRef = Array.isArray(fieldRef) ? fieldRef.join(' → ') : fieldRef
             errors.push(`Invalid value '${val}' for field '${displayRef}'`)
           }
@@ -369,15 +370,13 @@ export abstract class BaseConditionBuilder<TContext> {
   }
 
   /**
-   * Convert enum label(s) to database value(s)
+   * Convert option label(s) to stored value(s).
    */
-  protected labelToDbValue(enumValues: EnumValue[], label: string | string[]): string | string[] {
-    if (Array.isArray(label)) {
-      return label.map((v) => this.labelToDbValue(enumValues, v) as string)
-    }
-
-    const enumValue = enumValues.find((ev) => ev.label === label)
-    return enumValue?.dbValue ?? label
+  protected labelToStoredValue(
+    options: FieldOptionItem[],
+    label: string | string[]
+  ): string | string[] {
+    return labelToValue(options, label)
   }
 
   // ─────────────────────────────────────────────────────────────────
@@ -408,7 +407,10 @@ export abstract class BaseConditionBuilder<TContext> {
   protected abstract getFieldType(fieldId: string, context: TContext): string | undefined
 
   /**
-   * Get enum values for a field (for validation)
+   * Get field options for a field (for validation)
    */
-  protected abstract getEnumValues(fieldId: string, context: TContext): EnumValue[] | undefined
+  protected abstract getFieldOptions(
+    fieldId: string,
+    context: TContext
+  ): FieldOptionItem[] | undefined
 }

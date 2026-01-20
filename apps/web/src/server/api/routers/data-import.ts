@@ -235,10 +235,10 @@ export const dataImportRouter = createTRPCRouter({
             relationshipType: z.enum(['belongs_to', 'has_one', 'has_many', 'many_to_many']),
           })
           .optional(),
-        enumValues: z
+        options: z
           .array(
             z.object({
-              dbValue: z.string(),
+              value: z.string(),
               label: z.string(),
             })
           )
@@ -263,7 +263,7 @@ export const dataImportRouter = createTRPCRouter({
         resolutionType: input.resolutionType,
         matchField: input.matchField,
         relationConfig: input.relationConfig,
-        enumValues: input.enumValues,
+        options: input.options,
       })
 
       return { success: true }

@@ -25,70 +25,70 @@ export function resolveSelectValue(rawValue: string, config: ResolutionConfig): 
     return { type: 'value', value: null }
   }
 
-  const enumValues = config.enumValues || []
+  const fieldOptions = config.options || []
 
-  // 1. Exact match on dbValue
-  const exactMatch = enumValues.find((e) => e.dbValue === trimmed)
+  // 1. Exact match on value
+  const exactMatch = fieldOptions.find((opt) => opt.value === trimmed)
   if (exactMatch) {
-    return { type: 'value', value: exactMatch.dbValue }
+    return { type: 'value', value: exactMatch.value }
   }
 
   // 2. Case-insensitive match on label
   const lowerTrimmed = trimmed.toLowerCase()
-  const labelMatch = enumValues.find((e) => e.label.toLowerCase() === lowerTrimmed)
+  const labelMatch = fieldOptions.find((opt) => opt.label.toLowerCase() === lowerTrimmed)
   if (labelMatch) {
-    return { type: 'value', value: labelMatch.dbValue }
+    return { type: 'value', value: labelMatch.value }
   }
 
-  // 3. Case-insensitive match on dbValue
-  const dbValueMatch = enumValues.find((e) => e.dbValue.toLowerCase() === lowerTrimmed)
-  if (dbValueMatch) {
-    return { type: 'value', value: dbValueMatch.dbValue }
+  // 3. Case-insensitive match on value
+  const valueMatch = fieldOptions.find((opt) => opt.value.toLowerCase() === lowerTrimmed)
+  if (valueMatch) {
+    return { type: 'value', value: valueMatch.value }
   }
 
   // 4. Normalized matching (handles separators/casing variations like "in_progress" → "In Progress")
   const normalizedInput = normalizeForComparison(trimmed)
-  const normalizedMatch = enumValues.find(
-    (e) =>
-      normalizeForComparison(e.dbValue) === normalizedInput ||
-      normalizeForComparison(e.label) === normalizedInput
+  const normalizedMatch = fieldOptions.find(
+    (opt) =>
+      normalizeForComparison(opt.value) === normalizedInput ||
+      normalizeForComparison(opt.label) === normalizedInput
   )
   if (normalizedMatch) {
     return {
       type: 'warning',
-      value: normalizedMatch.dbValue,
+      value: normalizedMatch.value,
       warning: `Auto-corrected "${rawValue}" to "${normalizedMatch.label}"`,
     }
   }
 
   // 5. Boolean-like matching for binary enum fields
-  if (enumValues.length === 2) {
+  if (fieldOptions.length === 2) {
     if (BOOLEAN_LIKE_TRUE.includes(lowerTrimmed)) {
       // Find the "truthy" option
-      const truthyOption = enumValues.find(
-        (e) =>
-          BOOLEAN_LIKE_TRUE.includes(e.dbValue.toLowerCase()) ||
-          BOOLEAN_LIKE_TRUE.includes(e.label.toLowerCase())
+      const truthyOption = fieldOptions.find(
+        (opt) =>
+          BOOLEAN_LIKE_TRUE.includes(opt.value.toLowerCase()) ||
+          BOOLEAN_LIKE_TRUE.includes(opt.label.toLowerCase())
       )
       if (truthyOption) {
         return {
           type: 'warning',
-          value: truthyOption.dbValue,
+          value: truthyOption.value,
           warning: `Interpreted "${rawValue}" as "${truthyOption.label}"`,
         }
       }
     }
     if (BOOLEAN_LIKE_FALSE.includes(lowerTrimmed)) {
       // Find the "falsy" option
-      const falsyOption = enumValues.find(
-        (e) =>
-          BOOLEAN_LIKE_FALSE.includes(e.dbValue.toLowerCase()) ||
-          BOOLEAN_LIKE_FALSE.includes(e.label.toLowerCase())
+      const falsyOption = fieldOptions.find(
+        (opt) =>
+          BOOLEAN_LIKE_FALSE.includes(opt.value.toLowerCase()) ||
+          BOOLEAN_LIKE_FALSE.includes(opt.label.toLowerCase())
       )
       if (falsyOption) {
         return {
           type: 'warning',
-          value: falsyOption.dbValue,
+          value: falsyOption.value,
           warning: `Interpreted "${rawValue}" as "${falsyOption.label}"`,
         }
       }
@@ -111,15 +111,15 @@ export function resolveSelectCreate(rawValue: string, config: ResolutionConfig):
     return { type: 'value', value: null }
   }
 
-  const enumValues = config.enumValues || []
+  const fieldOptions = config.options || []
 
   // Try exact match
-  const match = enumValues.find(
-    (e) => e.dbValue === trimmed || e.label.toLowerCase() === trimmed.toLowerCase()
+  const match = fieldOptions.find(
+    (opt) => opt.value === trimmed || opt.label.toLowerCase() === trimmed.toLowerCase()
   )
 
   if (match) {
-    return { type: 'value', value: match.dbValue }
+    return { type: 'value', value: match.value }
   }
 
   // Will create new option

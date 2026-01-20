@@ -2,6 +2,7 @@
 
 import type { FieldType } from '@auxx/database/types'
 import { BaseType } from '../../workflow-engine/core/types'
+import type { SelectOption } from '@auxx/types/custom-field'
 
 /**
  * Filter field IDs for task filtering.
@@ -30,7 +31,7 @@ export interface TaskFilterFieldDefinition {
   operators: string[]
   fieldReference?: string
   description: string
-  enumValues?: Array<{ label: string; dbValue: string }>
+  options?: SelectOption[]
 }
 
 /**
@@ -71,10 +72,10 @@ export const TASK_FILTER_FIELDS: TaskFilterFieldDefinition[] = [
     type: BaseType.ENUM,
     fieldType: 'SINGLE_SELECT',
     operators: ['equals', 'not_equals', 'in'],
-    enumValues: [
-      { label: 'Open', dbValue: 'open' },
-      { label: 'Completed', dbValue: 'completed' },
-      { label: 'Archived', dbValue: 'archived' },
+    options: [
+      { label: 'Open', value: 'open' },
+      { label: 'Completed', value: 'completed' },
+      { label: 'Archived', value: 'archived' },
     ],
     description: 'Filter by task status',
   },
@@ -84,10 +85,10 @@ export const TASK_FILTER_FIELDS: TaskFilterFieldDefinition[] = [
     type: BaseType.ENUM,
     fieldType: 'SINGLE_SELECT',
     operators: ['equals', 'not_equals', 'in', 'is_empty'],
-    enumValues: [
-      { label: 'Low', dbValue: 'low' },
-      { label: 'Medium', dbValue: 'medium' },
-      { label: 'High', dbValue: 'high' },
+    options: [
+      { label: 'Low', value: 'low' },
+      { label: 'Medium', value: 'medium' },
+      { label: 'High', value: 'high' },
     ],
     description: 'Filter by priority level',
   },
@@ -105,13 +106,13 @@ export const TASK_FILTER_FIELDS: TaskFilterFieldDefinition[] = [
     type: BaseType.ENUM,
     fieldType: 'SINGLE_SELECT',
     operators: ['equals', 'in'],
-    enumValues: [
-      { label: 'Overdue', dbValue: 'overdue' },
-      { label: 'Today', dbValue: 'today' },
-      { label: 'Tomorrow', dbValue: 'tomorrow' },
-      { label: 'This Week', dbValue: 'this-week' },
-      { label: 'Upcoming', dbValue: 'upcoming' },
-      { label: 'No Due Date', dbValue: 'no-date' },
+    options: [
+      { label: 'Overdue', value: 'overdue' },
+      { label: 'Today', value: 'today' },
+      { label: 'Tomorrow', value: 'tomorrow' },
+      { label: 'This Week', value: 'this-week' },
+      { label: 'Upcoming', value: 'upcoming' },
+      { label: 'No Due Date', value: 'no-date' },
     ],
     description: 'Filter by due date period',
   },

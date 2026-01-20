@@ -198,8 +198,8 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
         enum?: Array<{ label: string; value: string }>
         fieldReference?: string
       } = {}
-      if (field.enumValues) {
-        fieldOptions.enum = field.enumValues.map((ev) => ({ label: ev.label, value: ev.dbValue }))
+      if (field.options?.options?.length) {
+        fieldOptions.enum = field.options.options
       }
       if (field.type === BaseType.RELATION) {
         fieldOptions.fieldReference = `${nodeData.resourceType}:${field.key}`

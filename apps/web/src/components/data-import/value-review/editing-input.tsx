@@ -51,12 +51,13 @@ export function EditingInput({
   const [pickerOpen, setPickerOpen] = useState(false)
   const [selectedOptions, setSelectedOptions] = useState<Option[]>(() => {
     // Initialize selected options for enum fields
-    if (fieldConfig?.type === 'enum' && fieldConfig.enumValues) {
+    const fieldOptions = fieldConfig?.options
+    if (fieldConfig?.type === 'enum' && fieldOptions?.length) {
       // If skipped, use resolved value (not skip value)
       if (isSkipped) {
-        const matchedEnum = fieldConfig.enumValues.find((e) => e.dbValue === resolvedValue)
-        if (matchedEnum) {
-          return [{ value: matchedEnum.dbValue, label: matchedEnum.label }]
+        const matchedOption = fieldOptions.find((opt) => opt.value === resolvedValue)
+        if (matchedOption) {
+          return [{ value: matchedOption.value, label: matchedOption.label }]
         }
         return []
       }
@@ -65,15 +66,15 @@ export function EditingInput({
         return overrideValues
           .filter((ov) => ov.type !== 'skip')
           .map((ov) => {
-            const enumVal = fieldConfig.enumValues?.find((e) => e.dbValue === ov.value)
-            return enumVal ? { value: enumVal.dbValue, label: enumVal.label } : null
+            const option = fieldOptions?.find((opt) => opt.value === ov.value)
+            return option ? { value: option.value, label: option.label } : null
           })
           .filter((x): x is Option => x !== null)
       }
-      // Try to match resolved value to enum
-      const matchedEnum = fieldConfig.enumValues.find((e) => e.dbValue === resolvedValue)
-      if (matchedEnum) {
-        return [{ value: matchedEnum.dbValue, label: matchedEnum.label }]
+      // Try to match resolved value to option
+      const matchedOption = fieldOptions.find((opt) => opt.value === resolvedValue)
+      if (matchedOption) {
+        return [{ value: matchedOption.value, label: matchedOption.label }]
       }
     }
     return []
@@ -87,12 +88,12 @@ export function EditingInput({
 
   // Build options for enum picker
   const enumOptions: Option[] = useMemo(() => {
-    if (!fieldConfig?.enumValues) return []
-    return fieldConfig.enumValues.map((e) => ({
-      value: e.dbValue,
-      label: e.label,
+    if (!fieldConfig?.options?.length) return []
+    return fieldConfig.options.map((opt) => ({
+      value: opt.value,
+      label: opt.label,
     }))
-  }, [fieldConfig?.enumValues])
+  }, [fieldConfig?.options])
 
   /** The original (non-overridden) value */
   const originalValue = resolvedValue ?? rawValue

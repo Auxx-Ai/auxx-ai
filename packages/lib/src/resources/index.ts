@@ -37,9 +37,6 @@ export {
   getUpdatableFields,
   getRequiredFields,
   getReadOnlyFields,
-  isValidEnumValue,
-  getEnumValues,
-  getEnumLabel,
   isFieldRequired,
   isFieldCreatable,
   isFieldUpdatable,
@@ -55,7 +52,6 @@ export {
 export type { TableId } from './registry'
 export type {
   ResourceField,
-  EnumValue,
   FieldCapabilities,
   FieldValidation,
   ResourceFieldRegistry,
@@ -108,7 +104,6 @@ export type {
   CreateRecordOptions,
   UpdateRecordOptions,
   FindByFieldOptions,
-  ResourceHandler,
   FieldChange,
 } from './crud'
 

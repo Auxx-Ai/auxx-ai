@@ -3,18 +3,13 @@
 import { eq, and } from 'drizzle-orm'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
+import type { SelectOption } from '@auxx/types/custom-field'
 
 /** Relation configuration for a mapping */
 export interface RelationConfig {
   relatedEntityDefinitionId: string
   relationshipType: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
   matchField?: string
-}
-
-/** Enum value option */
-export interface EnumValue {
-  dbValue: string
-  label: string
 }
 
 /** Input for saving a column mapping */
@@ -26,7 +21,7 @@ export interface SaveMappingInput {
   resolutionType: string
   matchField?: string
   relationConfig?: RelationConfig
-  enumValues?: EnumValue[]
+  options?: SelectOption[]
 }
 
 /**
@@ -40,11 +35,11 @@ export async function saveMappingProperty(
   db: Database,
   input: SaveMappingInput
 ): Promise<void> {
-  // Build resolution config if we have enum or relation data
+  // Build resolution config if we have options or relation data
   let resolutionConfig: string | null = null
-  if (input.matchField || input.relationConfig || input.enumValues) {
+  if (input.matchField || input.relationConfig || input.options) {
     resolutionConfig = JSON.stringify({
-      enumValues: input.enumValues,
+      options: input.options,
       relationConfig: input.relationConfig
         ? {
             ...input.relationConfig,
@@ -87,7 +82,7 @@ export interface AutoMapUpdateInput {
     matchedFieldKey: string | null
     customFieldId: string | null
     resolutionType: string
-    enumValues?: EnumValue[]
+    options?: SelectOption[]
   }>
 }
 
@@ -105,9 +100,9 @@ export async function batchUpdateMappingsFromAutoMap(
   const now = new Date()
 
   for (const mapping of input.mappings) {
-    // Build resolutionConfig with enumValues if present
-    const resolutionConfig = mapping.enumValues
-      ? JSON.stringify({ enumValues: mapping.enumValues })
+    // Build resolutionConfig with options if present
+    const resolutionConfig = mapping.options
+      ? JSON.stringify({ options: mapping.options })
       : null
 
     await db

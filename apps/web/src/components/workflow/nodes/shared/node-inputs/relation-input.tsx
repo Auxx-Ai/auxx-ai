@@ -9,6 +9,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { createNodeInput, type NodeInputProps } from './base-node-input'
 import { toRecordIds, getInstanceId, type RecordId } from '@auxx/lib/field-values/client'
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
+import { parseResourceFieldId, isResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 
 interface RelationInputProps extends NodeInputProps {
   /** Field name */
@@ -25,11 +26,12 @@ interface RelationInputProps extends NodeInputProps {
  */
 export const RelationInput = createNodeInput<RelationInputProps>(
   ({ inputs, onChange, isLoading, name, placeholder, fieldReference }) => {
-    // Parse fieldReference to get resourceType and fieldKey
+    // Parse fieldReference to get resourceType and fieldKey using typed parsing
     const [resourceType, fieldKey] = useMemo(() => {
       if (!fieldReference) return [null, null]
-      if (!fieldReference.includes(':')) return [null, null] // Direct resource
-      return fieldReference.split(':') as [string, string]
+      if (!isResourceFieldId(fieldReference)) return [null, null] // Direct resource
+      const { entityDefinitionId, fieldId } = parseResourceFieldId(fieldReference as ResourceFieldId)
+      return [entityDefinitionId, fieldId]
     }, [fieldReference])
 
     // Get fields for resourceType (to resolve relationship target)
@@ -40,7 +42,7 @@ export const RelationInput = createNodeInput<RelationInputProps>(
       if (!fieldReference) return null
 
       // Direct resource reference (e.g., "contact")
-      if (!fieldReference.includes(':')) {
+      if (!isResourceFieldId(fieldReference)) {
         return fieldReference
       }
 

@@ -46,7 +46,7 @@ export function computeListOutputVariables(
   // Infer result type based on operation
   let resultType: BaseType = BaseType.ARRAY
   let resultItems: UnifiedVariable | undefined
-  let resultReference: TableId | undefined
+  let resultResourceId: string | undefined
   let resultProperties: Record<string, UnifiedVariable> | undefined
 
   switch (operation) {
@@ -67,8 +67,8 @@ export function computeListOutputVariables(
           oldBaseId
         ) as UnifiedVariable
 
-        // Preserve reference if present (cast to TableId)
-        resultReference = inputArrayVar.reference as TableId | undefined
+        // Preserve resourceId if present
+        resultResourceId = inputArrayVar.resourceId
       }
       break
     }
@@ -102,7 +102,7 @@ export function computeListOutputVariables(
         if (clonedItem.items) resultItems = clonedItem.items
         if (clonedItem.properties) resultProperties = clonedItem.properties
 
-        resultReference = inputArrayVar.reference as TableId | undefined
+        resultResourceId = inputArrayVar.resourceId
       } else if (inputArrayVar?.items && data.inputList) {
         // Return array (default behavior)
         const variableId = data.inputList.replace(/[{}]/g, '')
@@ -115,7 +115,7 @@ export function computeListOutputVariables(
           oldBaseId
         ) as UnifiedVariable
 
-        resultReference = inputArrayVar.reference as TableId | undefined
+        resultResourceId = inputArrayVar.resourceId
       }
       break
     }
@@ -134,7 +134,7 @@ export function computeListOutputVariables(
             label: pluckField.split('.').pop() || 'Value',
             category: 'node' as const,
             ...(inferredType.items && { items: inferredType.items }),
-            ...(inferredType.reference && { reference: inferredType.reference as TableId }),
+            ...(inferredType.resourceId && { resourceId: inferredType.resourceId }),
             ...(inferredType.properties && { properties: inferredType.properties }),
           }
 
@@ -150,7 +150,7 @@ export function computeListOutputVariables(
       // Join returns a string, not an array
       resultType = BaseType.STRING
       resultItems = undefined
-      resultReference = undefined
+      resultResourceId = undefined
       break
     }
 
@@ -167,7 +167,7 @@ export function computeListOutputVariables(
           oldBaseId
         ) as UnifiedVariable
 
-        resultReference = inputArrayVar.reference as TableId | undefined
+        resultResourceId = inputArrayVar.resourceId
       }
   }
 
@@ -180,7 +180,7 @@ export function computeListOutputVariables(
     description: `Result of ${operation} operation`,
     ...(resultItems && { items: resultItems }),
     ...(resultProperties && { properties: resultProperties }),
-    ...(resultReference && { reference: resultReference }),
+    ...(resultResourceId && { resourceId: resultResourceId }),
   })
 
   // Add operation-specific metadata variables

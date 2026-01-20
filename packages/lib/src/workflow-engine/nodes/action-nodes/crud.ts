@@ -25,9 +25,9 @@ import { ModelTypes, type ModelType } from '@auxx/database'
 import { database, type Database } from '@auxx/database'
 import { getCrudField, CRUD_RESOURCE_CONFIGS } from '../../../resources/crud-definitions'
 import {
-  isValidEnumValue,
-  getEnumValues,
-  type EnumValue,
+  isValidFieldOptionValue,
+  getFieldOptionsForResource,
+  type FieldOptionItem,
   getField,
   getAllFields,
   setEntityVariables,
@@ -42,6 +42,7 @@ import { UnifiedCrudHandler } from '../../../resources/crud'
 import type { CustomResource } from '../../../resources/registry/types'
 import type { ResourceField } from '../../../resources/registry/field-types'
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
+import { parseResourceFieldId, isResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 /**
  * CRUD node data interface
  * Supports both system resources (contact, ticket) and custom entities (UUID/CUID format)
@@ -233,26 +234,25 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
           const variable = await contextManager.getVariable(variablePath)
 
           // Check if variable is an object with metadata
-          if (variable && typeof variable === 'object' && 'reference' in variable) {
-            const reference = (variable as any).reference
+          if (variable && typeof variable === 'object') {
+            // Check fieldReference for typed field reference
+            const fieldRef = (variable as any).fieldReference
 
-            // Parse reference to get target table
-            if (reference && typeof reference === 'string') {
-              const parts = reference.split(':')
-              if (parts.length === 2) {
-                const [sourceResourceType, sourceFieldKey] = parts
-                const sourceField = getField(sourceResourceType as TableId, sourceFieldKey!)
+            // Parse reference to get target table using typed parsing
+            if (fieldRef && typeof fieldRef === 'string' && isResourceFieldId(fieldRef)) {
+              const { entityDefinitionId: sourceResourceType, fieldId: sourceFieldKey } =
+                parseResourceFieldId(fieldRef as ResourceFieldId)
+              const sourceField = getField(sourceResourceType as TableId, sourceFieldKey)
 
-                if (sourceField?.type === BaseType.RELATION && sourceField.relationship) {
-                  const actualTargetTable = getRelatedEntityDefinitionId(sourceField.relationship as RelationshipConfig)
+              if (sourceField?.type === BaseType.RELATION && sourceField.relationship) {
+                const actualTargetTable = getRelatedEntityDefinitionId(sourceField.relationship as RelationshipConfig)
 
-                  // Validate target table matches
-                  if (actualTargetTable !== expectedTargetTable) {
-                    return (
-                      `Field "${field.label}" expects ${expectedTargetTable} ` +
-                      `but variable references ${actualTargetTable}`
-                    )
-                  }
+                // Validate target table matches
+                if (actualTargetTable !== expectedTargetTable) {
+                  return (
+                    `Field "${field.label}" expects ${expectedTargetTable} ` +
+                    `but variable references ${actualTargetTable}`
+                  )
                 }
               }
             }
@@ -382,9 +382,9 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
 
           if (field.type === BaseType.ENUM) {
             const isVariable = typeof value === 'string' && value.trim().startsWith('{{')
-            if (!isVariable && !isValidEnumValue(config.resourceType, fieldKey, value as string)) {
-              const validValues = getEnumValues(config.resourceType, fieldKey)
-                .map((ev: EnumValue) => ev.label)
+            if (!isVariable && !isValidFieldOptionValue(config.resourceType, fieldKey, value as string)) {
+              const validValues = getFieldOptionsForResource(config.resourceType, fieldKey)
+                .map((opt: FieldOptionItem) => opt.label)
                 .join(', ')
               errors.push(`Invalid ${field.label}: "${value}". Valid values: ${validValues}`)
             }

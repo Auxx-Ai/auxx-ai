@@ -73,7 +73,7 @@ export const DATASET_FIELDS: Record<string, ResourceField> = {
     type: BaseType.ENUM,
     dbColumn: 'status',
     nullable: false,
-    enumValues: DatasetStatusEnum.values,
+    options: { options: DatasetStatusEnum.values },
     capabilities: {
       filterable: true,
       sortable: true,
@@ -144,7 +144,7 @@ export const DATASET_FIELDS: Record<string, ResourceField> = {
     type: BaseType.ENUM,
     dbColumn: 'vectorDbType',
     nullable: false,
-    enumValues: VectorDbTypeEnum.values,
+    options: { options: VectorDbTypeEnum.values },
     capabilities: {
       filterable: true,
       sortable: true,

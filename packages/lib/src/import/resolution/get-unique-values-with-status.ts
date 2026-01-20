@@ -57,7 +57,7 @@ function buildFieldConfig(mappingProp: {
   if (!mappingProp.targetFieldKey) return null
 
   const resolutionConfig = mappingProp.resolutionConfig as {
-    enumValues?: Array<{ dbValue: string; label: string }>
+    options?: Array<{ value: string; label: string }>
     relationConfig?: { relatedEntityDefinitionId: string; relationshipType: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many' }
   } | null
 
@@ -77,7 +77,7 @@ function buildFieldConfig(mappingProp: {
     key: mappingProp.targetFieldKey,
     type,
     resolutionType,
-    enumValues: resolutionConfig?.enumValues,
+    options: resolutionConfig?.options,
     relationConfig: resolutionConfig?.relationConfig,
   }
 }

@@ -39,7 +39,6 @@ export {
   type SaveMappingInput,
   type RelationConfig,
   type AutoMapUpdateInput,
-  type EnumValue,
   type GetMappedColumnsInput,
   type MappedColumnWithStats,
   type UpdateMappingTitleInput,

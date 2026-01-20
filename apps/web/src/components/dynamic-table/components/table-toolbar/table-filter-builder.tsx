@@ -99,8 +99,8 @@ export function TableFilterBuilder({
       fieldType: field.fieldType,
       // Use operatorOverrides if defined, otherwise get defaults for field type
       operators: field.operatorOverrides || getFieldOperators(field),
-      // Pass enumValues directly - value-input.tsx handles { dbValue, label } → { value, label } conversion
-      enumValues: field.enumValues,
+      // Pass options from field.options.options
+      options: field.options?.options,
       // Add fieldReference for RELATION type fields
       ...(field.type === BaseType.RELATION &&
         field.relationship && {

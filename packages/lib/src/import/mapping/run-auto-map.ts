@@ -77,13 +77,13 @@ export async function runAutoMap(
     }
   )
 
-  // 5. Enrich mappings with customFieldId and enumValues from field definitions
+  // 5. Enrich mappings with customFieldId and options from field definitions
   const mappingsWithFieldData = mappingResult.mappings.map((m) => {
     const field = fields.find((f) => f.key === m.matchedFieldKey)
     return {
       ...m,
       customFieldId: field?.id ?? null,
-      enumValues: field?.enumValues,
+      options: field?.options,
     }
   })
 

@@ -395,7 +395,8 @@ export const useVarStore = create<VarStore>()(
                     {
                       type: sourceVar.items.type,
                       properties: sourceVar.items.properties,
-                      reference: sourceVar.items.reference,
+                      fieldReference: sourceVar.items.fieldReference,
+                      resourceId: sourceVar.items.resourceId,
                       items: sourceVar.items.items,
                       enum: sourceVar.items.enum,
                       description: sourceVar.items.description,
@@ -417,7 +418,8 @@ export const useVarStore = create<VarStore>()(
                 depth === 1 ? 'Current item in the loop iteration' : `Current item in ${varPrefix}`,
               // Only spread specific fields from itemVariable, not id/label which we set above
               ...(itemVariable.properties && { properties: itemVariable.properties }),
-              ...(itemVariable.reference && { reference: itemVariable.reference }),
+              ...(itemVariable.fieldReference && { fieldReference: itemVariable.fieldReference }),
+              ...(itemVariable.resourceId && { resourceId: itemVariable.resourceId }),
               ...(itemVariable.items && { items: itemVariable.items }),
               ...(itemVariable.enum && { enum: itemVariable.enum }),
             })

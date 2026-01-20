@@ -1,6 +1,7 @@
 // apps/web/src/components/data-import/types.ts
 
 import type { ReactNode } from 'react'
+import type { SelectOption } from '@auxx/types/custom-field'
 
 /** Wizard step identifiers */
 export type ImportStep = 'upload' | 'map-columns' | 'review-values' | 'confirm'
@@ -86,7 +87,7 @@ export interface ColumnFieldConfig {
   key: string
   type: string
   resolutionType: string
-  enumValues?: Array<{ dbValue: string; label: string }>
+  options?: SelectOption[]
   relationConfig?: {
     relatedEntityDefinitionId: string
     relationshipType: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'

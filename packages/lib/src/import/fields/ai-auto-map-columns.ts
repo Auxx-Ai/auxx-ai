@@ -104,7 +104,7 @@ export async function aiAutoMapColumns(
       label: f.label,
       type: f.type,
       required: f.required,
-      enumValues: f.enumValues?.slice(0, 5), // Limit enum values for context
+      options: f.options?.slice(0, 5), // Limit options for context
     })),
     null,
     2

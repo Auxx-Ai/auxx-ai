@@ -10,7 +10,7 @@ import { useTestInputStore } from '../../store/test-input-store'
 import { useWorkflowStore } from '../../store/workflow-store'
 import { useRunSingleNode } from '../../hooks'
 import { type FlowNode, type UnifiedVariable, BaseType } from '~/components/workflow/types'
-import { getNodeIdFromVariableId, parseVariable } from '~/components/workflow/utils/variable-utils'
+import { getNodeIdFromVariableId, getVariableRelationship } from '~/components/workflow/utils/variable-utils'
 import { getUpstreamNodeIds } from '~/components/workflow/utils/graph-utils'
 import { useStoreApi } from '@xyflow/react'
 import { VarEditorField, VarEditorFieldRow } from '../../ui/input-editor/var-editor'
@@ -268,11 +268,14 @@ const VariableInput = memo(function VariableInput({
   const cachedValue = workflow?.id ? getTestInput(workflow.id, variable.id) : null
   const hasCachedValue = cachedValue && !value && cachedValue.value !== value
 
-  // Parse variable to get actualType (handles OBJECT→RELATION conversion for relations)
-  const parsed = parseVariable(variable)
+  // Get relationship metadata using new helper (replaces parseVariable)
+  const relationship = getVariableRelationship(variable)
+
+  // Determine actualType: if relationship exists, it's a RELATION type
+  const actualType = relationship?.relatedEntityDefinitionId ? BaseType.RELATION : variable.type
 
   // Get the appropriate input component using actualType (not raw type)
-  const InputComponent = getInputComponent(parsed.actualType)
+  const InputComponent = getInputComponent(actualType as BaseType)
 
   // Create component with proper props based on type
   const commonProps = {
@@ -293,14 +296,10 @@ const VariableInput = memo(function VariableInput({
   }
 
   // Add special props for RELATION/REFERENCE types
-  // Now correctly identifies relations because we use parsed.actualType
-  if (parsed.actualType === BaseType.RELATION || parsed.actualType === BaseType.REFERENCE) {
-    // Use metadata from parseVariable (already extracted from variable.reference)
-    specificProps.fieldReference = parsed.fieldReference
-    specificProps.relatedEntityDefinitionId = parsed.relatedEntityDefinitionId
+  if (relationship?.relatedEntityDefinitionId) {
+    specificProps.fieldReference = variable.fieldReference
+    specificProps.relatedEntityDefinitionId = relationship.relatedEntityDefinitionId
     specificProps.placeholder = `Select ${variable.label || 'record'}`
-    // Note: RelationInput follows NodeInput interface - uses inputs[name] and onChange(name, val)
-    // commonProps.onChange already handles this correctly, no override needed
   }
 
   // Add enum values for enum type

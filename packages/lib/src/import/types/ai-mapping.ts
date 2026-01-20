@@ -13,7 +13,7 @@ export interface AIColumnMappingInput {
     type: string
     required: boolean
     isRelation: boolean
-    enumValues?: Array<{ dbValue: string; label: string }>
+    options?: Array<{ value: string; label: string }>
   }>
   entityDefinitionId: string // For context (e.g., "contact", "ticket")
 }

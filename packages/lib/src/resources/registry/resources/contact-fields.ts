@@ -155,7 +155,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     systemSortOrder: 40,
     dbColumn: 'status',
     nullable: false,
-    enumValues: ContactStatus.values,
+    options: { options: ContactStatus.values },
     capabilities: {
       filterable: true,
       sortable: true,

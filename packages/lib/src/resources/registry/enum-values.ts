@@ -1,6 +1,6 @@
-// packages/lib/src/workflow-engine/resources/registry/enum-values.ts
+// packages/lib/src/resources/registry/enum-values.ts
 
-import type { EnumValue } from './field-types'
+import type { FieldOptionItem } from './option-helpers'
 
 /**
  * Ticket Type Enum
@@ -19,16 +19,16 @@ export const TicketType = {
   OTHER: 'OTHER',
 
   values: [
-    { dbValue: 'GENERAL', label: 'General Support' },
-    { dbValue: 'MISSING_ITEM', label: 'Missing Item' },
-    { dbValue: 'RETURN', label: 'Return Request' },
-    { dbValue: 'REFUND', label: 'Refund Request' },
-    { dbValue: 'PRODUCT_ISSUE', label: 'Product Issue' },
-    { dbValue: 'SHIPPING_ISSUE', label: 'Shipping Issue' },
-    { dbValue: 'BILLING', label: 'Billing Issue' },
-    { dbValue: 'TECHNICAL', label: 'Technical Support' },
-    { dbValue: 'OTHER', label: 'Other' },
-  ] as EnumValue[],
+    { value: 'GENERAL', label: 'General Support' },
+    { value: 'MISSING_ITEM', label: 'Missing Item' },
+    { value: 'RETURN', label: 'Return Request' },
+    { value: 'REFUND', label: 'Refund Request' },
+    { value: 'PRODUCT_ISSUE', label: 'Product Issue' },
+    { value: 'SHIPPING_ISSUE', label: 'Shipping Issue' },
+    { value: 'BILLING', label: 'Billing Issue' },
+    { value: 'TECHNICAL', label: 'Technical Support' },
+    { value: 'OTHER', label: 'Other' },
+  ] satisfies FieldOptionItem[],
 } as const
 
 /**
@@ -47,15 +47,15 @@ export const TicketStatus = {
   MERGED: 'MERGED',
 
   values: [
-    { dbValue: 'OPEN', label: 'Open' },
-    { dbValue: 'IN_PROGRESS', label: 'In Progress' },
-    { dbValue: 'WAITING_FOR_CUSTOMER', label: 'Waiting for Customer' },
-    { dbValue: 'WAITING_FOR_THIRD_PARTY', label: 'Waiting for Third Party' },
-    { dbValue: 'RESOLVED', label: 'Resolved' },
-    { dbValue: 'CLOSED', label: 'Closed' },
-    { dbValue: 'CANCELLED', label: 'Cancelled' },
-    { dbValue: 'MERGED', label: 'Merged' },
-  ] as EnumValue[],
+    { value: 'OPEN', label: 'Open' },
+    { value: 'IN_PROGRESS', label: 'In Progress' },
+    { value: 'WAITING_FOR_CUSTOMER', label: 'Waiting for Customer' },
+    { value: 'WAITING_FOR_THIRD_PARTY', label: 'Waiting for Third Party' },
+    { value: 'RESOLVED', label: 'Resolved' },
+    { value: 'CLOSED', label: 'Closed' },
+    { value: 'CANCELLED', label: 'Cancelled' },
+    { value: 'MERGED', label: 'Merged' },
+  ] satisfies FieldOptionItem[],
 } as const
 
 /**
@@ -70,11 +70,11 @@ export const TicketPriority = {
   URGENT: 'URGENT',
 
   values: [
-    { dbValue: 'LOW', label: 'Low' },
-    { dbValue: 'MEDIUM', label: 'Medium' },
-    { dbValue: 'HIGH', label: 'High' },
-    { dbValue: 'URGENT', label: 'Urgent' },
-  ] as EnumValue[],
+    { value: 'LOW', label: 'Low' },
+    { value: 'MEDIUM', label: 'Medium' },
+    { value: 'HIGH', label: 'High' },
+    { value: 'URGENT', label: 'Urgent' },
+  ] satisfies FieldOptionItem[],
 } as const
 
 /**
@@ -89,11 +89,11 @@ export const ContactStatus = {
   MERGED: 'MERGED',
 
   values: [
-    { dbValue: 'ACTIVE', label: 'Active' },
-    { dbValue: 'INACTIVE', label: 'Inactive' },
-    { dbValue: 'SPAM', label: 'Spam' },
-    { dbValue: 'MERGED', label: 'Merged' },
-  ] as EnumValue[],
+    { value: 'ACTIVE', label: 'Active' },
+    { value: 'INACTIVE', label: 'Inactive' },
+    { value: 'SPAM', label: 'Spam' },
+    { value: 'MERGED', label: 'Merged' },
+  ] satisfies FieldOptionItem[],
 } as const
 
 /**
@@ -110,13 +110,13 @@ export const CustomerSourceType = {
   FACEBOOK_PSID: 'FACEBOOK_PSID',
 
   values: [
-    { dbValue: 'EMAIL', label: 'Email' },
-    { dbValue: 'TICKET_SYSTEM', label: 'Ticket System' },
-    { dbValue: 'SHOPIFY', label: 'Shopify' },
-    { dbValue: 'MANUAL', label: 'Manual' },
-    { dbValue: 'OTHER', label: 'Other' },
-    { dbValue: 'FACEBOOK_PSID', label: 'Facebook PSID' },
-  ] as EnumValue[],
+    { value: 'EMAIL', label: 'Email' },
+    { value: 'TICKET_SYSTEM', label: 'Ticket System' },
+    { value: 'SHOPIFY', label: 'Shopify' },
+    { value: 'MANUAL', label: 'Manual' },
+    { value: 'OTHER', label: 'Other' },
+    { value: 'FACEBOOK_PSID', label: 'Facebook PSID' },
+  ] satisfies FieldOptionItem[],
 } as const
 
 /**
@@ -129,9 +129,9 @@ export const ThreadType = {
   CHAT: 'CHAT',
 
   values: [
-    { dbValue: 'EMAIL', label: 'Email' },
-    { dbValue: 'CHAT', label: 'Chat' },
-  ] as EnumValue[],
+    { value: 'EMAIL', label: 'Email' },
+    { value: 'CHAT', label: 'Chat' },
+  ] satisfies FieldOptionItem[],
 } as const
 
 /**
@@ -150,15 +150,15 @@ export const ThreadStatus = {
   TRASH: 'TRASH',
 
   values: [
-    { dbValue: 'OPEN', label: 'Open' },
-    { dbValue: 'ARCHIVED', label: 'Archived' },
-    { dbValue: 'ACTIVE', label: 'Active' },
-    { dbValue: 'RESOLVED', label: 'Resolved' },
-    { dbValue: 'PENDING', label: 'Pending' },
-    { dbValue: 'CLOSED', label: 'Closed' },
-    { dbValue: 'SPAM', label: 'Spam' },
-    { dbValue: 'TRASH', label: 'Trash' },
-  ] as EnumValue[],
+    { value: 'OPEN', label: 'Open' },
+    { value: 'ARCHIVED', label: 'Archived' },
+    { value: 'ACTIVE', label: 'Active' },
+    { value: 'RESOLVED', label: 'Resolved' },
+    { value: 'PENDING', label: 'Pending' },
+    { value: 'CLOSED', label: 'Closed' },
+    { value: 'SPAM', label: 'Spam' },
+    { value: 'TRASH', label: 'Trash' },
+  ] satisfies FieldOptionItem[],
 } as const
 
 /**
@@ -176,14 +176,14 @@ export const MessageType = {
   CHAT: 'CHAT',
 
   values: [
-    { dbValue: 'EMAIL', label: 'Email' },
-    { dbValue: 'FACEBOOK', label: 'Facebook' },
-    { dbValue: 'SMS', label: 'SMS' },
-    { dbValue: 'WHATSAPP', label: 'WhatsApp' },
-    { dbValue: 'INSTAGRAM', label: 'Instagram' },
-    { dbValue: 'OPENPHONE', label: 'OpenPhone' },
-    { dbValue: 'CHAT', label: 'Chat' },
-  ] as EnumValue[],
+    { value: 'EMAIL', label: 'Email' },
+    { value: 'FACEBOOK', label: 'Facebook' },
+    { value: 'SMS', label: 'SMS' },
+    { value: 'WHATSAPP', label: 'WhatsApp' },
+    { value: 'INSTAGRAM', label: 'Instagram' },
+    { value: 'OPENPHONE', label: 'OpenPhone' },
+    { value: 'CHAT', label: 'Chat' },
+  ] satisfies FieldOptionItem[],
 } as const
 
 /**
@@ -196,9 +196,9 @@ export const ReadStatus = {
   UNREAD: 'UNREAD',
 
   values: [
-    { dbValue: 'READ', label: 'Mark as Read' },
-    { dbValue: 'UNREAD', label: 'Mark as Unread' },
-  ] as EnumValue[],
+    { value: 'READ', label: 'Mark as Read' },
+    { value: 'UNREAD', label: 'Mark as Unread' },
+  ] satisfies FieldOptionItem[],
 } as const
 
 /**
@@ -212,10 +212,10 @@ export const TagOperation = {
   SET: 'set',
 
   values: [
-    { dbValue: 'add', label: 'Add tags' },
-    { dbValue: 'remove', label: 'Remove tags' },
-    { dbValue: 'set', label: 'Replace all tags' },
-  ] as EnumValue[],
+    { value: 'add', label: 'Add tags' },
+    { value: 'remove', label: 'Remove tags' },
+    { value: 'set', label: 'Replace all tags' },
+  ] satisfies FieldOptionItem[],
 } as const
 
 /**
@@ -230,11 +230,11 @@ export const DatasetStatusEnum = {
   ERROR: 'ERROR',
 
   values: [
-    { dbValue: 'ACTIVE', label: 'Active' },
-    { dbValue: 'INACTIVE', label: 'Inactive' },
-    { dbValue: 'PROCESSING', label: 'Processing' },
-    { dbValue: 'ERROR', label: 'Error' },
-  ] as EnumValue[],
+    { value: 'ACTIVE', label: 'Active' },
+    { value: 'INACTIVE', label: 'Inactive' },
+    { value: 'PROCESSING', label: 'Processing' },
+    { value: 'ERROR', label: 'Error' },
+  ] satisfies FieldOptionItem[],
 } as const
 
 /**
@@ -251,11 +251,11 @@ export const VectorDbTypeEnum = {
   MILVUS: 'MILVUS',
 
   values: [
-    { dbValue: 'POSTGRESQL', label: 'PostgreSQL' },
-    { dbValue: 'CHROMA', label: 'Chroma' },
-    { dbValue: 'QDRANT', label: 'Qdrant' },
-    { dbValue: 'WEAVIATE', label: 'Weaviate' },
-    { dbValue: 'PINECONE', label: 'Pinecone' },
-    { dbValue: 'MILVUS', label: 'Milvus' },
-  ] as EnumValue[],
+    { value: 'POSTGRESQL', label: 'PostgreSQL' },
+    { value: 'CHROMA', label: 'Chroma' },
+    { value: 'QDRANT', label: 'Qdrant' },
+    { value: 'WEAVIATE', label: 'Weaviate' },
+    { value: 'PINECONE', label: 'Pinecone' },
+    { value: 'MILVUS', label: 'Milvus' },
+  ] satisfies FieldOptionItem[],
 } as const

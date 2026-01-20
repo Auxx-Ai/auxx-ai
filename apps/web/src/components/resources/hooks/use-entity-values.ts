@@ -1,8 +1,8 @@
 // apps/web/src/components/resources/hooks/use-entity-values.ts
 
 import { useMemo } from 'react'
+import { useResourceFieldValues } from './use-field-values'
 import {
-  useResourceFieldValues,
   type StoredFieldValue,
   parseRecordId,
   type RecordId,

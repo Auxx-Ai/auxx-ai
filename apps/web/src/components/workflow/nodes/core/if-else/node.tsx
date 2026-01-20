@@ -1,10 +1,55 @@
 // apps/web/src/components/workflow/nodes/core/if-else/node.tsx
 
-import React, { memo } from 'react'
+import React, { memo, useMemo } from 'react'
 import { BaseNode } from '../../shared/base/base-node'
 import { type IfElseNode as IfElseNodeType } from './types'
 import { NodeTargetHandle, NodeSourceHandle } from '../../../ui/node-handle'
-import ConditionValue from './components/condition-value'
+import VariableTag from '~/components/workflow/ui/variables/variable-tag'
+import { OPERATOR_DEFINITIONS, operatorRequiresValue, type Operator } from '@auxx/lib/workflow-engine/client'
+import type { TiptapJSON } from '~/components/workflow/ui/input-editor'
+
+/**
+ * Simple condition value display for node view (doesn't require context)
+ */
+const ConditionValueDisplay = memo(({
+  variableId,
+  operator,
+  value,
+  nodeId,
+}: {
+  variableId?: string
+  operator: Operator
+  value: string | string[] | TiptapJSON | number | boolean
+  nodeId?: string
+}) => {
+  const operatorDef = OPERATOR_DEFINITIONS[operator]
+  const operatorName = operatorDef?.label || operator
+  const notHasValue = !operatorRequiresValue(operator)
+
+  const formatValue = useMemo(() => {
+    if (notHasValue) return ''
+    if (Array.isArray(value)) return value.join(', ')
+    if (typeof value === 'string') {
+      return value.replace(/{{([^}]+)}}/g, (_match, variablePath) => variablePath)
+    }
+    return String(value)
+  }, [notHasValue, value])
+
+  return (
+    <div className="flex h-6 items-center gap-1 rounded-md bg-muted px-1">
+      {variableId && <VariableTag variableId={variableId} nodeId={nodeId} isShort />}
+      <div className="shrink-0 text-xs font-medium text-primary-500" title={operatorName}>
+        {operatorName}
+      </div>
+      {!notHasValue && (
+        <div className="shrink-[3] truncate text-xs text-primary-500" title={formatValue}>
+          {formatValue}
+        </div>
+      )}
+    </div>
+  )
+})
+ConditionValueDisplay.displayName = 'ConditionValueDisplay'
 
 export const IfElseNode = memo<IfElseNodeType>(({ id, data, selected }) => {
   // Use flattened data structure
@@ -46,11 +91,10 @@ export const IfElseNode = memo<IfElseNodeType>(({ id, data, selected }) => {
             <div className="space-y-0.5">
               {caseItem.conditions.map((condition, i) => (
                 <div key={condition.id} className="relative">
-                  <ConditionValue
+                  <ConditionValueDisplay
                     variableId={condition.variableId}
                     operator={condition.comparison_operator || 'is'}
                     value={condition.value || ''}
-                    editorContent={condition.editorContent}
                     nodeId={id}
                   />
                   {i !== caseItem.conditions.length - 1 && (

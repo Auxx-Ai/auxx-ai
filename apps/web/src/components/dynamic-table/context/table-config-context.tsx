@@ -46,6 +46,9 @@ export interface TableConfigContextValue<TData = any> {
   /** Hide toolbar */
   hideToolbar: boolean
 
+  /** Standalone mode - bypasses view store initialization */
+  standalone: boolean
+
   /** Bulk actions configuration */
   bulkActions: BulkAction<TData>[]
 

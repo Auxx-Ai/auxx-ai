@@ -34,13 +34,8 @@ const ValueInput = ({
 
     // Build fieldOptions with enum and fieldReference embedded if applicable
     const fieldOptions: { enum?: Array<{ label: string; value: string }>; fieldReference?: string } = {}
-    if (targetField.enumValues) {
-      fieldOptions.enum = targetField.enumValues.map((enumValue) => {
-        if (typeof enumValue === 'string') {
-          return { label: enumValue, value: enumValue }
-        }
-        return { label: enumValue.label, value: enumValue.dbValue }
-      })
+    if (targetField.options?.length) {
+      fieldOptions.enum = targetField.options
     }
     if (targetField.fieldReference) {
       fieldOptions.fieldReference = targetField.fieldReference
