@@ -7,6 +7,9 @@ import { api } from '~/trpc/react'
 import { Archive, Calculator, PackagePlus, Pencil, Plus, Settings, UserPlus } from 'lucide-react'
 import { useResources } from '~/components/resources/hooks'
 import type { CustomResource } from '@auxx/lib/resources/client'
+
+/** Entity ID type for sidebar state */
+type EntityDefinitionId = string
 import {
   SidebarGroup,
   SidebarMenu,
@@ -23,9 +26,6 @@ import { useConfirm } from '~/hooks/use-confirm'
 import { useEntityDefinitionMutations } from '~/components/resources/hooks'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 
-/** Entity definition type for sidebar actions */
-type EntityDefinition = CustomResource
-
 /**
  * Sidebar navigation component for dynamic entity definitions.
  * Displays entity definitions under "Records" section with icons.
@@ -34,7 +34,7 @@ export function EntitySidebarNav() {
   const pathname = usePathname()
   const router = useRouter()
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [editingEntity, setEditingEntity] = useState<EntityDefinition | null>(null)
+  const [editingEntityId, setEditingEntityId] = useState<EntityDefinitionId | null>(null)
   const [confirm, ConfirmDialog] = useConfirm()
   const { archiveEntity } = useEntityDefinitionMutations()
   const { getGroupOpen, toggleGroup } = useSidebarStateContext()
@@ -60,26 +60,15 @@ export function EntitySidebarNav() {
 
   const dynamicEntities = customResources
 
-  // console.log('Dynamic Entities:', dynamicEntities)
   /** Open dialog in edit mode */
-  function handleEditEntity(entity: EntityDefinition) {
-    // Map CustomResource to EntityDefinitionEntity format expected by dialog
-    setEditingEntity({
-      id: entity.id,
-      apiSlug: entity.apiSlug,
-      icon: entity.icon,
-      color: entity.color,
-      singular: entity.label, // CustomResource uses 'label' instead of 'singular'
-      plural: entity.plural,
-      primaryDisplayFieldId: entity.display?.primaryDisplayField?.id ?? null,
-      secondaryDisplayFieldId: entity.display?.secondaryDisplayField?.id ?? null,
-      avatarFieldId: entity.display?.avatarField?.id ?? null,
-    })
+  function handleEditEntity(entity: CustomResource) {
+    // Just store the ID - dialog will fetch data from store
+    setEditingEntityId(entity.id)
     setDialogOpen(true)
   }
 
   /** Archive an entity definition */
-  async function handleArchiveEntity(entity: EntityDefinition) {
+  async function handleArchiveEntity(entity: CustomResource) {
     const confirmed = await confirm({
       title: `Archive "${entity.label}"?`,
       description:
@@ -291,7 +280,7 @@ export function EntitySidebarNav() {
         <EntityDefinitionDialog
           open={dialogOpen}
           onOpenChange={setDialogOpen}
-          editingEntity={editingEntity}
+          entityDefinitionId={editingEntityId}
         />
       )}
 

@@ -69,7 +69,6 @@ export default function CustomFieldsPage() {
         <EntityDefinitionDialog
           open={dialogOpen}
           onOpenChange={setDialogOpen}
-          editingEntity={null}
         />
       )}
     </SettingsPage>

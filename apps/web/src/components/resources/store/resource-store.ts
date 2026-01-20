@@ -20,6 +20,16 @@ interface PendingFieldUpdate {
 }
 
 /**
+ * Pending optimistic resource update state
+ */
+interface PendingResourceUpdate {
+  /** Optimistic updates to apply */
+  optimistic: Partial<Resource>
+  /** Original resource for rollback */
+  original: Resource
+}
+
+/**
  * Resource store state
  */
 interface ResourceStoreState {
@@ -40,7 +50,7 @@ interface ResourceStoreState {
   serverFieldMap: Record<ResourceFieldId, ResourceField>
 
   // ─────────────────────────────────────────────────────────────────
-  // OPTIMISTIC STATE
+  // FIELD OPTIMISTIC STATE
   // ─────────────────────────────────────────────────────────────────
 
   /** Pending field optimistic updates (key -> {optimistic, original}) */
@@ -53,11 +63,27 @@ interface ResourceStoreState {
   optimisticDeletedFields: Set<ResourceFieldId>
 
   // ─────────────────────────────────────────────────────────────────
+  // RESOURCE OPTIMISTIC STATE
+  // ─────────────────────────────────────────────────────────────────
+
+  /** Pending resource optimistic updates (entityDefinitionId -> {optimistic, original}) */
+  pendingResourceUpdates: Record<string, PendingResourceUpdate>
+
+  /** Optimistically added resources (not yet confirmed by server) */
+  optimisticNewResources: Record<string, Resource>
+
+  /** Optimistically archived resources (hidden from UI) */
+  optimisticArchivedResources: Set<string>
+
+  // ─────────────────────────────────────────────────────────────────
   // VERSION TRACKING (race condition handling)
   // ─────────────────────────────────────────────────────────────────
 
   /** Mutation version per field key */
   fieldMutationVersions: Record<ResourceFieldId, number>
+
+  /** Mutation version per resource key */
+  resourceMutationVersions: Record<string, number>
 
   // ─────────────────────────────────────────────────────────────────
   // LOADING & META
@@ -136,6 +162,46 @@ interface ResourceStoreState {
   rollbackFieldDelete: (key: ResourceFieldId) => void
 
   // ─────────────────────────────────────────────────────────────────
+  // RESOURCE OPTIMISTIC UPDATE ACTIONS
+  // ─────────────────────────────────────────────────────────────────
+
+  /** Apply optimistic resource update (stores original for rollback) */
+  setResourceOptimistic: (entityDefinitionId: string, updates: Partial<Resource>) => void
+
+  /** Confirm resource update succeeded - clears pending state */
+  confirmResourceUpdate: (entityDefinitionId: string, serverResource?: Resource) => void
+
+  /** Rollback resource update on error - restores original */
+  rollbackResourceUpdate: (entityDefinitionId: string) => void
+
+  /** Add optimistic new resource (before server confirms) */
+  addOptimisticResource: (tempId: string, resource: Resource) => void
+
+  /** Confirm resource creation succeeded */
+  confirmResourceCreate: (tempId: string, serverResource: Resource) => void
+
+  /** Rollback resource creation on error */
+  rollbackResourceCreate: (tempId: string) => void
+
+  /** Mark resource as archived (optimistic) */
+  markResourceArchived: (entityDefinitionId: string) => void
+
+  /** Confirm resource archive succeeded */
+  confirmResourceArchive: (entityDefinitionId: string) => void
+
+  /** Rollback resource archive on error */
+  rollbackResourceArchive: (entityDefinitionId: string) => void
+
+  /** Mark resource as restored (optimistic) */
+  markResourceRestored: (entityDefinitionId: string) => void
+
+  /** Confirm resource restore succeeded */
+  confirmResourceRestore: (entityDefinitionId: string) => void
+
+  /** Rollback resource restore on error */
+  rollbackResourceRestore: (entityDefinitionId: string) => void
+
+  // ─────────────────────────────────────────────────────────────────
   // VERSION TRACKING ACTIONS
   // ─────────────────────────────────────────────────────────────────
 
@@ -144,6 +210,12 @@ interface ResourceStoreState {
 
   /** Get current mutation version for a field */
   getFieldVersion: (key: ResourceFieldId) => number
+
+  /** Increment mutation version for a resource, returns new version */
+  incrementResourceVersion: (entityDefinitionId: string) => number
+
+  /** Get current mutation version for a resource */
+  getResourceVersion: (entityDefinitionId: string) => number
 
   /** Reset store to initial state */
   reset: () => void
@@ -244,10 +316,16 @@ const initialState = {
   resourceMap: new Map<string, Resource>(),
   serverFieldMap: {} as Record<ResourceFieldId, ResourceField>,
   fieldMap: {} as Record<ResourceFieldId, ResourceField>,
+  // Field optimistic state
   pendingFieldUpdates: {} as Record<ResourceFieldId, PendingFieldUpdate>,
   optimisticNewFields: {} as Record<ResourceFieldId, ResourceField>,
   optimisticDeletedFields: new Set<ResourceFieldId>(),
   fieldMutationVersions: {} as Record<ResourceFieldId, number>,
+  // Resource optimistic state
+  pendingResourceUpdates: {} as Record<string, PendingResourceUpdate>,
+  optimisticNewResources: {} as Record<string, Resource>,
+  optimisticArchivedResources: new Set<string>(),
+  resourceMutationVersions: {} as Record<string, number>,
 }
 
 /**
@@ -319,15 +397,64 @@ export const useResourceStore = create<ResourceStoreState>()(
         state.fieldMap
       )
 
+      // ─── RESOURCE OPTIMISTIC STATE RECONCILIATION ─────────────────────
+
+      // Clean up pending resource updates that match server state
+      const newPendingResourceUpdates = { ...state.pendingResourceUpdates }
+      for (const [entityDefId, pending] of Object.entries(newPendingResourceUpdates)) {
+        const serverResource = resources.find(
+          (r) => r.entityDefinitionId === entityDefId || r.id === entityDefId
+        )
+        if (serverResource) {
+          // Check if server has caught up with optimistic changes
+          const optimisticKeys = Object.keys(pending.optimistic) as Array<keyof Resource>
+          const serverMatchesOptimistic = optimisticKeys.every((key) => {
+            const optimisticValue = pending.optimistic[key]
+            const serverValue = serverResource[key]
+            return optimisticValue === serverValue
+          })
+          if (serverMatchesOptimistic) {
+            delete newPendingResourceUpdates[entityDefId]
+          }
+        }
+      }
+
+      // Clean up optimistic new resources that now exist on server
+      const newOptimisticNewResources = { ...state.optimisticNewResources }
+      for (const tempId of Object.keys(newOptimisticNewResources)) {
+        const optimistic = newOptimisticNewResources[tempId]
+        // Check if a resource with matching apiSlug exists on server
+        const exists = resources.some((r) => r.apiSlug === optimistic.apiSlug)
+        if (exists) {
+          delete newOptimisticNewResources[tempId]
+        }
+      }
+
+      // Clean up optimistic archived resources that no longer exist on server
+      const newOptimisticArchivedResources = new Set(state.optimisticArchivedResources)
+      for (const entityDefId of newOptimisticArchivedResources) {
+        const stillExists = resources.some(
+          (r) => r.entityDefinitionId === entityDefId || r.id === entityDefId
+        )
+        if (!stillExists) {
+          newOptimisticArchivedResources.delete(entityDefId)
+        }
+      }
+
       set({
         resources,
         customResources,
         resourceMap,
         serverFieldMap,
         fieldMap,
+        // Field optimistic state
         pendingFieldUpdates: newPendingFieldUpdates,
         optimisticNewFields: newOptimisticNewFields,
         optimisticDeletedFields: newOptimisticDeletedFields,
+        // Resource optimistic state
+        pendingResourceUpdates: newPendingResourceUpdates,
+        optimisticNewResources: newOptimisticNewResources,
+        optimisticArchivedResources: newOptimisticArchivedResources,
         hasLoadedOnce: true,
         lastFetchTimestamp: Date.now(),
       })
@@ -729,6 +856,329 @@ export const useResourceStore = create<ResourceStoreState>()(
       })
     },
 
+    // ─── RESOURCE OPTIMISTIC UPDATE ACTIONS ───────────────────────────
+
+    setResourceOptimistic: (entityDefinitionId, updates) => {
+      set((state) => {
+        const resource = state.resourceMap.get(entityDefinitionId)
+        if (!resource) {
+          console.warn(`[setResourceOptimistic] Resource not found: ${entityDefinitionId}`)
+          return state
+        }
+
+        // Store original for rollback (use existing pending original if already pending)
+        const existingPending = state.pendingResourceUpdates[entityDefinitionId]
+        const original = existingPending?.original ?? resource
+
+        const newPendingResourceUpdates = {
+          ...state.pendingResourceUpdates,
+          [entityDefinitionId]: { optimistic: updates, original },
+        }
+
+        // Apply optimistic update to resource
+        const updatedResource = { ...resource, ...updates }
+
+        // Update resourceMap
+        const newResourceMap = new Map(state.resourceMap)
+        newResourceMap.set(entityDefinitionId, updatedResource)
+        newResourceMap.set(resource.id, updatedResource)
+        if (resource.apiSlug) {
+          newResourceMap.set(resource.apiSlug, updatedResource)
+        }
+
+        // Update resources array
+        const newResources = state.resources.map((r) =>
+          r.entityDefinitionId === entityDefinitionId || r.id === entityDefinitionId ? updatedResource : r
+        )
+
+        // Update customResources if applicable
+        const newCustomResources = isCustomResource(updatedResource)
+          ? state.customResources.map((r) =>
+              r.entityDefinitionId === entityDefinitionId || r.id === entityDefinitionId
+                ? (updatedResource as CustomResource)
+                : r
+            )
+          : state.customResources
+
+        return {
+          pendingResourceUpdates: newPendingResourceUpdates,
+          resourceMap: newResourceMap,
+          resources: newResources,
+          customResources: newCustomResources,
+        }
+      })
+    },
+
+    confirmResourceUpdate: (entityDefinitionId, serverResource) => {
+      set((state) => {
+        const { [entityDefinitionId]: _, ...restPending } = state.pendingResourceUpdates
+
+        // If server resource provided, update the store with server data
+        if (serverResource) {
+          const newResourceMap = new Map(state.resourceMap)
+          newResourceMap.set(entityDefinitionId, serverResource)
+          newResourceMap.set(serverResource.id, serverResource)
+          if (serverResource.apiSlug) {
+            newResourceMap.set(serverResource.apiSlug, serverResource)
+          }
+
+          const newResources = state.resources.map((r) =>
+            r.entityDefinitionId === entityDefinitionId || r.id === entityDefinitionId ? serverResource : r
+          )
+
+          const newCustomResources = isCustomResource(serverResource)
+            ? state.customResources.map((r) =>
+                r.entityDefinitionId === entityDefinitionId || r.id === entityDefinitionId
+                  ? (serverResource as CustomResource)
+                  : r
+              )
+            : state.customResources
+
+          return {
+            pendingResourceUpdates: restPending,
+            resourceMap: newResourceMap,
+            resources: newResources,
+            customResources: newCustomResources,
+          }
+        }
+
+        return { pendingResourceUpdates: restPending }
+      })
+    },
+
+    rollbackResourceUpdate: (entityDefinitionId) => {
+      set((state) => {
+        const pending = state.pendingResourceUpdates[entityDefinitionId]
+        if (!pending) return state
+
+        const { [entityDefinitionId]: _, ...restPending } = state.pendingResourceUpdates
+
+        // Restore original resource
+        const newResourceMap = new Map(state.resourceMap)
+        newResourceMap.set(entityDefinitionId, pending.original)
+        newResourceMap.set(pending.original.id, pending.original)
+        if (pending.original.apiSlug) {
+          newResourceMap.set(pending.original.apiSlug, pending.original)
+        }
+
+        const newResources = state.resources.map((r) =>
+          r.entityDefinitionId === entityDefinitionId || r.id === entityDefinitionId ? pending.original : r
+        )
+
+        const newCustomResources = isCustomResource(pending.original)
+          ? state.customResources.map((r) =>
+              r.entityDefinitionId === entityDefinitionId || r.id === entityDefinitionId
+                ? (pending.original as CustomResource)
+                : r
+            )
+          : state.customResources
+
+        return {
+          pendingResourceUpdates: restPending,
+          resourceMap: newResourceMap,
+          resources: newResources,
+          customResources: newCustomResources,
+        }
+      })
+    },
+
+    addOptimisticResource: (tempId, resource) => {
+      set((state) => {
+        const newOptimisticNewResources = { ...state.optimisticNewResources, [tempId]: resource }
+
+        // Add to resourceMap for immediate lookup
+        const newResourceMap = new Map(state.resourceMap)
+        newResourceMap.set(tempId, resource)
+        if (resource.apiSlug) {
+          newResourceMap.set(resource.apiSlug, resource)
+        }
+
+        // Add to resources and customResources arrays
+        const newResources = [...state.resources, resource]
+        const newCustomResources = isCustomResource(resource)
+          ? [...state.customResources, resource as CustomResource]
+          : state.customResources
+
+        return {
+          optimisticNewResources: newOptimisticNewResources,
+          resourceMap: newResourceMap,
+          resources: newResources,
+          customResources: newCustomResources,
+        }
+      })
+    },
+
+    confirmResourceCreate: (tempId, serverResource) => {
+      set((state) => {
+        // Remove from optimistic new resources
+        const { [tempId]: _, ...restOptimistic } = state.optimisticNewResources
+
+        // Update resourceMap: remove temp, add server resource
+        const newResourceMap = new Map(state.resourceMap)
+        newResourceMap.delete(tempId)
+        newResourceMap.set(serverResource.entityDefinitionId, serverResource)
+        newResourceMap.set(serverResource.id, serverResource)
+        if (serverResource.apiSlug) {
+          newResourceMap.set(serverResource.apiSlug, serverResource)
+        }
+
+        // Replace temp resource with server resource in arrays
+        const newResources = state.resources.map((r) =>
+          r.entityDefinitionId === tempId || r.id === tempId ? serverResource : r
+        )
+
+        const newCustomResources = isCustomResource(serverResource)
+          ? state.customResources.map((r) =>
+              r.entityDefinitionId === tempId || r.id === tempId ? (serverResource as CustomResource) : r
+            )
+          : state.customResources.filter((r) => r.entityDefinitionId !== tempId && r.id !== tempId)
+
+        return {
+          optimisticNewResources: restOptimistic,
+          resourceMap: newResourceMap,
+          resources: newResources,
+          customResources: newCustomResources,
+        }
+      })
+    },
+
+    rollbackResourceCreate: (tempId) => {
+      set((state) => {
+        const { [tempId]: _, ...restOptimistic } = state.optimisticNewResources
+        const optimisticResource = state.optimisticNewResources[tempId]
+
+        // Remove from resourceMap
+        const newResourceMap = new Map(state.resourceMap)
+        newResourceMap.delete(tempId)
+        if (optimisticResource?.apiSlug) {
+          newResourceMap.delete(optimisticResource.apiSlug)
+        }
+
+        // Remove from arrays
+        const newResources = state.resources.filter(
+          (r) => r.entityDefinitionId !== tempId && r.id !== tempId
+        )
+        const newCustomResources = state.customResources.filter(
+          (r) => r.entityDefinitionId !== tempId && r.id !== tempId
+        )
+
+        return {
+          optimisticNewResources: restOptimistic,
+          resourceMap: newResourceMap,
+          resources: newResources,
+          customResources: newCustomResources,
+        }
+      })
+    },
+
+    markResourceArchived: (entityDefinitionId) => {
+      set((state) => {
+        const resource = state.resourceMap.get(entityDefinitionId)
+        if (!resource) return state
+
+        const newOptimisticArchivedResources = new Set(state.optimisticArchivedResources)
+        newOptimisticArchivedResources.add(entityDefinitionId)
+
+        // Store original for rollback
+        const newPendingResourceUpdates = {
+          ...state.pendingResourceUpdates,
+          [entityDefinitionId]: { optimistic: {}, original: resource },
+        }
+
+        // Remove from resourceMap
+        const newResourceMap = new Map(state.resourceMap)
+        newResourceMap.delete(entityDefinitionId)
+        newResourceMap.delete(resource.id)
+        if (resource.apiSlug) {
+          newResourceMap.delete(resource.apiSlug)
+        }
+
+        // Remove from arrays
+        const newResources = state.resources.filter(
+          (r) => r.entityDefinitionId !== entityDefinitionId && r.id !== entityDefinitionId
+        )
+        const newCustomResources = state.customResources.filter(
+          (r) => r.entityDefinitionId !== entityDefinitionId && r.id !== entityDefinitionId
+        )
+
+        return {
+          optimisticArchivedResources: newOptimisticArchivedResources,
+          pendingResourceUpdates: newPendingResourceUpdates,
+          resourceMap: newResourceMap,
+          resources: newResources,
+          customResources: newCustomResources,
+        }
+      })
+    },
+
+    confirmResourceArchive: (entityDefinitionId) => {
+      set((state) => {
+        const newOptimisticArchivedResources = new Set(state.optimisticArchivedResources)
+        newOptimisticArchivedResources.delete(entityDefinitionId)
+
+        const { [entityDefinitionId]: _, ...restPending } = state.pendingResourceUpdates
+
+        return {
+          optimisticArchivedResources: newOptimisticArchivedResources,
+          pendingResourceUpdates: restPending,
+        }
+      })
+    },
+
+    rollbackResourceArchive: (entityDefinitionId) => {
+      set((state) => {
+        const pending = state.pendingResourceUpdates[entityDefinitionId]
+        if (!pending) return state
+
+        const newOptimisticArchivedResources = new Set(state.optimisticArchivedResources)
+        newOptimisticArchivedResources.delete(entityDefinitionId)
+
+        const { [entityDefinitionId]: _, ...restPending } = state.pendingResourceUpdates
+
+        // Restore to resourceMap
+        const newResourceMap = new Map(state.resourceMap)
+        newResourceMap.set(entityDefinitionId, pending.original)
+        newResourceMap.set(pending.original.id, pending.original)
+        if (pending.original.apiSlug) {
+          newResourceMap.set(pending.original.apiSlug, pending.original)
+        }
+
+        // Add back to arrays
+        const newResources = [...state.resources, pending.original]
+        const newCustomResources = isCustomResource(pending.original)
+          ? [...state.customResources, pending.original as CustomResource]
+          : state.customResources
+
+        return {
+          optimisticArchivedResources: newOptimisticArchivedResources,
+          pendingResourceUpdates: restPending,
+          resourceMap: newResourceMap,
+          resources: newResources,
+          customResources: newCustomResources,
+        }
+      })
+    },
+
+    markResourceRestored: (entityDefinitionId) => {
+      set((state) => {
+        // For restore, we don't have the resource in the current state
+        // This is typically called when restoring from archived resources
+        // The resource will come from the server response
+        return state
+      })
+    },
+
+    confirmResourceRestore: (entityDefinitionId) => {
+      // Typically handled by setResources when server data arrives
+      return
+    },
+
+    rollbackResourceRestore: (entityDefinitionId) => {
+      // If restore fails, we don't need to do anything since the resource
+      // wasn't added to the visible lists yet
+      return
+    },
+
     // ─── VERSION TRACKING ──────────────────────────────────────────────
 
     incrementFieldVersion: (key) => {
@@ -744,16 +1194,35 @@ export const useResourceStore = create<ResourceStoreState>()(
       return get().fieldMutationVersions[key] ?? 0
     },
 
+    incrementResourceVersion: (entityDefinitionId) => {
+      const current = get().resourceMutationVersions[entityDefinitionId] ?? 0
+      const next = current + 1
+      set((state) => ({
+        resourceMutationVersions: { ...state.resourceMutationVersions, [entityDefinitionId]: next },
+      }))
+      return next
+    },
+
+    getResourceVersion: (entityDefinitionId) => {
+      return get().resourceMutationVersions[entityDefinitionId] ?? 0
+    },
+
     reset: () => {
       set({
         ...initialState,
         resourceMap: new Map<string, Resource>(),
         serverFieldMap: {} as Record<ResourceFieldId, ResourceField>,
         fieldMap: {} as Record<ResourceFieldId, ResourceField>,
+        // Field optimistic state
         pendingFieldUpdates: {} as Record<ResourceFieldId, PendingFieldUpdate>,
         optimisticNewFields: {} as Record<ResourceFieldId, ResourceField>,
         optimisticDeletedFields: new Set<ResourceFieldId>(),
         fieldMutationVersions: {} as Record<ResourceFieldId, number>,
+        // Resource optimistic state
+        pendingResourceUpdates: {} as Record<string, PendingResourceUpdate>,
+        optimisticNewResources: {} as Record<string, Resource>,
+        optimisticArchivedResources: new Set<string>(),
+        resourceMutationVersions: {} as Record<string, number>,
       })
     },
   }))

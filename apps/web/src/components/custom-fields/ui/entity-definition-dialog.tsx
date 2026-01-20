@@ -26,12 +26,12 @@ import {
 } from '@auxx/ui/components/input-group'
 import { Input } from '@auxx/ui/components/input'
 import { Button } from '@auxx/ui/components/button'
-import { EntityIcon, DEFAULT_COLOR } from '@auxx/ui/components/icons'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import { IconPicker, type IconPickerValue } from '@auxx/ui/components/icon-picker'
 import { api } from '~/trpc/react'
 import { toastError } from '@auxx/ui/components/toast'
-import { useEntityDefinitionMutations } from '~/components/resources/hooks'
-import { Check, DivideSquare, X } from 'lucide-react'
+import { useEntityDefinitionMutations, useResource, useResourceFields } from '~/components/resources/hooks'
+import { Check, X } from 'lucide-react'
 import { Spinner } from '@auxx/ui/components/spinner'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
@@ -46,25 +46,14 @@ import {
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { CustomFieldDialog } from './custom-field-dialog'
 
-/** Entity definition data for editing */
-interface EntityDefinitionEntity {
-  id: string
-  apiSlug: string
-  icon: string | null
-  color: string | null
-  singular: string
-  plural: string
-  primaryDisplayFieldId?: string | null
-  secondaryDisplayFieldId?: string | null
-  avatarFieldId?: string | null
-}
-
 /** Props for EntityDefinitionDialog */
 interface EntityDefinitionDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  editingEntity?: EntityDefinitionEntity | null
-  onSuccess?: () => void
+  /** Entity definition ID for edit mode, null/undefined for create mode */
+  entityDefinitionId?: string | null
+  /** Called after successful save */
+  onSuccess?: (entityDefinition: { id: string; singular: string }) => void
 }
 
 /** Converts a string to a URL-friendly slug */
@@ -81,10 +70,28 @@ function toSlug(str: string): string {
 export function EntityDefinitionDialog({
   open,
   onOpenChange,
-  editingEntity = null,
+  entityDefinitionId,
   onSuccess,
 }: EntityDefinitionDialogProps) {
-  const isEditing = !!editingEntity
+  // Get resource from store (for edit mode)
+  const { resource: editingResource, isLoading: isResourceLoading } = useResource(entityDefinitionId)
+
+  // Get fields from store (for display field selects)
+  const { fields } = useResourceFields(entityDefinitionId)
+
+  // Determine if editing based on prop
+  const isEditing = !!entityDefinitionId
+
+  // Handle case where resource is not found when editing
+  useEffect(() => {
+    if (open && entityDefinitionId && !isResourceLoading && !editingResource) {
+      toastError({
+        title: 'Entity not found',
+        description: 'The entity may have been deleted.',
+      })
+      onOpenChange(false)
+    }
+  }, [open, entityDefinitionId, isResourceLoading, editingResource, onOpenChange])
 
   // Form state - default to red package icon for new entities
   const [iconValue, setIconValue] = useState<IconPickerValue>({ icon: 'package', color: 'red' })
@@ -138,41 +145,38 @@ export function EntityDefinitionDialog({
     onConfirmedClose: handleConfirmedClose,
   })
 
-  // Fetch custom fields for this entity definition (only when editing)
-  const { data: customFields } = api.customField.getByEntityDefinition.useQuery(
-    { entityDefinitionId: editingEntity?.id ?? '' },
-    { enabled: isEditing && !!editingEntity?.id }
-  )
-
-  // Reset form when dialog opens/closes or editing entity changes
+  // Reset form when dialog opens/closes or editing resource changes
   useEffect(() => {
     if (open) {
       let initValues: typeof formValues
 
-      if (editingEntity) {
-        const icon = editingEntity.icon || 'package'
-        const color = editingEntity.color || 'red'
+      if (editingResource) {
+        // Edit mode: populate from resource store
+        const icon = editingResource.icon || 'package'
+        const color = editingResource.color || 'red'
         setIconValue({ icon, color })
-        setSingular(editingEntity.singular)
-        setPlural(editingEntity.plural)
-        setSlug(editingEntity.apiSlug)
-        setPrimaryDisplayFieldId(editingEntity.primaryDisplayFieldId ?? null)
-        setSecondaryDisplayFieldId(editingEntity.secondaryDisplayFieldId ?? null)
-        setAvatarFieldId(editingEntity.avatarFieldId ?? null)
+        setSingular(editingResource.label) // Resource uses 'label' not 'singular'
+        setPlural(editingResource.plural)
+        setSlug(editingResource.apiSlug)
+        // Display fields come from resource.display
+        setPrimaryDisplayFieldId(editingResource.display.primaryDisplayField?.id ?? null)
+        setSecondaryDisplayFieldId(editingResource.display.secondaryDisplayField?.id ?? null)
+        setAvatarFieldId(editingResource.display.avatarField?.id ?? null)
         setSlugExists(null)
         setSlugReason(null)
 
         initValues = {
           icon,
           color,
-          singular: editingEntity.singular,
-          plural: editingEntity.plural,
-          slug: editingEntity.apiSlug,
-          primaryDisplayFieldId: editingEntity.primaryDisplayFieldId ?? null,
-          secondaryDisplayFieldId: editingEntity.secondaryDisplayFieldId ?? null,
-          avatarFieldId: editingEntity.avatarFieldId ?? null,
+          singular: editingResource.label,
+          plural: editingResource.plural,
+          slug: editingResource.apiSlug,
+          primaryDisplayFieldId: editingResource.display.primaryDisplayField?.id ?? null,
+          secondaryDisplayFieldId: editingResource.display.secondaryDisplayField?.id ?? null,
+          avatarFieldId: editingResource.display.avatarField?.id ?? null,
         }
       } else {
+        // Create mode: reset to defaults
         setIconValue({ icon: 'package', color: 'red' })
         setSingular('')
         setPlural('')
@@ -201,7 +205,7 @@ export function EntityDefinitionDialog({
       // Set baseline for dirty checking
       setInitial(initValues)
     }
-  }, [open, editingEntity, setInitial])
+  }, [open, editingResource, setInitial])
 
   // tRPC utils for slug check
   const utils = api.useUtils()
@@ -218,7 +222,7 @@ export function EntityDefinitionDialog({
     try {
       const result = await utils.entityDefinition.checkSlugExists.fetch({
         slug: slugToCheck,
-        excludeId: editingEntity?.id,
+        excludeId: entityDefinitionId ?? undefined,
       })
       setSlugExists(result.exists)
       setSlugReason(result.reason)
@@ -290,17 +294,19 @@ export function EntityDefinitionDialog({
   /** Handle update success */
   const handleUpdateSuccess = () => {
     onOpenChange(false)
-    onSuccess?.()
+    onSuccess?.({ id: entityDefinitionId!, singular: singular.trim() })
   }
 
   /** Handle custom field dialog close - close both dialogs */
   const handleCustomFieldDialogClose = (open: boolean) => {
     setCustomFieldDialogOpen(open)
-    if (!open) {
+    if (!open && createdEntityId) {
       // Close the entity dialog too and clean up
+      const savedSingular = singular.trim()
+      const savedId = createdEntityId
       setCreatedEntityId(null)
       onOpenChange(false)
-      onSuccess?.()
+      onSuccess?.({ id: savedId, singular: savedSingular })
     }
   }
 
@@ -319,10 +325,10 @@ export function EntityDefinitionDialog({
 
     if (!isValid) return
 
-    if (isEditing && editingEntity) {
+    if (isEditing && entityDefinitionId) {
       updateEntityMutation.mutate(
         {
-          id: editingEntity.id,
+          id: entityDefinitionId,
           data: {
             icon: iconValue.icon,
             color: iconValue.color,
@@ -476,8 +482,8 @@ export function EntityDefinitionDialog({
               )}
             </Field>
 
-            {/* Display Field Configuration (only when editing and has custom fields) */}
-            {isEditing && customFields && customFields.length > 0 && (
+            {/* Display Field Configuration (only when editing and has fields) */}
+            {isEditing && fields.length > 0 && (
               <>
                 <div className="border-t pt-4 mt-2">
                   <p className="text-sm font-medium mb-3">Display Fields</p>
@@ -499,13 +505,13 @@ export function EntityDefinitionDialog({
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="none">None</SelectItem>
-                          {customFields
+                          {fields
                             .filter((f) =>
-                              ['TEXT', 'EMAIL', 'NAME', 'PHONE', 'PHONE_INTL', 'URL', 'NUMBER'].includes(f.type)
+                              ['TEXT', 'EMAIL', 'NAME', 'PHONE', 'PHONE_INTL', 'URL', 'NUMBER'].includes(f.fieldType)
                             )
                             .map((field) => (
                               <SelectItem key={field.id} value={field.id}>
-                                {field.name}
+                                {field.label}
                               </SelectItem>
                             ))}
                         </SelectContent>
@@ -522,9 +528,9 @@ export function EntityDefinitionDialog({
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="none">None</SelectItem>
-                          {customFields.map((field) => (
+                          {fields.map((field) => (
                             <SelectItem key={field.id} value={field.id}>
-                              {field.name}
+                              {field.label}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -541,11 +547,11 @@ export function EntityDefinitionDialog({
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="none">None</SelectItem>
-                          {customFields
-                            .filter((f) => f.type === 'URL' || f.type === 'FILE')
+                          {fields
+                            .filter((f) => f.fieldType === 'URL' || f.fieldType === 'FILE')
                             .map((field) => (
                               <SelectItem key={field.id} value={field.id}>
-                                {field.name}
+                                {field.label}
                               </SelectItem>
                             ))}
                         </SelectContent>

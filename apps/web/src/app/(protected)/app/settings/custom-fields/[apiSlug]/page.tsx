@@ -62,22 +62,6 @@ function CustomFieldsDetailPage() {
     )
   }
 
-  // Prepare entity for dialog (custom entities only)
-  const entityForDialog =
-    resource.type === 'custom'
-      ? {
-          id: resource.entityDefinitionId,
-          apiSlug: resource.apiSlug,
-          icon: resource.icon,
-          color: resource.color,
-          singular: resource.label,
-          plural: resource.plural,
-          primaryDisplayFieldId: resource.display.primaryDisplayField?.id ?? null,
-          secondaryDisplayFieldId: resource.display.secondaryDisplayField?.id ?? null,
-          avatarFieldId: resource.display.avatarField?.id ?? null,
-        }
-      : null
-
   return (
     <>
       <SettingsPage
@@ -103,11 +87,11 @@ function CustomFieldsDetailPage() {
       </SettingsPage>
 
       {/* Edit entity definition dialog (custom only) */}
-      {dialogOpen && entityForDialog && (
+      {dialogOpen && resource.type === 'custom' && (
         <EntityDefinitionDialog
           open={dialogOpen}
           onOpenChange={setDialogOpen}
-          editingEntity={entityForDialog}
+          entityDefinitionId={resource.entityDefinitionId}
         />
       )}
     </>
