@@ -68,6 +68,7 @@ import { entityDefinitionRouter } from './routers/entityDefinition'
 import { dataImportRouter } from './routers/data-import'
 import { fieldValueRouter } from './routers/fieldValue'
 import { taskRouter } from './routers/task'
+import { entityGroupRouter } from './routers/entityGroup'
 
 /**
  * This is the primary router for your server.
@@ -102,6 +103,7 @@ export const appRouter = createTRPCRouter({
   emailTemplate: emailTemplateRouter,
   embedding: embeddingRouter,
   entityDefinition: entityDefinitionRouter,
+  entityGroup: entityGroupRouter,
   featurePermission: featurePermissionsRouter,
   googleOAuth: googleOAuthRouter,
   group: groupRouter,

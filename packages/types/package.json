@@ -8,6 +8,7 @@
     "./custom-field": "./custom-field/index.ts",
     "./field": "./field/index.ts",
     "./field-value": "./field-value/index.ts",
+    "./groups": "./groups/index.ts",
     "./pagination": "./pagination/index.ts",
     "./resource": "./resource/index.ts",
     "./task": "./task/index.ts"

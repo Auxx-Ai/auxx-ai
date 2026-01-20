@@ -593,7 +593,7 @@ export const WorkflowTriggerSourceValues = [
 export const WorkflowShareAccessModeValues = ['public', 'organization'] as const
 
 // EntityDefinition string constants (not database enums - stored as text)
-export const EntityTypeValues = ['standard', 'contact', 'user', 'thread', 'ticket'] as const
+export const EntityTypeValues = ['standard', 'contact', 'user', 'thread', 'ticket', 'entity_group'] as const
 
 export const StandardTypeValues = ['company', 'task', 'deal', 'custom'] as const
 
@@ -1304,6 +1304,7 @@ export const EntityType = {
   USER: 'user',
   THREAD: 'thread',
   TICKET: 'ticket',
+  ENTITY_GROUP: 'entity_group',
 } as const
 
 export const StandardType = {
@@ -1311,4 +1312,47 @@ export const StandardType = {
   TASK: 'task',
   DEAL: 'deal',
   CUSTOM: 'custom',
+} as const
+
+// ============================================================================
+// ENTITY GROUP ENUMS
+// ============================================================================
+
+/** Member type for EntityGroupMember - discriminator for memberRefId */
+export const MemberTypeValues = ['entity', 'user'] as const
+export type MemberType = (typeof MemberTypeValues)[number]
+
+export const MemberType = {
+  entity: 'entity',
+  user: 'user',
+} as const
+
+/** Permission levels for EntityGroupPermission - hierarchical */
+export const PermissionLevelValues = ['view', 'edit', 'manage_members', 'admin'] as const
+export type PermissionLevel = (typeof PermissionLevelValues)[number]
+
+export const PermissionLevel = {
+  view: 'view',
+  edit: 'edit',
+  manage_members: 'manage_members',
+  admin: 'admin',
+} as const
+
+/** Grantee types for EntityGroupPermission */
+export const GranteeTypeValues = ['user', 'team', 'role'] as const
+export type GranteeType = (typeof GranteeTypeValues)[number]
+
+export const GranteeType = {
+  user: 'user',
+  team: 'team',
+  role: 'role',
+} as const
+
+/** Visibility for entity groups */
+export const GroupVisibilityValues = ['public', 'private'] as const
+export type GroupVisibility = (typeof GroupVisibilityValues)[number]
+
+export const GroupVisibility = {
+  public: 'public',
+  private: 'private',
 } as const

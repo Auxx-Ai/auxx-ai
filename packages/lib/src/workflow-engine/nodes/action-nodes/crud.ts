@@ -43,6 +43,7 @@ import type { CustomResource } from '../../../resources/registry/types'
 import type { ResourceField } from '../../../resources/registry/field-types'
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import { parseResourceFieldId, isResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
+import { toRecordId } from '@auxx/types/resource'
 /**
  * CRUD node data interface
  * Supports both system resources (contact, ticket) and custom entities (UUID/CUID format)
@@ -226,7 +227,9 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
       const field = getField(resourceType as TableId, fieldKey)
 
       if (field?.type === BaseType.RELATION && field.relationship) {
-        const expectedTargetTable = getRelatedEntityDefinitionId(field.relationship as RelationshipConfig)
+        const expectedTargetTable = getRelatedEntityDefinitionId(
+          field.relationship as RelationshipConfig
+        )
 
         // If value is a variable reference (e.g., "{{node-123.contact}}")
         if (typeof value === 'string' && value.startsWith('{{') && value.endsWith('}}')) {
@@ -245,7 +248,9 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
               const sourceField = getField(sourceResourceType as TableId, sourceFieldKey)
 
               if (sourceField?.type === BaseType.RELATION && sourceField.relationship) {
-                const actualTargetTable = getRelatedEntityDefinitionId(sourceField.relationship as RelationshipConfig)
+                const actualTargetTable = getRelatedEntityDefinitionId(
+                  sourceField.relationship as RelationshipConfig
+                )
 
                 // Validate target table matches
                 if (actualTargetTable !== expectedTargetTable) {
@@ -382,7 +387,10 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
 
           if (field.type === BaseType.ENUM) {
             const isVariable = typeof value === 'string' && value.trim().startsWith('{{')
-            if (!isVariable && !isValidFieldOptionValue(config.resourceType, fieldKey, value as string)) {
+            if (
+              !isVariable &&
+              !isValidFieldOptionValue(config.resourceType, fieldKey, value as string)
+            ) {
               const validValues = getFieldOptionsForResource(config.resourceType, fieldKey)
                 .map((opt: FieldOptionItem) => opt.label)
                 .join(', ')
@@ -630,10 +638,7 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
     switch (mode) {
       case 'create': {
         // Use the createWithValues method - handles both instance creation and field values
-        const result = await handler.createWithValues(
-          resource.entityDefinitionId,
-          dataWithFieldIds
-        )
+        const result = await handler.createWithValues(resource.entityDefinitionId, dataWithFieldIds)
         return {
           entityInstance: result.entityInstance,
           id: result.id,
@@ -659,7 +664,6 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
           throw new Error('Resource ID required for delete operation')
         }
         // Use archive method for soft delete - need to build RecordId first
-        const { toRecordId } = await import('../../../resources/resource-id')
         const recordId = toRecordId(resource.entityDefinitionId, resourceId)
         await handler.archive(recordId)
         return { deleted: true, id: resourceId }

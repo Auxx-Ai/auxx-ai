@@ -59,10 +59,7 @@ function transformToCustomFieldInput(
   entityDefinitionId?: string
 ): CreateCustomFieldInput | null {
   // Skip EntityInstance fields
-  if (
-    !field.systemAttribute ||
-    ENTITY_INSTANCE_FIELDS.includes(field.systemAttribute as any)
-  ) {
+  if (!field.systemAttribute || ENTITY_INSTANCE_FIELDS.includes(field.systemAttribute as any)) {
     return null
   }
 
@@ -79,7 +76,7 @@ function transformToCustomFieldInput(
     type: field.fieldType!,
     description: field.description,
     required: field.capabilities?.required ?? false,
-    isUnique: field.capabilities?.isUnique ?? false,
+    isUnique: field.capabilities?.unique ?? false,
     isCustom: false, // System fields
     options: field.options ?? undefined,
     icon: field.icon,
@@ -136,7 +133,7 @@ export class EntitySeeder {
   ) {}
 
   /**
-   * Seed all system entities (Contact, Ticket, Part)
+   * Seed all system entities (Contact, Ticket, Part, EntityGroup)
    * Transforms from registry instead of hardcoded data
    */
   async seedSystemEntities(): Promise<void> {
@@ -146,7 +143,58 @@ export class EntitySeeder {
       await this.seedEntity(entityType as keyof typeof SYSTEM_ENTITY_REGISTRY, config)
     }
 
+    // Seed entity_group definition (doesn't have custom fields - uses metadata)
+    await this.seedEntityGroupDefinition()
+
     logger.info('Successfully seeded system entities', { organizationId: this.organizationId })
+  }
+
+  /**
+   * Seed the entity_group EntityDefinition
+   * EntityGroups use metadata for properties instead of custom fields
+   */
+  private async seedEntityGroupDefinition(): Promise<void> {
+    const now = new Date()
+
+    // Check if already exists
+    const existing = await this.db.query.EntityDefinition.findFirst({
+      where: and(
+        eq(schema.EntityDefinition.entityType, 'entity_group'),
+        eq(schema.EntityDefinition.organizationId, this.organizationId)
+      ),
+    })
+
+    if (existing) {
+      logger.info('EntityGroup definition already exists, skipping', {
+        organizationId: this.organizationId,
+        entityDefinitionId: existing.id,
+      })
+      return
+    }
+
+    // Create entity_group EntityDefinition
+    const [createdDef] = await this.db
+      .insert(schema.EntityDefinition)
+      .values({
+        organizationId: this.organizationId,
+        entityType: 'entity_group',
+        apiSlug: 'entity-groups',
+        singular: 'Group',
+        plural: 'Groups',
+        icon: 'users',
+        color: 'purple',
+        updatedAt: now.toISOString(),
+      })
+      .returning()
+
+    if (!createdDef) {
+      throw new Error('Failed to create EntityDefinition for entity_group')
+    }
+
+    logger.info('Created EntityDefinition: entity_group', {
+      organizationId: this.organizationId,
+      entityDefinitionId: createdDef.id,
+    })
   }
 
   /**
@@ -262,7 +310,9 @@ export class EntitySeeder {
             error: result.error,
             entityType,
           })
-          throw new Error(`Failed to create relationship field ${field.label}: ${result.error.message}`)
+          throw new Error(
+            `Failed to create relationship field ${field.label}: ${result.error.message}`
+          )
         }
 
         logger.debug(`Created relationship field pair: ${field.label}`)

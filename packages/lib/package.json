@@ -55,6 +55,8 @@
     "./files/file-cleanup": "./src/files/file-cleanup/index.ts",
     "./files/types": "./src/files/types/index.ts",
     "./files/utils": "./src/files/utils/index.ts",
+    "./groups": "./src/groups/index.ts",
+    "./groups/client": "./src/groups/client.ts",
     "./inboxes": "./src/inboxes/index.ts",
     "./jobs": "./src/jobs/index.ts",
     "./jobs/queues": "./src/jobs/queues/index.ts",

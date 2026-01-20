@@ -435,6 +435,13 @@
       "when": 1768516358398,
       "tag": "0061_drop_target_table_mapping",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1768939336507,
+      "tag": "0062_add_entity_groups",
+      "breakpoints": true
     }
   ]
 }
