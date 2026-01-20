@@ -197,7 +197,7 @@ function RootStack<TData = any>() {
     },
     [columnLabels, pathFieldMap]
   )
-  console.log('column manager: ', columnLabels, pathFieldMap)
+
   return (
     <CommandList>
       {/* Visible Columns Group - Sortable */}
@@ -373,22 +373,24 @@ function AddColumnStack({ onCreateField }: { onCreateField: () => void }) {
         ? encodeFieldPathColumnId(fieldReference as FieldPath)
         : (fieldReference as string)
 
-      console.log('Adding column with ID:', columnId, fieldReference)
       // Make column visible
       setColumnVisibility({
         ...(columnVisibility ?? {}),
         [columnId]: true,
       })
 
-      // Add to column order if not already there
+      // Add to column order at the END (after all current visible columns)
       if (!columnOrder?.includes(columnId)) {
-        setColumnOrder([...(columnOrder ?? []), columnId])
+        // Ensure all currently visible columns are in order first, then add new one
+        const existingOrder = columnOrder ?? []
+        const unorderedVisible = visibleColumnIds.filter((id) => !existingOrder.includes(id))
+        setColumnOrder([...existingOrder, ...unorderedVisible, columnId])
       }
 
       // Go back to root stack
       pop()
     },
-    [columnVisibility, columnOrder, setColumnVisibility, setColumnOrder, pop]
+    [columnVisibility, columnOrder, visibleColumnIds, setColumnVisibility, setColumnOrder, pop]
   )
 
   // Filter stack to only include ResourcePickerNavigationItem items (for relationship drill-down)
@@ -421,7 +423,6 @@ function AddColumnStack({ onCreateField }: { onCreateField: () => void }) {
   if (!entityDefinitionId) {
     return <LegacyAddColumnStack onCreateField={onCreateField} />
   }
-  console.log('AddColumnStack render with visibleColumnIds:', visibleColumnIds)
 
   return (
     <ResourcePickerInnerContent
@@ -450,6 +451,14 @@ function LegacyAddColumnStack<TData = any>({ onCreateField }: { onCreateField: (
   const setColumnVisibility = useSetColumnVisibility(tableId)
   const setColumnOrder = useSetColumnOrder(tableId)
   const [search, setSearch] = useState('')
+
+  // Get visible column IDs (for ensuring order when adding new columns)
+  const visibleColumnIds = useMemo(() => {
+    if (!columnVisibility) return []
+    return Object.entries(columnVisibility)
+      .filter(([_, visible]) => visible !== false)
+      .map(([id]) => id)
+  }, [columnVisibility])
 
   // Get hidden columns
   const hiddenColumns = useMemo(() => {
@@ -497,12 +506,15 @@ function LegacyAddColumnStack<TData = any>({ onCreateField }: { onCreateField: (
         [columnId]: true,
       })
 
-      // Add to column order if not already there
+      // Add to column order at the END (after all current visible columns)
       if (!columnOrder?.includes(columnId)) {
-        setColumnOrder([...(columnOrder ?? []), columnId])
+        // Ensure all currently visible columns are in order first, then add new one
+        const existingOrder = columnOrder ?? []
+        const unorderedVisible = visibleColumnIds.filter((id) => !existingOrder.includes(id))
+        setColumnOrder([...existingOrder, ...unorderedVisible, columnId])
       }
     },
-    [columnVisibility, columnOrder, setColumnVisibility, setColumnOrder]
+    [columnVisibility, columnOrder, visibleColumnIds, setColumnVisibility, setColumnOrder]
   )
 
   return (

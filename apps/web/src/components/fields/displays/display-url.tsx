@@ -77,7 +77,9 @@ export function DisplayUrl() {
 
   return (
     <DisplayWrapper copyValue={normalizedValue} buttons={buttons}>
-      <Badge variant="pill">{displayValue}</Badge>
+      <Badge variant="pill" className="shrink-0">
+        {displayValue}
+      </Badge>
     </DisplayWrapper>
   )
 }

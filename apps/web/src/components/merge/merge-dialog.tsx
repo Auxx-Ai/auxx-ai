@@ -85,7 +85,6 @@ export function MergeDialog({
   const mergeMutation = api.entityInstance.merge.useMutation({
     onSuccess: (result) => {
       // Invalidate queries to refresh data
-      utils.entityInstance.list.invalidate()
 
       // Call success callback
       onMergeComplete?.(result.mergedRecordId)

@@ -9,7 +9,6 @@ export type ResourceType = 'thread' | 'contact' | 'ticket' | 'message' | 'entity
  * Invalidates React Query cache for a specific resource after workflow completion
  */
 export function invalidateResource(resourceType: ResourceType, resourceId: string) {
-  console.log('[invalidateResource] Invalidating', { resourceType, resourceId })
   const queryClient = getQueryClient()
 
   switch (resourceType) {
@@ -62,14 +61,7 @@ export function invalidateResource(resourceType: ResourceType, resourceId: strin
 
     case 'entity':
       // Invalidate specific entity instance
-      queryClient.invalidateQueries({
-        queryKey: getQueryKey(api.entityInstance.getById, { id: resourceId }, 'query'),
-      })
-      // Invalidate entity instance lists
-      queryClient.invalidateQueries({
-        queryKey: getQueryKey(api.entityInstance.list),
-        exact: false,
-      })
+
       break
   }
 }
@@ -88,7 +80,10 @@ export function createWorkflowInvalidator(resourceType: ResourceType, resourceId
 export function invalidateBatchResources(resourceType: ResourceType, resourceIds: string[]) {
   if (resourceIds.length === 0) return
 
-  console.log('[invalidateBatchResources] Invalidating batch', { resourceType, count: resourceIds.length })
+  console.log('[invalidateBatchResources] Invalidating batch', {
+    resourceType,
+    count: resourceIds.length,
+  })
   const queryClient = getQueryClient()
 
   switch (resourceType) {
@@ -141,15 +136,6 @@ export function invalidateBatchResources(resourceType: ResourceType, resourceIds
       break
 
     case 'entity':
-      resourceIds.forEach((resourceId) => {
-        queryClient.invalidateQueries({
-          queryKey: getQueryKey(api.entityInstance.getById, { id: resourceId }, 'query'),
-        })
-      })
-      queryClient.invalidateQueries({
-        queryKey: getQueryKey(api.entityInstance.list),
-        exact: false,
-      })
       break
   }
 }

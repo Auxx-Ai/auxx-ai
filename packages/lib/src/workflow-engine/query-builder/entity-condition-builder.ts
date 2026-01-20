@@ -10,6 +10,7 @@ import { getValueType } from '@auxx/types'
 import type { Operator } from '../operators/definitions'
 import type { ResourceFieldId } from '@auxx/types/field'
 import { parseResourceFieldId, getFieldId, getFieldDefinitionId } from '@auxx/types/field'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 
 const logger = createScopedLogger('entity-condition-builder')
 
@@ -364,8 +365,10 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
       return undefined
     }
 
-    // Get related entity definition ID
-    const relatedEntityDefId = relationshipField.relationship?.relatedEntityDefinitionId
+    // Get related entity definition ID using helper
+    const relatedEntityDefId = relationshipField.relationship
+      ? getRelatedEntityDefinitionId(relationshipField.relationship as RelationshipConfig)
+      : null
     if (!relatedEntityDefId) {
       logger.warn(`No related entity definition for '${relationshipFieldKey}'`)
       return undefined

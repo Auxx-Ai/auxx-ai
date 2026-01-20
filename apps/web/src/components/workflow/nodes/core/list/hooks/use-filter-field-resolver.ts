@@ -12,6 +12,7 @@ import {
 import { isNodeVariable } from '~/components/workflow/utils/variable-utils'
 import { useVariable } from '~/components/workflow/hooks/use-var-store-sync'
 import { useResourceStore } from '~/components/resources/store/resource-store'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 
 /**
  * Options for the field resolver hook
@@ -79,10 +80,13 @@ export function useFilterFieldResolver({ nodeId, inputListValue }: UseFilterFiel
               fieldType: field.fieldType,
               operators: getFieldOperators(field) as Operator[],
               enumValues: field.enumValues,
-              // Add fieldReference for RELATION type fields
+              // Add fieldReference and targetTable for RELATION type fields
               ...(field.type === BaseType.RELATION &&
                 field.relationship && {
                   fieldReference: `${itemVar.reference}:${field.key}`,
+                  targetTable: getRelatedEntityDefinitionId(
+                    field.relationship as RelationshipConfig
+                  ) ?? undefined,
                 }),
             })
           )

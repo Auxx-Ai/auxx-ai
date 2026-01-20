@@ -1,7 +1,7 @@
 // apps/web/src/components/dynamic-table/components/cell-field-editor.tsx
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Popover, PopoverContent } from '@auxx/ui/components/popover'
 import { Popover as PopoverPrimitive } from 'radix-ui'
 import type { CellSelectionConfig } from '../types'
@@ -40,14 +40,21 @@ export function CellFieldEditor({
   // Get field definition from config
   const field = cellSelectionConfig.getFieldDefinition?.(columnId)
 
+  console.log('CellFieldEditor render for row:', rowId, 'column:', columnId, 'field:', field)
   // Get recordId for optimistic updates (required)
   const recordId = useMemo<RecordId | undefined>(() => {
     return cellSelectionConfig.getRecordId?.(rowId)
   }, [cellSelectionConfig, rowId])
 
+  // Close editor if field or recordId are missing (must be in effect, not during render)
+  useEffect(() => {
+    if (!field || !recordId) {
+      onClose()
+    }
+  }, [field, recordId, onClose])
+
   if (!field || !recordId) {
-    // No field definition or recordId - can't edit
-    onClose()
+    // No field definition or recordId - can't edit, effect will close
     return null
   }
 

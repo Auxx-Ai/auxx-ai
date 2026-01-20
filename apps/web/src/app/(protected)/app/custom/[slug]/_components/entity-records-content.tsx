@@ -3,7 +3,6 @@
 
 import { useMemo, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
-import type { VisibilityState } from '@tanstack/react-table'
 import { Button } from '@auxx/ui/components/button'
 import {
   Plus,
@@ -58,7 +57,9 @@ import {
 } from '~/components/dynamic-table/stores/store-selectors'
 import { useRecordList, useResource, toRecordId, type RecordMeta } from '~/components/resources'
 import { isCustomResource, type ResourceField, type RecordId } from '@auxx/lib/resources/client'
-import { toResourceFieldId, toFieldId, parseResourceFieldId } from '@auxx/types/field'
+import { toResourceFieldId, toFieldId } from '@auxx/types/field'
+import { decodeColumnId } from '~/components/dynamic-table/utils/column-id'
+import { useResourceStore } from '~/components/resources/store/resource-store'
 
 /** Page size for infinite query */
 const PAGE_SIZE = 100
@@ -131,7 +132,6 @@ export function EntityRecordsContent() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [editingInstance, setEditingInstance] = useState<EntityRow | null>(null)
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set())
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
 
   // Drawer state - use ID instead of full object for stability
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | undefined>(undefined)
@@ -163,6 +163,9 @@ export function EntityRecordsContent() {
   const viewFilters = useTableFilters(tableId)
   const viewSorting = useTableSorting(tableId)
   const storeColumnVisibility = useColumnVisibility(tableId)
+
+  // Get fieldMap from resource store for field lookups across all entities
+  const fieldMap = useResourceStore((state) => state.fieldMap)
 
   // Convert to formats expected by useRecordList
   const filtersForQuery = viewFilters.length > 0 ? viewFilters : undefined
@@ -233,25 +236,25 @@ export function EntityRecordsContent() {
     [records, entityDefinitionId]
   )
 
-  // Build column IDs in ResourceFieldId format
-  const columnIds = useMemo(
-    () => customFields.map((field) => field.resourceFieldId!),
-    [customFields]
-  )
-  console.log(
-    'entity records content columnIds:',
-    isConfigReady,
-    columnIds,
-    columnVisibility,
-    storeColumnVisibility
-  )
+  // Build column IDs in ResourceFieldId format (includes path columns from store)
+  const columnIds = useMemo(() => {
+    // Direct field column IDs from customFields
+    const directFieldIds = customFields.map((field) => field.resourceFieldId!)
+
+    // Path columns from store visibility (path columns contain '::')
+    const pathColumnIds = storeColumnVisibility
+      ? Object.keys(storeColumnVisibility).filter((key) => key.includes('::'))
+      : []
+
+    return [...directFieldIds, ...pathColumnIds]
+  }, [customFields, storeColumnVisibility])
 
   // Field value syncer - reads from store for reactive updates
   const { getValue, isValueLoading } = useFieldValueSyncer({
     recordIds,
-    columnVisibility,
+    columnVisibility: storeColumnVisibility ?? {},
     resourceFieldIds: columnIds,
-    enabled: !!entityDefinitionId && columnIds.length > 0,
+    enabled: !!entityDefinitionId && columnIds.length > 0 && isConfigReady,
   })
 
   // Note: Store hydration is handled by useFieldValueSyncer
@@ -483,9 +486,17 @@ export function EntityRecordsContent() {
         // System columns (like _checkbox) don't have field definitions
         if (columnId.startsWith('_')) return null
 
-        // Column IDs are now in ResourceFieldId format (e.g., "contact:email")
-        const { fieldId } = parseResourceFieldId(columnId)
-        return customFields.find((f) => f.id === fieldId) ?? null
+        // Decode column ID to handle both direct fields and fieldpaths
+        const decoded = decodeColumnId(columnId)
+
+        if (decoded.type === 'path') {
+          // Fieldpath: get the last ResourceFieldId (the editable field)
+          const lastResourceFieldId = decoded.fieldPath[decoded.fieldPath.length - 1]
+          return fieldMap[lastResourceFieldId] ?? null
+        }
+
+        // Direct field: look up in fieldMap
+        return fieldMap[decoded.resourceFieldId] ?? null
       },
       getCellValue: (rowId: string, columnId: string) => {
         // System columns don't have values in the store
@@ -500,7 +511,7 @@ export function EntityRecordsContent() {
         return toRecordId(entityDefinitionId, rowId)
       },
     }),
-    [customFields, getValue, entityDefinitionId]
+    [getValue, entityDefinitionId, fieldMap]
   )
 
   /**
@@ -614,7 +625,6 @@ export function EntityRecordsContent() {
               onRowSelectionChange={handleRowSelectionChange}
               showRowNumbers={false}
               importHref={`/app/custom/${slug}/import`}
-              onColumnVisibilityChange={setColumnVisibility}
               onScrollToBottom={handleScrollToBottom}
               emptyState={<EmptyStateComponent />}
               headerActions={
