@@ -2,7 +2,7 @@
 
 import type { RelationshipFieldValue } from '@auxx/types/field-value'
 import type { RecordId } from '@auxx/types/resource'
-import { toRecordId } from '../resources/resource-id'
+import { toRecordId, isRecordId } from '../resources/resource-id'
 import { isMultiRelationship, isSingleRelationship, type RelationshipType } from '@auxx/utils'
 
 // Re-export relationship type utilities from @auxx/utils
@@ -12,14 +12,15 @@ export { isMultiRelationship, isSingleRelationship, type RelationshipType }
 // TYPE GUARDS - Narrow and validate relationship values
 // ============================================================================
 
-/** Check if value is a RelationshipFieldValue object */
+/** Check if value is a RelationshipFieldValue object with recordId */
 export function isRelationshipFieldValue(v: unknown): v is RelationshipFieldValue {
   return (
     typeof v === 'object' &&
     v !== null &&
-    'relatedEntityId' in v &&
     'type' in v &&
-    (v as any).type === 'relationship'
+    (v as { type: string }).type === 'relationship' &&
+    'recordId' in v &&
+    isRecordId((v as { recordId: unknown }).recordId)
   )
 }
 
@@ -34,7 +35,8 @@ export function isRelationshipFieldValueArray(v: unknown): v is RelationshipFiel
 
 /**
  * Extract RecordId[] from ANY relationship value format.
- * Handles: objects, arrays, null, undefined.
+ * Handles: objects (new recordId format), arrays, null, undefined.
+ * Also supports legacy format for backwards compatibility.
  *
  * @example
  * const recordIds = extractRelationshipRecordIds(value)
@@ -47,28 +49,40 @@ export function extractRelationshipRecordIds(value: unknown): RecordId[] {
 
   const recordIds: RecordId[] = []
 
-  // Array of full objects
+  /** Helper to extract RecordId from a single value */
+  const extractSingle = (item: unknown): RecordId | null => {
+    if (!item) return null
+    // Already a RecordId string
+    if (typeof item === 'string' && isRecordId(item)) {
+      return item
+    }
+    // New format: { recordId }
+    if (typeof item === 'object' && 'recordId' in item) {
+      const rel = item as { recordId: RecordId }
+      return rel.recordId || null
+    }
+    // Legacy format: { relatedEntityId, relatedEntityDefinitionId }
+    if (typeof item === 'object' && 'relatedEntityId' in item) {
+      const rel = item as { relatedEntityId: string; relatedEntityDefinitionId?: string }
+      if (rel.relatedEntityDefinitionId && rel.relatedEntityId) {
+        return toRecordId(rel.relatedEntityDefinitionId, rel.relatedEntityId)
+      }
+    }
+    return null
+  }
+
+  // Array of values
   if (Array.isArray(value)) {
     for (const item of value) {
-      if (typeof item === 'object' && item !== null && 'relatedEntityId' in item) {
-        const rel = item as RelationshipFieldValue
-        const entityDefId = rel.relatedEntityDefinitionId
-        if (entityDefId && rel.relatedEntityId) {
-          recordIds.push(toRecordId(entityDefId, rel.relatedEntityId))
-        }
-      }
+      const rid = extractSingle(item)
+      if (rid) recordIds.push(rid)
     }
     return recordIds
   }
 
-  // Single object with relatedEntityId
-  if (typeof value === 'object' && 'relatedEntityId' in value) {
-    const rel = value as RelationshipFieldValue
-    const entityDefId = rel.relatedEntityDefinitionId
-    if (entityDefId && rel.relatedEntityId) {
-      return [toRecordId(entityDefId, rel.relatedEntityId)]
-    }
-  }
+  // Single value
+  const rid = extractSingle(value)
+  if (rid) return [rid]
 
   return []
 }

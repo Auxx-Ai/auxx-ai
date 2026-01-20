@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { FieldValueService } from '@auxx/lib/field-values'
 import type { RecordId } from '@auxx/types/resource'
+import { recordIdSchema } from '@auxx/types/resource'
 import { fieldIdSchema, resourceFieldIdSchema } from '@auxx/types/field'
 import type { FieldReference } from '@auxx/types/field'
 
@@ -18,7 +19,7 @@ const typedValueInputSchema = z.object({
   type: z.enum(['text', 'number', 'boolean', 'date', 'json', 'option', 'relationship']),
   value: z.any().optional(),
   optionId: z.string().optional(),
-  relatedEntityId: z.string().optional(),
+  recordId: recordIdSchema.optional(), // For relationship type
 })
 
 /**

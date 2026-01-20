@@ -81,27 +81,25 @@ export function RelationshipInputField() {
   // Register save handler for popover close - fire-and-forget
   useEffect(() => {
     onBeforeClose.current = () => {
-      const currentIds = localRecordIdsRef.current.map(getInstanceId)
-      const originalIds = extractRelationshipRecordIds(value).map(getInstanceId)
+      const currentRecordIds = localRecordIdsRef.current
+      const originalRecordIds = extractRelationshipRecordIds(value)
 
-      // Only save if selection changed
+      // Only save if selection changed (compare instance IDs)
+      const currentIds = currentRecordIds.map(getInstanceId)
+      const originalIds = originalRecordIds.map(getInstanceId)
       const hasChanged =
         currentIds.length !== originalIds.length ||
         currentIds.some((id) => !originalIds.includes(id))
 
       if (hasChanged) {
-        // Wrap IDs with relatedEntityDefinitionId for proper storage
-        const values = currentIds.map((id) => ({
-          relatedEntityId: id,
-          relatedEntityDefinitionId,
-        }))
-        commitValue(values)
+        // Pass RecordIds directly - converter handles wrapping
+        commitValue(currentRecordIds)
       }
     }
     return () => {
       onBeforeClose.current = undefined
     }
-  }, [onBeforeClose, value, commitValue, relatedEntityDefinitionId])
+  }, [onBeforeClose, value, commitValue])
 
   /**
    * Handle selection change from RecordPicker
@@ -138,23 +136,9 @@ export function RelationshipInputField() {
       return undefined
     }
 
-    // Parse parent resource info from context
-    const { entityDefinitionId: parentEntityDefId, entityInstanceId: parentInstanceId } =
-      parseRecordId(recordId)
-
-    if (!parentInstanceId) {
-      return undefined
-    }
-
-    // Return preset value in relationship field format
-    // Format: array of { relatedEntityId, relatedEntityDefinitionId } objects
+    // Return preset value as RecordId array - the new format
     return {
-      [inverseFieldId]: [
-        {
-          relatedEntityId: parentInstanceId,
-          relatedEntityDefinitionId: parentEntityDefId,
-        },
-      ],
+      [inverseFieldId]: [recordId],
     }
   }, [relationship, relatedEntityDefinitionId, recordId])
 

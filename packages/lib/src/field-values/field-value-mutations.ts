@@ -31,7 +31,7 @@ import {
   getBuiltInFieldType,
 } from '../custom-fields/built-in-fields'
 import { checkUniqueValueTyped } from '../custom-fields/check-unique-value-typed'
-import { parseRecordId, getModelType } from '../resources/resource-id'
+import { parseRecordId, getModelType, isRecordId } from '../resources/resource-id'
 import type { RecordId } from '@auxx/types/resource'
 import { publisher } from '../events'
 import type { ContactFieldUpdatedEvent } from '../events/types'
@@ -212,16 +212,10 @@ export async function setValueWithType(
   // Sync inverse relationships
   if (inverseInfo) {
     const newRelatedIds = values
-      .filter(
-        (
-          v
-        ): v is {
-          type: 'relationship'
-          relatedEntityId: string
-          relatedEntityDefinitionId: string
-        } => v.type === 'relationship' && !!v.relatedEntityId
+      .filter((v): v is { type: 'relationship'; recordId: RecordId } =>
+        v.type === 'relationship' && !!(v as { recordId?: RecordId }).recordId
       )
-      .map((v) => v.relatedEntityId)
+      .map((v) => parseRecordId(v.recordId).entityInstanceId)
 
     await syncInverseRelationships(
       { db: ctx.db, organizationId: ctx.organizationId },
@@ -679,30 +673,38 @@ export async function setBulkValues(
 
 /**
  * Extract related entity IDs from a raw relationship value.
- * Handles various input formats (string, object, array).
+ * Handles various input formats (RecordId, string, object, array).
+ * Supports both new recordId format and legacy relatedEntityId format.
  */
 export function extractRelatedIdsFromRaw(value: unknown): string[] {
   if (!value) return []
 
+  /** Helper to extract entity instance ID from a single value */
+  const extractSingle = (v: unknown): string | null => {
+    if (!v) return null
+    // RecordId string
+    if (typeof v === 'string' && isRecordId(v)) {
+      return parseRecordId(v as RecordId).entityInstanceId
+    }
+    // Plain string (instance ID)
+    if (typeof v === 'string') return v
+    // New format: { recordId }
+    if (typeof v === 'object' && 'recordId' in v) {
+      return parseRecordId((v as { recordId: RecordId }).recordId).entityInstanceId
+    }
+    // Legacy format: { relatedEntityId }
+    if (typeof v === 'object' && 'relatedEntityId' in v) {
+      return (v as { relatedEntityId: string }).relatedEntityId
+    }
+    return null
+  }
+
   if (Array.isArray(value)) {
-    return value
-      .map((v) => {
-        if (typeof v === 'string') return v
-        if (typeof v === 'object' && v !== null && 'relatedEntityId' in v) {
-          return (v as { relatedEntityId: string }).relatedEntityId
-        }
-        return null
-      })
-      .filter((id): id is string => id !== null)
+    return value.map(extractSingle).filter((id): id is string => id !== null)
   }
 
-  if (typeof value === 'string') return [value]
-
-  if (typeof value === 'object' && value !== null && 'relatedEntityId' in value) {
-    return [(value as { relatedEntityId: string }).relatedEntityId]
-  }
-
-  return []
+  const single = extractSingle(value)
+  return single ? [single] : []
 }
 
 /**
@@ -816,6 +818,7 @@ async function setMultiValue(
 
 /**
  * Build insert data from typed value input (for service layer).
+ * Converts recordId back to two DB columns for relationship type.
  */
 function buildInsertData(
   _fieldType: FieldType,
@@ -845,16 +848,20 @@ function buildInsertData(
       return { valueJson: value.value }
     case 'option':
       return { optionId: value.optionId }
-    case 'relationship':
+    case 'relationship': {
+      // Parse recordId back to two DB columns
+      const { entityDefinitionId, entityInstanceId } = parseRecordId(value.recordId)
       return {
-        relatedEntityId: value.relatedEntityId,
-        relatedEntityDefinitionId: value.relatedEntityDefinitionId,
+        relatedEntityId: entityInstanceId,
+        relatedEntityDefinitionId: entityDefinitionId,
       }
+    }
   }
 }
 
 /**
  * Build update data from typed value input (for service layer).
+ * Converts recordId back to two DB columns for relationship type.
  */
 function buildUpdateData(value: TypedFieldValueInput): {
   valueText?: string | null
@@ -882,11 +889,14 @@ function buildUpdateData(value: TypedFieldValueInput): {
       return { valueJson: value.value }
     case 'option':
       return { optionId: value.optionId }
-    case 'relationship':
+    case 'relationship': {
+      // Parse recordId back to two DB columns
+      const { entityDefinitionId, entityInstanceId } = parseRecordId(value.recordId)
       return {
-        relatedEntityId: value.relatedEntityId,
-        relatedEntityDefinitionId: value.relatedEntityDefinitionId,
+        relatedEntityId: entityInstanceId,
+        relatedEntityDefinitionId: entityDefinitionId,
       }
+    }
   }
 }
 
@@ -936,11 +946,14 @@ function buildInsertRow(
       return { ...base, valueJson: value.value }
     case 'option':
       return { ...base, optionId: value.optionId }
-    case 'relationship':
+    case 'relationship': {
+      // Parse recordId back to two DB columns
+      const { entityDefinitionId: relDefId, entityInstanceId: relInstId } = parseRecordId(value.recordId)
       return {
         ...base,
-        relatedEntityId: value.relatedEntityId,
-        relatedEntityDefinitionId: value.relatedEntityDefinitionId,
+        relatedEntityId: relInstId,
+        relatedEntityDefinitionId: relDefId,
       }
+    }
   }
 }

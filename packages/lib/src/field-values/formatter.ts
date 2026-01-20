@@ -41,8 +41,8 @@ function getConverter(fieldType: FieldType): FieldValueConverter {
  * // → [{ type: 'option', optionId: 'tag1' }, { type: 'option', optionId: 'tag2' }]
  *
  * @example
- * formatToTypedInput({ relatedEntityId: 'id-1', relatedEntityDefinitionId: 'def-1' }, 'RELATIONSHIP')
- * // → { type: 'relationship', relatedEntityId: 'id-1', relatedEntityDefinitionId: 'def-1' }
+ * formatToTypedInput('vendor:abc123', 'RELATIONSHIP')
+ * // → { type: 'relationship', recordId: 'vendor:abc123' }
  */
 export function formatToTypedInput(
   value: unknown,
@@ -77,7 +77,7 @@ export function formatToTypedInput(
  * Convert TypedFieldValue/Input → raw primitive value (for API calls).
  *
  * - Strips out metadata (id, timestamps)
- * - For relationships: preserves {relatedEntityId, relatedEntityDefinitionId}
+ * - For relationships: returns RecordId string
  * - Called before sending to API
  *
  * @example
@@ -85,8 +85,8 @@ export function formatToTypedInput(
  * // → 'john@example.com'
  *
  * @example
- * formatToRawValue([{ type: 'relationship', relatedEntityId: 'id-1', relatedEntityDefinitionId: 'def-1' }], 'RELATIONSHIP')
- * // → [{ relatedEntityId: 'id-1', relatedEntityDefinitionId: 'def-1' }]
+ * formatToRawValue([{ type: 'relationship', recordId: 'vendor:abc123' }], 'RELATIONSHIP')
+ * // → ['vendor:abc123']
  */
 export function formatToRawValue(
   value: TypedFieldValue | TypedFieldValueInput | TypedFieldValue[] | unknown,
@@ -130,10 +130,10 @@ export function formatToRawValue(
  *
  * @example
  * formatToDisplayValue(
- *   { id: 'fv-1', type: 'relationship', relatedEntityId: 'id-1', relatedEntityDefinitionId: 'def-1' },
+ *   { id: 'fv-1', type: 'relationship', recordId: 'vendor:abc123' },
  *   'RELATIONSHIP'
  * )
- * // → { relatedEntityId: 'id-1', relatedEntityDefinitionId: 'def-1' }
+ * // → 'vendor:abc123'
  * // (frontend then uses useRelationship hook to fetch display names)
  */
 export function formatToDisplayValue(
@@ -226,11 +226,11 @@ export function isValueEmpty(value: unknown, fieldType: FieldType): boolean {
     return raw.length === 0
   }
 
-  // Object check (for relationships and JSON types)
+  // Object check (for JSON types)
   if (typeof raw === 'object') {
-    // Relationship: check if relatedEntityId is present
-    if ('relatedEntityId' in raw) {
-      return !(raw as { relatedEntityId: string }).relatedEntityId
+    // Relationship with recordId: check if recordId is present
+    if ('recordId' in raw) {
+      return !(raw as { recordId: string }).recordId
     }
     // Generic object: check if empty
     return Object.keys(raw as object).length === 0

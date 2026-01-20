@@ -41,32 +41,6 @@ export function containsVariableReference(text: string | null | undefined): bool
 }
 
 /**
- * Extract all variable references from text
- * Returns array of variable names found in {{variable}} patterns
- * @param text - The text to extract variables from
- * @returns Array of unique variable names (without the curly braces)
- */
-// export function extractVariablesFromText(text: string): string[] {
-//   const variables: string[] = []
-//   let match
-
-//   // Reset lastIndex to ensure consistent results (important for global regex)
-//   VARIABLE_PATTERN.lastIndex = 0
-
-//   while ((match = VARIABLE_PATTERN.exec(text)) !== null) {
-//     const varName = match[1]?.trim()
-//     if (varName && !variables.includes(varName)) {
-//       variables.push(varName)
-//     }
-//   }
-
-//   // Reset lastIndex after use
-//   VARIABLE_PATTERN.lastIndex = 0
-
-//   return variables
-// }
-
-/**
  * Get the nodeId from a variable ID
  * Examples:
  *   "webhook-123.body.email" → "webhook-123"
@@ -364,7 +338,9 @@ export function parseVariable(variable: UnifiedVariable) {
       const field = RESOURCE_FIELD_REGISTRY[resourceType]?.[fieldKey]
 
       if (field?.type === BaseType.RELATION && field.relationship) {
-        const targetTable = getRelatedEntityDefinitionId(field.relationship as RelationshipConfig) as TableId
+        const targetTable = getRelatedEntityDefinitionId(
+          field.relationship as RelationshipConfig
+        ) as TableId
         const tableMeta = RESOURCE_TABLE_MAP[targetTable]
 
         result.displayType = tableMeta?.label || variable.type // e.g., "Contact"
@@ -415,7 +391,10 @@ export function isVariableTypeCompatible(
   // Check relationship type match via reference (for RELATION fields)
   if (variable.reference && relationshipTypes.length > 0) {
     const parsed = parseVariable(variable)
-    if (parsed.relatedEntityDefinitionId && relationshipTypes.includes(parsed.relatedEntityDefinitionId)) {
+    if (
+      parsed.relatedEntityDefinitionId &&
+      relationshipTypes.includes(parsed.relatedEntityDefinitionId)
+    ) {
       return true
     }
   }

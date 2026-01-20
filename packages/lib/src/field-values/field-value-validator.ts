@@ -3,6 +3,7 @@
 import { z } from 'zod'
 import { formatEmail } from '@auxx/utils/email'
 import { formatPhoneNumber } from '@auxx/utils/contact'
+import { recordIdSchema, isRecordId, toRecordId, parseRecordId, type RecordId } from '@auxx/types/resource'
 
 /**
  * Validation schemas for each field type using Zod.
@@ -79,10 +80,27 @@ export const fieldValueSchemas = {
     .transform((v) => String(v).trim())
     .refine((v) => v.length > 0, { message: 'Option ID required' }),
 
-  // RELATIONSHIP - with async validation for access control
-  relationship: z.object({
-    relatedEntityId: z.string().min(1, 'Related entity ID required'),
-    relatedEntityDefinitionId: z.string().min(1, 'Related entity definition ID required'),
+  // RELATIONSHIP - uses RecordId format, also accepts legacy format
+  relationship: z.union([
+    // New format: { recordId }
+    z.object({ recordId: recordIdSchema }),
+    // Legacy format: { relatedEntityId, relatedEntityDefinitionId }
+    z.object({
+      relatedEntityId: z.string().min(1, 'Related entity ID required'),
+      relatedEntityDefinitionId: z.string().min(1, 'Related entity definition ID required'),
+    }),
+    // Direct RecordId string
+    recordIdSchema,
+  ]).transform((val): { recordId: RecordId } => {
+    // Normalize to new format
+    if (typeof val === 'string') {
+      return { recordId: val }
+    }
+    if ('recordId' in val) {
+      return { recordId: val.recordId }
+    }
+    // Legacy format
+    return { recordId: toRecordId(val.relatedEntityDefinitionId, val.relatedEntityId) }
   }),
 
   // NAME JSON: { firstName?: string, lastName?: string }
@@ -184,10 +202,12 @@ export class FieldValueValidator {
   /**
    * Batch validate multiple relationships in a single DB query.
    * Much more efficient than validating each relationship individually.
-   * Returns a map of relatedEntityId → validation result
+   * Returns a map of entityInstanceId → validation result
+   *
+   * Accepts both new format (RecordId) and legacy format ({ relatedEntityId, relatedEntityDefinitionId })
    */
   async batchValidateRelationships(
-    relationships: Array<{ relatedEntityId: string; relatedEntityDefinitionId: string }>,
+    relationships: Array<RecordId | { relatedEntityId: string; relatedEntityDefinitionId: string } | { recordId: RecordId }>,
     ctx: {
       db: any // Database instance
       organizationId: string // User's organization
@@ -200,33 +220,42 @@ export class FieldValueValidator {
       return result
     }
 
+    // Normalize all inputs to extract entity instance IDs
+    const entityInstanceIds: string[] = []
+    for (const rel of relationships) {
+      if (typeof rel === 'string' && isRecordId(rel)) {
+        entityInstanceIds.push(parseRecordId(rel).entityInstanceId)
+      } else if (typeof rel === 'object' && 'recordId' in rel) {
+        entityInstanceIds.push(parseRecordId(rel.recordId).entityInstanceId)
+      } else if (typeof rel === 'object' && 'relatedEntityId' in rel) {
+        entityInstanceIds.push(rel.relatedEntityId)
+      }
+    }
+
     // Check if DB is available
     if (!ctx.db?.entityInstance) {
-      for (const rel of relationships) {
-        result.set(rel.relatedEntityId, { success: true })
+      for (const id of entityInstanceIds) {
+        result.set(id, { success: true })
       }
       console.warn('[FieldValueValidator] Database context not available for batch relationship validation, skipping access checks')
       return result
     }
 
     try {
-      // Get all entity IDs
-      const entityIds = relationships.map((r) => r.relatedEntityId)
-
       // Single DB query for all entities
       const entities = await ctx.db.entityInstance.findMany({
-        where: { id: { in: entityIds } },
+        where: { id: { in: entityInstanceIds } },
         select: { id: true, organizationId: true },
       })
 
-      const entitiesByid = new Map(entities.map((e) => [e.id, e]))
+      const entitiesByid = new Map(entities.map((e: { id: string; organizationId: string }) => [e.id, e]))
 
-      // Check each relationship
-      for (const rel of relationships) {
-        const entity = entitiesByid.get(rel.relatedEntityId)
+      // Check each entity instance
+      for (const entityId of entityInstanceIds) {
+        const entity = entitiesByid.get(entityId)
 
         if (!entity) {
-          result.set(rel.relatedEntityId, {
+          result.set(entityId, {
             success: true, // Soft validation: allow even if not found
             message: 'Related entity not found (soft validation)',
           })
@@ -234,12 +263,12 @@ export class FieldValueValidator {
         }
 
         if (entity.organizationId !== ctx.organizationId) {
-          result.set(rel.relatedEntityId, {
+          result.set(entityId, {
             success: false,
             message: 'No access to related entity (different organization)',
           })
         } else {
-          result.set(rel.relatedEntityId, { success: true })
+          result.set(entityId, { success: true })
         }
       }
     } catch (err) {
@@ -247,8 +276,8 @@ export class FieldValueValidator {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error'
       console.warn('[FieldValueValidator] Batch relationship validation error:', errorMessage)
 
-      for (const rel of relationships) {
-        result.set(rel.relatedEntityId, { success: true })
+      for (const id of entityInstanceIds) {
+        result.set(id, { success: true })
       }
     }
 
@@ -259,6 +288,9 @@ export class FieldValueValidator {
    * Validate relationship value PLUS access control
    * Checks organizationId to prevent cross-org relationship creation when possible.
    * If access check fails, logs warning but allows relationship (soft validation).
+   *
+   * Accepts both new format (RecordId) and legacy format.
+   * Returns { recordId } in new format.
    */
   async validateRelationship(
     value: unknown,
@@ -267,13 +299,14 @@ export class FieldValueValidator {
       organizationId: string // User's organization
     }
   ) {
-    // First validate structure
+    // First validate and normalize structure to { recordId }
     const structureResult = fieldValueSchemas.relationship.safeParse(value)
     if (!structureResult.success) {
       return structureResult
     }
 
-    const { relatedEntityId, relatedEntityDefinitionId } = structureResult.data
+    const { recordId } = structureResult.data
+    const { entityInstanceId } = parseRecordId(recordId)
 
     // Then validate access - check that related entity exists AND belongs to same org
     // NOTE: This is a soft validation - if it fails, we still allow the relationship but log a warning
@@ -282,20 +315,20 @@ export class FieldValueValidator {
         console.warn('[FieldValueValidator] Database context not available for relationship validation, skipping access check')
         return {
           success: true as const,
-          data: { relatedEntityId, relatedEntityDefinitionId },
+          data: { recordId },
         }
       }
 
       const relatedEntity = await ctx.db.entityInstance.findUnique({
-        where: { id: relatedEntityId },
+        where: { id: entityInstanceId },
         select: { id: true, organizationId: true },
       })
 
       if (!relatedEntity) {
-        console.warn(`[FieldValueValidator] Related entity not found: ${relatedEntityId}, allowing relationship`)
+        console.warn(`[FieldValueValidator] Related entity not found: ${entityInstanceId}, allowing relationship`)
         return {
           success: true as const,
-          data: { relatedEntityId, relatedEntityDefinitionId },
+          data: { recordId },
         }
       }
 
@@ -307,7 +340,7 @@ export class FieldValueValidator {
             {
               code: 'custom' as const,
               message: 'No access to related entity (different organization)',
-              path: ['relatedEntityId'],
+              path: ['recordId'],
             },
           ]),
         }
@@ -315,7 +348,7 @@ export class FieldValueValidator {
 
       return {
         success: true as const,
-        data: { relatedEntityId, relatedEntityDefinitionId },
+        data: { recordId },
       }
     } catch (err) {
       // Log actual error but allow relationship (soft validation)
@@ -324,7 +357,7 @@ export class FieldValueValidator {
 
       return {
         success: true as const,
-        data: { relatedEntityId, relatedEntityDefinitionId },
+        data: { recordId },
       }
     }
   }

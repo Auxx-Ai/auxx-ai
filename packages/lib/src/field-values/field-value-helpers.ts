@@ -10,7 +10,7 @@ import { formatToDisplayValue } from './formatter'
 import { type RelationshipConfig, type RelationshipType, getInverseFieldId } from '@auxx/types/custom-field'
 import { FieldValueValidator, fieldValueSchemas } from './field-value-validator'
 import { ResourceRegistryService } from '../resources/registry/resource-registry-service'
-import { parseRecordId } from '../resources/resource-id'
+import { parseRecordId, toRecordId, isRecordId } from '../resources/resource-id'
 import type { RecordId } from '@auxx/types/resource'
 import type { FieldValueRow, FieldReference } from './types'
 import type { InverseFieldInfo } from './relationship-sync'
@@ -171,8 +171,9 @@ export function rowToTypedValue(row: FieldValueRow, fieldType: FieldType): Typed
       return {
         ...base,
         type: 'relationship',
-        relatedEntityId: row.relatedEntityId ?? '',
-        relatedEntityDefinitionId: row.relatedEntityDefinitionId ?? '',
+        recordId: row.relatedEntityId && row.relatedEntityDefinitionId
+          ? toRecordId(row.relatedEntityDefinitionId, row.relatedEntityId)
+          : ('' as RecordId),
       }
   }
 }
@@ -221,8 +222,8 @@ export function isValidTypedValue(value: TypedFieldValue, fieldType: FieldType):
     case 'relationship':
       return (
         value.type === 'relationship' &&
-        'relatedEntityId' in value &&
-        typeof (value as any).relatedEntityId === 'string'
+        'recordId' in value &&
+        typeof (value as any).recordId === 'string'
       )
     default:
       return true
@@ -367,15 +368,16 @@ export async function validateSingleValue(
     }
 
     case 'RELATIONSHIP': {
-      // Parse relationship value first
+      // Parse and normalize relationship value to { recordId } format
       const structureResult = fieldValueSchemas.relationship.safeParse(value)
       if (!structureResult.success) throwValidationError(structureResult)
 
-      const { relatedEntityId, relatedEntityDefinitionId } = structureResult.data!
+      const { recordId } = structureResult.data!
+      const { entityInstanceId } = parseRecordId(recordId)
 
       // Check batch validation cache first (if preBatchValidateRelationships was called)
-      if (ctx.batchRelationshipValidationCache.has(relatedEntityId)) {
-        const validation = ctx.batchRelationshipValidationCache.get(relatedEntityId)!
+      if (ctx.batchRelationshipValidationCache.has(entityInstanceId)) {
+        const validation = ctx.batchRelationshipValidationCache.get(entityInstanceId)!
         if (!validation.success) {
           throwValidationError({
             success: false,
@@ -383,7 +385,7 @@ export async function validateSingleValue(
               issues: [
                 {
                   message: validation.message || 'Relationship validation failed',
-                  path: ['relatedEntityId'],
+                  path: ['recordId'],
                 },
               ],
             },
@@ -400,8 +402,7 @@ export async function validateSingleValue(
 
       return {
         type: 'relationship',
-        relatedEntityId,
-        relatedEntityDefinitionId,
+        recordId,
       }
     }
 
@@ -434,14 +435,33 @@ export async function validateSingleValue(
 /**
  * Pre-validate all relationships in a batch for the current operation.
  * Call this before validating individual values to enable batch optimization.
+ *
+ * Accepts both new format (RecordId) and legacy format.
  */
 export async function preBatchValidateRelationships(
   ctx: FieldValueContext,
   values: unknown[],
   fieldTypes: FieldType[]
 ): Promise<void> {
-  // Collect all relationships from values
-  const relationships: Array<{ relatedEntityId: string; relatedEntityDefinitionId: string }> = []
+  // Collect all relationships from values - supports both new and legacy formats
+  const relationships: Array<RecordId | { relatedEntityId: string; relatedEntityDefinitionId: string } | { recordId: RecordId }> = []
+
+  /** Helper to extract relationship value(s) from input */
+  const extractRelationship = (v: unknown) => {
+    if (!v) return
+    // RecordId string
+    if (typeof v === 'string' && isRecordId(v)) {
+      relationships.push(v)
+    }
+    // New format: { recordId }
+    else if (typeof v === 'object' && 'recordId' in v) {
+      relationships.push(v as { recordId: RecordId })
+    }
+    // Legacy format: { relatedEntityId, relatedEntityDefinitionId }
+    else if (typeof v === 'object' && 'relatedEntityId' in v) {
+      relationships.push(v as { relatedEntityId: string; relatedEntityDefinitionId: string })
+    }
+  }
 
   for (let i = 0; i < values.length; i++) {
     const value = values[i]
@@ -451,18 +471,10 @@ export async function preBatchValidateRelationships(
 
     if (Array.isArray(value)) {
       for (const v of value) {
-        if (v && typeof v === 'object' && 'relatedEntityId' in v) {
-          relationships.push({
-            relatedEntityId: (v as any).relatedEntityId,
-            relatedEntityDefinitionId: (v as any).relatedEntityDefinitionId,
-          })
-        }
+        extractRelationship(v)
       }
-    } else if (value && typeof value === 'object' && 'relatedEntityId' in value) {
-      relationships.push({
-        relatedEntityId: (value as any).relatedEntityId,
-        relatedEntityDefinitionId: (value as any).relatedEntityDefinitionId,
-      })
+    } else {
+      extractRelationship(value)
     }
   }
 

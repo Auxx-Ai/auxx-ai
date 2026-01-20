@@ -12,6 +12,7 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core'
 import {
+  arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
@@ -100,11 +101,12 @@ export function CustomFieldsList({ resource }: CustomFieldsListProps) {
 
     const oldIndex = sortedFields.findIndex((item) => item.id === active.id)
     const newIndex = sortedFields.findIndex((item) => item.id === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
 
-    // Calculate new sortOrder using fractional indexing
-    // Only the dragged field needs updating
-    const prevField = newIndex > 0 ? sortedFields[newIndex - 1] : null
-    const nextField = newIndex < sortedFields.length - 1 ? sortedFields[newIndex + 1] : null
+    // Reorder array first, then find neighbors at new position
+    const reordered = arrayMove(sortedFields, oldIndex, newIndex)
+    const prevField = newIndex > 0 ? reordered[newIndex - 1] : null
+    const nextField = newIndex < reordered.length - 1 ? reordered[newIndex + 1] : null
 
     const newSortOrder = generateKeyBetween(
       prevField?.sortOrder ?? null,

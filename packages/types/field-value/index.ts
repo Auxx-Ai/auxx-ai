@@ -2,6 +2,7 @@
 
 import { z } from 'zod'
 import { FieldType } from '@auxx/database/enums'
+import { type RecordId, recordIdSchema, toRecordId, isRecordId } from '@auxx/types/resource'
 
 // =============================================================================
 // VALUE TYPE CONSTANTS
@@ -146,9 +147,8 @@ export interface OptionFieldValue extends BaseFieldValue {
 /** Relationship value for RELATIONSHIP fields */
 export interface RelationshipFieldValue extends BaseFieldValue {
   type: 'relationship'
-  relatedEntityId: string
-  /** EntityDefinition.id (UUID) or system resource name ("contacts", "tickets") */
-  relatedEntityDefinitionId: string
+  /** RecordId format: "entityDefinitionId:entityInstanceId" */
+  recordId: RecordId
   /** Denormalized for display */
   displayName?: string
 }
@@ -206,9 +206,8 @@ export interface OptionFieldValueInput {
 /** Relationship value input */
 export interface RelationshipFieldValueInput {
   type: 'relationship'
-  relatedEntityId: string
-  /** EntityDefinition.id (UUID) or system resource name ("contacts", "tickets") */
-  relatedEntityDefinitionId: string
+  /** RecordId format: "entityDefinitionId:entityInstanceId" */
+  recordId: RecordId
 }
 
 /** Discriminated union of all typed field value inputs */
@@ -264,8 +263,7 @@ export const optionFieldValueInputSchema = z.object({
 /** Schema for relationship value input */
 export const relationshipFieldValueInputSchema = z.object({
   type: z.literal('relationship'),
-  relatedEntityId: z.string(),
-  relatedEntityDefinitionId: z.string(),
+  recordId: recordIdSchema,
 })
 
 /** Schema for typed field value input (discriminated union) */
@@ -341,7 +339,7 @@ export function extractValue(
     case 'option':
       return typedValue.optionId
     case 'relationship':
-      return typedValue.relatedEntityId
+      return typedValue.recordId
   }
 }
 
@@ -373,15 +371,25 @@ export function createTypedValueInput(
     case 'option':
       return { type: 'option', optionId: String(rawValue) }
     case 'relationship':
-      // Handle object input with relatedEntityDefinitionId
+      // Handle RecordId string directly
+      if (typeof rawValue === 'string' && isRecordId(rawValue)) {
+        return { type: 'relationship', recordId: rawValue }
+      }
+      // Handle legacy object input with relatedEntityId (for migration)
       if (typeof rawValue === 'object' && rawValue !== null && 'relatedEntityId' in rawValue) {
         const obj = rawValue as { relatedEntityId: string; relatedEntityDefinitionId?: string }
-        return {
-          type: 'relationship',
-          relatedEntityId: obj.relatedEntityId,
-          relatedEntityDefinitionId: obj.relatedEntityDefinitionId ?? '',
+        if (obj.relatedEntityDefinitionId) {
+          return {
+            type: 'relationship',
+            recordId: toRecordId(obj.relatedEntityDefinitionId, obj.relatedEntityId),
+          }
         }
       }
-      return { type: 'relationship', relatedEntityId: String(rawValue), relatedEntityDefinitionId: '' }
+      // Handle object with recordId already set
+      if (typeof rawValue === 'object' && rawValue !== null && 'recordId' in rawValue) {
+        const obj = rawValue as { recordId: RecordId }
+        return { type: 'relationship', recordId: obj.recordId }
+      }
+      return null
   }
 }

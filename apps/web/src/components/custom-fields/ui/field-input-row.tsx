@@ -6,12 +6,9 @@ import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapte
 import {
   extractRelationshipRecordIds,
   isMultiRelationship,
-  toRecordId,
-  getInstanceId,
-  getDefinitionId,
   type RecordId,
 } from '@auxx/lib/field-values/client'
-import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
+import { type RelationshipConfig } from '@auxx/types/custom-field'
 import type { ResourceField } from '@auxx/lib/resources/client'
 
 /**
@@ -55,28 +52,18 @@ export function FieldInputRow({
   // FieldInputAdapter will pass it through to MultiRelationInput (no double conversion)
   const normalizedValue = fieldType === 'RELATIONSHIP' ? extractRelationshipRecordIds(value) : value
 
-  // Get relatedEntityDefinitionId for wrapping RecordId[] back to RelationshipFieldValue on save
-  // Derived from inverseResourceFieldId using helper function
-  const relatedEntityDefinitionId = relationshipConfig
-    ? getRelatedEntityDefinitionId(relationshipConfig)
-    : null
-
   // Determine if relationship is multi-select using helper
   const isMulti = isMultiRelationship(relationshipConfig?.relationshipType)
 
   /**
    * Handle value changes from FieldInputAdapter
-   * For relationships: convert RecordId[] back to RelationshipFieldValue[] for saving
+   * For relationships: pass RecordId[] directly (converter handles wrapping)
    */
   const handleChange = (newValue: unknown) => {
-    if (fieldType === 'RELATIONSHIP' && relatedEntityDefinitionId) {
-      // Convert RecordId[] back to RelationshipFieldValue[] for saving
+    if (fieldType === 'RELATIONSHIP') {
+      // Pass RecordId[] directly - converter handles wrapping
       const recordIds = newValue as RecordId[]
-      const values = recordIds.map((recordId) => ({
-        relatedEntityId: getInstanceId(recordId),
-        relatedEntityDefinitionId: getDefinitionId(recordId),
-      }))
-      onChange(field.id!, isMulti ? values : (values[0] ?? null))
+      onChange(field.id!, isMulti ? recordIds : (recordIds[0] ?? null))
     } else {
       onChange(field.id!, newValue)
     }

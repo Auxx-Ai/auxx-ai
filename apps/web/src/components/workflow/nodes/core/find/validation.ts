@@ -5,7 +5,11 @@ import {
   findNodeDataSchema,
   createFindNodeDefaultData,
 } from './types'
-import { FIND_RESOURCE_CONFIGS, getOperatorsForType, isCustomResourceId } from '@auxx/lib/workflow-engine/client'
+import {
+  FIND_RESOURCE_CONFIGS,
+  getOperatorsForType,
+  isCustomResourceId,
+} from '@auxx/lib/workflow-engine/client'
 import { validateCondition } from '~/components/conditions'
 
 /**
@@ -13,21 +17,6 @@ import { validateCondition } from '~/components/conditions'
  */
 export const validateFindNodeConfig = (data: FindNodeData): ValidationResult => {
   const errors: Array<{ field: string; message: string; type?: 'warning' | 'error' }> = []
-
-  // Validate using Zod schema first
-  // try {
-  //   findNodeDataSchema.parse(data)
-  // } catch (zodError: any) {
-  //   if (zodError.errors) {
-  //     for (const error of zodError.errors) {
-  //       errors.push({
-  //         field: error.path.join('.'),
-  //         message: error.message,
-  //         type: 'error',
-  //       })
-  //     }
-  //   }
-  // }
 
   // Additional custom validation
   if (!data.title?.trim()) {
@@ -68,7 +57,8 @@ export const validateFindNodeConfig = (data: FindNodeData): ValidationResult => 
     if (!hasConditions) {
       errors.push({
         field: 'conditions',
-        message: 'No conditions applied - will return all records (limited by default/specified limit)',
+        message:
+          'No conditions applied - will return all records (limited by default/specified limit)',
         type: 'warning',
       })
     }

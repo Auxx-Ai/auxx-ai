@@ -2,46 +2,34 @@
 
 import type { TypedFieldValueInput, TypedFieldValue, RelationshipFieldValue } from '@auxx/types/field-value'
 import type { FieldValueConverter, ConverterOptions } from './index'
+import { type RecordId, toRecordId, isRecordId } from '@auxx/types/resource'
 
 /**
- * Relationship value structure used for raw values.
- * Contains both the entity ID and the definition ID.
+ * Relationship raw value is just RecordId.
+ * Format: "entityDefinitionId:entityInstanceId"
  */
-export interface RelationshipRawValue {
-  relatedEntityId: string
-  relatedEntityDefinitionId: string
-}
+export type RelationshipRawValue = RecordId
 
 /**
  * Converter for RELATIONSHIP field type.
  * Stores as relatedEntityId + relatedEntityDefinitionId in the database.
+ * Uses RecordId format internally: "entityDefinitionId:entityInstanceId"
  *
- * NOTE: toDisplayValue returns an object (not a string) because
+ * NOTE: toDisplayValue returns RecordId (not an object) because
  * display data (names, avatars) must be fetched on the frontend
  * using the useRelationship hook.
  */
 export const relationshipConverter: FieldValueConverter = {
   /**
-   * Convert raw input to TypedFieldValueInput.
-   * Accepts relationship object, raw ID string, or null/undefined.
+   * Convert input to internal TypedFieldValue format.
+   * Accepts:
+   *   - RecordId directly (preferred): 'vendor:abc123'
+   *   - Legacy { relatedEntityId, relatedEntityDefinitionId } (for migration)
+   *   - Raw instance ID string (requires relatedEntityDefinitionId from options)
    */
   toTypedInput(value: unknown, options?: ConverterOptions): TypedFieldValueInput | null {
     if (value === null || value === undefined) {
       return null
-    }
-
-    // Handle already-typed values
-    if (typeof value === 'object' && value !== null && 'type' in value) {
-      const typed = value as TypedFieldValue
-      if (typed.type === 'relationship') {
-        const rel = typed as RelationshipFieldValue
-        if (!rel.relatedEntityId) return null
-        return {
-          type: 'relationship',
-          relatedEntityId: rel.relatedEntityId,
-          relatedEntityDefinitionId: rel.relatedEntityDefinitionId || options?.relatedEntityDefinitionId || '',
-        }
-      }
     }
 
     // Handle empty string
@@ -49,101 +37,84 @@ export const relationshipConverter: FieldValueConverter = {
       return null
     }
 
-    // Handle object with relatedEntityId (raw relationship object)
-    if (typeof value === 'object' && value !== null && 'relatedEntityId' in value) {
-      const rel = value as { relatedEntityId: string; relatedEntityDefinitionId?: string }
-      if (!rel.relatedEntityId) return null
-      return {
-        type: 'relationship',
-        relatedEntityId: rel.relatedEntityId,
-        relatedEntityDefinitionId: rel.relatedEntityDefinitionId || options?.relatedEntityDefinitionId || '',
+    // RecordId string - the preferred input format
+    if (typeof value === 'string' && isRecordId(value)) {
+      return { type: 'relationship', recordId: value }
+    }
+
+    // Handle already-typed values with recordId
+    if (typeof value === 'object' && value !== null && 'type' in value) {
+      const typed = value as TypedFieldValue
+      if (typed.type === 'relationship') {
+        const rel = typed as RelationshipFieldValue
+        if (!rel.recordId) return null
+        return { type: 'relationship', recordId: rel.recordId }
       }
     }
 
-    // Handle raw ID string (use provided relatedEntityDefinitionId from options)
-    if (typeof value === 'string') {
-      return {
-        type: 'relationship',
-        relatedEntityId: value.trim(),
-        relatedEntityDefinitionId: options?.relatedEntityDefinitionId || '',
-      }
+    // Handle object with recordId (new format)
+    if (typeof value === 'object' && value !== null && 'recordId' in value) {
+      const obj = value as { recordId: RecordId }
+      if (!obj.recordId) return null
+      return { type: 'relationship', recordId: obj.recordId }
+    }
+
+    // Legacy format: { relatedEntityId, relatedEntityDefinitionId }
+    if (typeof value === 'object' && value !== null && 'relatedEntityId' in value) {
+      const legacy = value as { relatedEntityId: string; relatedEntityDefinitionId?: string }
+      if (!legacy.relatedEntityId) return null
+      const defId = legacy.relatedEntityDefinitionId || options?.relatedEntityDefinitionId || ''
+      if (!defId) return null
+      return { type: 'relationship', recordId: toRecordId(defId, legacy.relatedEntityId) }
+    }
+
+    // Raw instance ID string (requires relatedEntityDefinitionId from options)
+    if (typeof value === 'string' && value.trim() && options?.relatedEntityDefinitionId) {
+      return { type: 'relationship', recordId: toRecordId(options.relatedEntityDefinitionId, value.trim()) }
     }
 
     return null
   },
 
   /**
-   * Convert TypedFieldValue/Input to raw relationship object.
-   * Preserves both relatedEntityId and relatedEntityDefinitionId.
+   * Convert to raw value (returns the RecordId).
    */
   toRawValue(value: TypedFieldValue | TypedFieldValueInput | unknown): RelationshipRawValue | null {
     if (value === null || value === undefined) {
       return null
     }
 
-    // Handle TypedFieldValue or TypedFieldValueInput with type discriminator
-    if (typeof value === 'object' && value !== null && 'type' in value) {
-      const typed = value as TypedFieldValue
-      if (typed.type === 'relationship') {
-        const rel = typed as RelationshipFieldValue
-        if (!rel.relatedEntityId) return null
-        return {
-          relatedEntityId: rel.relatedEntityId,
-          relatedEntityDefinitionId: rel.relatedEntityDefinitionId || '',
-        }
-      }
-      return null
+    // Internal format { type: 'relationship', recordId }
+    if (typeof value === 'object' && value !== null && 'recordId' in value) {
+      return (value as { recordId: RecordId }).recordId || null
     }
 
-    // Handle raw relationship object (without type discriminator)
+    // Legacy format support
     if (typeof value === 'object' && value !== null && 'relatedEntityId' in value) {
-      const rel = value as { relatedEntityId: string; relatedEntityDefinitionId?: string }
-      if (!rel.relatedEntityId) return null
-      return {
-        relatedEntityId: rel.relatedEntityId,
-        relatedEntityDefinitionId: rel.relatedEntityDefinitionId || '',
-      }
+      const legacy = value as { relatedEntityId: string; relatedEntityDefinitionId?: string }
+      if (!legacy.relatedEntityId || !legacy.relatedEntityDefinitionId) return null
+      return toRecordId(legacy.relatedEntityDefinitionId, legacy.relatedEntityId)
     }
 
-    // Handle raw string ID (no definition ID available)
-    if (typeof value === 'string' && value.trim()) {
-      return {
-        relatedEntityId: value.trim(),
-        relatedEntityDefinitionId: '',
-      }
+    // Already a RecordId string
+    if (typeof value === 'string' && isRecordId(value)) {
+      return value
     }
 
     return null
   },
 
   /**
-   * Convert TypedFieldValue to display value.
-   *
-   * IMPORTANT: For relationships, this returns an object (not a string)
-   * because display data must be fetched on the frontend using useRelationship hook.
+   * Convert to display value (returns RecordId for frontend hydration).
    *
    * Frontend usage:
-   *   const relData = relationshipConverter.toDisplayValue(value)
-   *   const { items } = useRelationship(relData.relatedEntityDefinitionId, [relData.relatedEntityId])
-   *   // Then render items with displayName, avatarUrl, etc.
+   *   const recordId = relationshipConverter.toDisplayValue(value)
+   *   const { items } = useRelationship([recordId])
    */
   toDisplayValue(value: TypedFieldValue): RelationshipRawValue | null {
-    if (!value) {
-      return null
-    }
-
+    if (!value) return null
     const typed = value as RelationshipFieldValue
-
-    if (!typed.relatedEntityId) {
-      return null
-    }
-
-    // Return the full relationship object for frontend to hydrate
-    // Display options are not used for relationships
-    return {
-      relatedEntityId: typed.relatedEntityId,
-      relatedEntityDefinitionId: typed.relatedEntityDefinitionId || '',
-    }
+    return typed.recordId || null
   },
 }
 
@@ -158,13 +129,8 @@ export {
 } from '../relationship-field'
 
 /**
- * Check if value is a raw relationship object (without type discriminator)
+ * Check if value is a raw relationship value (RecordId)
  */
 export function isRelationshipRawValue(v: unknown): v is RelationshipRawValue {
-  return (
-    typeof v === 'object' &&
-    v !== null &&
-    'relatedEntityId' in v &&
-    typeof (v as Record<string, unknown>).relatedEntityId === 'string'
-  )
+  return isRecordId(v)
 }

@@ -176,8 +176,7 @@ export function useRelationshipSync() {
         // Build the new relationship value pointing back to source
         const newRelValue: RelationshipFieldValue = {
           type: 'relationship',
-          relatedEntityId: sourceInstanceId, // Still uses instanceId in the value object
-          relatedEntityDefinitionId: sourceEntityDefinitionId,
+          recordId: toRecordId(sourceEntityDefinitionId, sourceInstanceId),
           // Minimal fields for cache (full data comes from server)
           id: '',
           entityId: targetInstanceId,
@@ -226,13 +225,13 @@ function normalizeToArray(value: StoredFieldValue): RelationshipFieldValue[] {
 
 /**
  * Extract the related RecordId from a relationship value.
- * Constructs RecordId from relatedEntityDefinitionId + relatedEntityId in the value.
+ * Returns the recordId directly from the value.
  */
 function extractRelatedRecordId(value: unknown): RecordId | null {
   if (!value || typeof value !== 'object') return null
   const rel = value as RelationshipFieldValue
-  if (!rel.relatedEntityId || !rel.relatedEntityDefinitionId) return null
-  return toRecordId(rel.relatedEntityDefinitionId, rel.relatedEntityId)
+  if (!rel.recordId) return null
+  return rel.recordId
 }
 
 /**
