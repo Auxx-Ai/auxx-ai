@@ -1,6 +1,6 @@
 // apps/web/src/stores/custom-field-value-store.ts
 
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { useShallow } from 'zustand/react/shallow'
@@ -201,19 +201,6 @@ export function buildFieldValueKey(recordId: RecordId, fieldRef: FieldReference)
   const normalizedRef = normalizeFieldRef(recordId, fieldRef)
   const refKey = fieldRefToKey(normalizedRef)
   return `${recordId}:${refKey}` as FieldValueKey
-}
-
-/**
- * Build a field value key from individual components.
- * @deprecated Prefer buildFieldValueKey(recordId, fieldId) for consistency.
- * Only kept for backward compatibility. Do not use in new code.
- */
-export function buildFieldValueKeyFromParts(
-  entityDefinitionId: string,
-  entityInstanceId: string,
-  fieldId: string
-): FieldValueKey {
-  return `${entityDefinitionId}:${entityInstanceId}:${fieldId}` as FieldValueKey
 }
 
 /**
@@ -470,12 +457,24 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
 // ─────────────────────────────────────────────────────────────────
 
 /**
+ * Options for useFieldValue hook.
+ */
+interface UseFieldValueOptions {
+  /** When true, automatically fetch the value if not in store */
+  autoFetch?: boolean
+}
+
+/**
  * Subscribe to a field value and its loading state.
  * Component only re-renders when this specific value or loading state changes.
  *
  * @example
- * // Direct field
+ * // Direct field (passive - no auto-fetch)
  * const { value, isLoading } = useFieldValue(recordId, 'contact:email')
+ *
+ * @example
+ * // Direct field with auto-fetch (for single-record views)
+ * const { value, isLoading } = useFieldValue(recordId, 'contact:email', { autoFetch: true })
  *
  * @example
  * // Field path (relationship traversal)
@@ -483,11 +482,13 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
  */
 export function useFieldValue(
   recordId: RecordId,
-  fieldRef: FieldReference
+  fieldRef: FieldReference | undefined,
+  options: UseFieldValueOptions = {}
 ): { value: StoredFieldValue | undefined; isLoading: boolean } {
-  const key = buildFieldValueKey(recordId, fieldRef)
-  // DEBUG: Log the key being used for subscription
-  // console.log('[useFieldValue] key:', key, 'recordId:', recordId, 'fieldRef:', fieldRef)
+  const { autoFetch = false } = options
+
+  // Handle undefined fieldRef - return early with undefined value
+  const key = fieldRef ? buildFieldValueKey(recordId, fieldRef) : ('' as FieldValueKey)
 
   // Stable selector that subscribes to both value and loading state
   const selector = useCallback(
@@ -499,7 +500,19 @@ export function useFieldValue(
   )
 
   // Use shallow comparison to prevent unnecessary re-renders
-  return useFieldValueStore(useShallow(selector))
+  const { value, isLoading } = useFieldValueStore(useShallow(selector))
+
+  // Auto-fetch if enabled and value is missing (skip if fieldRef is undefined)
+  useEffect(() => {
+    if (autoFetch && fieldRef && value === undefined && !isLoading) {
+      // Lazy import to avoid circular dependency
+      import('./field-value-fetch-queue').then(({ fieldValueFetchQueue }) => {
+        fieldValueFetchQueue.queueFetch(recordId, fieldRef)
+      })
+    }
+  }, [autoFetch, value, isLoading, recordId, fieldRef])
+
+  return { value, isLoading }
 }
 
 /**

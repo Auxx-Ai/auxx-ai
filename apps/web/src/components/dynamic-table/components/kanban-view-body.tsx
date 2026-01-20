@@ -10,6 +10,9 @@ import { useActiveView, useKanbanConfig } from '../stores/store-selectors'
 import { useUpdateKanbanConfig } from '../stores/store-actions'
 import type { KanbanRow } from '../types'
 import { useResource } from '~/components/resources'
+import { toResourceFieldId } from '@auxx/types/field'
+import { fieldValueFetchQueue } from '~/components/resources/store/field-value-fetch-queue'
+import { toRecordId } from '@auxx/lib/resources/client'
 /**
  * Kanban view body that integrates with focused contexts.
  * Handles view-level config mutations (column reorder, visibility).
@@ -52,14 +55,21 @@ export function KanbanViewBody<TData extends KanbanRow>() {
     return selectFields.find((f) => f.id === kanbanConfig.groupByFieldId) ?? null
   }, [kanbanConfig?.groupByFieldId, selectFields])
 
-  // Derive primaryFieldId from viewConfig or resource
+  // Derive primaryFieldId from viewConfig or resource - convert to ResourceFieldId
   const primaryFieldId = useMemo(() => {
-    // Priority 1: View config
-    if (kanbanConfig?.primaryFieldId) return kanbanConfig.primaryFieldId
-
+    if (!entityDefinitionId) return undefined
+    // Priority 1: View config - convert to ResourceFieldId
+    const configFieldId = kanbanConfig?.primaryFieldId
+    if (configFieldId) {
+      return toResourceFieldId(entityDefinitionId, configFieldId)
+    }
     // Priority 2: Resource display field
-    return resource?.display.primaryDisplayField?.id
-  }, [kanbanConfig?.primaryFieldId, resource])
+    const displayFieldId = resource?.display.primaryDisplayField?.id
+    if (displayFieldId) {
+      return toResourceFieldId(entityDefinitionId, displayFieldId)
+    }
+    return undefined
+  }, [kanbanConfig?.primaryFieldId, resource, entityDefinitionId])
 
   // Handle column reorder with optimistic updates
   const handleColumnReorder = useCallback(
@@ -87,6 +97,24 @@ export function KanbanViewBody<TData extends KanbanRow>() {
     }),
     [kanbanConfig, effectiveColumnOrder]
   )
+
+  // Queue fetch for groupByField values (kanban grouping requires these)
+  useEffect(() => {
+    if (!kanbanConfig?.groupByFieldId || !entityDefinitionId) return
+
+    const data = table.getRowModel().rows.map((row) => row.original) as TData[]
+    if (data.length === 0) return
+
+    const groupByFieldRef = toResourceFieldId(entityDefinitionId, kanbanConfig.groupByFieldId)
+
+    // Queue fetches for all records' groupByField values
+    fieldValueFetchQueue.queueFetchBatch(
+      data.map((record) => ({
+        recordId: toRecordId(entityDefinitionId, record.id),
+        fieldRef: groupByFieldRef,
+      }))
+    )
+  }, [kanbanConfig?.groupByFieldId, entityDefinitionId, table])
 
   // Get data from table rows
   const data = table.getRowModel().rows.map((row) => row.original) as TData[]

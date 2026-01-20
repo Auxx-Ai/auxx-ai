@@ -22,3 +22,5 @@ export {
 } from './record-store'
 
 export { useResourceStore, getResourceStoreState } from './resource-store'
+
+export { fieldValueFetchQueue } from './field-value-fetch-queue'

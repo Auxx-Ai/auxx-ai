@@ -11,9 +11,7 @@ import {
 } from 'react'
 
 import {
-  useFieldValueStore,
-  buildFieldValueKey,
-  type FieldValueKey,
+  useFieldValue,
   type StoredFieldValue,
 } from '~/components/resources/store/field-value-store'
 
@@ -204,9 +202,10 @@ export function PropertyProvider({
   children,
 }: PropertyProviderProps) {
   // ─── Store Integration ───
-  // Get value from store using RecordId directly
-  const storeKey = buildFieldValueKey(recordId, field.id)
-  const storeValue = useFieldValueStore((s) => s.values[storeKey])
+  // Get value from store using RecordId directly with auto-fetch
+  const { value: storeValue, isLoading: storeLoading } = useFieldValue(recordId, field.id, {
+    autoFetch: true,
+  })
   // Field metadata provider for relationship sync
   // The field object already contains options.relationship from the registry
   const getFieldMetadata = useCallback(
@@ -428,7 +427,7 @@ export function PropertyProvider({
     serverValue,
     readOnly,
     showTitle,
-    isLoading: loading,
+    isLoading: loading || storeLoading,
     isDirty,
     isOpen,
     isSaving,

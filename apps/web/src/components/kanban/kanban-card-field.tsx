@@ -106,7 +106,7 @@ export const KanbanCardField = memo(function KanbanCardField({
   }, [fieldRef, isPath])
 
   // Direct store subscription - triggers re-render when value changes
-  const { value, isLoading } = useFieldValue(recordId, fieldRef)
+  const { value, isLoading } = useFieldValue(recordId, fieldRef, { autoFetch: true })
 
   // Get field metadata from store (for paths) or from prop (for direct fields)
   const storedField = useField(targetResourceFieldId)

@@ -35,8 +35,9 @@ import {
 import type { SelectOption as RawSelectOption } from '@auxx/types/custom-field'
 import {
   useFieldValueStore,
-  buildFieldValueKeyFromParts,
-  type FieldValueKey,
+  buildFieldValueKey,
+  toRecordId as toRecordIdForKey,
+  type FieldReference,
 } from '~/components/resources/store/field-value-store'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { getModelType, toRecordId } from '@auxx/lib/resources/client'
@@ -68,7 +69,7 @@ interface KanbanViewProps<TData extends KanbanRow> {
   /** All custom fields for card display */
   customFields: CustomField[]
   /** Primary display field ID */
-  primaryFieldId?: string
+  primaryFieldId?: FieldReference
   /** Callback when columns are reordered (view-level) */
   onColumnReorder?: (columnIds: string[]) => Promise<void>
   /** Callback when a card is clicked */
@@ -104,7 +105,7 @@ interface KanbanDragOverlayProps<TData extends KanbanRow> {
   /** Entity definition ID (e.g., 'contact', 'ticket', or custom entity UUID) */
   entityDefinitionId: string
   /** Primary field ID for card title */
-  primaryFieldId?: string
+  primaryFieldId?: FieldReference
 }
 
 /**
@@ -222,7 +223,8 @@ export function KanbanView<TData extends KanbanRow>({
   // Create reactive getValue from store
   const getValue = useCallback(
     (rowId: string, fieldId: string): unknown => {
-      const key = buildFieldValueKeyFromParts(entityDefinitionId, rowId, fieldId)
+      const recordId = toRecordIdForKey(entityDefinitionId, rowId)
+      const key = buildFieldValueKey(recordId, fieldId)
       return storeValues[key]
     },
     [storeValues, entityDefinitionId]

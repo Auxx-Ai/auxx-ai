@@ -2,10 +2,11 @@
 
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { api } from '~/trpc/react'
 import { getRelationshipStoreState, useRelationshipStore, getRecordStoreState } from '../store'
 import { getResourceStoreState } from '../store/resource-store'
+import { fieldValueFetchQueue } from '../store/field-value-fetch-queue'
 import type { RecordId } from '@auxx/lib/resources/client'
 import { useRecordBatchFetcher } from '../hooks/use-record-batch-fetcher'
 
@@ -48,6 +49,19 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     getResourceStoreState().setLoading(resourcesQuery.isLoading)
   }, [resourcesQuery.isLoading])
+
+  // === FIELD VALUE FETCH QUEUE INITIALIZATION ===
+  const fieldValueBatchGet = api.fieldValue.batchGet.useMutation()
+  const fieldValueInitRef = useRef(false)
+
+  useEffect(() => {
+    if (fieldValueInitRef.current) return
+    fieldValueInitRef.current = true
+
+    fieldValueFetchQueue.setFetchFn(async (params) => {
+      return fieldValueBatchGet.mutateAsync(params)
+    })
+  }, [fieldValueBatchGet])
 
   // === RELATIONSHIP ITEMS BATCHING ===
   const [relationshipBatch, setRelationshipBatch] = useState<RecordId[]>([])
