@@ -90,6 +90,8 @@ export const customFieldRouter = createTRPCRouter({
         active: z.boolean().optional(),
         sortOrder: z.string().optional(),
         type: z.enum(FieldType).optional(),
+        /** Update the inverse relationship field's name (RELATIONSHIP type only) */
+        inverseName: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {

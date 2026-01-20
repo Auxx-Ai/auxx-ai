@@ -238,6 +238,13 @@ export function EntityRecordsContent() {
     () => customFields.map((field) => field.resourceFieldId!),
     [customFields]
   )
+  console.log(
+    'entity records content columnIds:',
+    isConfigReady,
+    columnIds,
+    columnVisibility,
+    storeColumnVisibility
+  )
 
   // Field value syncer - reads from store for reactive updates
   const { getValue, isValueLoading } = useFieldValueSyncer({
@@ -696,9 +703,7 @@ export function EntityRecordsContent() {
         <MergeDialog
           open={isMergeDialogOpen}
           onOpenChange={setIsMergeDialogOpen}
-          baseRecordIds={Array.from(selectedRowIds).map((id) =>
-            toRecordId(entityDefinitionId, id)
-          )}
+          baseRecordIds={Array.from(selectedRowIds).map((id) => toRecordId(entityDefinitionId, id))}
           onMergeComplete={() => {
             setSelectedRowIds(new Set())
             refresh()

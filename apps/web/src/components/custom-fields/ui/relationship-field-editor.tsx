@@ -16,9 +16,11 @@ import { EntityIcon } from '@auxx/ui/components/icons'
 import {
   RELATIONSHIP_TYPES as RELATIONSHIP_TYPE_VALUES,
   type RelationshipOptions,
+  type RelationshipConfig,
 } from '@auxx/types/custom-field'
+import { parseResourceFieldId } from '@auxx/types/field'
 import { isSingleRelationship, getInverseCardinality } from '@auxx/utils'
-import { useResources, useResource } from '~/components/resources'
+import { useResources, useResource, useField } from '~/components/resources'
 
 // Re-export RelationshipOptions for consumers of this component
 export type { RelationshipOptions }
@@ -32,69 +34,108 @@ const RELATIONSHIP_TYPES = RELATIONSHIP_TYPE_VALUES.map((value) => ({
     .join(' '),
 }))
 
-interface RelationshipFieldEditorProps {
+/** Props for create mode - creating a new relationship field */
+interface CreateModeProps {
+  mode: 'create'
+  /** Options for creating a new relationship */
   options: RelationshipOptions
+  /** Callback when options change */
   onChange: (options: RelationshipOptions) => void
-  /** Entity definition ID to look up current resource in resources list */
-  entityDefinitionId?: string
-  /** Field name value from parent form */
-  name?: string
-  /** Callback to update field name in parent form */
-  onNameChange?: (value: string) => void
 }
 
+/** Props for edit mode - editing an existing relationship field */
+interface EditModeProps {
+  mode: 'edit'
+  /** Stored relationship config from the existing field */
+  storedConfig: RelationshipConfig
+  /** Current inverse name (editable) */
+  inverseName: string
+  /** Callback when inverse name changes */
+  onInverseNameChange: (name: string) => void
+}
+
+/** Common props shared by both modes */
+interface CommonProps {
+  /** Entity definition ID of the current resource */
+  entityDefinitionId: string
+  /** Field name value from parent form */
+  name: string
+  /** Callback to update field name in parent form */
+  onNameChange: (value: string) => void
+}
+
+type RelationshipFieldEditorProps = CommonProps & (CreateModeProps | EditModeProps)
+
 /**
- * 3-column editor component for configuring RELATIONSHIP field options
- * Shows current entity field, relationship type, and inverse field side-by-side
+ * 3-column editor component for configuring RELATIONSHIP field options.
+ * Shows current entity field, relationship type, and inverse field side-by-side.
+ *
+ * Supports two modes:
+ * - Create mode: All fields editable, user configures relationship from scratch
+ * - Edit mode: Related resource and relationship type are read-only (can't change cardinality)
  */
-export function RelationshipFieldEditor({
-  options,
-  onChange,
-  entityDefinitionId,
-  name,
-  onNameChange,
-}: RelationshipFieldEditorProps) {
-  // Get all resources for the dropdown
+export function RelationshipFieldEditor(props: RelationshipFieldEditorProps) {
+  const { entityDefinitionId, name, onNameChange } = props
+  const isEditMode = props.mode === 'edit'
+
+  // Get all resources for the dropdown (only needed in create mode)
   const { resources, isLoading } = useResources()
 
-  // Get current and selected resources
+  // Get current resource (where this field lives)
   const { resource: currentResource } = useResource(entityDefinitionId)
-  const { resource: selectedResource } = useResource(options.relatedResourceId)
 
-  console.log('RelationshipFieldEditor options:', currentResource, selectedResource, options)
+  // In edit mode, derive relatedResourceId from stored config's inverseResourceFieldId
+  const relatedResourceId = isEditMode
+    ? props.storedConfig.inverseResourceFieldId
+      ? parseResourceFieldId(props.storedConfig.inverseResourceFieldId).entityDefinitionId
+      : undefined
+    : props.options.relatedResourceId
 
-  /** Update a single option field */
+  // Get the related resource
+  const { resource: selectedResource } = useResource(relatedResourceId)
+
+  // Get current relationship type
+  const relationshipType = isEditMode
+    ? props.storedConfig.relationshipType
+    : props.options.relationshipType
+
+  // Get inverse name (from props in edit mode, from options in create mode)
+  const inverseName = isEditMode ? props.inverseName : props.options.inverseName
+
+  /** Update a single option field (create mode only) */
   const updateOption = <K extends keyof RelationshipOptions>(
     key: K,
     value: RelationshipOptions[K]
   ) => {
-    onChange({ ...options, [key]: value })
+    if (!isEditMode) {
+      props.onChange({ ...props.options, [key]: value })
+    }
   }
 
   /**
-   * Get placeholder for the left (current entity) field name input
-   * Based on the RELATED resource and relationship type
+   * Get placeholder for the left (current entity) field name input.
+   * Based on the RELATED resource and relationship type.
    */
   const getLeftPlaceholder = () => {
     if (!selectedResource) return 'Field name...'
-    return isSingleRelationship(options.relationshipType)
+    return isSingleRelationship(relationshipType)
       ? selectedResource.label
       : selectedResource.plural
   }
 
   /**
-   * Get placeholder for the right (inverse) field name input
-   * Based on the CURRENT resource and inverse relationship type
+   * Get placeholder for the right (inverse) field name input.
+   * Based on the CURRENT resource and inverse relationship type.
    */
   const getRightPlaceholder = () => {
     if (!currentResource) return 'Field name...'
-    const inverseType = getInverseCardinality(options.relationshipType)
+    const inverseType = getInverseCardinality(relationshipType)
     return isSingleRelationship(inverseType) ? currentResource.label : currentResource.plural
   }
 
   return (
     <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-start">
-      {/* LEFT: Current entity field grid-cols-[1fr,auto,1fr] */}
+      {/* LEFT: Current entity field */}
       <Card>
         <CardHeader className="p-0 border-b">
           <CardTitle className="text-sm font-medium h-8 flex items-center ps-4">
@@ -103,8 +144,8 @@ export function RelationshipFieldEditor({
         </CardHeader>
         <CardContent className="pt-3">
           <Input
-            value={name || ''}
-            onChange={(e) => onNameChange?.(e.target.value)}
+            value={name}
+            onChange={(e) => onNameChange(e.target.value)}
             placeholder={`e.g. ${getLeftPlaceholder()}`}
           />
           <Label className="font-normal ps-2 mt-2 text-sm text-primary-400">
@@ -116,10 +157,11 @@ export function RelationshipFieldEditor({
       {/* MIDDLE: Relationship type selector */}
       <div className="flex items-center h-full">
         <Select
-          value={options.relationshipType}
+          value={relationshipType}
           onValueChange={(v) =>
             updateOption('relationshipType', v as RelationshipOptions['relationshipType'])
-          }>
+          }
+          disabled={isEditMode}>
           <SelectTrigger className="w-[140px]">
             <SelectValue />
           </SelectTrigger>
@@ -136,37 +178,62 @@ export function RelationshipFieldEditor({
       {/* RIGHT: Related entity + inverse field */}
       <Card>
         <CardHeader className="p-0 border-b">
-          <Select
-            value={options.relatedResourceId}
-            onValueChange={(v) => updateOption('relatedResourceId', v)}
-            disabled={isLoading}>
-            <SelectTrigger className="mb-0" variant="transparent" size="default">
-              <SelectValue placeholder="Select resource..." />
-            </SelectTrigger>
-            <SelectContent>
-              {resources.map((resource) => (
-                <SelectItem key={resource.id} value={resource.id}>
-                  <div className="flex items-center gap-2">
-                    {resource.icon && (
-                      <EntityIcon
-                        iconId={resource.icon}
-                        color={resource.color || 'gray'}
-                        className="size-5"
-                      />
-                    )}
-                    <span>{resource.label}</span>
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {isEditMode ? (
+            /* Edit mode: show related resource as read-only */
+            <div className="flex items-center gap-2 h-8 ps-4">
+              {selectedResource?.icon && (
+                <EntityIcon
+                  iconId={selectedResource.icon}
+                  color={selectedResource.color || 'gray'}
+                  className="size-5"
+                />
+              )}
+              <span className="text-sm font-medium">{selectedResource?.label || 'Unknown'}</span>
+            </div>
+          ) : (
+            /* Create mode: show resource selector */
+            <Select
+              value={props.options.relatedResourceId}
+              onValueChange={(v) => updateOption('relatedResourceId', v)}
+              disabled={isLoading}>
+              <SelectTrigger className="mb-0" variant="transparent" size="default">
+                <SelectValue placeholder="Select resource..." />
+              </SelectTrigger>
+              <SelectContent>
+                {resources.map((resource) => (
+                  <SelectItem key={resource.id} value={resource.id}>
+                    <div className="flex items-center gap-2">
+                      {resource.icon && (
+                        <EntityIcon
+                          iconId={resource.icon}
+                          color={resource.color || 'gray'}
+                          className="size-5"
+                        />
+                      )}
+                      <span>{resource.label}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </CardHeader>
         <CardContent className="pt-3">
-          <Input
-            value={options.inverseName}
-            onChange={(e) => updateOption('inverseName', e.target.value)}
-            placeholder={`e.g. ${getRightPlaceholder()}`}
-          />
+          {isEditMode ? (
+            /* Edit mode: editable inverse field name */
+            <Input
+              value={inverseName}
+              onChange={(e) => props.onInverseNameChange(e.target.value)}
+              placeholder="Inverse field name"
+            />
+          ) : (
+            /* Create mode: editable inverse field name */
+            <Input
+              value={inverseName}
+              onChange={(e) => updateOption('inverseName', e.target.value)}
+              placeholder={`e.g. ${getRightPlaceholder()}`}
+            />
+          )}
           <Label className="font-normal ps-2 mt-2 text-sm text-primary-400">
             Associated attribute name
           </Label>

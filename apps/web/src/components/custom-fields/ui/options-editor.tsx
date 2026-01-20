@@ -6,6 +6,42 @@ import { Button } from '@auxx/ui/components/button'
 import { PlusCircle, GripVertical, Trash2 } from 'lucide-react'
 import { DEFAULT_SELECT_OPTION_COLOR, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
 import { OptionColorPicker } from './option-color-picker'
+import type { FieldOptions } from '@auxx/lib/field-values/client'
+
+/** Select option type for editor state (without internal id) */
+export type SelectOption = { label: string; value: string; color?: SelectOptionColor }
+
+/**
+ * Parse stored field options into editor state.
+ * Handles both formats: options.options (nested) and options as array (flat).
+ */
+export function parseSelectOptions(fieldOptions?: FieldOptions): SelectOption[] {
+  // Handle nested format (options.options)
+  if (fieldOptions?.options && Array.isArray(fieldOptions.options)) {
+    return fieldOptions.options.map((opt) => ({
+      label: opt.label,
+      value: opt.value,
+      color: opt.color as SelectOptionColor | undefined,
+    }))
+  }
+  // Handle flat format (options is array) - legacy support
+  if (Array.isArray(fieldOptions)) {
+    return fieldOptions.map((opt) => ({
+      label: opt.label,
+      value: opt.value,
+      color: opt.color as SelectOptionColor | undefined,
+    }))
+  }
+  return []
+}
+
+/**
+ * Format editor state into storage format.
+ * Returns options object with options key for storage.
+ */
+export function formatSelectOptions(options: SelectOption[]): { options: SelectOption[] } {
+  return { options }
+}
 import {
   DndContext,
   closestCenter,

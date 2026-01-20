@@ -56,11 +56,11 @@ import {
 import { canFieldBeUnique, type SelectOptionColor } from '@auxx/types/custom-field'
 import { EntityIcon } from '@auxx/ui/components/icons'
 
-import { OptionsEditor } from './options-editor'
-import { AddressComponentsEditor } from './address-component-editor'
-import { FileOptionsEditor, type FileOptions } from './file-options-editor'
+import { OptionsEditor, parseSelectOptions, formatSelectOptions, type SelectOption } from './options-editor'
+import { AddressComponentsEditor, parseAddressComponents, formatAddressComponents } from './address-component-editor'
+import { FileOptionsEditor, parseFileOptions, formatFileOptions, type FileOptions } from './file-options-editor'
 import { RelationshipFieldEditor, type RelationshipOptions } from './relationship-field-editor'
-import { CurrencyOptionsEditor, type CurrencyOptions } from './currency-options-editor'
+import { CurrencyOptionsEditor, parseCurrencyOptions, formatCurrencyOptions, type CurrencyOptions } from './currency-options-editor'
 import {
   NumberFormattingEditor,
   DateFormattingEditor,
@@ -68,15 +68,16 @@ import {
   TimeFormattingEditor,
   BooleanFormattingEditor,
   PhoneFormattingEditor,
+  parseDisplayOptions,
+  formatDisplayOptions,
+  type DisplayOptions,
 } from './formatting-editors'
 import type { FieldOptions } from '@auxx/lib/field-values/client'
-import { toResourceFieldId, parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
+import type { RelationshipConfig } from '@auxx/types/custom-field'
+import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
 import { useField } from '~/components/resources'
 import { toastError } from '@auxx/ui/components/toast'
-
-/** Display options type for internal state */
-type DisplayOptions = FieldOptions
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
 
 /** Props for CustomFieldDialog */
@@ -146,52 +147,40 @@ export function CustomFieldDialog({
     },
   })
 
-  // States for complex field options
-  const [options, setOptions] = useState<
-    Array<{ label: string; value: string; color?: SelectOptionColor }>
-  >([])
-  const [addressComponents, setAddressComponents] = useState<string[]>([
-    'street1',
-    'street2',
-    'city',
-    'state',
-    'zipCode',
-    'country',
-  ])
-  const [fileOptions, setFileOptions] = useState<FileOptions>({
-    allowMultiple: false,
-    maxFiles: undefined,
-    allowedFileTypes: undefined,
-    allowedFileExtensions: undefined,
-  })
+  // States for complex field options (use parse helpers for defaults)
+  const [selectOptions, setSelectOptions] = useState<SelectOption[]>([])
+  const [addressComponents, setAddressComponents] = useState<string[]>(parseAddressComponents())
+  const [fileOptions, setFileOptions] = useState<FileOptions>(parseFileOptions())
   const [relationshipOptions, setRelationshipOptions] = useState<RelationshipOptions>({
     relatedResourceId: 'contact',
     relationshipType: 'belongs_to',
     inverseName: '',
   })
-  const [currencyOptions, setCurrencyOptions] = useState<CurrencyOptions>({
-    currencyCode: 'USD',
-    decimalPlaces: 'two-places',
-    displayType: 'symbol',
-    groups: 'default',
-  })
+  const [currencyOptions, setCurrencyOptions] = useState<CurrencyOptions>(parseCurrencyOptions())
   const [displayOptions, setDisplayOptions] = useState<DisplayOptions>({})
   const [showDisplayOptions, setShowDisplayOptions] = useState(false)
+  // State for inverse field name in edit mode
+  const [inverseName, setInverseName] = useState('')
+
+  // Fetch inverse field for edit mode to get initial label
+  const inverseResourceFieldId = editingField?.options?.relationship?.inverseResourceFieldId
+  const inverseField = useField(isEditing ? inverseResourceFieldId : null)
 
   // Track initial values for extra state (not managed by react-hook-form)
   const [initialExtraState, setInitialExtraState] = useState<{
-    options: Array<{ label: string; value: string; color?: SelectOptionColor }>
+    selectOptions: SelectOption[]
     addressComponents: string[]
     fileOptions: FileOptions
     relationshipOptions: RelationshipOptions
     currencyOptions: CurrencyOptions
     displayOptions: DisplayOptions
+    inverseName: string
   } | null>(null)
 
   // Check if extra state (outside react-hook-form) has changed
   const isExtraStateDirty = useMemo(() => {
     if (!initialExtraState) return false
-    const optionsChanged = JSON.stringify(options) !== JSON.stringify(initialExtraState.options)
+    const selectOptionsChanged = JSON.stringify(selectOptions) !== JSON.stringify(initialExtraState.selectOptions)
     const addressChanged =
       JSON.stringify(addressComponents) !== JSON.stringify(initialExtraState.addressComponents)
     const fileChanged =
@@ -202,21 +191,24 @@ export function CustomFieldDialog({
       JSON.stringify(currencyOptions) !== JSON.stringify(initialExtraState.currencyOptions)
     const displayOptionsChanged =
       JSON.stringify(displayOptions) !== JSON.stringify(initialExtraState.displayOptions)
+    const inverseNameChanged = inverseName !== initialExtraState.inverseName
     return (
-      optionsChanged ||
+      selectOptionsChanged ||
       addressChanged ||
       fileChanged ||
       relationshipChanged ||
       currencyChanged ||
-      displayOptionsChanged
+      displayOptionsChanged ||
+      inverseNameChanged
     )
   }, [
-    options,
+    selectOptions,
     addressComponents,
     fileOptions,
     relationshipOptions,
     currencyOptions,
     displayOptions,
+    inverseName,
     initialExtraState,
   ])
 
@@ -237,37 +229,21 @@ export function CustomFieldDialog({
   // Reset form when dialog opens or editing field changes
   useEffect(() => {
     if (open) {
-      let initOptions: Array<{ label: string; value: string; color?: SelectOptionColor }> = []
-      let initAddressComponents: string[] = [
-        'street1',
-        'street2',
-        'city',
-        'state',
-        'zipCode',
-        'country',
-      ]
-      let initFileOptions: FileOptions = {
-        allowMultiple: false,
-        maxFiles: undefined,
-        allowedFileTypes: undefined,
-        allowedFileExtensions: undefined,
-      }
+      // Use parse helpers for defaults
+      let initSelectOptions: SelectOption[] = []
+      let initAddressComponents: string[] = parseAddressComponents()
+      let initFileOptions: FileOptions = parseFileOptions()
       let initRelationshipOptions: RelationshipOptions = {
         relatedResourceId: 'contact',
         relationshipType: 'belongs_to',
         inverseName: '',
       }
-      let initCurrencyOptions: CurrencyOptions = {
-        currencyCode: 'USD',
-        decimalPlaces: 'two-places',
-        displayType: 'symbol',
-        groups: 'default',
-      }
+      let initCurrencyOptions: CurrencyOptions = parseCurrencyOptions()
       let initDisplayOptions: DisplayOptions = {}
+      let initInverseName = ''
 
       if (editingField) {
         // Edit mode: populate form with existing field data from ResourceField
-        // ResourceField uses 'label' for display name, 'fieldType' for type, 'isSystem' (inverse of isCustom)
         const fieldType = (editingField.fieldType as FieldTypeType) || FieldType.TEXT
         form.reset({
           name: editingField.label || '',
@@ -281,89 +257,30 @@ export function CustomFieldDialog({
           isCustom: !editingField.isSystem,
         })
 
-        // Set complex options
-        if (editingField.options?.options && Array.isArray(editingField.options.options)) {
-          initOptions = editingField.options.options
-        } else if (Array.isArray(editingField.options)) {
-          initOptions = editingField.options
-        }
-        setOptions(initOptions)
+        // Parse complex options using helper functions
+        initSelectOptions = parseSelectOptions(editingField.options as FieldOptions)
+        setSelectOptions(initSelectOptions)
 
-        if (
-          editingField.options?.addressComponents &&
-          Array.isArray(editingField.options.addressComponents)
-        ) {
-          initAddressComponents = editingField.options.addressComponents
-        }
+        initAddressComponents = parseAddressComponents(editingField.options as FieldOptions)
         setAddressComponents(initAddressComponents)
 
-        // Parse file options - handle both new structure (options.file) and legacy format
-        if (editingField.options?.file) {
-          initFileOptions = {
-            allowMultiple: editingField.options.file.allowMultiple || false,
-            maxFiles: editingField.options.file.maxFiles,
-            allowedFileTypes: editingField.options.file.allowedFileTypes,
-            allowedFileExtensions: editingField.options.file.allowedFileExtensions,
-          }
-        } else if (editingField.options?.allowMultiple !== undefined) {
-          // Legacy format support
-          initFileOptions = {
-            allowMultiple: editingField.options.allowMultiple,
-            maxFiles: undefined,
-            allowedFileTypes: undefined,
-            allowedFileExtensions: undefined,
-          }
-        }
+        initFileOptions = parseFileOptions(editingField.options as FieldOptions)
         setFileOptions(initFileOptions)
 
-        if (editingField.options?.relationship) {
-          initRelationshipOptions = {
-            relatedResourceId: editingField.options.relationship.relatedResourceId || 'contact',
-            relationshipType: editingField.options.relationship.relationshipType || 'belongs_to',
-            inverseName: editingField.options.relationship.inverseName || '',
-            inverseDescription: editingField.options.relationship.inverseDescription,
-            inverseIcon: editingField.options.relationship.inverseIcon,
-          }
-        }
+        // Relationship options: keep create options for create mode only
+        // In edit mode, we don't populate relationshipOptions since the editor uses storedConfig
         setRelationshipOptions(initRelationshipOptions)
 
-        if (editingField.options?.currency) {
-          initCurrencyOptions = {
-            currencyCode: editingField.options.currency.currencyCode || 'USD',
-            decimalPlaces: editingField.options.currency.decimalPlaces || 'two-places',
-            displayType: editingField.options.currency.displayType || 'symbol',
-            groups: editingField.options.currency.groups || 'default',
-          }
-        }
+        initCurrencyOptions = parseCurrencyOptions(editingField.options as FieldOptions)
         setCurrencyOptions(initCurrencyOptions)
 
-        // Load display options from field.options (flat structure)
-        // NUMBER: decimals, useGrouping, displayAs, prefix, suffix
-        // DATE/DATETIME: format
-        // TIME: timeFormat
-        // CHECKBOX: displayAs, trueLabel, falseLabel
-        // PHONE_INTL: phoneFormat
-        if (editingField.options) {
-          const opts = editingField.options
-          initDisplayOptions = {
-            // Number options
-            decimals: opts.decimals,
-            useGrouping: opts.useGrouping,
-            displayAs: opts.displayAs,
-            prefix: opts.prefix,
-            suffix: opts.suffix,
-            // Date options
-            format: opts.format,
-            timeFormat: opts.timeFormat,
-            // Boolean options
-            trueLabel: opts.trueLabel,
-            falseLabel: opts.falseLabel,
-            // Phone options
-            phoneFormat: opts.phoneFormat,
-          }
-        }
+        initDisplayOptions = parseDisplayOptions(editingField.options as FieldOptions)
         setDisplayOptions(initDisplayOptions)
         setShowDisplayOptions(false)
+
+        // Initialize inverse name from inverse field (will update when inverseField loads)
+        initInverseName = inverseField?.label ?? ''
+        setInverseName(initInverseName)
       } else {
         // Create mode: reset to defaults
         form.reset({
@@ -377,26 +294,28 @@ export function CustomFieldDialog({
           icon: '',
           isCustom: true,
         })
-        setOptions(initOptions)
+        setSelectOptions(initSelectOptions)
         setAddressComponents(initAddressComponents)
         setFileOptions(initFileOptions)
         setRelationshipOptions(initRelationshipOptions)
         setCurrencyOptions(initCurrencyOptions)
         setDisplayOptions(initDisplayOptions)
         setShowDisplayOptions(false)
+        setInverseName(initInverseName)
       }
 
       // Set baseline for dirty checking
       setInitialExtraState({
-        options: initOptions,
+        selectOptions: initSelectOptions,
         addressComponents: initAddressComponents,
         fileOptions: initFileOptions,
         relationshipOptions: initRelationshipOptions,
         currencyOptions: initCurrencyOptions,
         displayOptions: initDisplayOptions,
+        inverseName: initInverseName,
       })
     }
-  }, [open, resourceFieldId, editingField, form])
+  }, [open, resourceFieldId, editingField, form, inverseField?.label])
 
   // Watch selected type
   const selectedType = form.watch('type')
@@ -426,9 +345,9 @@ export function CustomFieldDialog({
       entityDefinitionId: effectiveEntityDefId,
     }
 
-    // Add type-specific options
+    // Add type-specific options using format helpers
     if (values.type === FieldType.SINGLE_SELECT || values.type === FieldType.MULTI_SELECT) {
-      submitObj.options = options
+      submitObj.options = selectOptions
     }
 
     if (values.type === FieldType.ADDRESS_STRUCT) {
@@ -436,31 +355,27 @@ export function CustomFieldDialog({
     }
 
     if (values.type === FieldType.FILE) {
-      submitObj.options = { file: fileOptions }
+      submitObj.options = formatFileOptions(fileOptions)
     }
 
     if (values.type === FieldType.RELATIONSHIP) {
-      submitObj.relationship = relationshipOptions
+      if (!isEditing) {
+        // Create mode: pass relationship options
+        submitObj.relationship = relationshipOptions
+      } else {
+        // Edit mode: include inverse name for updating the inverse field
+        submitObj.inverseName = inverseName
+      }
     }
 
     if (values.type === FieldType.CURRENCY) {
-      submitObj.options = { currency: currencyOptions }
+      submitObj.options = formatCurrencyOptions(currencyOptions)
     }
 
-    // Merge display options flat into options for supported field types
-    // NUMBER: decimals, useGrouping, displayAs, prefix, suffix
-    // DATE/DATETIME: format
-    // TIME: timeFormat
-    // CHECKBOX: displayAs, trueLabel, falseLabel
-    // PHONE_INTL: phoneFormat
-    if (Object.keys(displayOptions).length > 0) {
-      // Filter out undefined values from displayOptions
-      const filteredDisplayOptions = Object.fromEntries(
-        Object.entries(displayOptions).filter(([_, v]) => v !== undefined)
-      )
-      if (Object.keys(filteredDisplayOptions).length > 0) {
-        submitObj.options = { ...submitObj.options, ...filteredDisplayOptions }
-      }
+    // Merge display options using format helper
+    const formattedDisplayOptions = formatDisplayOptions(displayOptions)
+    if (Object.keys(formattedDisplayOptions).length > 0) {
+      submitObj.options = { ...submitObj.options, ...formattedDisplayOptions }
     }
 
     try {
@@ -492,7 +407,7 @@ export function CustomFieldDialog({
     switch (selectedType) {
       case FieldType.SINGLE_SELECT:
       case FieldType.MULTI_SELECT:
-        return <OptionsEditor options={options} onChange={setOptions} />
+        return <OptionsEditor options={selectOptions} onChange={setSelectOptions} />
       case FieldType.ADDRESS_STRUCT:
         return (
           <AddressComponentsEditor components={addressComponents} onChange={setAddressComponents} />
@@ -500,8 +415,23 @@ export function CustomFieldDialog({
       case FieldType.FILE:
         return <FileOptionsEditor options={fileOptions} onChange={setFileOptions} />
       case FieldType.RELATIONSHIP:
+        // Pass different props based on create vs edit mode
+        if (isEditing && editingField?.options?.relationship) {
+          return (
+            <RelationshipFieldEditor
+              mode="edit"
+              storedConfig={editingField.options.relationship as RelationshipConfig}
+              entityDefinitionId={effectiveEntityDefId}
+              name={form.watch('name')}
+              onNameChange={(v) => form.setValue('name', v)}
+              inverseName={inverseName}
+              onInverseNameChange={setInverseName}
+            />
+          )
+        }
         return (
           <RelationshipFieldEditor
+            mode="create"
             options={relationshipOptions}
             onChange={setRelationshipOptions}
             entityDefinitionId={effectiveEntityDefId}
@@ -635,7 +565,7 @@ export function CustomFieldDialog({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__none__">No default</SelectItem>
-              {options
+              {selectOptions
                 .filter((opt) => opt.value && opt.value.trim() !== '')
                 .map((opt) => (
                   <SelectItem key={opt.value} value={opt.value}>
@@ -657,7 +587,7 @@ export function CustomFieldDialog({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__none__">No default</SelectItem>
-              {options
+              {selectOptions
                 .filter((opt) => opt.value && opt.value.trim() !== '')
                 .map((opt) => (
                   <SelectItem key={opt.value} value={opt.value}>

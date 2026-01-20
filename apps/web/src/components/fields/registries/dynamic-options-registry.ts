@@ -82,7 +82,6 @@ export const DYNAMIC_OPTIONS_REGISTRY: Record<string, DynamicOptionsEntry> = {
         staleTime: 5 * 60 * 1000,
       })
 
-      console.log('Integrations data:', data)
       return {
         data: data?.map((i) => ({ value: i.id, label: i.name ?? i.email })),
         isLoading,

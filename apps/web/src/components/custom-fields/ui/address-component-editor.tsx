@@ -1,7 +1,9 @@
-// ~/components/contacts/fields/AddressComponentsEditor.tsx
+// apps/web/src/components/custom-fields/ui/address-component-editor.tsx
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { Label } from '@auxx/ui/components/label'
+import type { FieldOptions } from '@auxx/lib/field-values/client'
 
+/** Available address component definitions */
 const ADDRESS_COMPONENTS = [
   { id: 'street1', label: 'Street Address' },
   { id: 'street2', label: 'Apartment/Suite' },
@@ -11,6 +13,33 @@ const ADDRESS_COMPONENTS = [
   { id: 'country', label: 'Country' },
 ]
 
+/** Default address components (all enabled) */
+const DEFAULT_ADDRESS_COMPONENTS = ['street1', 'street2', 'city', 'state', 'zipCode', 'country']
+
+/**
+ * Parse stored field options into editor state.
+ * Extracts address components from options.addressComponents.
+ */
+export function parseAddressComponents(fieldOptions?: FieldOptions): string[] {
+  if (
+    fieldOptions &&
+    'addressComponents' in fieldOptions &&
+    Array.isArray(fieldOptions.addressComponents)
+  ) {
+    return fieldOptions.addressComponents
+  }
+  return [...DEFAULT_ADDRESS_COMPONENTS]
+}
+
+/**
+ * Format editor state into storage format.
+ * Returns options object with addressComponents key for storage.
+ */
+export function formatAddressComponents(components: string[]): { addressComponents: string[] } {
+  return { addressComponents: components }
+}
+
+/** Props for AddressComponentsEditor component */
 interface AddressComponentsEditorProps {
   components: string[]
   onChange: (components: string[]) => void

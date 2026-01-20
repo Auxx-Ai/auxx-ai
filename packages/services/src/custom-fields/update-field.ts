@@ -17,6 +17,7 @@ import {
   supportsDisplayOptions,
   isDisplayOptions,
   mergeDisplayOptions,
+  getInverseFieldId,
 } from './types'
 import { checkExistingDuplicates } from './check-unique-value'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
@@ -45,6 +46,8 @@ export interface UpdateCustomFieldInput {
   type?: FieldType
   /** Whether this field must contain unique values within its scope */
   isUnique?: boolean
+  /** Update the inverse relationship field's name (RELATIONSHIP type only) */
+  inverseName?: string
 }
 
 /**
@@ -185,7 +188,49 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
   // System attribute designation is immutable once set
   delete updateData.systemAttribute
 
-  // Update field
+  // Check if we need to update inverse field name (RELATIONSHIP type only)
+  const relationshipConfig = currentField.options as { relationship?: { inverseResourceFieldId?: string } }
+  const inverseFieldId = relationshipConfig?.relationship
+    ? getInverseFieldId(relationshipConfig.relationship)
+    : null
+
+  // If updating inverse name for a relationship field, use a transaction
+  if (fieldType === FieldTypeEnum.RELATIONSHIP && input.inverseName && inverseFieldId) {
+    const txResult = await fromDatabase(
+      database.transaction(async (tx) => {
+        // Update primary field
+        const [primaryField] = await tx
+          .update(schema.CustomField)
+          .set(updateData)
+          .where(
+            and(eq(schema.CustomField.id, id), eq(schema.CustomField.organizationId, organizationId))
+          )
+          .returning()
+
+        // Update inverse field name
+        await tx
+          .update(schema.CustomField)
+          .set({ name: input.inverseName, updatedAt: new Date() })
+          .where(
+            and(
+              eq(schema.CustomField.id, inverseFieldId),
+              eq(schema.CustomField.organizationId, organizationId)
+            )
+          )
+
+        return primaryField
+      }),
+      'update-custom-field-with-inverse'
+    )
+
+    if (txResult.isErr()) {
+      return txResult
+    }
+
+    return ok(txResult.value as CustomFieldEntity)
+  }
+
+  // Standard update (non-relationship or no inverse name change)
   const updateResult = await fromDatabase(
     database
       .update(schema.CustomField)

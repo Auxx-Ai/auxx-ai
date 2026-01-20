@@ -11,6 +11,42 @@ import {
 import { FieldGroup, Field, FieldLabel } from '@auxx/ui/components/field'
 import { CurrencyPicker } from '~/components/pickers/currency-picker'
 import type { CurrencyOptions } from '@auxx/types/custom-field'
+import type { FieldOptions } from '@auxx/lib/field-values/client'
+
+// Re-export CurrencyOptions for convenience
+export type { CurrencyOptions }
+
+/** Default currency options */
+const DEFAULT_CURRENCY_OPTIONS: CurrencyOptions = {
+  currencyCode: 'USD',
+  decimalPlaces: 'two-places',
+  displayType: 'symbol',
+  groups: 'default',
+}
+
+/**
+ * Parse stored field options into editor state.
+ * Extracts currency options from options.currency.
+ */
+export function parseCurrencyOptions(fieldOptions?: FieldOptions): CurrencyOptions {
+  if (fieldOptions?.currency) {
+    return {
+      currencyCode: fieldOptions.currency.currencyCode ?? 'USD',
+      decimalPlaces: fieldOptions.currency.decimalPlaces ?? 'two-places',
+      displayType: fieldOptions.currency.displayType ?? 'symbol',
+      groups: fieldOptions.currency.groups ?? 'default',
+    }
+  }
+  return { ...DEFAULT_CURRENCY_OPTIONS }
+}
+
+/**
+ * Format editor state into storage format.
+ * Returns options object with currency key for storage.
+ */
+export function formatCurrencyOptions(options: CurrencyOptions): { currency: CurrencyOptions } {
+  return { currency: options }
+}
 
 /** Props for CurrencyOptionsEditor component */
 interface CurrencyOptionsEditorProps {

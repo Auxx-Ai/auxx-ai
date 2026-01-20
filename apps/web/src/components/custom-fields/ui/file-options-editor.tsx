@@ -10,13 +10,57 @@ import { FieldGroup, Field, FieldLabel } from '@auxx/ui/components/field'
 import { Image, FileText, Video, Music, FileQuestion } from 'lucide-react'
 import { FILE_TYPE_CATEGORIES, type FileTypeCategory } from '@auxx/lib/files/client'
 import { TagInput, type Tag } from '~/components/tag-input/tag-input'
+import type { FieldOptions } from '@auxx/lib/field-values/client'
 
-/** File options structure */
+/** File options structure for the editor */
 export interface FileOptions {
   allowMultiple: boolean
   maxFiles?: number
   allowedFileTypes?: FileTypeCategory[]
   allowedFileExtensions?: string[]
+}
+
+/** Default file options */
+const DEFAULT_FILE_OPTIONS: FileOptions = {
+  allowMultiple: false,
+  maxFiles: undefined,
+  allowedFileTypes: undefined,
+  allowedFileExtensions: undefined,
+}
+
+/**
+ * Parse stored field options into editor state.
+ * Handles both new format (options.file) and legacy format (options.allowMultiple).
+ */
+export function parseFileOptions(fieldOptions?: FieldOptions): FileOptions {
+  // Handle new format (options.file)
+  if (fieldOptions?.file) {
+    return {
+      allowMultiple: fieldOptions.file.allowMultiple ?? false,
+      maxFiles: fieldOptions.file.maxFiles,
+      allowedFileTypes: fieldOptions.file.allowedFileTypes as FileTypeCategory[] | undefined,
+      allowedFileExtensions: fieldOptions.file.allowedFileExtensions,
+    }
+  }
+  // Handle legacy format (options.allowMultiple at root)
+  if (fieldOptions && 'allowMultiple' in fieldOptions && fieldOptions.allowMultiple !== undefined) {
+    return {
+      allowMultiple: Boolean(fieldOptions.allowMultiple),
+      maxFiles: undefined,
+      allowedFileTypes: undefined,
+      allowedFileExtensions: undefined,
+    }
+  }
+  // Default
+  return { ...DEFAULT_FILE_OPTIONS }
+}
+
+/**
+ * Format editor state into storage format.
+ * Returns options object with file key for storage.
+ */
+export function formatFileOptions(options: FileOptions): { file: FileOptions } {
+  return { file: options }
 }
 
 /** File type category configuration for UI */

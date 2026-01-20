@@ -280,7 +280,21 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
 
       store.setFieldOptimistic(key, optimisticUpdates)
 
-      return { key, version }
+      // If updating inverse name, optimistically update inverse field too
+      let inverseKey: ResourceFieldId | null = null
+      if (variables.inverseName !== undefined) {
+        const currentField = store.fieldMap[key]
+        const relationshipConfig = currentField?.options?.relationship as RelationshipConfig | undefined
+        if (relationshipConfig?.inverseResourceFieldId) {
+          inverseKey = relationshipConfig.inverseResourceFieldId
+          store.setFieldOptimistic(inverseKey, {
+            label: variables.inverseName,
+            name: variables.inverseName,
+          })
+        }
+      }
+
+      return { key, version, inverseKey }
     },
 
     onSuccess: (_serverField, _variables, context) => {
@@ -296,6 +310,14 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
       // This ensures refetches with stale data don't overwrite our optimistic update
       const effectiveField = store.fieldMap[context.key]
       store.confirmFieldUpdate(context.key, effectiveField)
+
+      // Confirm inverse field update if it was optimistically updated
+      if (context.inverseKey) {
+        const effectiveInverseField = store.fieldMap[context.inverseKey]
+        if (effectiveInverseField) {
+          store.confirmFieldUpdate(context.inverseKey, effectiveInverseField)
+        }
+      }
 
       // No need for full invalidation - we've updated the store directly
       // Only invalidate the specific custom field queries in case other components need them
@@ -313,6 +335,11 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
 
       // Rollback to original
       store.rollbackFieldUpdate(context.key)
+
+      // Rollback inverse field if it was optimistically updated
+      if (context.inverseKey) {
+        store.rollbackFieldUpdate(context.inverseKey)
+      }
 
       toastError({ title: 'Error updating custom field', description: error.message })
     },
