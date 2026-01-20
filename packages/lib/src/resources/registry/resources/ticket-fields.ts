@@ -2,7 +2,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { BaseType } from '../../types'
-import { toFieldId } from '@auxx/types/field'
+import { toFieldId, type ResourceFieldId } from '@auxx/types/field'
 import type { ResourceField } from '../field-types'
 import { TicketType, TicketStatus, TicketPriority } from '../enum-values'
 
@@ -168,8 +168,9 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
       required: true,
     },
     relationship: {
-      relatedEntityDefinitionId: 'contact',
+      inverseResourceFieldId: 'contact:tickets' as ResourceFieldId,
       relationshipType: 'belongs_to',
+      isInverse: false,
     },
     relationshipConfig: {
       relatedEntityType: 'contact',
@@ -220,8 +221,9 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
       updatable: true,
     },
     relationship: {
-      relatedEntityDefinitionId: 'user',
+      inverseResourceFieldId: 'user:assignedTickets' as ResourceFieldId,
       relationshipType: 'belongs_to',
+      isInverse: false,
     },
     relationshipConfig: {
       relatedEntityType: 'user',
@@ -250,8 +252,9 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
       updatable: true,
     },
     relationship: {
-      relatedEntityDefinitionId: 'ticket',
+      inverseResourceFieldId: 'ticket:childTickets' as ResourceFieldId,
       relationshipType: 'belongs_to',
+      isInverse: false,
     },
     placeholder: 'Select parent ticket',
     description: 'Parent ticket for hierarchical relationships',
@@ -273,8 +276,9 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
       updatable: false,
     },
     relationship: {
-      relatedEntityDefinitionId: 'ticket',
+      inverseResourceFieldId: 'ticket:parentTicket' as ResourceFieldId,
       relationshipType: 'has_many',
+      isInverse: true,
     },
     description: 'All child tickets of this ticket',
   },

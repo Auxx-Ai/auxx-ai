@@ -13,6 +13,7 @@ import {
 import type { ResourceField } from './registry/field-types'
 import { BaseType } from './types'
 import { createRelationshipCollection } from './registry/relationship-utils'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 
 // Import types - these will resolve at runtime in the frontend
 type UnifiedVariable = any
@@ -351,11 +352,13 @@ function convertFieldToVariableProperty(
 
   // Handle RELATION type
   if (field.type === BaseType.RELATION && field.relationship) {
-    const relationship = field.relationship
+    const relationship = field.relationship as RelationshipConfig
     const relationshipType = relationship.relationshipType
+    // Derive relatedEntityDefinitionId from inverseResourceFieldId using helper
+    const relatedEntityDefinitionId = getRelatedEntityDefinitionId(relationship)
 
     // Check for circular references
-    if (visitedTables.has(relationship.relatedEntityDefinitionId)) {
+    if (relatedEntityDefinitionId && visitedTables.has(relatedEntityDefinitionId)) {
       return {
         type: 'string',
         label: field.label,
@@ -373,8 +376,12 @@ function convertFieldToVariableProperty(
     }
 
     // Get target fields using helper (works for both system and custom resources)
-    const targetFields = getFieldsForResource(relationship.relatedEntityDefinitionId, options)
-    const targetMeta = getResourceMeta(relationship.relatedEntityDefinitionId, options)
+    const targetFields = relatedEntityDefinitionId
+      ? getFieldsForResource(relatedEntityDefinitionId, options)
+      : undefined
+    const targetMeta = relatedEntityDefinitionId
+      ? getResourceMeta(relatedEntityDefinitionId, options)
+      : undefined
 
     // For belongs_to or has_one: Generate object with .referenceId
     if (relationshipType === 'belongs_to' || relationshipType === 'has_one') {
@@ -384,11 +391,11 @@ function convertFieldToVariableProperty(
       properties.referenceId = {
         type: 'string',
         label: 'Reference ID',
-        description: `ID of the related ${targetMeta?.label || relationship.relatedEntityDefinitionId}`,
+        description: `ID of the related ${targetMeta?.label || relatedEntityDefinitionId || 'entity'}`,
       }
 
       // Add target table fields
-      if (targetFields) {
+      if (targetFields && relatedEntityDefinitionId) {
         const newVisited = new Set(visitedTables)
         newVisited.add(tableId)
 
@@ -398,7 +405,7 @@ function convertFieldToVariableProperty(
             if (currentDepth + 1 < maxDepth) {
               properties[targetField.key] = convertFieldToVariableProperty(
                 targetField,
-                relationship.relatedEntityDefinitionId,
+                relatedEntityDefinitionId,
                 newVisited,
                 currentDepth + 1,
                 options
@@ -407,7 +414,7 @@ function convertFieldToVariableProperty(
           } else {
             properties[targetField.key] = convertFieldToVariableProperty(
               targetField,
-              relationship.relatedEntityDefinitionId,
+              relatedEntityDefinitionId,
               newVisited,
               currentDepth + 1,
               options
@@ -429,7 +436,7 @@ function convertFieldToVariableProperty(
     if (relationshipType === 'has_many') {
       const itemProperties: Record<string, any> = {}
 
-      if (targetFields) {
+      if (targetFields && relatedEntityDefinitionId) {
         const newVisited = new Set(visitedTables)
         newVisited.add(tableId)
 
@@ -441,7 +448,7 @@ function convertFieldToVariableProperty(
             if (nestedRelType === 'has_many' && currentDepth + 1 < maxDepth) {
               itemProperties[targetField.key] = convertFieldToVariableProperty(
                 targetField,
-                relationship.relatedEntityDefinitionId,
+                relatedEntityDefinitionId,
                 newVisited,
                 currentDepth + 1,
                 options
@@ -451,7 +458,7 @@ function convertFieldToVariableProperty(
               if (currentDepth + 1 < maxDepth) {
                 itemProperties[targetField.key] = convertFieldToVariableProperty(
                   targetField,
-                  relationship.relatedEntityDefinitionId,
+                  relatedEntityDefinitionId,
                   newVisited,
                   currentDepth + 1,
                   options
@@ -462,7 +469,7 @@ function convertFieldToVariableProperty(
             // Include non-relationship fields
             itemProperties[targetField.key] = convertFieldToVariableProperty(
               targetField,
-              relationship.relatedEntityDefinitionId,
+              relatedEntityDefinitionId,
               newVisited,
               currentDepth + 1,
               options
@@ -473,16 +480,16 @@ function convertFieldToVariableProperty(
 
       // Use helper function to create collection structure
       const collectionProperties = createRelationshipCollection(
-        targetMeta?.label || relationship.relatedEntityDefinitionId,
+        targetMeta?.label || relatedEntityDefinitionId || 'entity',
         relationshipType
       )
 
       // Set the values property with proper item structure for UI rendering
       collectionProperties.values.items = {
         type: BaseType.OBJECT,
-        label: targetMeta?.label || relationship.relatedEntityDefinitionId,
+        label: targetMeta?.label || relatedEntityDefinitionId || 'entity',
         properties: itemProperties,
-        reference: relationship.relatedEntityDefinitionId,
+        reference: relatedEntityDefinitionId,
       }
 
       return {
@@ -490,7 +497,7 @@ function convertFieldToVariableProperty(
         label: field.label,
         description: field.description,
         properties: collectionProperties,
-        reference: relationship.relatedEntityDefinitionId,
+        reference: relatedEntityDefinitionId,
       }
     }
 
@@ -498,7 +505,7 @@ function convertFieldToVariableProperty(
     if (relationshipType === 'many_to_many') {
       const itemProperties: Record<string, any> = {}
 
-      if (targetFields) {
+      if (targetFields && relatedEntityDefinitionId) {
         const newVisited = new Set(visitedTables)
         newVisited.add(tableId)
 
@@ -507,7 +514,7 @@ function convertFieldToVariableProperty(
           if (targetField.type !== BaseType.RELATION) {
             itemProperties[targetField.key] = convertFieldToVariableProperty(
               targetField,
-              relationship.relatedEntityDefinitionId,
+              relatedEntityDefinitionId,
               newVisited,
               currentDepth + 1,
               options
@@ -517,16 +524,16 @@ function convertFieldToVariableProperty(
       }
 
       const collectionProperties = createRelationshipCollection(
-        targetMeta?.label || relationship.relatedEntityDefinitionId,
+        targetMeta?.label || relatedEntityDefinitionId || 'entity',
         relationshipType
       )
 
       // Set the values property with proper item structure for UI rendering
       collectionProperties.values.items = {
         type: BaseType.OBJECT,
-        label: targetMeta?.label || relationship.relatedEntityDefinitionId,
+        label: targetMeta?.label || relatedEntityDefinitionId || 'entity',
         properties: itemProperties,
-        reference: relationship.relatedEntityDefinitionId,
+        reference: relatedEntityDefinitionId,
       }
 
       return {
@@ -534,7 +541,7 @@ function convertFieldToVariableProperty(
         label: field.label,
         description: field.description,
         properties: collectionProperties,
-        reference: relationship.relatedEntityDefinitionId,
+        reference: relatedEntityDefinitionId,
       }
     }
   }

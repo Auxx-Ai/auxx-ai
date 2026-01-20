@@ -16,6 +16,7 @@ import {
   getOperatorsForFieldType,
 } from '@auxx/lib/workflow-engine/client'
 import { useResourceStore } from '~/components/resources/store/resource-store'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 
 /**
  * Regular expression pattern for matching workflow variables in the format {{variable-name}}
@@ -259,7 +260,9 @@ export function getVariableRelationship(variable: UnifiedVariable):
       const resource = useResourceStore.getState().resourceMap.get(resourceId)
       const field = resource?.fields.find((f) => f.key === fieldKey)
       return {
-        relatedEntityDefinitionId: field?.relationship?.relatedEntityDefinitionId,
+        relatedEntityDefinitionId: field?.relationship
+          ? getRelatedEntityDefinitionId(field.relationship as RelationshipConfig)
+          : undefined,
         field,
       }
     }
@@ -361,7 +364,7 @@ export function parseVariable(variable: UnifiedVariable) {
       const field = RESOURCE_FIELD_REGISTRY[resourceType]?.[fieldKey]
 
       if (field?.type === BaseType.RELATION && field.relationship) {
-        const targetTable = field.relationship.relatedEntityDefinitionId as TableId
+        const targetTable = getRelatedEntityDefinitionId(field.relationship as RelationshipConfig) as TableId
         const tableMeta = RESOURCE_TABLE_MAP[targetTable]
 
         result.displayType = tableMeta?.label || variable.type // e.g., "Contact"

@@ -2,12 +2,13 @@
 
 'use client'
 
-import { memo } from 'react'
+import { memo, useMemo } from 'react'
 import { ChevronRight, Check } from 'lucide-react'
 import { CommandItem } from '@auxx/ui/components/command'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
 import { useResourceProperty } from '~/components/resources'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import type { FieldType } from '@auxx/database/types'
 import type { FieldItemProps } from './types'
 
@@ -26,11 +27,14 @@ export const FieldItem = memo(function FieldItem({
 }: FieldItemProps) {
   const isRelationship = !!field.relationship
 
+  // Derive relatedEntityDefinitionId from RelationshipConfig using helper
+  const relatedEntityDefinitionId = useMemo(() => {
+    if (!field.relationship) return null
+    return getRelatedEntityDefinitionId(field.relationship as RelationshipConfig)
+  }, [field.relationship])
+
   // Get target resource icon/color for relationship fields
-  const targetResourceProps = useResourceProperty(
-    field.relationship?.relatedEntityDefinitionId,
-    ['icon', 'color']
-  )
+  const targetResourceProps = useResourceProperty(relatedEntityDefinitionId, ['icon', 'color'])
 
   // Determine icon based on field type
   const getIcon = () => {

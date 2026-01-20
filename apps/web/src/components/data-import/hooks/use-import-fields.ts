@@ -4,6 +4,7 @@
 
 import { useMemo } from 'react'
 import { useResourceFields } from '~/components/resources'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import type { ImportableField, FieldGroup } from '@auxx/lib/import'
 
 /** Options for useImportFields hook */
@@ -85,20 +86,25 @@ export function useImportFields(
     if (includeRelationships) {
       const relationFields = fields
         .filter((f) => f.capabilities?.creatable && f.relationship)
-        .map((f) => ({
-          key: f.key,
-          id: f.id,
-          label: f.label,
-          type: f.type,
-          required: f.capabilities?.required ?? false,
-          isRelation: true,
-          isIdentifier: false,
-          group: 'relationship' as FieldGroup,
-          relationConfig: {
-            relatedEntityDefinitionId: f.relationship!.relatedEntityDefinitionId,
-            relationshipType: f.relationship!.relationshipType,
-          },
-        }))
+        .map((f) => {
+          const relatedEntityDefId = getRelatedEntityDefinitionId(
+            f.relationship as RelationshipConfig
+          )
+          return {
+            key: f.key,
+            id: f.id,
+            label: f.label,
+            type: f.type,
+            required: f.capabilities?.required ?? false,
+            isRelation: true,
+            isIdentifier: false,
+            group: 'relationship' as FieldGroup,
+            relationConfig: {
+              relatedEntityDefinitionId: relatedEntityDefId ?? '',
+              relationshipType: f.relationship!.relationshipType,
+            },
+          }
+        })
       result.push(...relationFields)
     }
 

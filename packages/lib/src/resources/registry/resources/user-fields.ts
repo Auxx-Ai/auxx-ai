@@ -1,7 +1,7 @@
 // packages/lib/src/workflow-engine/resources/registry/resources/user-fields.ts
 
 import { BaseType } from '../../types'
-import { toFieldId } from '@auxx/types/field'
+import { toFieldId, type ResourceFieldId } from '@auxx/types/field'
 import type { ResourceField } from '../field-types'
 
 /**
@@ -75,8 +75,9 @@ export const USER_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     relationship: {
-      relatedEntityDefinitionId: 'ticket',
+      inverseResourceFieldId: 'ticket:assignee' as ResourceFieldId,
       relationshipType: 'has_many',
+      isInverse: true,
     },
     description: 'Tickets assigned to this user',
   },

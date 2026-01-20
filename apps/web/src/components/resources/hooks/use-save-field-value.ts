@@ -16,23 +16,20 @@ import {
   extractRelatedRecordIds,
   type InverseSyncInfo,
 } from './use-relationship-sync'
-import { getInverseCardinality, type RelationshipType } from '@auxx/utils'
-import { toResourceFieldId, type FieldId, type ResourceFieldId } from '@auxx/types/field'
+import { getInverseCardinality } from '@auxx/utils'
+import { toResourceFieldId, type FieldId } from '@auxx/types/field'
+import {
+  type RelationshipConfig,
+  getRelatedEntityDefinitionId,
+  getInverseFieldId,
+} from '@auxx/types/custom-field'
 
 import { type FieldType } from '@auxx/database/types'
 
-/** Normalized relationship info for sync (derived from ResourceField.options.relationship) */
-interface NormalizedRelationship {
-  inverseFieldId?: string
-  relationshipType?: RelationshipType
-  relatedEntityDefinitionId?: string
-  isInverse?: boolean
-}
-
-/** Field metadata for relationship sync */
+/** Field metadata for relationship sync - uses raw RelationshipConfig */
 interface FieldMetadata {
   type: string
-  relationship?: NormalizedRelationship
+  relationship?: RelationshipConfig
 }
 
 interface UseSaveFieldValueOptions {
@@ -83,22 +80,26 @@ function prepareOptimisticUpdate(
     const metadata = getFieldMetadata?.(fieldId)
     const rel = metadata?.relationship
 
-    if (rel?.inverseFieldId && rel.relationshipType && rel.relatedEntityDefinitionId) {
+    // Derive values from RelationshipConfig using helpers
+    const inverseFieldIdValue = rel ? getInverseFieldId(rel) : null
+    const relatedEntityDefinitionId = rel ? getRelatedEntityDefinitionId(rel) : null
+
+    if (inverseFieldIdValue && rel?.relationshipType && relatedEntityDefinitionId) {
       oldRelatedRecordIds = extractRelatedRecordIds(oldValue)
       newRelatedRecordIds = extractRelatedRecordIds(typedValue)
 
       // Build ResourceFieldIds for type-safe field identification
       const sourceResourceFieldId = toResourceFieldId(entityDefinitionId, fieldId)
       const inverseResourceFieldId = toResourceFieldId(
-        rel.relatedEntityDefinitionId,
-        rel.inverseFieldId as FieldId
+        relatedEntityDefinitionId,
+        inverseFieldIdValue as FieldId
       )
 
       inverseInfo = {
         inverseResourceFieldId,
         sourceResourceFieldId,
         inverseRelationshipType: getInverseCardinality(rel.relationshipType),
-        targetEntityDefinitionId: rel.relatedEntityDefinitionId,
+        targetEntityDefinitionId: relatedEntityDefinitionId,
       }
     }
   }

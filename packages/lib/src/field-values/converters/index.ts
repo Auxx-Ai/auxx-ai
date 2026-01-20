@@ -2,7 +2,7 @@
 
 import type { TypedFieldValueInput, TypedFieldValue } from '@auxx/types/field-value'
 import type { FieldType } from '@auxx/database/types'
-import type { CurrencyOptions } from '@auxx/types/custom-field'
+import type { CurrencyOptions, RelationshipConfig } from '@auxx/types/custom-field'
 
 /**
  * Unified field options interface.
@@ -80,24 +80,9 @@ export interface FieldOptions {
   }
 
   // ─────────────────────────────────────────────────────────────
-  // RELATIONSHIP (nested - matches database schema)
+  // RELATIONSHIP (nested - uses RelationshipConfig from @auxx/types/custom-field)
   // ─────────────────────────────────────────────────────────────
-  relationship?: {
-    /** Entity definition ID (system resource ID or custom entity UUID) */
-    relatedEntityDefinitionId: string
-    /** Relationship type */
-    relationshipType: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
-    /** Whether this is the inverse side of a bidirectional relationship */
-    isInverse?: boolean
-    /** Field ID of the inverse relationship field */
-    inverseFieldId?: string
-    /** Join table name (for many-to-many relationships) */
-    joinTable?: string
-    /** Foreign key column in join table pointing to source */
-    joinSourceColumn?: string
-    /** Foreign key column in join table pointing to target */
-    joinTargetColumn?: string
-  }
+  relationship?: RelationshipConfig
 }
 
 // ─────────────────────────────────────────────────────────────

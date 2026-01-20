@@ -1,26 +1,12 @@
 // packages/lib/src/field-values/relationship-field.ts
 
-import type {
-  RelationshipFieldValue,
-  RelationshipFieldValueInput,
-  TypedFieldValue,
-} from '@auxx/types/field-value'
+import type { RelationshipFieldValue } from '@auxx/types/field-value'
 import type { RecordId } from '@auxx/types/resource'
 import { toRecordId } from '../resources/resource-id'
 import { isMultiRelationship, isSingleRelationship, type RelationshipType } from '@auxx/utils'
 
 // Re-export relationship type utilities from @auxx/utils
 export { isMultiRelationship, isSingleRelationship, type RelationshipType }
-
-/**
- * Extracted relationship data with RecordIds ready for useRelationship
- */
-export interface RelationshipData {
-  /** RecordId[] ready for direct use with useRelationship */
-  recordIds: RecordId[]
-  /** Unique entity definition IDs found in the value (for mixed-type relationships) */
-  entityDefinitionIds: string[]
-}
 
 // ============================================================================
 // TYPE GUARDS - Narrow and validate relationship values
@@ -43,28 +29,25 @@ export function isRelationshipFieldValueArray(v: unknown): v is RelationshipFiel
 }
 
 // ============================================================================
-// EXTRACTORS - Get data from any input format
+// RECORD ID EXTRACTORS - For useRelationship hook
 // ============================================================================
 
 /**
- * Extract RecordIds and entityDefinitionIds from ANY relationship value format.
- * Handles: objects, arrays, strings, null, undefined.
- *
- * @returns { recordIds, entityDefinitionIds } - ready for useRelationship
+ * Extract RecordId[] from ANY relationship value format.
+ * Handles: objects, arrays, null, undefined.
  *
  * @example
- * const { recordIds } = extractRelationshipData(value)
+ * const recordIds = extractRelationshipRecordIds(value)
  * const { items } = useRelationship(recordIds)
  */
-export function extractRelationshipData(value: unknown): RelationshipData {
+export function extractRelationshipRecordIds(value: unknown): RecordId[] {
   if (!value) {
-    return { recordIds: [], entityDefinitionIds: [] }
+    return []
   }
 
   const recordIds: RecordId[] = []
-  const entityDefinitionIdSet = new Set<string>()
 
-  // Array of full objects or IDs
+  // Array of full objects
   if (Array.isArray(value)) {
     for (const item of value) {
       if (typeof item === 'object' && item !== null && 'relatedEntityId' in item) {
@@ -72,16 +55,10 @@ export function extractRelationshipData(value: unknown): RelationshipData {
         const entityDefId = rel.relatedEntityDefinitionId
         if (entityDefId && rel.relatedEntityId) {
           recordIds.push(toRecordId(entityDefId, rel.relatedEntityId))
-          entityDefinitionIdSet.add(entityDefId)
         }
       }
-      // Skip raw string IDs - we need entityDefinitionId to create valid RecordId
     }
-
-    return {
-      recordIds,
-      entityDefinitionIds: Array.from(entityDefinitionIdSet),
-    }
+    return recordIds
   }
 
   // Single object with relatedEntityId
@@ -89,203 +66,11 @@ export function extractRelationshipData(value: unknown): RelationshipData {
     const rel = value as RelationshipFieldValue
     const entityDefId = rel.relatedEntityDefinitionId
     if (entityDefId && rel.relatedEntityId) {
-      const ids = [toRecordId(entityDefId, rel.relatedEntityId)]
-      return {
-        recordIds: ids,
-        entityDefinitionIds: [entityDefId],
-      }
+      return [toRecordId(entityDefId, rel.relatedEntityId)]
     }
   }
 
-  // Raw ID string or invalid format - cannot create RecordId without entityDefinitionId
-  return { recordIds: [], entityDefinitionIds: [] }
-}
-
-// ============================================================================
-// NORMALIZERS - Convert all formats to standard RelationshipFieldValue[]
-// ============================================================================
-
-/**
- * Normalize relationship value to always return RelationshipFieldValue[].
- * This is the core function that eliminates single vs. array branching.
- *
- * Examples:
- * - null → []
- * - "id-123" → [{ relatedEntityId: "id-123", relatedEntityDefinitionId: "", ... }]
- * - { relatedEntityId: "id-123" } → [{ relatedEntityId: "id-123", ... }]
- * - [{ relatedEntityId: "a" }, { relatedEntityId: "b" }] → [both items as is]
- */
-export function normalizeRelationshipValue(value: unknown): RelationshipFieldValue[] {
-  if (!value) {
-    return []
-  }
-
-  // Already an array of proper objects
-  if (isRelationshipFieldValueArray(value)) {
-    return value
-  }
-
-  // Single RelationshipFieldValue object
-  if (isRelationshipFieldValue(value)) {
-    return [value]
-  }
-
-  // Array of mixed types (objects or strings)
-  if (Array.isArray(value)) {
-    return value
-      .map((item) => {
-        if (isRelationshipFieldValue(item)) {
-          return item
-        }
-        if (typeof item === 'string') {
-          return {
-            type: 'relationship' as const,
-            relatedEntityId: item,
-            relatedEntityDefinitionId: '',
-            entityId: '',
-            fieldId: '',
-            id: '',
-            sortKey: '',
-            createdAt: '',
-            updatedAt: '',
-          } as RelationshipFieldValue
-        }
-        return null
-      })
-      .filter((item): item is RelationshipFieldValue => item !== null)
-  }
-
-  // Single string ID
-  if (typeof value === 'string') {
-    return [
-      {
-        type: 'relationship' as const,
-        relatedEntityId: value,
-        relatedEntityDefinitionId: '',
-        entityId: '',
-        fieldId: '',
-        id: '',
-        sortKey: '',
-        createdAt: '',
-        updatedAt: '',
-      } as RelationshipFieldValue,
-    ]
-  }
-
-  // Fallback: return empty array
   return []
-}
-
-// ============================================================================
-// CONVERTERS - For mutation inputs (no id/timestamps)
-// ============================================================================
-
-/**
- * Convert raw value to RelationshipFieldValueInput for mutations.
- * Used by relationshipConverter in converters/relationship.ts.
- */
-export function convertRawToRelationshipInput(
-  obj: unknown
-): RelationshipFieldValueInput | RelationshipFieldValueInput[] | null {
-  if (!obj) return null
-
-  // Array of values
-  if (Array.isArray(obj)) {
-    return obj
-      .map((item) => {
-        if (typeof item === 'object' && item !== null && 'relatedEntityId' in item) {
-          const rel = item as { relatedEntityId: string; relatedEntityDefinitionId?: string }
-          return {
-            type: 'relationship' as const,
-            relatedEntityId: rel.relatedEntityId,
-            relatedEntityDefinitionId: rel.relatedEntityDefinitionId ?? '',
-          }
-        }
-        return {
-          type: 'relationship' as const,
-          relatedEntityId: String(item),
-          relatedEntityDefinitionId: '',
-        }
-      })
-      .filter((item) => item.relatedEntityId)
-  }
-
-  // Single object
-  if (typeof obj === 'object' && 'relatedEntityId' in obj) {
-    const rel = obj as { relatedEntityId: string; relatedEntityDefinitionId?: string }
-    return {
-      type: 'relationship' as const,
-      relatedEntityId: rel.relatedEntityId,
-      relatedEntityDefinitionId: rel.relatedEntityDefinitionId ?? '',
-    }
-  }
-
-  // Single string ID
-  if (typeof obj === 'string' && obj.trim()) {
-    return {
-      type: 'relationship' as const,
-      relatedEntityId: obj.trim(),
-      relatedEntityDefinitionId: '',
-    }
-  }
-
-  return null
-}
-
-// ============================================================================
-// VALIDATORS - Ensure data integrity
-// ============================================================================
-
-/**
- * Validate that a value is a valid relationship value.
- * Checks structure and required fields.
- */
-export function validateRelationshipValue(value: unknown): boolean {
-  // Accept null/undefined as valid (empty relationship)
-  if (!value) return true
-
-  // Array of values
-  if (Array.isArray(value)) {
-    return value.every((item) => {
-      if (typeof item === 'string' && item.trim()) return true
-      if (typeof item === 'object' && item !== null && 'relatedEntityId' in item) {
-        return (
-          typeof (item as any).relatedEntityId === 'string' && (item as any).relatedEntityId.trim()
-        )
-      }
-      return false
-    })
-  }
-
-  // Single string or object
-  if (typeof value === 'string' && value.trim()) return true
-  if (typeof value === 'object' && value !== null && 'relatedEntityId' in value) {
-    return (
-      typeof (value as any).relatedEntityId === 'string' && (value as any).relatedEntityId.trim()
-    )
-  }
-
-  return false
-}
-
-/**
- * Validate that entityDefinitionId is present and non-empty.
- * Use after extraction to ensure relationships are properly typed.
- */
-export function validateEntityDefinitionId(entityDefinitionId: string | null): boolean {
-  return typeof entityDefinitionId === 'string' && entityDefinitionId.trim().length > 0
-}
-
-// ============================================================================
-// RECORD ID EXTRACTORS - For useRelationship hook
-// ============================================================================
-
-/**
- * Extract RecordId[] from ANY relationship value format.
- * Convenience wrapper around extractRelationshipData(value).recordIds
- */
-export function extractRelationshipRecordIds(value: unknown): RecordId[] {
-  return extractRelationshipData(value).recordIds
 }
 
 // Re-export from resource-id for convenience

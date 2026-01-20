@@ -22,6 +22,7 @@ import { eq, and, isNull } from 'drizzle-orm'
 import { recordIdSchema, type RecordId } from '@auxx/types/resource'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import type { ResourceField } from '@auxx/lib/resources'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import { createScopedLogger } from '@auxx/logger'
 
 const logger = createScopedLogger('record-router')
@@ -401,8 +402,11 @@ function extractRequiredRelatedEntities(
         (f) => f.key === relationshipFieldKey || (f.id && f.id === relationshipFieldKey)
       )
 
-      if (relationshipField?.relationship?.relatedEntityDefinitionId) {
-        relatedEntityIds.add(relationshipField.relationship.relatedEntityDefinitionId)
+      if (relationshipField?.relationship) {
+        const relatedEntityId = getRelatedEntityDefinitionId(relationshipField.relationship as RelationshipConfig)
+        if (relatedEntityId) {
+          relatedEntityIds.add(relatedEntityId)
+        }
       }
     }
   }

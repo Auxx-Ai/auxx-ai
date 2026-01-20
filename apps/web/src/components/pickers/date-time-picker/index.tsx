@@ -103,7 +103,9 @@ export function DateTimePicker({
       {displayValue ? (
         <span className="truncate">{displayValue}</span>
       ) : (
-        <span className="text-primary-400 text-sm">{placeholder || defaultPlaceholder}</span>
+        <span className="text-primary-400 text-sm font-normal">
+          {placeholder || defaultPlaceholder}
+        </span>
       )}
     </Button>
   )

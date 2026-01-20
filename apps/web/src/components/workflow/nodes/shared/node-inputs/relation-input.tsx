@@ -8,6 +8,7 @@ import { useResourceFields } from '~/components/resources'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { createNodeInput, type NodeInputProps } from './base-node-input'
 import { toRecordIds, getInstanceId, type RecordId } from '@auxx/lib/field-values/client'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 
 interface RelationInputProps extends NodeInputProps {
   /** Field name */
@@ -45,7 +46,9 @@ export const RelationInput = createNodeInput<RelationInputProps>(
 
       // Lookup field to get relationship target
       const field = fields.find((f) => f.key === fieldKey)
-      return field?.relationship?.relatedEntityDefinitionId ?? null
+      return field?.relationship
+        ? getRelatedEntityDefinitionId(field.relationship as RelationshipConfig)
+        : null
     }, [fieldReference, fields, fieldKey])
 
     // Get current value from inputs

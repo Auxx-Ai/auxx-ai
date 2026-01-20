@@ -61,6 +61,8 @@ export function RelationshipFieldEditor({
   const { resource: currentResource } = useResource(entityDefinitionId)
   const { resource: selectedResource } = useResource(options.relatedResourceId)
 
+  console.log('RelationshipFieldEditor options:', currentResource, selectedResource, options)
+
   /** Update a single option field */
   const updateOption = <K extends keyof RelationshipOptions>(
     key: K,

@@ -10,6 +10,11 @@ import {
   parseRecordId,
   type RecordId,
 } from '@auxx/lib/field-values/client'
+import {
+  getRelatedEntityDefinitionId,
+  getInverseFieldId,
+  type RelationshipConfig,
+} from '@auxx/types/custom-field'
 import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
 import { RecordPicker } from '~/components/pickers/record-picker'
 import { isSingleRelationship } from '@auxx/utils'
@@ -27,20 +32,22 @@ export function RelationshipInputField() {
   const { value, field, commitValue, onBeforeClose, recordId } = usePropertyContext()
   const nav = useFieldNavigationOptional()
 
-  const relationship = field.options?.relationship
+  const relationship = field.options?.relationship as RelationshipConfig | undefined
   const isSingleSelect = isSingleRelationship(relationship?.relationshipType)
 
   // Get relatedEntityDefinitionId for storing with values
-  // relatedEntityDefinitionId is the unified ID for both system and custom resources
+  // Derived from inverseResourceFieldId using helper function
   const relatedEntityDefinitionId = useMemo(() => {
-    if (relationship?.relatedEntityDefinitionId) {
-      return relationship.relatedEntityDefinitionId
+    if (!relationship) return ''
+    const id = getRelatedEntityDefinitionId(relationship)
+    if (!id) {
+      console.warn('[RelationshipInputField] relatedEntityDefinitionId not found')
+      return ''
     }
-    console.warn('[RelationshipInputField] relatedEntityDefinitionId not found')
-    return ''
+    return id
   }, [relationship])
 
-  const relatedResource = useResource(relatedEntityDefinitionId)
+  const { resource: relatedResource } = useResource(relatedEntityDefinitionId)
 
   // Dialog state for inline create
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
@@ -126,7 +133,7 @@ export function RelationshipInputField() {
    */
   const computePresetValues = useCallback((): Record<string, unknown> | undefined => {
     // Only preset if we have an inverse relationship configured
-    const inverseFieldId = relationship?.inverseFieldId
+    const inverseFieldId = relationship ? getInverseFieldId(relationship) : null
     if (!inverseFieldId || !relatedEntityDefinitionId || !recordId) {
       return undefined
     }
@@ -199,7 +206,7 @@ export function RelationshipInputField() {
         <EntityInstanceDialog
           open={isCreateDialogOpen}
           onOpenChange={setIsCreateDialogOpen}
-          entityDefinitionId={relatedResource.entityDefinitionId!}
+          entityDefinitionId={relatedEntityDefinitionId!}
           onSaved={handleCreatedInstance}
           presetValues={computePresetValues()}
         />

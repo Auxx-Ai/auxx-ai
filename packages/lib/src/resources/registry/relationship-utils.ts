@@ -4,6 +4,7 @@ import { RESOURCE_FIELD_REGISTRY } from './field-registry'
 import type { TableId } from './field-registry'
 import type { ResourceField } from './field-types'
 import type { FieldOptions } from '../../field-values/converters'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import { BaseType } from '../types'
 
 /**
@@ -57,7 +58,8 @@ export function getRelationshipDbColumn(tableId: TableId, fieldKey: string): str
  */
 export function getTargetTable(tableId: TableId, fieldKey: string): TableId | undefined {
   const relationship = getRelationship(tableId, fieldKey)
-  return relationship?.relatedEntityDefinitionId as TableId | undefined
+  if (!relationship) return undefined
+  return getRelatedEntityDefinitionId(relationship as RelationshipConfig) as TableId | undefined
 }
 
 /**

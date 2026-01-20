@@ -72,3 +72,10 @@ export type { MergeFieldInput, MergeFieldResult } from './merge/client'
 // Drawer configuration (client-safe)
 export { DRAWER_CONFIG_REGISTRY, getEntityDrawerConfig, hasDrawerConfig } from './registry'
 export type { DrawerConfig, DrawerTabDefinition, DrawerActions, DrawerConfigRegistry } from './registry'
+
+// Relationship helpers (for deriving values from RelationshipConfig)
+export {
+  getRelatedEntityDefinitionId,
+  getInverseFieldId,
+  type RelationshipConfig,
+} from '@auxx/types/custom-field'

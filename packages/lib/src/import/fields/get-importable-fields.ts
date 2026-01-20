@@ -2,6 +2,7 @@
 
 import type { Resource } from '../../resources/registry/types'
 import { getIdentifiableFields } from './get-identifiable-fields'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 
 /** Field group type for organizing fields in the UI */
 export type FieldGroup = 'identifier' | 'system' | 'custom' | 'relationship'
@@ -93,7 +94,7 @@ export function getImportableFields(
           isIdentifier: false,
           group: 'relationship' as FieldGroup,
           relationConfig: {
-            relatedEntityDefinitionId: field.relationship!.relatedEntityDefinitionId,
+            relatedEntityDefinitionId: getRelatedEntityDefinitionId(field.relationship as RelationshipConfig) ?? '',
             relationshipType: field.relationship!.relationshipType,
           },
         }

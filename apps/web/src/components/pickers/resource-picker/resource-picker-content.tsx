@@ -23,6 +23,7 @@ import type { FieldType } from '@auxx/database/types'
 import { useResourceFields, useResourceProperty } from '~/components/resources'
 import { toFieldPath, parseResourceFieldId, isFieldPath } from '@auxx/types/field'
 import type { ResourceFieldId, FieldReference } from '@auxx/types/field'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import type { ResourceField } from '@auxx/lib/resources/client'
 import { FieldItem } from './field-item'
 import type {
@@ -168,13 +169,16 @@ export function ResourcePickerInnerContent({
    */
   const handleDrillInto = useCallback(
     (field: ResourceField) => {
-      if (!field.relationship?.relatedEntityDefinitionId || !field.resourceFieldId) return
+      const relatedEntityDefId = field.relationship
+        ? getRelatedEntityDefinitionId(field.relationship as RelationshipConfig)
+        : null
+      if (!relatedEntityDefId || !field.resourceFieldId) return
 
       push({
         id: field.id,
         label: field.label,
         resourceFieldId: field.resourceFieldId,
-        targetEntityDefinitionId: field.relationship.relatedEntityDefinitionId,
+        targetEntityDefinitionId: relatedEntityDefId,
       })
       setSearch('')
     },

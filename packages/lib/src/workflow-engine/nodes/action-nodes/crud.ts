@@ -41,6 +41,7 @@ import { ResourceRegistryService } from '../../../resources/registry/resource-re
 import { EntityInstanceService } from '../../../entity-instances/entity-instance-service'
 import type { CustomResource } from '../../../resources/registry/types'
 import type { ResourceField } from '../../../resources/registry/field-types'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 /**
  * CRUD node data interface
  * Supports both system resources (contact, ticket) and custom entities (UUID/CUID format)
@@ -224,7 +225,7 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
       const field = getField(resourceType as TableId, fieldKey)
 
       if (field?.type === BaseType.RELATION && field.relationship) {
-        const expectedTargetTable = field.relationship.relatedEntityDefinitionId
+        const expectedTargetTable = getRelatedEntityDefinitionId(field.relationship as RelationshipConfig)
 
         // If value is a variable reference (e.g., "{{node-123.contact}}")
         if (typeof value === 'string' && value.startsWith('{{') && value.endsWith('}}')) {
@@ -243,7 +244,7 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
                 const sourceField = getField(sourceResourceType as TableId, sourceFieldKey!)
 
                 if (sourceField?.type === BaseType.RELATION && sourceField.relationship) {
-                  const actualTargetTable = sourceField.relationship.relatedEntityDefinitionId
+                  const actualTargetTable = getRelatedEntityDefinitionId(sourceField.relationship as RelationshipConfig)
 
                   // Validate target table matches
                   if (actualTargetTable !== expectedTargetTable) {

@@ -44,15 +44,9 @@ export type { FieldValueRow } from './types'
 
 // Relationship utilities
 export {
-  extractRelationshipData,
   extractRelationshipRecordIds,
-  normalizeRelationshipValue,
-  validateRelationshipValue,
-  validateEntityDefinitionId,
-  convertRawToRelationshipInput,
   isMultiRelationship,
   isSingleRelationship,
-  type RelationshipData,
   type RelationshipType,
 } from './relationship-field'
 

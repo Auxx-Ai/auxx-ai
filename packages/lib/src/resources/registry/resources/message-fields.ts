@@ -1,7 +1,7 @@
 // packages/lib/src/workflow-engine/resources/registry/resources/message-fields.ts
 
 import { BaseType } from '../../types'
-import { toFieldId } from '@auxx/types/field'
+import { toFieldId, type ResourceFieldId } from '@auxx/types/field'
 import type { ResourceField } from '../field-types'
 // Note: MessageType import removed - messageType field no longer exists in schema
 
@@ -235,8 +235,9 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     relationship: {
-      relatedEntityDefinitionId: 'thread',
+      inverseResourceFieldId: 'thread:messages' as ResourceFieldId,
       relationshipType: 'belongs_to',
+      isInverse: false,
     },
     description: 'Thread this message belongs to',
   },
@@ -256,8 +257,9 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     relationship: {
-      relatedEntityDefinitionId: 'user',
+      inverseResourceFieldId: null,
       relationshipType: 'belongs_to',
+      isInverse: false,
     },
     description: 'User who created this message',
   },
@@ -277,8 +279,9 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     relationship: {
-      relatedEntityDefinitionId: 'participant',
+      inverseResourceFieldId: null,
       relationshipType: 'belongs_to',
+      isInverse: false,
     },
     description: 'Participant who sent this message',
   },
@@ -298,8 +301,9 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     relationship: {
-      relatedEntityDefinitionId: 'participant',
+      inverseResourceFieldId: null,
       relationshipType: 'belongs_to',
+      isInverse: false,
     },
     description: 'Participant to reply to',
   },

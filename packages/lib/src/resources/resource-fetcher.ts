@@ -15,6 +15,7 @@ import { getEntityInstance } from '@auxx/services/entity-instances'
 import { ResourceRegistryService } from './registry/resource-registry-service'
 import type { ResourceField } from './registry/field-types'
 import { parseRecordId, toRecordId, type RecordId } from '@auxx/types/resource'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 
 const logger = createScopedLogger('resource-fetcher')
 
@@ -367,7 +368,7 @@ export async function fetchResourceWithRelationships(
     }
 
     const rel = fieldDef.relationship
-    const targetResourceType = rel.relatedEntityDefinitionId
+    const targetResourceType = getRelatedEntityDefinitionId(rel as RelationshipConfig)
 
     switch (rel.relationshipType) {
       case 'belongs_to':
@@ -500,7 +501,10 @@ async function fetchHasManyRelationship(
 
   // Find the reciprocal field on target that points back to parent
   const reciprocalField = targetResource.fields.find(
-    (f) => f.type === BaseType.RELATION && f.relationship?.relatedEntityDefinitionId === parentResourceType
+    (f) =>
+      f.type === BaseType.RELATION &&
+      f.relationship &&
+      getRelatedEntityDefinitionId(f.relationship as RelationshipConfig) === parentResourceType
   )
 
   if (!reciprocalField) {
@@ -665,20 +669,24 @@ export async function analyzePathForRelationships(
       fieldCount: fields.length,
       relationFields: fields
         .filter((f) => f.type === BaseType.RELATION)
-        .map((f) => ({ key: f.key, target: f.relationship?.relatedEntityDefinitionId })),
+        .map((f) => ({
+          key: f.key,
+          target: f.relationship ? getRelatedEntityDefinitionId(f.relationship as RelationshipConfig) : undefined,
+        })),
     })
 
     const field = fields.find((f) => f.key === segment)
 
     if (field?.type === BaseType.RELATION && field.relationship) {
       // This is a relationship - needs fetching
+      const relatedEntityDefId = getRelatedEntityDefinitionId(field.relationship as RelationshipConfig)
       logger.debug('analyzePathForRelationships: found relationship', {
         segment,
-        relatedEntityDefinitionId: field.relationship.relatedEntityDefinitionId,
+        relatedEntityDefinitionId: relatedEntityDefId,
         relationshipType: field.relationship.relationshipType,
       })
       relationshipsNeeded.push(segment)
-      currentResourceType = field.relationship.relatedEntityDefinitionId
+      currentResourceType = relatedEntityDefId!
     } else {
       // Hit a scalar field or unknown field - stop analyzing
       logger.debug('analyzePathForRelationships: not a relationship, stopping', {

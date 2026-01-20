@@ -77,14 +77,9 @@ export {
 
 // Relationship utilities
 export {
-  extractRelationshipData,
   extractRelationshipRecordIds,
-  normalizeRelationshipValue,
-  validateRelationshipValue,
-  validateEntityDefinitionId,
   isRelationshipFieldValue,
   isRelationshipFieldValueArray,
-  convertRawToRelationshipInput,
   isMultiRelationship,
   isSingleRelationship,
   toRecordId,
@@ -93,7 +88,6 @@ export {
   toRecordIds,
   getInstanceId,
   getDefinitionId,
-  type RelationshipData,
   type RelationshipType,
 } from './relationship-field'
 export type { RecordId } from '@auxx/types/resource'

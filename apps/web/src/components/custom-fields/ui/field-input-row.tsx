@@ -4,13 +4,14 @@
 import { VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import {
-  extractRelationshipData,
+  extractRelationshipRecordIds,
   isMultiRelationship,
   toRecordId,
   getInstanceId,
   getDefinitionId,
   type RecordId,
 } from '@auxx/lib/field-values/client'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import type { ResourceField } from '@auxx/lib/resources/client'
 
 /**
@@ -48,15 +49,17 @@ export function FieldInputRow({
 }: FieldInputRowProps) {
   const isRequired = field.required ?? field.capabilities?.required ?? false
   const fieldType = field.fieldType ?? 'TEXT'
-  const relationshipConfig = field.options?.relationship
+  const relationshipConfig = field.options?.relationship as RelationshipConfig | undefined
 
   // For RELATIONSHIP: pass RecordId[] directly to FieldInputAdapter
   // FieldInputAdapter will pass it through to MultiRelationInput (no double conversion)
-  const normalizedValue =
-    fieldType === 'RELATIONSHIP' ? extractRelationshipData(value).recordIds : value
+  const normalizedValue = fieldType === 'RELATIONSHIP' ? extractRelationshipRecordIds(value) : value
 
   // Get relatedEntityDefinitionId for wrapping RecordId[] back to RelationshipFieldValue on save
-  const relatedEntityDefinitionId = relationshipConfig?.relatedEntityDefinitionId ?? null
+  // Derived from inverseResourceFieldId using helper function
+  const relatedEntityDefinitionId = relationshipConfig
+    ? getRelatedEntityDefinitionId(relationshipConfig)
+    : null
 
   // Determine if relationship is multi-select using helper
   const isMulti = isMultiRelationship(relationshipConfig?.relationshipType)

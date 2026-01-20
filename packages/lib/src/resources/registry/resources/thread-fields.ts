@@ -2,7 +2,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { BaseType } from '../../types'
-import { toFieldId } from '@auxx/types/field'
+import { toFieldId, type ResourceFieldId } from '@auxx/types/field'
 import type { ResourceField } from '../field-types'
 import { ThreadStatus, ReadStatus, TagOperation } from '../enum-values'
 
@@ -220,8 +220,9 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
       updatable: true,
     },
     relationship: {
-      relatedEntityDefinitionId: 'user',
+      inverseResourceFieldId: null,
       relationshipType: 'belongs_to',
+      isInverse: false,
     },
     description: 'Assign thread to a team member',
     placeholder: 'Select assignee',
@@ -245,8 +246,9 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
       updatable: true,
     },
     relationship: {
-      relatedEntityDefinitionId: 'inbox',
+      inverseResourceFieldId: null,
       relationshipType: 'belongs_to',
+      isInverse: false,
     },
     description: 'Move thread to a different inbox',
     placeholder: 'Select destination inbox',
@@ -267,8 +269,9 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
       updatable: false,
     },
     relationship: {
-      relatedEntityDefinitionId: 'message',
+      inverseResourceFieldId: 'message:thread' as ResourceFieldId,
       relationshipType: 'has_many',
+      isInverse: true,
     },
     description: 'All messages in this thread',
   },

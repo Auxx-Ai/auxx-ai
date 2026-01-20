@@ -5,7 +5,7 @@ import { useState, useCallback, useMemo } from 'react'
 import { FieldType } from '@auxx/database/enums'
 import type { FieldOptions } from '@auxx/lib/field-values/client'
 import { isMultiRelationship } from '@auxx/lib/field-values/client'
-import type { SelectOption } from '@auxx/types/custom-field'
+import { getRelatedEntityDefinitionId, type SelectOption, type RelationshipConfig } from '@auxx/types/custom-field'
 import type { RecordId } from '@auxx/types/resource'
 import { toRecordId } from '@auxx/lib/resources/client'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
@@ -119,7 +119,7 @@ export function FieldInputAdapter({
       }
 
       // Derive entityDefinitionId from relationship config
-      const entityDefinitionId = relationship.relatedEntityDefinitionId ?? null
+      const entityDefinitionId = getRelatedEntityDefinitionId(relationship as RelationshipConfig)
 
       if (!entityDefinitionId) {
         return <div className="text-muted-foreground text-sm">Missing entity definition</div>

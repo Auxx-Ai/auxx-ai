@@ -2,7 +2,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { BaseType } from '../../types'
-import { toFieldId } from '@auxx/types/field'
+import { toFieldId, type ResourceFieldId } from '@auxx/types/field'
 
 import type { ResourceField } from '../field-types'
 import { ContactStatus } from '../enum-values'
@@ -286,8 +286,9 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
       updatable: false,
     },
     relationship: {
-      relatedEntityDefinitionId: 'ticket',
+      inverseResourceFieldId: 'ticket:contact' as ResourceFieldId,
       relationshipType: 'has_many',
+      isInverse: true,
     },
     description: 'All tickets associated with this contact',
   },

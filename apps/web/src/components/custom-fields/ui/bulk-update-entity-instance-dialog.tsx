@@ -21,6 +21,7 @@ import { useResource } from '~/components/resources'
 import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
+import type { RelationshipConfig } from '@auxx/types/custom-field'
 
 interface BulkUpdateEntityInstanceDialogProps {
   open: boolean
@@ -71,18 +72,14 @@ export function BulkUpdateEntityInstanceDialog({
   })
 
   // Field metadata provider for relationship sync
+  // Pass raw RelationshipConfig - hook derives values internally using helpers
   const getFieldMetadata = useCallback(
     (fieldId: string) => {
       const field = editableFields.find((f) => f.id === fieldId)
       if (!field) return undefined
       return {
         type: field.fieldType ?? 'TEXT',
-        relationship: field.options?.relationship as {
-          isInverse?: boolean
-          inverseFieldId?: string
-          relationshipType?: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
-          relatedEntityDefinitionId?: string
-        },
+        relationship: field.options?.relationship as RelationshipConfig | undefined,
       }
     },
     [editableFields]

@@ -25,6 +25,7 @@ import {
 } from '~/components/workflow/ui/input-editor/var-editor'
 import { VAR_MODE, BaseType } from '~/components/workflow/types'
 import type { ResourceField } from '@auxx/lib/resources/client'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import { useWorkflowResources } from '../../../providers'
 import { useResource, useResourceFields } from '~/components/resources'
 import { EntityIcon } from '@auxx/ui/components/icons'
@@ -209,8 +210,11 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
 
       if (field.type === BaseType.RELATION) {
         if (field.relationship) {
-          // Primary path: Use relationship.relatedEntityDefinitionId - cast to BaseType for type safety
-          allowedTypes.push(field.relationship.relatedEntityDefinitionId as BaseType)
+          // Primary path: Use getRelatedEntityDefinitionId helper - cast to BaseType for type safety
+          const relatedEntityId = getRelatedEntityDefinitionId(field.relationship as RelationshipConfig)
+          if (relatedEntityId) {
+            allowedTypes.push(relatedEntityId as BaseType)
+          }
         } else {
           // Error case: RELATION field with no way to determine target
           console.error(

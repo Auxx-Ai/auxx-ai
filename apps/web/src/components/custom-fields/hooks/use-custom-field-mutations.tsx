@@ -15,7 +15,6 @@ import {
   type SelectOption,
   type TargetTimeInStatus,
   type RelationshipConfig,
-  getRelatedEntityDefinitionId,
   getInverseFieldId,
 } from '@auxx/types/custom-field'
 
@@ -131,10 +130,7 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
         relationship?: RelationshipConfig
       }
 
-      // Extract derived relationship info using helpers
-      const relatedEntityDefId = rawOptions?.relationship
-        ? getRelatedEntityDefinitionId(rawOptions.relationship)
-        : null
+      // Extract inverse field ID for fetching the inverse field after creation
       const inverseFieldIdValue = rawOptions?.relationship
         ? getInverseFieldId(rawOptions.relationship)
         : null
@@ -158,21 +154,11 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
         capabilities,
         options: {
           options: rawOptions?.options,
-          // Normalize relationship for UI consumers (provide derived values)
-          relationship: rawOptions?.relationship
-            ? {
-                relatedEntityDefinitionId: relatedEntityDefId ?? undefined,
-                inverseFieldId: inverseFieldIdValue ?? undefined,
-                relationshipType: rawOptions.relationship.relationshipType,
-              }
-            : undefined,
+          // Pass through raw RelationshipConfig - consumers derive values using helpers
+          relationship: rawOptions?.relationship,
         },
-        relationship: relatedEntityDefId
-          ? {
-              relatedEntityDefinitionId: relatedEntityDefId,
-              relationshipType: rawOptions?.relationship?.relationshipType || 'belongs_to',
-            }
-          : undefined,
+        // Pass through raw RelationshipConfig
+        relationship: rawOptions?.relationship,
       }
 
       // Confirm the optimistic create (replaces temp with server data)
@@ -191,11 +177,6 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
                 options?: { value: string; label: string; color?: string }[]
                 relationship?: RelationshipConfig
               }
-
-              // Extract derived relationship info for inverse field
-              const invRelatedEntityDefId = invOptions?.relationship
-                ? getRelatedEntityDefinitionId(invOptions.relationship)
-                : null
 
               const invField: ResourceField = {
                 id: toFieldId(field.id),
@@ -224,22 +205,11 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
                 },
                 options: {
                   options: invOptions?.options,
-                  relationship: invOptions?.relationship
-                    ? {
-                        relatedEntityDefinitionId: invRelatedEntityDefId ?? undefined,
-                        inverseFieldId: invOptions.relationship
-                          ? (getInverseFieldId(invOptions.relationship) ?? undefined)
-                          : undefined,
-                        relationshipType: invOptions.relationship.relationshipType,
-                      }
-                    : undefined,
+                  // Pass through raw RelationshipConfig - consumers derive values using helpers
+                  relationship: invOptions?.relationship,
                 },
-                relationship: invRelatedEntityDefId
-                  ? {
-                      relatedEntityDefinitionId: invRelatedEntityDefId,
-                      relationshipType: invOptions?.relationship?.relationshipType || 'belongs_to',
-                    }
-                  : undefined,
+                // Pass through raw RelationshipConfig
+                relationship: invOptions?.relationship,
               }
 
               store.applyFieldFromServer(

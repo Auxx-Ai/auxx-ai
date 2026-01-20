@@ -32,7 +32,7 @@ import {
   type CustomField,
   type KanbanDragItemType,
 } from '../dynamic-table/types'
-import type { SelectOption as RawSelectOption } from '@auxx/types/custom-field'
+import type { SelectOption as RawSelectOption, RelationshipConfig } from '@auxx/types/custom-field'
 import {
   useFieldValueStore,
   buildFieldValueKey,
@@ -231,18 +231,14 @@ export function KanbanView<TData extends KanbanRow>({
   )
 
   // Field metadata provider for relationship sync (required by hook, but kanban only changes SINGLE_SELECT)
+  // Pass raw RelationshipConfig - hook derives values internally using helpers
   const getFieldMetadata = useCallback(
     (fieldId: string) => {
       const field = customFields.find((f) => f.id === fieldId)
       if (!field) return undefined
       return {
         type: field.fieldType!,
-        relationship: field.options?.relationship as {
-          isInverse?: boolean
-          inverseFieldId?: string
-          relationshipType?: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
-          relatedEntityDefinitionId?: string
-        },
+        relationship: field.options?.relationship as RelationshipConfig | undefined,
       }
     },
     [customFields]

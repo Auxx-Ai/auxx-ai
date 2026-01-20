@@ -235,8 +235,9 @@ export const PART_FIELDS: Record<string, ResourceField> = {
       updatable: false,
     },
     relationship: {
-      relatedEntityDefinitionId: 'user',
+      inverseResourceFieldId: null, // No inverse for this relationship
       relationshipType: 'belongs_to',
+      isInverse: false,
     },
     relationshipConfig: {
       relatedEntityType: 'user',
