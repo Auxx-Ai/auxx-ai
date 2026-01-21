@@ -86,6 +86,18 @@ import { useField, useResourceFields } from '~/components/resources'
 import { toastError } from '@auxx/ui/components/toast'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
 
+/** Field types that don't support default values */
+const TYPES_WITHOUT_DEFAULT_VALUE: FieldTypeType[] = [
+  FieldType.ADDRESS_STRUCT,
+  FieldType.FILE,
+  FieldType.RELATIONSHIP,
+  FieldType.CURRENCY,
+  FieldType.CALC,
+]
+
+/** Field types that don't support required validation */
+const TYPES_WITHOUT_REQUIRED: FieldTypeType[] = [FieldType.CALC]
+
 /** Props for CustomFieldDialog */
 interface CustomFieldDialogProps {
   open: boolean
@@ -188,7 +200,7 @@ export function CustomFieldDialog({
         id: f.id,
         key: f.key || f.id,
         label: f.label,
-        type: f.fieldType,
+        type: f.fieldType ?? 'TEXT',
       }))
   }, [resourceFields, editingField])
 
@@ -410,7 +422,9 @@ export function CustomFieldDialog({
     }
 
     if (values.type === FieldType.CALC) {
+      console.log('[CustomFieldDialog] calcOptions on submit:', calcOptions)
       submitObj.options = formatCalcOptions(calcOptions)
+      console.log('[CustomFieldDialog] formatted options:', submitObj.options)
     }
 
     // Merge display options using format helper
@@ -487,6 +501,8 @@ export function CustomFieldDialog({
           <CalcFieldEditor
             options={calcOptions}
             onChange={setCalcOptions}
+            entityDefinitionId={effectiveEntityDefId}
+            currentFieldId={editingField?.id}
             availableFields={calcAvailableFields}
           />
         )
@@ -560,13 +576,7 @@ export function CustomFieldDialog({
       return null
     }
 
-    // These types don't support default values
-    if (
-      selectedType === FieldType.ADDRESS_STRUCT ||
-      selectedType === FieldType.FILE ||
-      selectedType === FieldType.RELATIONSHIP ||
-      selectedType === FieldType.CURRENCY
-    ) {
+    if (TYPES_WITHOUT_DEFAULT_VALUE.includes(selectedType)) {
       return null
     }
 
@@ -758,22 +768,24 @@ export function CustomFieldDialog({
                   </>
                 )}
 
-                {/* Required Switch */}
-                <FormField
-                  control={form.control}
-                  name="required"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-xl border px-3 py-1.5">
-                      <FormControl>
-                        <Switch checked={field.value} onCheckedChange={field.onChange} size="sm" />
-                      </FormControl>
-                      <div className="space-y-1 leading-none">
-                        <FormLabel>Required Field</FormLabel>
-                        <FormDescription>Make this field mandatory</FormDescription>
-                      </div>
-                    </FormItem>
-                  )}
-                />
+                {/* Required Switch - hide for certain field types */}
+                {!TYPES_WITHOUT_REQUIRED.includes(selectedType) && (
+                  <FormField
+                    control={form.control}
+                    name="required"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-xl border px-3 py-1.5">
+                        <FormControl>
+                          <Switch checked={field.value} onCheckedChange={field.onChange} size="sm" />
+                        </FormControl>
+                        <div className="space-y-1 leading-none">
+                          <FormLabel>Required Field</FormLabel>
+                          <FormDescription>Make this field mandatory</FormDescription>
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+                )}
 
                 {/* Unique Switch - only shown for uniqueable field types */}
                 {canFieldBeUnique(selectedType, relationshipOptions.relationshipType) && (

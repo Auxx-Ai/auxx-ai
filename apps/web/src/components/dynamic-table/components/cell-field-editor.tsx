@@ -40,7 +40,6 @@ export function CellFieldEditor({
   // Get field definition from config
   const field = cellSelectionConfig.getFieldDefinition?.(columnId)
 
-  console.log('CellFieldEditor render for row:', rowId, 'column:', columnId, 'field:', field)
   // Get recordId for optimistic updates (required)
   const recordId = useMemo<RecordId | undefined>(() => {
     return cellSelectionConfig.getRecordId?.(rowId)

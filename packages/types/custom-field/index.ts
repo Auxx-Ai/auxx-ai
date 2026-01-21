@@ -112,6 +112,27 @@ export const fileOptionsSchema = z.object({
 export type FileOptions = z.infer<typeof fileOptionsSchema>
 
 // =============================================================================
+// CALC OPTIONS (calculated/formula field)
+// =============================================================================
+
+/** Zod schema for calc field options */
+export const calcOptionsSchema = z.object({
+  /** The expression to evaluate, e.g., 'add({quantity}, {unitPrice})' */
+  expression: z.string(),
+  /** Maps placeholder names to field IDs */
+  sourceFields: z.record(z.string(), z.string()),
+  /** Field type for formatting the result */
+  resultFieldType: z.string(),
+  /** Whether this field is disabled due to missing dependencies */
+  disabled: z.boolean().optional(),
+  /** Reason why the field is disabled */
+  disabledReason: z.string().optional(),
+})
+
+/** Calc options type */
+export type CalcOptions = z.infer<typeof calcOptionsSchema>
+
+// =============================================================================
 // DISPLAY OPTIONS (flat structure in field.options)
 // =============================================================================
 
@@ -175,13 +196,14 @@ export function getDisplayOptionKeys(fieldType: string): (keyof DisplayOptions)[
 }
 
 /**
- * Type guard to check if options object is a DisplayOptions (not SelectOption[], file, or currency)
+ * Type guard to check if options object is a DisplayOptions (not SelectOption[], file, currency, or calc)
  */
 export function isDisplayOptions(options: unknown): options is DisplayOptions {
   if (!options || typeof options !== 'object') return false
   if (Array.isArray(options)) return false
   if ('file' in options) return false
   if ('currency' in options) return false
+  if ('calc' in options) return false
   return true
 }
 
@@ -225,6 +247,7 @@ export const fieldOptionsUnionSchema = z.union([
   z.array(selectOptionSchema),
   z.object({ file: fileOptionsSchema }),
   z.object({ currency: currencyOptionsSchema }),
+  z.object({ calc: calcOptionsSchema }),
   // Flat display options for NUMBER, DATE, DATETIME, TIME, CHECKBOX
   displayOptionsSchema,
 ])

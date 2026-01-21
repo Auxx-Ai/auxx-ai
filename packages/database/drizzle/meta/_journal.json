@@ -456,6 +456,20 @@
       "when": 1768952494110,
       "tag": "0064_add_onboarding_org",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1769027323684,
+      "tag": "0065_fix_unique_billing_constraint",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1769027469393,
+      "tag": "0066_add_calc_field_type",
+      "breakpoints": true
     }
   ]
 }

@@ -290,13 +290,13 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'contact_tickets',
     systemSortOrder: 80,
-    showInPanel: false, // Relationship reverse-field, not editable
+    showInPanel: false, // Relationship reverse-field
     // NO dbColumn - computed from ticket.contactId
     capabilities: {
-      filterable: false,
+      filterable: true,
       sortable: false,
-      creatable: false,
-      updatable: false,
+      creatable: true,
+      updatable: true,
       configurable: false,
     },
     relationship: {

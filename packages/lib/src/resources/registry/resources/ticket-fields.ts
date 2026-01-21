@@ -170,7 +170,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
       filterable: true,
       sortable: false,
       creatable: true,
-      updatable: false, // Cannot reassign ticket to different contact
+      updatable: true,
       required: true,
       configurable: false,
     },
@@ -284,10 +284,10 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
     systemSortOrder: 51,
     showInPanel: false, // Relationship reverse-field
     capabilities: {
-      filterable: false,
+      filterable: true,
       sortable: false,
-      creatable: false,
-      updatable: false,
+      creatable: true,
+      updatable: true,
       configurable: false,
     },
     relationship: {

@@ -9,7 +9,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state'
 /**
  * Field node for formula TipTap editor.
  * Renders field references as styled tags with only a field key reference.
- * Format: {{fieldKey}} in serialized form.
+ * Format: {fieldKey} in serialized form.
  */
 export const FieldNode = Node.create({
   name: 'field-node',
@@ -36,8 +36,8 @@ export const FieldNode = Node.create({
   addInputRules() {
     return [
       nodeInputRule({
-        // Match {{fieldKey}} pattern
-        find: /(\{\{([\w-]+)\}\})$/,
+        // Match {fieldKey} pattern
+        find: /(\{([\w-]+)\})$/,
         type: this.type,
         getAttributes: (match) => ({
           fieldKey: match[2],
@@ -63,12 +63,12 @@ export const FieldNode = Node.create({
         },
         HTMLAttributes
       ),
-      `{{${fieldKey}}}`,
+      `{${fieldKey}}`,
     ]
   },
 
   renderText({ node }) {
-    return `{{${node.attrs.fieldKey}}}`
+    return `{${node.attrs.fieldKey}}`
   },
 
   addNodeView() {
@@ -103,7 +103,7 @@ export const FieldNode = Node.create({
             const text = event.clipboardData?.getData('text/plain')
             if (!text) return false
 
-            const fieldPattern = /\{\{([^}]+)\}\}/g
+            const fieldPattern = /\{([^{}]+)\}/g
             if (!fieldPattern.test(text)) return false
 
             event.preventDefault()

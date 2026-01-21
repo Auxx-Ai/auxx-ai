@@ -216,8 +216,9 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
     capabilities: {
       filterable: true,
       sortable: false,
-      creatable: false,
+      creatable: true,
       updatable: true,
+      configurable: false,
     },
     relationship: {
       inverseResourceFieldId: null,
@@ -242,8 +243,9 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
     capabilities: {
       filterable: true,
       sortable: false,
-      creatable: false,
+      creatable: true,
       updatable: true,
+      configurable: false,
     },
     relationship: {
       inverseResourceFieldId: null,
@@ -263,10 +265,11 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     showInPanel: false, // Relationship reverse-field
     capabilities: {
-      filterable: false,
+      filterable: true,
       sortable: false,
-      creatable: false,
-      updatable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
     },
     relationship: {
       inverseResourceFieldId: 'message:thread' as ResourceFieldId,

@@ -72,6 +72,7 @@ export const contactFieldType = pgEnum('ContactFieldType', [
   'FILE',
   'NAME',
   'RELATIONSHIP',
+  'CALC',
 ])
 export const credentialSource = pgEnum('CredentialSource', [
   'SYSTEM', // Platform-provided credentials from env vars
@@ -488,10 +489,7 @@ export const workflowTriggerSource = pgEnum('WorkflowTriggerSource', [
  * Access mode for shared workflows (web access only)
  * API access is controlled separately via apiEnabled flag
  */
-export const workflowShareAccessMode = pgEnum('WorkflowShareAccessMode', [
-  'public',
-  'organization',
-])
+export const workflowShareAccessMode = pgEnum('WorkflowShareAccessMode', ['public', 'organization'])
 
 // Import job status lifecycle
 export const importJobStatus = pgEnum('ImportJobStatus', [

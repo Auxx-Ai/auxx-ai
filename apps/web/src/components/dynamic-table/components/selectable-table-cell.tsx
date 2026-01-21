@@ -116,7 +116,7 @@ function SelectableTableCellInner<TData>({
         'group/cell flex items-center h-full relative outline-none',
         isSelected && 'cell-selected',
         isEditing && 'cell-editing',
-        !isUpdatable && 'cursor-not-allowed opacity-60',
+        !isUpdatable && 'read-only',
         className
       )}
       onClick={handleClick}
@@ -129,13 +129,13 @@ function SelectableTableCellInner<TData>({
       data-editing={isEditing}
       title={!isUpdatable ? 'This field is read-only' : undefined}>
       {/* Selection overlay - hidden when inline editing or when child has data-self-overlay */}
-      {!isSystemColumn && !isInlineEditing && (
+      {/* {!isSystemColumn && !isInlineEditing && (
         <CellSelectionOverlay
           isSelected={isSelected}
           isEditing={isPopoverEditing}
           className="group-has-[[data-self-overlay]]/cell:hidden"
         />
-      )}
+      )} */}
 
       {/* Cell content - hidden when inline editing */}
       <div className={cn('contents', isInlineEditing && 'invisible')}>

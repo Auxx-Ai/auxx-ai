@@ -13,7 +13,11 @@ interface CellSelectionOverlayProps {
  * Absolute positioned overlay for cell selection highlighting
  * Uses inset-0 with pointer-events-none for non-blocking visuals
  */
-export function CellSelectionOverlay({ isSelected, isEditing, className }: CellSelectionOverlayProps) {
+export function CellSelectionOverlay({
+  isSelected,
+  isEditing,
+  className,
+}: CellSelectionOverlayProps) {
   if (!isSelected && !isEditing) return null
 
   return (
@@ -22,6 +26,8 @@ export function CellSelectionOverlay({ isSelected, isEditing, className }: CellS
         'absolute inset-0 pointer-events-none rounded-md z-11',
         isSelected && !isEditing && 'ring-1 ring-blue-500 ring-inset bg-blue-500/5',
         isEditing && 'ring-1 ring-blue-600 ring-inset bg-blue-500/10',
+        // Read-only cells get gray styling instead of blue
+        'group-[.read-only]/cell:ring-primary-400 group-[.read-only]/cell:bg-gray-500/5',
         className
       )}
     />

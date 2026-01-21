@@ -143,14 +143,14 @@ export interface ParsedExpression {
 
 /**
  * Tokenize expression string into tokens.
- * Handles: function names, parentheses, commas, string literals, numbers, field references {{...}}
+ * Handles: function names, parentheses, commas, string literals, numbers, field references {fieldKey}
  */
 function tokenize(expression: string): string[] {
   const tokens: string[] = []
   let current = ''
   let inString = false
   let stringChar = ''
-  let braceDepth = 0
+  let inField = false
 
   for (let i = 0; i < expression.length; i++) {
     const char = expression[i]
@@ -163,20 +163,17 @@ function tokenize(expression: string): string[] {
       } else {
         current += char
       }
-    } else if (char === '{' && expression[i + 1] === '{') {
-      // Start of field reference {{
+    } else if (char === '{' && !inField) {
+      // Start of field reference {
       if (current.trim()) tokens.push(current.trim())
-      current = '{{'
-      i++ // Skip next {
-      braceDepth = 2
-    } else if (braceDepth > 0) {
+      current = '{'
+      inField = true
+    } else if (inField) {
       current += char
-      if (char === '}' && expression[i + 1] === '}') {
-        current += '}'
-        i++ // Skip next }
+      if (char === '}') {
         tokens.push(current)
         current = ''
-        braceDepth = 0
+        inField = false
       }
     } else if (char === '"' || char === "'") {
       if (current.trim()) tokens.push(current.trim())
@@ -205,10 +202,15 @@ function tokenize(expression: string): string[] {
 function parseTokens(tokens: string[], index: { value: number }): ParsedExpression {
   const token = tokens[index.value]
 
-  // Field reference {{fieldKey}}
-  if (token.startsWith('{{') && token.endsWith('}}')) {
+  // Guard against undefined token (index out of bounds)
+  if (token === undefined) {
+    throw new Error('Unexpected end of expression')
+  }
+
+  // Field reference {fieldKey}
+  if (token.startsWith('{') && token.endsWith('}')) {
     index.value++
-    const fieldKey = token.slice(2, -2).trim()
+    const fieldKey = token.slice(1, -1).trim()
     return { type: 'field', value: fieldKey }
   }
 
@@ -249,7 +251,7 @@ function parseTokens(tokens: string[], index: { value: number }): ParsedExpressi
     return { type: 'function', value: funcName, args }
   }
 
-  // Bare field reference (legacy support without braces)
+  // Bare identifier - treat as field reference for flexibility
   index.value++
   return { type: 'field', value: token }
 }
@@ -339,7 +341,7 @@ function evaluateExpression(expr: ParsedExpression, fieldValues: Record<string, 
 /**
  * Evaluate a calculation expression with field values.
  *
- * @param expression - The expression string, e.g., 'multiply({{quantity}}, {{unitPrice}})'
+ * @param expression - The expression string, e.g., 'multiply({quantity}, {unitPrice})'
  * @param fieldValues - Map of field key to TypedFieldValue or raw value
  * @returns The computed result, or null if evaluation fails
  */
@@ -424,68 +426,68 @@ export function getAvailableFunctions(): Array<{
       name: 'concat',
       description: 'Join strings together',
       signature: 'concat(...values)',
-      example: 'concat({{firstName}}, " ", {{lastName}})',
+      example: 'concat({firstName}, " ", {lastName})',
     },
-    { name: 'upper', description: 'Convert to uppercase', signature: 'upper(text)', example: 'upper({{name}})' },
-    { name: 'lower', description: 'Convert to lowercase', signature: 'lower(text)', example: 'lower({{email}})' },
-    { name: 'trim', description: 'Remove whitespace', signature: 'trim(text)', example: 'trim({{notes}})' },
+    { name: 'upper', description: 'Convert to uppercase', signature: 'upper(text)', example: 'upper({name})' },
+    { name: 'lower', description: 'Convert to lowercase', signature: 'lower(text)', example: 'lower({email})' },
+    { name: 'trim', description: 'Remove whitespace', signature: 'trim(text)', example: 'trim({notes})' },
     {
       name: 'length',
       description: 'Get string length',
       signature: 'length(text)',
-      example: 'length({{description}})',
+      example: 'length({description})',
     },
     {
       name: 'add',
       description: 'Add numbers',
       signature: 'add(...numbers)',
-      example: 'add({{price}}, {{tax}}, {{shipping}})',
+      example: 'add({price}, {tax}, {shipping})',
     },
     {
       name: 'subtract',
       description: 'Subtract b from a',
       signature: 'subtract(a, b)',
-      example: 'subtract({{total}}, {{discount}})',
+      example: 'subtract({total}, {discount})',
     },
     {
       name: 'multiply',
       description: 'Multiply numbers',
       signature: 'multiply(...numbers)',
-      example: 'multiply({{qty}}, {{price}})',
+      example: 'multiply({qty}, {price})',
     },
-    { name: 'divide', description: 'Divide a by b', signature: 'divide(a, b)', example: 'divide({{total}}, {{count}})' },
+    { name: 'divide', description: 'Divide a by b', signature: 'divide(a, b)', example: 'divide({total}, {count})' },
     {
       name: 'round',
       description: 'Round to decimals',
       signature: 'round(number, decimals?)',
-      example: 'round({{price}}, 2)',
+      example: 'round({price}, 2)',
     },
-    { name: 'floor', description: 'Round down', signature: 'floor(number)', example: 'floor({{price}})' },
-    { name: 'ceil', description: 'Round up', signature: 'ceil(number)', example: 'ceil({{price}})' },
-    { name: 'abs', description: 'Absolute value', signature: 'abs(number)', example: 'abs({{difference}})' },
+    { name: 'floor', description: 'Round down', signature: 'floor(number)', example: 'floor({price})' },
+    { name: 'ceil', description: 'Round up', signature: 'ceil(number)', example: 'ceil({price})' },
+    { name: 'abs', description: 'Absolute value', signature: 'abs(number)', example: 'abs({difference})' },
     {
       name: 'min',
       description: 'Minimum value',
       signature: 'min(...numbers)',
-      example: 'min({{a}}, {{b}}, {{c}})',
+      example: 'min({a}, {b}, {c})',
     },
     {
       name: 'max',
       description: 'Maximum value',
       signature: 'max(...numbers)',
-      example: 'max({{a}}, {{b}}, {{c}})',
+      example: 'max({a}, {b}, {c})',
     },
     {
       name: 'if',
       description: 'Conditional',
       signature: 'if(condition, then, else)',
-      example: 'if({{isActive}}, "Yes", "No")',
+      example: 'if({isActive}, "Yes", "No")',
     },
     {
       name: 'coalesce',
       description: 'First non-null value',
       signature: 'coalesce(...values)',
-      example: 'coalesce({{nickname}}, {{firstName}})',
+      example: 'coalesce({nickname}, {firstName})',
     },
   ]
 }

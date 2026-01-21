@@ -104,10 +104,17 @@ export function useUnsavedChangesGuard({
   }, [isDirty, confirm, title, description, confirmText, cancelText, onConfirmedClose])
 
   /**
-   * Handle ESC key - prevent close and show confirmation if dirty
+   * Handle ESC key - prevent close and show confirmation if dirty.
+   * Ignores ESC pressed from within command pickers (like field picker).
    */
   const handleEscapeKeyDown = useCallback(
     (event: KeyboardEvent) => {
+      // If ESC is pressed from within a command picker (like field picker),
+      // prevent dialog close and let the picker handle it
+      if (event.target instanceof HTMLElement && event.target.closest('[cmdk-root]')) {
+        event.preventDefault()
+        return
+      }
       if (isDirty) {
         event.preventDefault()
         guardedClose()

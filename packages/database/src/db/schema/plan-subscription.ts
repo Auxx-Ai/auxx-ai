@@ -77,9 +77,5 @@ export const PlanSubscription = pgTable(
       'btree',
       table.organizationId.asc().nullsLast()
     ),
-    uniqueIndex('PlanSubscription_stripeCustomerId_key').using(
-      'btree',
-      table.stripeCustomerId.asc().nullsLast()
-    ),
   ]
 )

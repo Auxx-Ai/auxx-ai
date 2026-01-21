@@ -1,5 +1,6 @@
 // apps/web/src/components/pickers/resource-picker/types.ts
 
+import type React from 'react'
 import type { FieldType } from '@auxx/database/types'
 import type { FieldReference, ResourceFieldId } from '@auxx/types/field'
 import type { ResourceField } from '@auxx/lib/resources/client'
@@ -104,6 +105,12 @@ export interface ExternalNavigation {
 export interface ResourcePickerInnerContentProps extends ResourcePickerContentProps {
   /** External navigation control (for nested usage) */
   externalNavigation?: ExternalNavigation
+
+  /** Additional content rendered at end of CommandList (e.g., Functions group for CALC) */
+  renderAdditionalContent?: (search: string) => React.ReactNode
+
+  /** Show breadcrumb in standalone mode (default: true) */
+  showBreadcrumb?: boolean
 }
 
 /**

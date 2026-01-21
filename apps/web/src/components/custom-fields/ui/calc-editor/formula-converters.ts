@@ -3,7 +3,7 @@
 import type { JSONContent } from '@tiptap/core'
 
 /**
- * Convert TipTap JSON content to formula string with {{fieldKey}} placeholders.
+ * Convert TipTap JSON content to formula string with {fieldKey} placeholders.
  */
 export function formulaToString(content: JSONContent): string {
   if (!content) return ''
@@ -14,7 +14,7 @@ export function formulaToString(content: JSONContent): string {
     }
 
     if (node.type === 'field-node') {
-      return `{{${node.attrs?.fieldKey || ''}}}`
+      return `{${node.attrs?.fieldKey || ''}}`
     }
 
     if (node.type === 'paragraph') {
@@ -36,7 +36,7 @@ export function formulaToString(content: JSONContent): string {
 }
 
 /**
- * Convert formula string with {{fieldKey}} to TipTap JSON content.
+ * Convert formula string with {fieldKey} to TipTap JSON content.
  */
 export function stringToFormula(text: string): JSONContent {
   if (!text) {
@@ -44,7 +44,7 @@ export function stringToFormula(text: string): JSONContent {
   }
 
   const content: JSONContent[] = []
-  const fieldPattern = /\{\{([^}]+)\}\}/g
+  const fieldPattern = /\{([^{}]+)\}/g
   let lastIndex = 0
   let match
 
@@ -105,7 +105,7 @@ export function extractFieldKeysFromString(text: string): string[] {
   if (!text) return []
 
   const fieldKeys: string[] = []
-  const fieldPattern = /\{\{([^}]+)\}\}/g
+  const fieldPattern = /\{([^{}]+)\}/g
   let match
 
   while ((match = fieldPattern.exec(text)) !== null) {

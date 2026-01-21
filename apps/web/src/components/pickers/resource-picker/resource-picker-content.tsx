@@ -79,6 +79,8 @@ export function ResourcePickerInnerContent({
   onCreateField,
   searchPlaceholder = 'Search fields...',
   externalNavigation,
+  renderAdditionalContent,
+  showBreadcrumb = true,
 }: ResourcePickerInnerContentProps) {
   const [search, setSearch] = useState('')
 
@@ -262,6 +264,9 @@ export function ResourcePickerInnerContent({
             </CommandGroup>
           </>
         )}
+
+        {/* Additional content (e.g., Functions for CALC) */}
+        {renderAdditionalContent?.(search)}
       </CommandList>
     </>
   )
@@ -274,7 +279,7 @@ export function ResourcePickerInnerContent({
   // Standalone usage: wrap with Command and breadcrumb
   return (
     <Command shouldFilter={false}>
-      <CommandBreadcrumb rootLabel="Fields" />
+      {showBreadcrumb && <CommandBreadcrumb rootLabel="Fields" />}
       {content}
     </Command>
   )

@@ -230,8 +230,8 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
     capabilities: {
       filterable: true,
       sortable: false,
-      creatable: false,
-      updatable: false,
+      creatable: true,
+      updatable: true,
       configurable: false,
     },
     relationship: {
@@ -252,8 +252,8 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
     capabilities: {
       filterable: true,
       sortable: false,
-      creatable: false,
-      updatable: false,
+      creatable: true,
+      updatable: true,
       configurable: false,
     },
     relationship: {
@@ -274,8 +274,8 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
     capabilities: {
       filterable: true,
       sortable: false,
-      creatable: false,
-      updatable: false,
+      creatable: true,
+      updatable: true,
       configurable: false,
     },
     relationship: {
@@ -296,8 +296,8 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
     capabilities: {
       filterable: true,
       sortable: false,
-      creatable: false,
-      updatable: false,
+      creatable: true,
+      updatable: true,
       configurable: false,
     },
     relationship: {

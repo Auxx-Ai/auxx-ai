@@ -68,10 +68,10 @@ export const USER_FIELDS: Record<string, ResourceField> = {
     label: 'Assigned Tickets',
     type: BaseType.RELATION,
     capabilities: {
-      filterable: false,
+      filterable: true,
       sortable: false,
-      creatable: false,
-      updatable: false,
+      creatable: true,
+      updatable: true,
       configurable: false,
     },
     relationship: {
