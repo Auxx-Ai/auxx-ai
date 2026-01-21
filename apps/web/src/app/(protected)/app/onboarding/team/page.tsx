@@ -22,6 +22,10 @@ import {
 import { OnboardingNavigation } from '../_components/onboarding-navigation'
 import { useOnboarding } from '../_components/onboarding-provider'
 import { api } from '~/trpc/react'
+import {
+  useDehydratedOrganization,
+  useDehydratedOrganizationId,
+} from '~/providers/dehydrated-state-provider'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { updateUser } from '~/auth/auth-client'
 import { OrganizationRole as OrganizationRoleEnum } from '@auxx/database/enums'
@@ -34,6 +38,11 @@ export default function TeamOnboardingPage() {
   const router = useRouter()
   const { state, updateTeam, markStepCompleted, resetState } = useOnboarding()
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Get current org data from dehydrated state as fallback
+  const organizationId = useDehydratedOrganizationId()
+  const currentOrg = useDehydratedOrganization(organizationId)
+
   const [invites, setInvites] = useState<TeamInvite[]>(
     state.team.invites.length > 0
       ? state.team.invites
@@ -86,10 +95,11 @@ export default function TeamOnboardingPage() {
         })
       }
       // 2. Update organization with handle and mark onboarding complete
+      // Use dehydrated state as fallback for values not in sessionStorage
       await updateOrganization.mutateAsync({
-        name: state.organization.name,
-        handle: state.organization.handle,
-        website: state.organization.website,
+        name: state.organization.name || currentOrg?.name || undefined,
+        handle: state.organization.handle || currentOrg?.handle || undefined,
+        website: state.organization.website || currentOrg?.website || undefined,
         completedOnboarding: true,
       })
       // 3. Send team invites if any (skip if no valid emails or skipped)
@@ -116,8 +126,8 @@ export default function TeamOnboardingPage() {
       resetState()
       // 5. Update auth session to reflect completedOnboarding
       await updateUser({ completedOnboarding: true })
-      // 6. Redirect to main app
-      router.push('/app')
+      // 6. Redirect to main app (full reload to get fresh dehydrated state)
+      window.location.href = '/app'
     } catch (error) {
       console.error('Failed to complete onboarding:', error)
       toastError({

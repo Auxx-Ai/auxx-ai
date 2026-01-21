@@ -26,8 +26,12 @@ import {
 } from '@auxx/ui/components/input-group'
 import { OnboardingNavigation } from '../_components/onboarding-navigation'
 import { useOnboarding } from '../_components/onboarding-provider'
-import { api } from '~/trpc/react'
 import { toastError } from '@auxx/ui/components/toast'
+import {
+  useDehydratedOrganization,
+  useDehydratedOrganizationId,
+} from '~/providers/dehydrated-state-provider'
+import { api } from '~/trpc/react'
 import { Check, X, Loader2 } from 'lucide-react'
 const formSchema = z.object({
   name: z.string().min(1, { error: 'Organization name is required' }),
@@ -46,8 +50,9 @@ export default function OrganizationOnboardingPage() {
   const [handleAvailable, setHandleAvailable] = useState<boolean | null>(null)
   const [handleManuallyEdited, setHandleManuallyEdited] = useState(false)
 
-  // Fetch existing org data
-  const { data: org } = api.organization.getOrganization.useQuery()
+  // Use dehydrated state instead of API call
+  const organizationId = useDehydratedOrganizationId()
+  const org = useDehydratedOrganization(organizationId)
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: standardSchemaResolver(formSchema),

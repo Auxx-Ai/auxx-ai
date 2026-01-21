@@ -70,11 +70,17 @@ export const Dashboard = ({
   const utils = api.useUtils()
   const queryClient = useQueryClient()
 
+  // Redirect to onboarding if org hasn't completed it (client-side only)
+  React.useEffect(() => {
+    if (!orgCompletedOnboarding && !pathname.includes('/app/onboarding')) {
+      router.push('/app/onboarding')
+    }
+  }, [orgCompletedOnboarding, pathname, router])
+
   // Check organization's onboarding status (not user's)
   if (!orgCompletedOnboarding) {
     if (!pathname.includes('/app/onboarding')) {
-      // Redirect to onboarding if the organization has not completed it
-      window.location.href = '/app/onboarding'
+      // Show nothing while redirecting
       return null
     } else {
       return <div className="onboarding">{children}</div>

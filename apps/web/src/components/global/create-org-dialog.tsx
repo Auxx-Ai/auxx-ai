@@ -35,6 +35,7 @@ import { api } from '~/trpc/react'
 import { toastError } from '@auxx/ui/components/toast'
 import { useOrganizationIdContext } from '~/providers/feature-flag-provider'
 import { clearResourceCaches } from '~/components/resources'
+import { client as authClient } from '~/auth/auth-client'
 import { Check, X, Loader2 } from 'lucide-react'
 
 const formSchema = z.object({
@@ -132,7 +133,7 @@ export function CreateOrganizationDialog({ open, onOpenChange }: CreateOrganizat
   }, [availabilityData, debouncedHandle, form])
 
   const createOrganization = api.organization.create.useMutation({
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       // Close dialog
       onOpenChange(false)
 
@@ -146,6 +147,9 @@ export function CreateOrganizationDialog({ open, onOpenChange }: CreateOrganizat
 
       // Clear client-side caches before reload to prevent stale data
       clearResourceCaches()
+
+      // Force session cache refresh to get updated defaultOrganizationId
+      await authClient.getSession({ query: { disableCookieCache: true } })
 
       // Redirect to onboarding for the new org
       // The onboarding page will skip to connections step since handle already exists

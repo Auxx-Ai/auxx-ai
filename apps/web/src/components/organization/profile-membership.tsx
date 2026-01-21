@@ -1,4 +1,4 @@
-// apps/web/src/app/(protected)/app/settings/organization/_components/profile-membership.tsx
+// apps/web/src/components/organization/profile-membership.tsx
 'use client'
 
 import { useState } from 'react'
