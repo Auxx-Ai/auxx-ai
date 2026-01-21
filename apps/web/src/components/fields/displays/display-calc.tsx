@@ -6,22 +6,19 @@ import DisplayWrapper from './display-wrapper'
 import { useFieldContext } from './display-field'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@auxx/ui/components/tooltip'
 import { AlertCircle } from 'lucide-react'
-import { evaluateCalcExpression } from '@auxx/utils/calc-expression'
-import {
-  useFieldValueStore,
-  buildFieldValueKey,
-} from '~/components/resources/store/field-value-store'
 import type { CalcOptions } from '@auxx/lib/custom-fields/client'
-import { Skeleton } from '@auxx/ui/components/skeleton'
+import { converters, type NumberFieldOptions } from '@auxx/lib/field-values/client'
+import { formatCurrency, type CurrencyDisplayOptions } from '@auxx/utils'
 
 /**
  * DisplayCalc component.
- * Renders a calculated field value by evaluating an expression with source field values.
+ * Renders a calculated field value that is pre-computed by the computed value middleware.
+ * Formats the value based on resultFieldType using the same formatters as Display* components.
  */
 export function DisplayCalc() {
-  const { field, recordId } = useFieldContext()
+  const { field, value } = useFieldContext()
   const calcOptions = field.options?.calc as CalcOptions | undefined
-  console.log(field)
+
   // Check if field is disabled
   if (calcOptions?.disabled) {
     return (
@@ -41,109 +38,51 @@ export function DisplayCalc() {
     )
   }
 
-  // If no calc options or no expression, show empty
-  if (!calcOptions?.expression) {
+  // Value is already computed by useFieldValue/PropertyProvider
+  if (value == null) {
     return <DisplayWrapper className="text-muted-foreground">-</DisplayWrapper>
   }
 
-  // sourceFields is Record<placeholderName, fieldId>
-  const sourceFieldsMap = calcOptions.sourceFields ?? {}
-  const placeholderNames = Object.keys(sourceFieldsMap)
+  // Format based on result field type using the same formatters as Display* components
+  const { displayValue, copyValue } = useMemo(() => {
+    const resultType = calcOptions?.resultFieldType ?? 'TEXT'
 
-  // Subscribe to source field values from the store
-  const { sourceValues, loadingCount } = useFieldValueStore((state) => {
-    if (placeholderNames.length === 0) return { sourceValues: {}, loadingCount: 0 }
+    switch (resultType) {
+      case 'NUMBER': {
+        const num = typeof value === 'number' ? value : parseFloat(String(value))
+        if (isNaN(num)) return { displayValue: String(value), copyValue: String(value) }
 
-    const values: Record<string, unknown> = {}
-    let loading = 0
-
-    for (const [placeholder, fieldId] of Object.entries(sourceFieldsMap)) {
-      const key = buildFieldValueKey(recordId, fieldId)
-      const storedValue = state.values[key]
-
-      // Extract raw value from TypedFieldValue
-      if (storedValue && typeof storedValue === 'object' && 'type' in storedValue) {
-        const typed = storedValue as {
-          type: string
-          value?: unknown
-          optionId?: string
-          label?: string
-        }
-        switch (typed.type) {
-          case 'text':
-          case 'number':
-          case 'boolean':
-          case 'date':
-            values[placeholder] = typed.value
-            break
-          case 'option':
-            values[placeholder] = typed.label ?? typed.optionId
-            break
-          default:
-            values[placeholder] = typed.value ?? null
-        }
-      } else {
-        values[placeholder] = storedValue
+        // Use NUMBER converter with options from calc config
+        const numberOpts = field.options?.number as NumberFieldOptions | undefined
+        const typedValue = { type: 'number' as const, value: num }
+        const formatted = converters.NUMBER.toDisplayValue(typedValue, numberOpts)
+        return { displayValue: formatted, copyValue: String(num) }
       }
 
-      if (state.isKeyLoading(key)) loading++
-    }
-
-    return { sourceValues: values, loadingCount: loading }
-  })
-
-  // Compute the CALC field value
-  const computedValue = useMemo(() => {
-    if (!calcOptions?.expression) return null
-
-    // Check if all source values are loaded (not undefined)
-    const allLoaded = placeholderNames.every((name) => sourceValues[name] !== undefined)
-    if (!allLoaded) return undefined // Still loading
-
-    return evaluateCalcExpression(calcOptions.expression, sourceValues)
-  }, [calcOptions, placeholderNames, sourceValues])
-
-  // Handle loading state
-  if (loadingCount > 0 || computedValue === undefined) {
-    return (
-      <DisplayWrapper>
-        <Skeleton className="h-4 w-16" />
-      </DisplayWrapper>
-    )
-  }
-
-  // Format based on result field type
-  const displayValue = useMemo(() => {
-    if (computedValue == null) return null
-
-    const resultType = calcOptions?.resultFieldType ?? 'TEXT'
-    switch (resultType) {
-      case 'NUMBER':
-        const num = Number(computedValue)
-        if (isNaN(num)) return null
-        return num.toLocaleString()
-
-      case 'CURRENCY':
-        const currencyNum = Number(computedValue)
-        if (isNaN(currencyNum)) return null
-        // Use basic currency formatting - could be enhanced with currency options
-        return new Intl.NumberFormat('en-US', {
-          style: 'currency',
-          currency: 'USD',
-        }).format(currencyNum)
+      case 'CURRENCY': {
+        const currencyOpts: CurrencyDisplayOptions = field.options?.currency || {
+          currencyCode: 'USD',
+          decimalPlaces: 'two-places',
+          displayType: 'symbol',
+          groups: 'default',
+        }
+        const formatted = formatCurrency(value, currencyOpts)
+        // For copy, use plain number format (dollars, not cents)
+        const copyVal =
+          value != null
+            ? (Number(value) / 100).toFixed(currencyOpts.decimalPlaces === 'no-decimal' ? 0 : 2)
+            : null
+        return { displayValue: formatted ?? '-', copyValue: copyVal }
+      }
 
       case 'CHECKBOX':
-        return computedValue ? 'Yes' : 'No'
+        return { displayValue: value ? 'Yes' : 'No', copyValue: value ? 'Yes' : 'No' }
 
       case 'TEXT':
       default:
-        return String(computedValue)
+        return { displayValue: String(value), copyValue: String(value) }
     }
-  }, [computedValue, calcOptions?.resultFieldType])
+  }, [value, calcOptions?.resultFieldType, field.options])
 
-  if (displayValue == null) {
-    return <DisplayWrapper className="text-muted-foreground">-</DisplayWrapper>
-  }
-
-  return <DisplayWrapper copyValue={String(displayValue)}>{displayValue}</DisplayWrapper>
+  return <DisplayWrapper copyValue={copyValue}>{displayValue}</DisplayWrapper>
 }

@@ -7,6 +7,8 @@ import { api } from '~/trpc/react'
 import { getRelationshipStoreState, useRelationshipStore, getRecordStoreState } from '../store'
 import { getResourceStoreState } from '../store/resource-store'
 import { fieldValueFetchQueue } from '../store/field-value-fetch-queue'
+import { initComputedFieldSync } from '../store/computed-field-registry'
+import { clearComputedCache } from '../store/computed-value-middleware'
 import type { RecordId } from '@auxx/lib/resources/client'
 import { useRecordBatchFetcher } from '../hooks/use-record-batch-fetcher'
 
@@ -32,6 +34,12 @@ const MAX_RELATIONSHIP_BATCH = 100
  * All data is stored in Zustand stores for selective subscriptions.
  */
 export function ResourceProvider({ children }: { children: React.ReactNode }) {
+  // === INITIALIZE COMPUTED FIELD SYNC ===
+  // Sets up subscription to auto-register CALC fields from resource store
+  useEffect(() => {
+    initComputedFieldSync()
+  }, [])
+
   // === PRELOADED: RESOURCES (with fields embedded) ===
   const resourcesQuery = api.resource.list.useQuery(undefined, {
     staleTime: 5 * 60 * 1000,
@@ -114,4 +122,5 @@ export function clearResourceCaches() {
   getResourceStoreState().reset()
   getRelationshipStoreState().reset()
   getRecordStoreState().clearAll()
+  clearComputedCache()
 }

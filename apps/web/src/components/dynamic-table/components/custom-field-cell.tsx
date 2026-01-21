@@ -55,7 +55,12 @@ export const CustomFieldCell = memo(function CustomFieldCell({
 
   const field = useField(targetResourceFieldId)
   const options = field?.options ?? propOptions
-  const fieldType = field?.fieldType
+
+  // For CALC fields, use resultFieldType for display rendering
+  const fieldType =
+    field?.fieldType === 'CALC'
+      ? (field?.options?.calc?.resultFieldType ?? 'TEXT')
+      : field?.fieldType
 
   if (isLoading && value === undefined) {
     return (

@@ -267,6 +267,14 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
 
     setValues: (entries) => {
       const now = Date.now()
+
+      // Invalidate computed cache for changed keys before updating
+      // This ensures CALC fields recompute on source changes
+      const keys = entries.map((e) => e.key)
+      import('./computed-value-middleware').then(({ invalidateComputedCacheForKeys }) => {
+        invalidateComputedCacheForKeys(keys)
+      })
+
       set((state) => {
         const newValues = { ...state.values }
         const newUpdatedAt = { ...state.updatedAt }
@@ -281,6 +289,11 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
     },
 
     setValue: (key, value) => {
+      // Invalidate computed cache for this key
+      import('./computed-value-middleware').then(({ invalidateComputedCacheForKeys }) => {
+        invalidateComputedCacheForKeys([key])
+      })
+
       set((state) => ({
         values: { ...state.values, [key]: value },
         updatedAt: { ...state.updatedAt, [key]: Date.now() },
@@ -288,6 +301,11 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
     },
 
     setValueOptimistic: (key, newValue) => {
+      // Invalidate computed cache for this key
+      import('./computed-value-middleware').then(({ invalidateComputedCacheForKeys }) => {
+        invalidateComputedCacheForKeys([key])
+      })
+
       set((state) => {
         const original = state.values[key]
         return {
@@ -408,6 +426,11 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
     },
 
     clearAll: () => {
+      // Clear computed cache when all values are cleared
+      import('./computed-value-middleware').then(({ clearComputedCache }) => {
+        clearComputedCache()
+      })
+
       set({
         values: {},
         loadingBatches: {},

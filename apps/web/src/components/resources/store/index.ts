@@ -24,3 +24,14 @@ export {
 export { useResourceStore, getResourceStoreState } from './resource-store'
 
 export { fieldValueFetchQueue } from './field-value-fetch-queue'
+
+export { computedFieldRegistry, initComputedFieldSync, type ComputedFieldConfig } from './computed-field-registry'
+
+export { computedValueCache } from './computed-value-cache'
+
+export {
+  getFieldValueWithComputed,
+  invalidateComputedCacheForKeys,
+  invalidateComputedCacheForRecord,
+  clearComputedCache,
+} from './computed-value-middleware'
