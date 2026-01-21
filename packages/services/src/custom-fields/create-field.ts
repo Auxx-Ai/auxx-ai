@@ -281,6 +281,13 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
   const lastSortOrder = lastFieldResult.value[0]?.sortOrder ?? null
   const newSortOrder = generateKeyBetween(lastSortOrder, null)
 
+  // Determine capability flags based on field type
+  // CALC fields are computed and should not be manually creatable or updatable
+  const isCalcField = type === FieldTypeEnum.CALC
+  const capabilityFlags = isCalcField
+    ? { isCreatable: false, isUpdatable: false, isComputed: true }
+    : {}
+
   // Insert field using provided db context
   const insertResult = await fromDatabase(
     db
@@ -299,6 +306,7 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
         isUnique,
         systemAttribute,
         updatedAt: new Date(),
+        ...capabilityFlags,
       })
       .returning(),
     'create-custom-field'

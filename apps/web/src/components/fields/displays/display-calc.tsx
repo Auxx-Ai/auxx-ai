@@ -7,8 +7,11 @@ import { useFieldContext } from './display-field'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@auxx/ui/components/tooltip'
 import { AlertCircle } from 'lucide-react'
 import { evaluateCalcExpression } from '@auxx/utils/calc-expression'
-import { useFieldValueStore, buildFieldValueKey } from '~/components/resources/store/field-value-store'
-import type { CalcOptions } from '@auxx/lib/custom-fields/field-options'
+import {
+  useFieldValueStore,
+  buildFieldValueKey,
+} from '~/components/resources/store/field-value-store'
+import type { CalcOptions } from '@auxx/lib/custom-fields/client'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 
 /**
@@ -18,7 +21,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 export function DisplayCalc() {
   const { field, recordId } = useFieldContext()
   const calcOptions = field.options?.calc as CalcOptions | undefined
-
+  console.log(field)
   // Check if field is disabled
   if (calcOptions?.disabled) {
     return (
@@ -30,7 +33,9 @@ export function DisplayCalc() {
               Calculation unavailable
             </span>
           </TooltipTrigger>
-          <TooltipContent>{calcOptions.disabledReason || 'This calculated field has been disabled'}</TooltipContent>
+          <TooltipContent>
+            {calcOptions.disabledReason || 'This calculated field has been disabled'}
+          </TooltipContent>
         </Tooltip>
       </DisplayWrapper>
     )
@@ -58,7 +63,12 @@ export function DisplayCalc() {
 
       // Extract raw value from TypedFieldValue
       if (storedValue && typeof storedValue === 'object' && 'type' in storedValue) {
-        const typed = storedValue as { type: string; value?: unknown; optionId?: string; label?: string }
+        const typed = storedValue as {
+          type: string
+          value?: unknown
+          optionId?: string
+          label?: string
+        }
         switch (typed.type) {
           case 'text':
           case 'number':

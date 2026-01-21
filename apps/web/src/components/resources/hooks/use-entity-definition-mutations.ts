@@ -22,23 +22,22 @@ export function useEntityDefinitionMutations() {
   }
 
   const createEntity = api.entityDefinition.create.useMutation({
-    onMutate: async (variables) => {
+    // No onMutate - we wait for server response to avoid temp_id/real_id mismatch
+
+    onSuccess: (result, variables) => {
       const store = getResourceStoreState()
 
-      // Generate temp ID for optimistic resource
-      const tempId = `temp_${Date.now()}`
-
-      // Create optimistic resource shape
-      const optimisticResource: CustomResource = {
-        id: tempId,
-        entityDefinitionId: tempId,
+      // Build resource from server response
+      const serverResource: CustomResource = {
+        id: result.id,
+        entityDefinitionId: result.id,
         apiSlug: variables.apiSlug,
         type: 'custom',
         label: variables.singular,
         plural: variables.plural,
         icon: variables.icon ?? 'Box',
         color: variables.color ?? 'blue',
-        organizationId: '', // Will be filled by server
+        organizationId: result.organizationId ?? '',
         display: {
           primaryDisplayField: null,
           secondaryDisplayField: null,
@@ -50,21 +49,14 @@ export function useEntityDefinitionMutations() {
         fields: [],
       }
 
-      store.addOptimisticResource(tempId, optimisticResource)
-      return { tempId }
-    },
+      // Add directly to store with real ID
+      store.addServerResource(serverResource)
 
-    onSuccess: (_result, _variables, context) => {
-      if (!context) return
-      // Server response will trigger setResources which reconciles optimistic state
-      // We just invalidate queries to trigger the refetch
+      // Invalidate to get full server data (system fields, timestamps, etc.)
       invalidateResourceDefinitions()
     },
 
-    onError: (error, _variables, context) => {
-      if (context) {
-        getResourceStoreState().rollbackResourceCreate(context.tempId)
-      }
+    onError: (error) => {
       toastError({ title: 'Failed to create entity', description: error.message })
     },
   })

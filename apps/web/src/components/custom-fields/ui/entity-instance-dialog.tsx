@@ -11,7 +11,9 @@ import {
   DialogFooter,
 } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { Button } from '@auxx/ui/components/button'
+import { Button, buttonVariants } from '@auxx/ui/components/button'
+import { Switch } from '@auxx/ui/components/switch'
+import { cn } from '@auxx/ui/lib/utils'
 import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
 import { FieldInputRow } from './field-input-row'
 import { toastError } from '@auxx/ui/components/toast'
@@ -89,6 +91,9 @@ export function EntityInstanceDialog({
   // Track which fields have been touched for validation
   const [touched, setTouched] = useState<Set<string>>(new Set())
 
+  // Track whether to keep dialog open after creating
+  const [createMore, setCreateMore] = useState(false)
+
   // Track dirty state for unsaved changes warning
   const { isDirty, setInitial } = useDirtyCheck(values)
 
@@ -105,6 +110,22 @@ export function EntityInstanceDialog({
 
   // Track if dialog has been initialized to prevent re-initialization on dependency changes
   const isInitialized = useRef(false)
+
+  // Ref to the form container for focusing first field
+  const formRef = useRef<HTMLDivElement>(null)
+
+  /**
+   * Focus the first input field in the form
+   */
+  const focusFirstField = useCallback(() => {
+    // Small delay to ensure DOM is ready
+    setTimeout(() => {
+      const firstInput = formRef.current?.querySelector<HTMLElement>(
+        'input:not([disabled]), textarea:not([disabled]), [contenteditable="true"]'
+      )
+      firstInput?.focus()
+    }, 0)
+  }, [])
 
   // Initialize form values when dialog opens (but only once per open/close cycle)
   useEffect(() => {
@@ -145,11 +166,12 @@ export function EntityInstanceDialog({
       setInitial(initValues)
       setErrors({})
       setTouched(new Set())
+      focusFirstField()
     } else {
       // Reset initialization flag when dialog closes
       isInitialized.current = false
     }
-  }, [open, recordId, editableFields, presetValues, setInitial, getValue])
+  }, [open, recordId, editableFields, presetValues, setInitial, getValue, focusFirstField])
 
   // Create instance mutation
   const createInstance = api.record.create.useMutation({
@@ -217,6 +239,34 @@ export function EntityInstanceDialog({
   }
 
   /**
+   * Reset form state for creating another instance
+   */
+  const resetForm = useCallback(() => {
+    const initValues: Record<string, unknown> = {}
+
+    // Re-apply default values
+    for (const field of editableFields) {
+      if (field.defaultValue !== undefined) {
+        initValues[field.id] = field.defaultValue
+      }
+    }
+
+    // Re-apply preset values
+    if (presetValues) {
+      for (const [fieldId, value] of Object.entries(presetValues)) {
+        if (value !== undefined && value !== null) {
+          initValues[fieldId] = value
+        }
+      }
+    }
+
+    setValues(initValues)
+    setInitial(initValues)
+    setErrors({})
+    setTouched(new Set())
+  }, [editableFields, presetValues, setInitial])
+
+  /**
    * Handle form submission
    */
   const handleSubmit = async () => {
@@ -253,7 +303,14 @@ export function EntityInstanceDialog({
       }
 
       onSaved?.(instanceId)
-      onOpenChange(false)
+
+      // If createMore is enabled and we're in create mode, reset form instead of closing
+      if (createMore && !isEditing) {
+        resetForm()
+        focusFirstField()
+      } else {
+        onOpenChange(false)
+      }
     } catch {
       // Errors handled by mutation onError
     }
@@ -276,23 +333,25 @@ export function EntityInstanceDialog({
             </DialogDescription>
           </DialogHeader>
 
-          <VarEditorField className="p-0">
-            {editableFields.map((field) => (
-              <FieldInputRow
-                key={field.id}
-                field={field}
-                value={values[field.id] ?? ''}
-                onChange={handleFieldChange}
-                validationError={
-                  touched.has(field.id) || Object.keys(errors).length > 0
-                    ? errors[field.id]
-                    : undefined
-                }
-                validationType="error"
-                disabled={isPending}
-              />
-            ))}
-          </VarEditorField>
+          <div ref={formRef}>
+            <VarEditorField className="p-0">
+              {editableFields.map((field) => (
+                <FieldInputRow
+                  key={field.id}
+                  field={field}
+                  value={values[field.id] ?? ''}
+                  onChange={handleFieldChange}
+                  validationError={
+                    touched.has(field.id) || Object.keys(errors).length > 0
+                      ? errors[field.id]
+                      : undefined
+                  }
+                  validationType="error"
+                  disabled={isPending}
+                />
+              ))}
+            </VarEditorField>
+          </div>
 
           {editableFields.length === 0 && (
             <div className="text-sm text-muted-foreground text-center py-8">
@@ -302,26 +361,48 @@ export function EntityInstanceDialog({
             </div>
           )}
 
-          <DialogFooter>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={guardedClose}
-              disabled={isPending}>
-              Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleSubmit}
-              loading={isPending}
-              loadingText={isEditing ? 'Saving...' : 'Creating...'}
-              disabled={editableFields.length === 0}
-              data-dialog-submit>
-              {isEditing ? 'Save Changes' : `Create ${resourceLabel}`}{' '}
-              <KbdSubmit variant="outline" size="sm" />
-            </Button>
+          <DialogFooter className="sm:justify-between">
+            {/* Left side: Create more toggle (only in create mode) */}
+            <div>
+              {!isEditing && (
+                <label
+                  className={cn(
+                    buttonVariants({ variant: 'ghost', size: 'sm' }),
+                    'gap-2 cursor-pointer'
+                  )}>
+                  <span className="text-muted-foreground text-xs">Create more</span>
+                  <Switch
+                    size="sm"
+                    checked={createMore}
+                    onCheckedChange={setCreateMore}
+                    disabled={isPending}
+                  />
+                </label>
+              )}
+            </div>
+
+            {/* Right side: Action buttons */}
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={guardedClose}
+                disabled={isPending}>
+                Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleSubmit}
+                loading={isPending}
+                loadingText={isEditing ? 'Saving...' : 'Creating...'}
+                disabled={editableFields.length === 0}
+                data-dialog-submit>
+                {isEditing ? 'Save Changes' : `Create ${resourceLabel}`}{' '}
+                <KbdSubmit variant="outline" size="sm" />
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

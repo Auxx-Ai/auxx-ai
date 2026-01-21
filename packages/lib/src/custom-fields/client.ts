@@ -29,6 +29,8 @@ export {
   fieldOptionsUnionSchema,
 } from '@auxx/types/custom-field'
 
+export { type CalcOptions } from './field-options'
+
 import type { SelectOptionColor } from '@auxx/types/custom-field'
 
 /**

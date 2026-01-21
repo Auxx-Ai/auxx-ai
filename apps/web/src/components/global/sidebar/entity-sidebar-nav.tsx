@@ -300,13 +300,23 @@ export function EntitySidebarNav() {
           isGroupVisible={isGroupVisible}
           onToggleGroupVisibility={toggleGroupVisibility}
           additionalOptions={
-            <DropdownMenuItem
-              onClick={(e) => {
-                e.stopPropagation()
-                router.push('/app/settings/custom-fields')
-              }}>
-              <Settings /> Manage Objects
-            </DropdownMenuItem>
+            <>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation()
+                  router.push('/app/settings/custom-fields')
+                }}>
+                <Settings /> Manage Entities
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setEditingEntityId(null)
+                  setDialogOpen(true)
+                }}>
+                <Plus /> Create Entity
+              </DropdownMenuItem>
+            </>
           }
         />
 

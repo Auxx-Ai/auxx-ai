@@ -56,11 +56,30 @@ import {
 import { canFieldBeUnique, type SelectOptionColor } from '@auxx/types/custom-field'
 import { EntityIcon } from '@auxx/ui/components/icons'
 
-import { OptionsEditor, parseSelectOptions, formatSelectOptions, type SelectOption } from './options-editor'
-import { AddressComponentsEditor, parseAddressComponents, formatAddressComponents } from './address-component-editor'
-import { FileOptionsEditor, parseFileOptions, formatFileOptions, type FileOptions } from './file-options-editor'
+import {
+  OptionsEditor,
+  parseSelectOptions,
+  formatSelectOptions,
+  type SelectOption,
+} from './options-editor'
+import {
+  AddressComponentsEditor,
+  parseAddressComponents,
+  formatAddressComponents,
+} from './address-component-editor'
+import {
+  FileOptionsEditor,
+  parseFileOptions,
+  formatFileOptions,
+  type FileOptions,
+} from './file-options-editor'
 import { RelationshipFieldEditor, type RelationshipOptions } from './relationship-field-editor'
-import { CurrencyOptionsEditor, parseCurrencyOptions, formatCurrencyOptions, type CurrencyOptions } from './currency-options-editor'
+import {
+  CurrencyOptionsEditor,
+  parseCurrencyOptions,
+  formatCurrencyOptions,
+  type CurrencyOptions,
+} from './currency-options-editor'
 import {
   NumberFormattingEditor,
   DateFormattingEditor,
@@ -147,7 +166,9 @@ export function CustomFieldDialog({
   }, [open, resourceFieldId, editingField, onOpenChange])
 
   // Use custom field mutations hook for create/update
-  const { create, update, isPending } = useCustomFieldMutations({ entityDefinitionId: effectiveEntityDefId })
+  const { create, update, isPending } = useCustomFieldMutations({
+    entityDefinitionId: effectiveEntityDefId,
+  })
 
   // Form setup
   const form = useForm<CustomFieldFormValues>({
@@ -219,7 +240,8 @@ export function CustomFieldDialog({
   // Check if extra state (outside react-hook-form) has changed
   const isExtraStateDirty = useMemo(() => {
     if (!initialExtraState) return false
-    const selectOptionsChanged = JSON.stringify(selectOptions) !== JSON.stringify(initialExtraState.selectOptions)
+    const selectOptionsChanged =
+      JSON.stringify(selectOptions) !== JSON.stringify(initialExtraState.selectOptions)
     const addressChanged =
       JSON.stringify(addressComponents) !== JSON.stringify(initialExtraState.addressComponents)
     const fileChanged =
@@ -675,7 +697,7 @@ export function CustomFieldDialog({
           {...guardProps}>
           {/* className="max-h-3/4 overflow-y-auto" */}
           <DialogHeader>
-            <DialogTitle>{isEditing ? 'Edit Custom Field' : 'Create Custom Field'}</DialogTitle>
+            <DialogTitle>{isEditing ? 'Edit Field' : 'Create Field'}</DialogTitle>
             <DialogDescription>
               {isEditing ? 'Update the field settings below.' : 'Configure your new custom field.'}
             </DialogDescription>
@@ -776,7 +798,11 @@ export function CustomFieldDialog({
                     render={({ field }) => (
                       <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-xl border px-3 py-1.5">
                         <FormControl>
-                          <Switch checked={field.value} onCheckedChange={field.onChange} size="sm" />
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                            size="sm"
+                          />
                         </FormControl>
                         <div className="space-y-1 leading-none">
                           <FormLabel>Required Field</FormLabel>

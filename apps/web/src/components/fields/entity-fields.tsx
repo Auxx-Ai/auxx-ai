@@ -175,8 +175,6 @@ function EntityFields({
     const beforeField = newIndex > 0 ? reorderedCustom[newIndex - 1] : null
     const afterField = newIndex < reorderedCustom.length - 1 ? reorderedCustom[newIndex + 1] : null
 
-    console.log('Updating sortOrder for field', beforeField?.sortOrder, afterField?.sortOrder)
-
     // Generate ONE key between neighbors
     const newSortOrder = generateKeyBetween(
       beforeField?.sortOrder ?? null,

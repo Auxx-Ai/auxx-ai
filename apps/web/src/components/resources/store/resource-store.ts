@@ -201,6 +201,9 @@ interface ResourceStoreState {
   /** Rollback resource restore on error */
   rollbackResourceRestore: (entityDefinitionId: string) => void
 
+  /** Add a server-confirmed resource directly to the store */
+  addServerResource: (resource: Resource) => void
+
   // ─────────────────────────────────────────────────────────────────
   // VERSION TRACKING ACTIONS
   // ─────────────────────────────────────────────────────────────────
@@ -1177,6 +1180,48 @@ export const useResourceStore = create<ResourceStoreState>()(
       // If restore fails, we don't need to do anything since the resource
       // wasn't added to the visible lists yet
       return
+    },
+
+    addServerResource: (resource) => {
+      set((state) => {
+        // Add to resourceMap
+        const newResourceMap = new Map(state.resourceMap)
+        newResourceMap.set(resource.id, resource)
+        newResourceMap.set(resource.entityDefinitionId, resource)
+        if (resource.apiSlug) {
+          newResourceMap.set(resource.apiSlug, resource)
+        }
+
+        // Add to arrays
+        const newResources = [...state.resources, resource]
+        const newCustomResources = isCustomResource(resource)
+          ? [...state.customResources, resource as CustomResource]
+          : state.customResources
+
+        // Build field map entries for this resource's fields
+        const newServerFieldMap = { ...state.serverFieldMap }
+        resource.fields.forEach((field) => {
+          const resourceFieldId = field.resourceFieldId || toResourceFieldId(resource.id, field.id)
+          newServerFieldMap[resourceFieldId] = { ...field, resourceFieldId }
+        })
+
+        // Rebuild effective fieldMap
+        const fieldMap = buildEffectiveFieldMap(
+          newServerFieldMap,
+          state.pendingFieldUpdates,
+          state.optimisticNewFields,
+          state.optimisticDeletedFields,
+          state.fieldMap
+        )
+
+        return {
+          resourceMap: newResourceMap,
+          resources: newResources,
+          customResources: newCustomResources,
+          serverFieldMap: newServerFieldMap,
+          fieldMap,
+        }
+      })
     },
 
     // ─── VERSION TRACKING ──────────────────────────────────────────────
