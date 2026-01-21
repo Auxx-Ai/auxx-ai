@@ -18,12 +18,12 @@ export const EntityDefinition = pgTable(
       .primaryKey()
       .notNull()
       .$defaultFn(() => createId()),
-    createdAt: timestamp({ precision: 3, mode: 'string' })
+    createdAt: timestamp({ precision: 3 })
       .default(sql`CURRENT_TIMESTAMP`)
       .notNull(),
-    updatedAt: timestamp({ precision: 3, mode: 'string' })
+    updatedAt: timestamp({ precision: 3 })
       .notNull()
-      .$onUpdate(() => new Date().toISOString()),
+      .$onUpdate(() => new Date()),
     apiSlug: text().notNull(),
     organizationId: text()
       .notNull()
@@ -39,7 +39,7 @@ export const EntityDefinition = pgTable(
     entityType: text(),
     /** Standard type: 'company', 'task', 'deal', 'custom', or null */
     standardType: text(),
-    archivedAt: timestamp({ precision: 3, mode: 'string' }),
+    archivedAt: timestamp({ precision: 3 }),
 
     /** Custom field ID to use as primary display name (e.g., product name) */
     primaryDisplayFieldId: text().references((): AnyPgColumn => CustomField.id, {

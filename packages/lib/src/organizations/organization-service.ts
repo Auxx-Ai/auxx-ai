@@ -1,13 +1,17 @@
 // packages/lib/src/organizations/organization-service.ts
 // ** CONTAINS LOGIC TO DELETE OTHER USERS - USE WITH EXTREME CAUTION **
 import { schema, type Database } from '@auxx/database'
-import { eq, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
+import { RESERVED_ORGANIZATION_HANDLES } from '@auxx/config'
 
-import { MessageService, IntegrationProviderType } from '../email/message-service' // Adjust path as needed
-import { OrganizationRole } from '@auxx/database/enums'
+import { MessageService, IntegrationProviderType } from '../email/message-service'
+import { OrganizationRole, OrganizationType } from '@auxx/database/enums'
 import { MemberService } from '../members/member-service'
+import { DehydrationService } from '../dehydration'
+import { SystemUserService } from '../users/system-user-service'
+import { OrganizationSeeder } from '../seed/organization-seeder'
 const logger = createScopedLogger('organization-service')
 /**
  * Service class for managing core Organization operations, including deletion.
@@ -121,7 +125,7 @@ export class OrganizationService {
       logger.info(`System deletion - skipping email confirmation for org ${organizationId}.`)
     }
     // 3. Optional Check: Handle case of the only owner (currently allows deletion)
-    const [{ count: ownerCount }] = await this.db
+    const ownerCountResult = await this.db
       .select({ count: sql<number>`count(*)` })
       .from(schema.OrganizationMember)
       .where(
@@ -130,6 +134,7 @@ export class OrganizationService {
           eq(schema.OrganizationMember.role, OrganizationRole.OWNER)
         )
       )
+    const ownerCount = ownerCountResult[0]?.count ?? 0
     if (ownerCount <= 1) {
       logger.warn(
         `Deleting organization ${organizationId} where user ${requestingUserId} is the last/only owner.`
@@ -207,10 +212,11 @@ export class OrganizationService {
           )
 
           for (const userId of allMemberIds) {
-            const [{ count: remainingMemberships }] = await tx
+            const membershipCountResult = await tx
               .select({ count: sql<number>`count(*)` })
               .from(schema.OrganizationMember)
               .where(eq(schema.OrganizationMember.userId, userId))
+            const remainingMemberships = membershipCountResult[0]?.count ?? 0
             // Count *after* the cascade should have removed the membership for the deleted org
             if (remainingMemberships === 0) {
               // User no longer belongs to ANY organization. Delete their account.
@@ -260,11 +266,6 @@ export class OrganizationService {
             `[${txId}] Finished checking/deleting former members. ${otherUsersDeletedCount} other users deleted. Requesting owner deleted: ${requestingUserWasDeleted}.`
           )
           logger.info(`[${txId}] Deletion transaction completed.`)
-        },
-        {
-          // Transaction options
-          maxWait: 30000, // Increased wait time needed for potentially many user checks/deletes
-          timeout: 60000, // Increased timeout
         }
       ) // End Transaction
       logger.warn(
@@ -330,5 +331,126 @@ export class OrganizationService {
       .where(eq(schema.Organization.id, organizationId))
     logger.info(`Successfully updated details for org ${organizationId}`)
     return { success: true }
+  }
+
+  /**
+   * Creates a new organization with the full initialization flow:
+   * - Validates handle (reserved + uniqueness check)
+   * - Creates org + membership in transaction
+   * - Creates system user
+   * - Sets default org for user
+   * - Invalidates dehydration cache
+   * - Seeds organization with defaults
+   * @param params - The parameters for creation.
+   * @returns The created organization.
+   */
+  async createOrganization(params: {
+    userId: string
+    userEmail?: string
+    name: string
+    handle: string
+    type: (typeof OrganizationType)[keyof typeof OrganizationType]
+    website?: string | null
+  }): Promise<{
+    id: string
+    name: string | null
+    handle: string | null
+    type: (typeof OrganizationType)[keyof typeof OrganizationType]
+    website: string | null
+  }> {
+    const { userId, userEmail, name, handle, type, website } = params
+    logger.info('Creating new organization', { userId, name, handle, type })
+
+    // Validate handle is not reserved
+    if (RESERVED_ORGANIZATION_HANDLES.includes(handle as any)) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: 'This handle is reserved and cannot be used',
+      })
+    }
+
+    // Verify handle is available
+    const [existingHandle] = await this.db
+      .select({ id: schema.Organization.id })
+      .from(schema.Organization)
+      .where(eq(schema.Organization.handle, handle))
+      .limit(1)
+
+    if (existingHandle) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: 'This handle is already taken',
+      })
+    }
+
+    // Create organization and membership in transaction
+    const organization = await this.db.transaction(async (tx) => {
+      const [org] = await tx
+        .insert(schema.Organization)
+        .values({
+          name,
+          handle,
+          type,
+          website: website || null,
+          createdById: userId,
+          updatedAt: new Date(),
+        })
+        .returning()
+
+      await tx.insert(schema.OrganizationMember).values({
+        userId,
+        organizationId: org!.id,
+        role: OrganizationRole.OWNER,
+        status: 'ACTIVE',
+        updatedAt: new Date(),
+      })
+
+      return org
+    })
+
+    const organizationId = organization!.id
+    logger.info('Organization and membership created', { organizationId, handle })
+
+    // Create system user for the organization
+    await SystemUserService.createSystemUserForOrganization(
+      organizationId,
+      organization!.name || undefined
+    )
+    logger.info('System user created', { organizationId })
+
+    // Set as default organization for the user
+    await this.db
+      .update(schema.User)
+      .set({
+        defaultOrganizationId: organizationId,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.User.id, userId))
+    logger.info('Set as default organization', { organizationId, userId })
+
+    // Invalidate dehydration cache so client gets fresh data on reload
+    const dehydrationService = new DehydrationService(this.db)
+    await dehydrationService.invalidateUser(userId)
+    logger.info('Invalidated dehydration cache', { userId })
+
+    // Seed organization with defaults
+    try {
+      const seeder = new OrganizationSeeder(this.db, userId, userEmail)
+      await seeder.seedNewOrganization(organizationId)
+      logger.info('Organization seeding complete', { organizationId })
+    } catch (error) {
+      logger.error('Failed to complete organization seeding', { organizationId, error })
+      // Log but don't fail - seeding is not critical for org creation
+    }
+
+    logger.info('Organization creation complete', { organizationId, handle })
+
+    return {
+      id: organization!.id,
+      name: organization!.name,
+      handle: organization!.handle,
+      type: organization!.type,
+      website: organization!.website,
+    }
   }
 } // End Class

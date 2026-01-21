@@ -38,7 +38,7 @@ export const updateEntityDefinitionSchema = z.object({
   color: z.string().min(1).optional(),
   singular: z.string().min(1).max(100).optional(),
   plural: z.string().min(1).max(100).optional(),
-  archivedAt: z.string().nullable().optional(),
+  archivedAt: z.date().nullable().optional(),
   /** Custom field ID to use as primary display name */
   primaryDisplayFieldId: z.string().nullable().optional(),
   /** Custom field ID to use as secondary info/subtitle */

@@ -61,7 +61,7 @@ export async function createEntityDefinition(params: CreateEntityDefinitionParam
         plural,
         entityType: entityType ?? null,
         standardType: standardType ?? null,
-        updatedAt: new Date().toISOString(),
+        updatedAt: new Date(),
       })
       .returning(),
     'create-entity-definition'

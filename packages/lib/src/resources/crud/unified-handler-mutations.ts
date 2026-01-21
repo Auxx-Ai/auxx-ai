@@ -254,7 +254,7 @@ export async function archiveEntity(
   const updateResult = await updateEntityInstance({
     id: entityInstanceId,
     organizationId: ctx.organizationId,
-    data: { archivedAt: new Date().toISOString() },
+    data: { archivedAt: new Date() },
   })
 
   unwrapResult(updateResult)

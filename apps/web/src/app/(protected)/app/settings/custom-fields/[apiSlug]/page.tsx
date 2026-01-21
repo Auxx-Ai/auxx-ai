@@ -80,7 +80,7 @@ function CustomFieldsDetailPage() {
           ) : undefined
         }>
         {/* Appearance editor - show for all, disable for system */}
-        <EntityAppearanceEditor resource={resource} disabled={resource.type === 'system'} />
+        <EntityAppearanceEditor resource={resource} disabled={!!resource.entityType} />
 
         {/* Custom fields list */}
         <CustomFieldsList resource={resource} />

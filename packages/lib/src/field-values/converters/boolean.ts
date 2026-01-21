@@ -2,13 +2,7 @@
 
 import type { TypedFieldValueInput, TypedFieldValue, BooleanFieldValue } from '@auxx/types/field-value'
 import type { FieldValueConverter, FieldOptions } from './index'
-
-/** Default options for CHECKBOX fields */
-const DEFAULT_BOOLEAN_OPTIONS = {
-  checkboxStyle: 'icon-text' as const,
-  trueLabel: 'Yes',
-  falseLabel: 'No',
-}
+import { DEFAULT_BOOLEAN_OPTIONS } from '../../custom-fields/defaults'
 
 /**
  * Converter for CHECKBOX field type.

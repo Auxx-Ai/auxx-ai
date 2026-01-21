@@ -88,7 +88,7 @@ export function DeleteOrganizationDialog({
             <li>Settings and integrations</li>
             <li>Products, orders, etc. (if applicable)</li>
           </ul>
-          <div className="space-y-2">
+          <div className="flex flex-col space-y-2">
             <Label htmlFor="deleteConfirmationEmail" className="font-semibold">
               To confirm, please type your email address:{' '}
               <span className="font-normal text-muted-foreground">({userEmail})</span>

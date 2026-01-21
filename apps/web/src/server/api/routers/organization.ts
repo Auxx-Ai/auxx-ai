@@ -1,9 +1,9 @@
 // apps/web/src/server/api/routers/organization.ts
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure, publicProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 import { schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
-import { OrganizationRole, OrganizationType } from '@auxx/database/enums'
+import { OrganizationType } from '@auxx/database/enums'
 import { TRPCError } from '@trpc/server'
 import { createScopedLogger } from '@auxx/logger'
 import { MemberService } from '@auxx/lib/members'
@@ -32,105 +32,17 @@ export const organizationRouter = createTRPCRouter({
       const userEmail = ctx.session.user.email
       const { name, handle, type, website } = input
 
-      logger.info('Creating new organization', { userId, name, handle, type })
-
       try {
-        // Validate handle is not reserved
-        if (RESERVED_ORGANIZATION_HANDLES.includes(handle as any)) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: 'This handle is reserved and cannot be used',
-          })
-        }
-
-        // Verify handle is available (double-check server-side)
-        const [existingHandle] = await ctx.db
-          .select({ id: schema.Organization.id })
-          .from(schema.Organization)
-          .where(eq(schema.Organization.handle, handle))
-          .limit(1)
-
-        if (existingHandle) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: 'This handle is already taken',
-          })
-        }
-
-        // Create organization and membership in transaction
-        const organization = await ctx.db.transaction(async (tx) => {
-          const [org] = await tx
-            .insert(schema.Organization)
-            .values({
-              name,
-              handle,
-              type,
-              website: website || null,
-              createdById: userId,
-              updatedAt: new Date(),
-            })
-            .returning()
-
-          await tx.insert(schema.OrganizationMember).values({
-            userId,
-            organizationId: org!.id,
-            role: OrganizationRole.OWNER,
-            status: 'ACTIVE',
-            updatedAt: new Date(),
-          })
-
-          return org
+        const orgService = new OrganizationService(ctx.db)
+        const result = await orgService.createOrganization({
+          userId,
+          userEmail: userEmail ?? undefined,
+          name,
+          handle,
+          type,
+          website,
         })
-
-        const organizationId = organization!.id
-        logger.info('Organization and membership created', { organizationId, handle })
-
-        // Create system user for the organization
-        const { SystemUserService } = await import('@auxx/lib/users')
-        await SystemUserService.createSystemUserForOrganization(
-          organizationId,
-          organization!.name || undefined
-        )
-        logger.info('System user created', { organizationId })
-
-        // Set as default organization for the user
-        await ctx.db
-          .update(schema.User)
-          .set({
-            defaultOrganizationId: organizationId,
-            updatedAt: new Date(),
-          })
-          .where(eq(schema.User.id, userId))
-
-        logger.info('Set as default organization', { organizationId, userId })
-
-        // Invalidate dehydration cache so client gets fresh data on reload
-        const dehydrationService = new DehydrationService(ctx.db)
-        await dehydrationService.invalidateUser(userId)
-        logger.info('Invalidated dehydration cache', { userId })
-
-        // Seed organization with defaults (async, don't block response)
-        const { OrganizationHooks } = await import('@auxx/lib/organizations')
-        const hooks = new OrganizationHooks(ctx.db)
-
-        hooks
-          .afterOrganizationCreated(organizationId, userId, userEmail ?? undefined)
-          .catch((error) => {
-            logger.error('Failed to seed organization (non-blocking)', {
-              organizationId,
-              error,
-            })
-          })
-
-        logger.info('Organization creation complete', { organizationId, handle })
-
-        return {
-          id: organization!.id,
-          name: organization!.name,
-          handle: organization!.handle,
-          type: organization!.type,
-          website: organization!.website,
-        }
+        return result
       } catch (error) {
         logger.error('Failed to create organization', { error, userId, name, handle })
 

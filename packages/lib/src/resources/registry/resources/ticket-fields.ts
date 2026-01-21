@@ -30,6 +30,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
       sortable: false,
       creatable: false,
       updatable: false,
+      configurable: false,
     },
     description: 'Unique ticket identifier',
   },
@@ -51,6 +52,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
       sortable: true,
       creatable: false,
       updatable: false,
+      configurable: false,
     },
     description: 'Sequential ticket number',
   },
@@ -72,6 +74,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
       creatable: true,
       updatable: true,
       required: true,
+      configurable: false,
     },
     placeholder: 'Enter ticket title',
     validation: {
@@ -98,6 +101,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
       creatable: true,
       updatable: false, // Type cannot be changed after creation
       required: true,
+      configurable: false,
     },
     placeholder: 'Select ticket type',
     description: 'Ticket type cannot be changed after creation',
@@ -121,6 +125,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
       sortable: true,
       creatable: true,
       updatable: true,
+      configurable: false,
     },
     placeholder: 'Select status',
     defaultValue: 'OPEN',
@@ -143,6 +148,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
       sortable: true,
       creatable: true,
       updatable: true,
+      configurable: false,
     },
     placeholder: 'Select priority',
     defaultValue: 'MEDIUM',
@@ -166,6 +172,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
       creatable: true,
       updatable: false, // Cannot reassign ticket to different contact
       required: true,
+      configurable: false,
     },
     relationship: {
       inverseResourceFieldId: 'contact:tickets' as ResourceFieldId,
@@ -198,6 +205,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
       sortable: false,
       creatable: true,
       updatable: true,
+      configurable: false,
     },
     placeholder: 'Enter ticket description',
   },
@@ -219,6 +227,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
       sortable: false,
       creatable: true,
       updatable: true,
+      configurable: false,
     },
     relationship: {
       inverseResourceFieldId: 'user:assignedTickets' as ResourceFieldId,
@@ -242,6 +251,8 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
     type: BaseType.RELATION,
     fieldType: FieldType.RELATIONSHIP,
     isSystem: true,
+    systemAttribute: 'parent_ticket_id',
+    systemSortOrder: 50,
     showInPanel: false, // Hidden - not typically shown in property panel
     dbColumn: 'parentTicketId',
     nullable: true,
@@ -250,6 +261,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
       sortable: false,
       creatable: true,
       updatable: true,
+      configurable: false,
     },
     relationship: {
       inverseResourceFieldId: 'ticket:childTickets' as ResourceFieldId,
@@ -268,12 +280,15 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
     type: BaseType.RELATION,
     fieldType: FieldType.RELATIONSHIP,
     isSystem: true,
+    systemAttribute: 'ticket_child_tickets',
+    systemSortOrder: 51,
     showInPanel: false, // Relationship reverse-field
     capabilities: {
       filterable: false,
       sortable: false,
       creatable: false,
       updatable: false,
+      configurable: false,
     },
     relationship: {
       inverseResourceFieldId: 'ticket:parentTicket' as ResourceFieldId,
@@ -299,6 +314,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
       sortable: true,
       creatable: true,
       updatable: true,
+      configurable: false,
     },
     placeholder: 'Select due date',
   },
@@ -319,6 +335,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
       sortable: true,
       creatable: false,
       updatable: false,
+      configurable: false,
     },
     description: 'Automatically set when ticket is created',
   },
@@ -339,6 +356,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
       sortable: true,
       creatable: false,
       updatable: false,
+      configurable: false,
     },
     description: 'Automatically updated when ticket is modified',
   },

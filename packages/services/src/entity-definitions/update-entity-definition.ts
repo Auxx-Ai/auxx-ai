@@ -15,7 +15,7 @@ export interface UpdateEntityDefinitionParams {
     color?: string
     singular?: string
     plural?: string
-    archivedAt?: string | null
+    archivedAt?: Date | null
     /** Custom field ID to use as primary display name */
     primaryDisplayFieldId?: string | null
     /** Custom field ID to use as secondary info/subtitle */
@@ -42,7 +42,7 @@ export async function updateEntityDefinition(params: UpdateEntityDefinitionParam
 
   // Build update object with only provided fields
   const updateData: Record<string, unknown> = {
-    updatedAt: new Date().toISOString(),
+    updatedAt: new Date(),
   }
 
   if ('icon' in data) {

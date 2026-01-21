@@ -3,15 +3,7 @@
 import type { TypedFieldValueInput, TypedFieldValue, NumberFieldValue } from '@auxx/types/field-value'
 import type { FieldValueConverter, FieldOptions } from './index'
 import { formatCurrency } from '@auxx/utils/currency'
-
-/** Default options for NUMBER fields */
-const DEFAULT_NUMBER_OPTIONS = {
-  decimals: 0,
-  useGrouping: true,
-  displayAs: 'number' as const,
-  prefix: '',
-  suffix: '',
-}
+import { DEFAULT_NUMBER_OPTIONS, DEFAULT_CURRENCY_OPTIONS } from '../../custom-fields/defaults'
 
 /**
  * Converter for NUMBER field type.
@@ -141,16 +133,6 @@ function formatBytesInternal(bytes: number, decimals: number = 0): string {
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   const value = bytes / Math.pow(k, i)
   return `${value.toFixed(decimals)} ${sizes[i]}`
-}
-
-/** Default options for CURRENCY fields */
-const DEFAULT_CURRENCY_OPTIONS = {
-  currency: {
-    currencyCode: 'USD',
-    decimalPlaces: 'two-places' as const,
-    displayType: 'symbol' as const,
-    groups: 'default' as const,
-  },
 }
 
 /**

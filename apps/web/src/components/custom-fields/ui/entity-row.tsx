@@ -18,24 +18,14 @@ interface EntityRowProps {
 }
 
 /** Row component for displaying system models and custom entities */
-export function EntityRow({
-  label,
-  type,
-  iconId,
-  color,
-  onClick,
-}: EntityRowProps) {
+export function EntityRow({ label, type, iconId, color, onClick }: EntityRowProps) {
   const isCustom = type === 'Custom'
 
   return (
     <TableRow className="cursor-pointer hover:bg-muted/50 h-12" onClick={onClick}>
       <TableCell className="flex items-center space-x-2 ps-4 h-12">
         {/* Display EntityIcon for both system and custom entities */}
-        <EntityIcon
-          iconId={iconId || 'box'}
-          color={isCustom ? color || DEFAULT_COLOR : DEFAULT_COLOR}
-          className="size-6"
-        />
+        <EntityIcon iconId={iconId || 'box'} color={color || DEFAULT_COLOR} className="size-6" />
         <span>{label}</span>
       </TableCell>
       <TableCell>

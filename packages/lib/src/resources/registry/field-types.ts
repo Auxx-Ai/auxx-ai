@@ -2,7 +2,7 @@
 
 import { BaseType } from '../types'
 import type { FieldType } from '@auxx/database/types'
-import type { FieldOptions } from '../../field-values/converters'
+import type { FieldOptions } from '../../custom-fields/field-options'
 import type { FieldId, ResourceFieldId } from '@auxx/types/field'
 
 /**
@@ -138,6 +138,8 @@ export interface ResourceField {
   operatorOverrides?: string[]
 
   // UI hints
+  /** Icon name for UI display (optional - defaults based on fieldType) */
+  icon?: string
   /** Placeholder text for input fields */
   placeholder?: string
   /** Field description for help text */

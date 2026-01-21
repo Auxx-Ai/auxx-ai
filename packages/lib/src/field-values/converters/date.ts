@@ -2,14 +2,7 @@
 
 import type { TypedFieldValueInput, TypedFieldValue, DateFieldValue } from '@auxx/types/field-value'
 import type { FieldValueConverter, FieldOptions } from './index'
-
-/** Default options for DATE/DATETIME/TIME fields */
-const DEFAULT_DATE_OPTIONS = {
-  format: 'medium' as const,
-  timeFormat: '12h' as const,
-  includeTime: false,
-  timeZone: undefined as string | undefined,
-}
+import { DEFAULT_DATE_OPTIONS } from '../../custom-fields/defaults'
 
 /**
  * Converter for date-based field types:

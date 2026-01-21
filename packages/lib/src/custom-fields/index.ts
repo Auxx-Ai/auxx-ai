@@ -20,3 +20,28 @@ export type {
   BuiltInFieldConfig,
   BuiltInFieldRegistry,
 } from './built-in-fields'
+
+// Export field options types (for converters and seeder)
+export {
+  type FieldOptions,
+  type NumberFieldOptions,
+  type DateFieldOptions,
+  type BooleanFieldOptions,
+  type TextFieldOptions,
+  type PhoneFieldOptions,
+  type SelectFieldOptions,
+} from './field-options'
+
+// Export default display options (for converters and seeder)
+export {
+  DEFAULT_TEXT_OPTIONS,
+  DEFAULT_NUMBER_OPTIONS,
+  DEFAULT_CURRENCY_OPTIONS,
+  DEFAULT_DATE_OPTIONS,
+  DEFAULT_DATETIME_OPTIONS,
+  DEFAULT_TIME_OPTIONS,
+  DEFAULT_BOOLEAN_OPTIONS,
+  DEFAULT_PHONE_OPTIONS,
+  DEFAULT_FILE_OPTIONS,
+  fieldTypeDisplayDefaults,
+} from './defaults'

@@ -66,12 +66,12 @@ export const RESOURCE_CONFIGS: Partial<Record<TableId, ResourceConfig>> = {
   //   icon: RESOURCE_TABLE_MAP.contact.icon,
   //   variableGenerator: createContactVariables,
   // },
-  ticket: {
-    type: 'ticket',
-    label: RESOURCE_TABLE_MAP.ticket.label,
-    icon: RESOURCE_TABLE_MAP.ticket.icon,
-    variableGenerator: createTicketVariables,
-  },
+  // ticket: {
+  //   type: 'ticket',
+  //   label: RESOURCE_TABLE_MAP.ticket.label,
+  //   icon: RESOURCE_TABLE_MAP.ticket.icon,
+  //   variableGenerator: createTicketVariables,
+  // },
   thread: {
     type: 'thread',
     label: RESOURCE_TABLE_MAP.thread.label,

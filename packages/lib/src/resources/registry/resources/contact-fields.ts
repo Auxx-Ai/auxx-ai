@@ -78,9 +78,9 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     placeholder: 'Enter last name',
   },
 
-  name: {
-    id: toFieldId('name'),
-    key: 'name',
+  fullName: {
+    id: toFieldId('fullName'),
+    key: 'fullName',
     label: 'Name',
     type: BaseType.STRING,
     fieldType: FieldType.NAME,
@@ -103,9 +103,9 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
       'Full name (computed from firstName and lastName). Use firstName or lastName for filtering/sorting.',
   },
 
-  email: {
-    id: toFieldId('email'),
-    key: 'email',
+  primaryEmail: {
+    id: toFieldId('primaryEmail'),
+    key: 'primaryEmail',
     label: 'Email',
     type: BaseType.EMAIL,
     fieldType: FieldType.EMAIL,
@@ -288,6 +288,8 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     type: BaseType.RELATION,
     fieldType: FieldType.RELATIONSHIP,
     isSystem: true,
+    systemAttribute: 'contact_tickets',
+    systemSortOrder: 80,
     showInPanel: false, // Relationship reverse-field, not editable
     // NO dbColumn - computed from ticket.contactId
     capabilities: {

@@ -19,7 +19,7 @@ export default function CustomFieldsPage() {
 
   // Get all resources (system + custom) from unified registry
   const { resources, isLoading } = useResources()
-
+  console.log('Resources:', resources)
   /** Navigate to entity fields page */
   function handleRowClick(slug: string) {
     router.push(`${BASE_URL}/${slug}`)
@@ -56,7 +56,7 @@ export default function CustomFieldsPage() {
               <EntityRow
                 key={resource.id}
                 label={resource.label}
-                type={resource.type === 'system' ? 'System' : 'Custom'}
+                type={resource.type === 'system' || resource.entityType ? 'System' : 'Custom'}
                 iconId={resource.icon}
                 color={resource.color}
                 onClick={() => handleRowClick(resource.apiSlug)}
@@ -65,12 +65,7 @@ export default function CustomFieldsPage() {
         </TableBody>
       </Table>
 
-      {dialogOpen && (
-        <EntityDefinitionDialog
-          open={dialogOpen}
-          onOpenChange={setDialogOpen}
-        />
-      )}
+      {dialogOpen && <EntityDefinitionDialog open={dialogOpen} onOpenChange={setDialogOpen} />}
     </SettingsPage>
   )
 }

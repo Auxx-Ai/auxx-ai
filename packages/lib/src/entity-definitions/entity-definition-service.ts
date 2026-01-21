@@ -161,7 +161,7 @@ export class EntityDefinitionService {
    * Convenience method that calls update with archivedAt set
    */
   async archive(id: string) {
-    return this.update(id, { archivedAt: new Date().toISOString() })
+    return this.update(id, { archivedAt: new Date() })
   }
 
   /**

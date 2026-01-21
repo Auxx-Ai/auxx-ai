@@ -1,0 +1,51 @@
+// packages/lib/src/seed/entity-seeder/link-display-fields.ts
+
+import { type Database, schema } from '@auxx/database'
+import { eq } from 'drizzle-orm'
+import { createScopedLogger } from '@auxx/logger'
+import type { EntityDefMap, FieldMap } from './types'
+import { DISPLAY_FIELD_CONFIG } from './constants'
+
+const logger = createScopedLogger('entity-seeder:link-display-fields')
+
+/**
+ * Pass 4: Link Display Fields
+ * Update EntityDefinitions with primaryDisplayFieldId and secondaryDisplayFieldId.
+ */
+export async function linkDisplayFields(
+  db: Database,
+  entityDefMap: EntityDefMap,
+  fieldMap: FieldMap
+): Promise<void> {
+  const now = new Date()
+
+  for (const [entityType, config] of Object.entries(DISPLAY_FIELD_CONFIG)) {
+    const entityDef = entityDefMap.get(entityType)
+    if (!entityDef) {
+      logger.warn(`EntityDefinition not found for ${entityType}, skipping display field linking`)
+      continue
+    }
+
+    // fieldMap is keyed by entityType:field.id
+    const primaryField = fieldMap.get(`${entityType}:${config.primaryDisplayField}`)
+    const secondaryField = fieldMap.get(`${entityType}:${config.secondaryDisplayField}`)
+
+    const updates: Record<string, string> = {}
+    if (primaryField) updates.primaryDisplayFieldId = primaryField.id
+    if (secondaryField) updates.secondaryDisplayFieldId = secondaryField.id
+
+    if (Object.keys(updates).length > 0) {
+      await db
+        .update(schema.EntityDefinition)
+        .set({ ...updates, updatedAt: now })
+        .where(eq(schema.EntityDefinition.id, entityDef.id))
+
+      logger.debug(`Linked display fields for ${entityType}`, updates)
+    } else {
+      logger.warn(`No display fields found for ${entityType}`, {
+        primaryField: config.primaryDisplayField,
+        secondaryField: config.secondaryDisplayField,
+      })
+    }
+  }
+}

@@ -33,17 +33,15 @@ export function EntityAppearanceEditor({
   // Extract values from resource
   const { entityDefinitionId, label: singular } = resource
 
-  // Get display field IDs based on resource type
-  const primaryDisplayFieldId =
-    resource.type === 'custom' ? (resource.display.primaryDisplayField?.id ?? null) : null
-  const secondaryDisplayFieldId =
-    resource.type === 'custom' ? (resource.display.secondaryDisplayField?.id ?? null) : null
-  const avatarFieldId =
-    resource.type === 'custom' ? (resource.display.avatarField?.id ?? null) : null
+  // Get display field IDs from resource (works for both system and custom)
+  const primaryDisplayFieldId = resource.display.primaryDisplayField?.id ?? null
+  const secondaryDisplayFieldId = resource.display.secondaryDisplayField?.id ?? null
+  const avatarFieldId = resource.display.avatarField?.id ?? null
 
-  // Use resource.fields instead of separate query (includes both system and custom)
-  // For display field selection, only show custom fields
-  const customFields = resource.fields.filter((f) => !f.isSystem)
+  // All fields for looking up display field names (includes system fields)
+  const allFields = resource.fields
+  // For dropdown options, only show custom fields (system fields can't be changed)
+  const customFields = allFields.filter((f) => !f.isSystem)
 
   // Update mutation
   const { updateEntity } = useEntityDefinitionMutations()
@@ -60,9 +58,10 @@ export function EntityAppearanceEditor({
     )
   }
 
-  // Get display values for preview
-  const primaryField = customFields?.find((f) => f.id === primaryDisplayFieldId)
-  const secondaryField = customFields?.find((f) => f.id === secondaryDisplayFieldId)
+  // Get display values for preview (look in all fields, not just custom)
+  const primaryField = allFields.find((f) => f.id === primaryDisplayFieldId)
+  const secondaryField = allFields.find((f) => f.id === secondaryDisplayFieldId)
+  const avatarField = allFields.find((f) => f.id === avatarFieldId)
 
   return (
     <div className="p-4 border-b">
@@ -84,72 +83,95 @@ export function EntityAppearanceEditor({
             <VarEditorFieldRow
               title="Display Field"
               description="Shown as the main name in pickers">
-              <Select
-                disabled={disabled}
-                value={primaryDisplayFieldId ?? 'none'}
-                onValueChange={(v) =>
-                  handleChange('primaryDisplayFieldId', v === 'none' ? null : v)
-                }>
-                <SelectTrigger variant="transparent" size="sm">
-                  <SelectValue placeholder="Select field" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  {customFields
-                    ?.filter((f) =>
-                      ['TEXT', 'EMAIL', 'NAME', 'PHONE', 'PHONE_INTL', 'URL', 'NUMBER'].includes(
-                        f.fieldType
+              {disabled ? (
+                <span className="text-sm text-muted-foreground h-7.5 flex items-center">
+                  {primaryField?.name ?? 'None'}
+                </span>
+              ) : (
+                <Select
+                  value={primaryDisplayFieldId ?? 'none'}
+                  onValueChange={(v) =>
+                    handleChange('primaryDisplayFieldId', v === 'none' ? null : v)
+                  }>
+                  <SelectTrigger variant="transparent" size="sm">
+                    <SelectValue placeholder="Select field" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {customFields
+                      .filter(
+                        (f) =>
+                          f.fieldType &&
+                          [
+                            'TEXT',
+                            'EMAIL',
+                            'NAME',
+                            'PHONE',
+                            'PHONE_INTL',
+                            'URL',
+                            'NUMBER',
+                          ].includes(f.fieldType)
                       )
-                    )
-                    .map((field) => (
-                      <SelectItem key={field.id} value={field.id}>
-                        {field.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+                      .map((field) => (
+                        <SelectItem key={field.id} value={field.id}>
+                          {field.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              )}
             </VarEditorFieldRow>
             <VarEditorFieldRow
               title="Subtitle Field"
               description="Optional subtitle below the name">
-              <Select
-                disabled={disabled}
-                value={secondaryDisplayFieldId ?? 'none'}
-                onValueChange={(v) =>
-                  handleChange('secondaryDisplayFieldId', v === 'none' ? null : v)
-                }>
-                <SelectTrigger variant="transparent" size="sm">
-                  <SelectValue placeholder="Select field" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  {customFields?.map((field) => (
-                    <SelectItem key={field.id} value={field.id}>
-                      {field.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </VarEditorFieldRow>
-            <VarEditorFieldRow title="Avatar Field" description="Image field for avatar">
-              <Select
-                disabled={disabled}
-                value={avatarFieldId ?? 'none'}
-                onValueChange={(v) => handleChange('avatarFieldId', v === 'none' ? null : v)}>
-                <SelectTrigger variant="transparent" size="sm">
-                  <SelectValue placeholder="Select field" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  {customFields
-                    ?.filter((f) => f.type === 'URL' || f.type === 'FILE')
-                    .map((field) => (
+              {disabled ? (
+                <span className="text-sm text-muted-foreground h-7.5 flex items-center">
+                  {secondaryField?.name ?? 'None'}
+                </span>
+              ) : (
+                <Select
+                  value={secondaryDisplayFieldId ?? 'none'}
+                  onValueChange={(v) =>
+                    handleChange('secondaryDisplayFieldId', v === 'none' ? null : v)
+                  }>
+                  <SelectTrigger variant="transparent" size="sm">
+                    <SelectValue placeholder="Select field" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {customFields.map((field) => (
                       <SelectItem key={field.id} value={field.id}>
                         {field.name}
                       </SelectItem>
                     ))}
-                </SelectContent>
-              </Select>
+                  </SelectContent>
+                </Select>
+              )}
+            </VarEditorFieldRow>
+            <VarEditorFieldRow title="Avatar Field" description="Image field for avatar">
+              {disabled ? (
+                <span className="text-sm text-muted-foreground h-7.5 flex items-center">
+                  {avatarField?.name ?? 'None'}
+                </span>
+              ) : (
+                <Select
+                  value={avatarFieldId ?? 'none'}
+                  onValueChange={(v) => handleChange('avatarFieldId', v === 'none' ? null : v)}>
+                  <SelectTrigger variant="transparent" size="sm">
+                    <SelectValue placeholder="Select field" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {customFields
+                      .filter((f) => f.fieldType === 'URL' || f.fieldType === 'FILE')
+                      .map((field) => (
+                        <SelectItem key={field.id} value={field.id}>
+                          {field.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              )}
             </VarEditorFieldRow>
           </VarEditorField>
         </div>

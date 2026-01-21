@@ -18,7 +18,7 @@ import type { FieldId } from '@auxx/types/field'
  * - 'entity' is handled via EntityDefinition
  * - 'contact' is excluded from table registry
  */
-const EXCLUDED_RESOURCE_TYPES = ['entity'] as const
+const EXCLUDED_RESOURCE_TYPES = ['entity', 'contact', 'part', 'ticket'] as const
 
 /**
  * Resource Table Registry - Metadata about resource tables themselves
