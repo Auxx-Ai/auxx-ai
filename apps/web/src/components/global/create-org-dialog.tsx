@@ -31,10 +31,10 @@ import {
   FormLabel,
   FormMessage,
 } from '@auxx/ui/components/form'
-import { useRouter } from 'next/navigation'
 import { api } from '~/trpc/react'
 import { toastError } from '@auxx/ui/components/toast'
 import { useOrganizationIdContext } from '~/providers/feature-flag-provider'
+import { clearResourceCaches } from '~/components/resources'
 import { Check, X, Loader2 } from 'lucide-react'
 
 const formSchema = z.object({
@@ -61,7 +61,6 @@ interface CreateOrganizationDialogProps {
  * - Optional website URL
  */
 export function CreateOrganizationDialog({ open, onOpenChange }: CreateOrganizationDialogProps) {
-  const router = useRouter()
   const { setOrganizationId } = useOrganizationIdContext()
   const [handleAvailable, setHandleAvailable] = useState<boolean | null>(null)
   const [handleManuallyEdited, setHandleManuallyEdited] = useState(false)
@@ -140,14 +139,17 @@ export function CreateOrganizationDialog({ open, onOpenChange }: CreateOrganizat
       // Set the new organization as current in context
       setOrganizationId(data.id)
 
-      // Navigate to the app dashboard
-      router.push('/app')
-      router.refresh()
-
       // Reset form
       form.reset()
       setHandleManuallyEdited(false)
       setHandleAvailable(null)
+
+      // Clear client-side caches before reload to prevent stale data
+      clearResourceCaches()
+
+      // Redirect to onboarding for the new org
+      // The onboarding page will skip to connections step since handle already exists
+      window.location.href = '/app/onboarding'
     },
     onError: (error) => {
       toastError({

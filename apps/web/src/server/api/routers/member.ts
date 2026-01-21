@@ -1,105 +1,355 @@
 // apps/web/src/server/api/routers/member.ts
+import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { schema } from '@auxx/database'
+import { eq, and, or, ilike } from 'drizzle-orm'
+import { OrganizationRole, MemberType } from '@auxx/database/enums'
 import { TRPCError } from '@trpc/server'
+import { createScopedLogger } from '@auxx/logger'
+import { MemberService } from '@auxx/lib/members'
+
+const logger = createScopedLogger('api-member')
 
 /**
  * Member router handles organization member and invitation operations
  */
 export const memberRouter = createTRPCRouter({
-  /**
-   * Get all members for the current organization
-   * Returns members with their user details, ordered by role
-   */
-  all: protectedProcedure.query(async ({ ctx }) => {
-    const { organizationId } = ctx.session
+  // ─────────────────────────────────────────────────────────────
+  // QUERIES
+  // ─────────────────────────────────────────────────────────────
 
-    if (!organizationId) {
-      throw new TRPCError({ code: 'BAD_REQUEST', message: 'Organization context not found.' })
-    }
+  /** Get all members with optional filtering */
+  all: protectedProcedure
+    .input(
+      z
+        .object({
+          excludeGroupId: z.string().optional(),
+          search: z.string().optional(),
+        })
+        .optional()
+    )
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const { excludeGroupId, search } = input ?? {}
 
-    const members = await ctx.db.query.OrganizationMember.findMany({
-      where: (members, { eq }) => eq(members.organizationId, organizationId),
-      with: {
-        user: true,
-      },
-      orderBy: (members, { asc }) => [asc(members.role)],
-    })
+      // Build where conditions
+      const whereConditions = [
+        eq(schema.OrganizationMember.organizationId, organizationId),
+        eq(schema.User.userType, 'USER'),
+      ]
 
-    return members
+      if (search) {
+        whereConditions.push(
+          or(ilike(schema.User.name, `%${search}%`), ilike(schema.User.email, `%${search}%`))!
+        )
+      }
+
+      const rows = await ctx.db
+        .select({
+          id: schema.OrganizationMember.id,
+          userId: schema.OrganizationMember.userId,
+          role: schema.OrganizationMember.role,
+          status: schema.OrganizationMember.status,
+          organizationId: schema.OrganizationMember.organizationId,
+          user: {
+            id: schema.User.id,
+            name: schema.User.name,
+            email: schema.User.email,
+            image: schema.User.image,
+            userType: schema.User.userType,
+          },
+        })
+        .from(schema.OrganizationMember)
+        .innerJoin(schema.User, eq(schema.OrganizationMember.userId, schema.User.id))
+        .where(and(...whereConditions))
+
+      // Filter out members already in group if excludeGroupId provided
+      if (excludeGroupId) {
+        const groupMembers = await ctx.db
+          .select({ userId: schema.EntityGroupMember.memberRefId })
+          .from(schema.EntityGroupMember)
+          .where(
+            and(
+              eq(schema.EntityGroupMember.groupInstanceId, excludeGroupId),
+              eq(schema.EntityGroupMember.memberType, MemberType.user)
+            )
+          )
+        const groupMemberIds = new Set(groupMembers.map((m) => m.userId))
+        return { members: rows.filter((member) => !groupMemberIds.has(member.userId)) }
+      }
+
+      return { members: rows }
+    }),
+
+  /** Get active member count */
+  activeCount: protectedProcedure.query(async ({ ctx }) => {
+    const memberService = new MemberService(ctx.db)
+    return memberService.getActiveMemberCount(ctx.session.organizationId)
   }),
 
-  /**
-   * Get all pending invitations for the current organization
-   * Returns invitations with inviter details, ordered by creation date (newest first)
-   */
+  /** Get pending invitations for current organization */
   invitations: protectedProcedure.query(async ({ ctx }) => {
-    const { organizationId } = ctx.session
-
-    if (!organizationId) {
-      throw new TRPCError({ code: 'BAD_REQUEST', message: 'Organization context not found.' })
-    }
-
-    const invitations = await ctx.db.query.OrganizationInvitation.findMany({
-      where: (invitations, { eq, gt, and }) =>
-        and(
-          eq(invitations.organizationId, organizationId),
-          eq(invitations.status, 'PENDING'),
-          gt(invitations.expiresAt, new Date())
-        ),
-      with: {
-        invitedBy: true,
-      },
-      orderBy: (invitations, { desc }) => [desc(invitations.createdAt)],
-    })
-
-    return invitations
+    const memberService = new MemberService(ctx.db)
+    return memberService.getPendingInvitations(ctx.session.organizationId)
   }),
 
-  /**
-   * Get current user's membership in the organization
-   * Returns membership record with role and status
-   */
+  /** Get current user's pending invitations across all orgs */
+  myPendingInvitations: protectedProcedure.query(async ({ ctx }) => {
+    const memberService = new MemberService(ctx.db)
+    return memberService.getMyPendingInvitations(ctx.session.user.email)
+  }),
+
+  /** Get current user's membership */
   getUserMembership: protectedProcedure.query(async ({ ctx }) => {
-    const { organizationId, userId } = ctx.session
-
-    if (!organizationId) {
-      throw new TRPCError({ code: 'BAD_REQUEST', message: 'Organization context not found.' })
-    }
-
     const membership = await ctx.db.query.OrganizationMember.findFirst({
       where: (members, { eq, and }) =>
-        and(eq(members.organizationId, organizationId), eq(members.userId, userId)),
+        and(
+          eq(members.organizationId, ctx.session.organizationId),
+          eq(members.userId, ctx.session.userId)
+        ),
     })
-
     if (!membership) {
       throw new TRPCError({
         code: 'NOT_FOUND',
         message: 'You are not a member of this organization',
       })
     }
-
     return membership
   }),
 
-  /**
-   * Get organization details
-   * Returns organization record
-   */
-  getOrganizationDetails: protectedProcedure.query(async ({ ctx }) => {
-    const { organizationId } = ctx.session
+  // ─────────────────────────────────────────────────────────────
+  // MUTATIONS - Member Management
+  // ─────────────────────────────────────────────────────────────
 
-    if (!organizationId) {
-      throw new TRPCError({ code: 'BAD_REQUEST', message: 'Organization context not found.' })
-    }
+  /** Remove a member from organization */
+  remove: protectedProcedure
+    .input(z.object({ memberId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const memberService = new MemberService(ctx.db)
+      return memberService.removeMember({
+        organizationId: ctx.session.organizationId,
+        removerUserId: ctx.session.user.id,
+        memberToRemoveId: input.memberId,
+      })
+    }),
 
-    const organization = await ctx.db.query.Organization.findFirst({
-      where: (orgs, { eq }) => eq(orgs.id, organizationId),
-    })
+  /** Update a member's role */
+  updateRole: protectedProcedure
+    .input(
+      z.object({
+        memberId: z.string(),
+        role: z.enum(OrganizationRole),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const memberService = new MemberService(ctx.db)
+      return memberService.updateMemberRole({
+        organizationId: ctx.session.organizationId,
+        updaterUserId: ctx.session.user.id,
+        memberToUpdateId: input.memberId,
+        newRole: input.role,
+      })
+    }),
 
-    if (!organization) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'Organization not found' })
-    }
+  // ─────────────────────────────────────────────────────────────
+  // MUTATIONS - Invitations
+  // ─────────────────────────────────────────────────────────────
 
-    return organization
-  }),
+  /** Invite a single user */
+  invite: protectedProcedure
+    .input(
+      z.object({
+        email: z.string().email(),
+        role: z.enum(OrganizationRole).default('USER'),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const memberService = new MemberService(ctx.db)
+      const [org] = await ctx.db
+        .select({ name: schema.Organization.name })
+        .from(schema.Organization)
+        .where(eq(schema.Organization.id, ctx.session.organizationId))
+        .limit(1)
+
+      try {
+        return await memberService.inviteMember({
+          organizationId: ctx.session.organizationId,
+          inviterUserId: ctx.session.user.id,
+          inviterName: ctx.session.user.name,
+          organizationName: org?.name,
+          email: input.email,
+          role: input.role,
+        })
+      } catch (error) {
+        if (error instanceof TRPCError) throw error
+        logger.error('Unexpected error during invite:', { error, email: input.email })
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to process invitation.',
+        })
+      }
+    }),
+
+  /** Invite multiple users */
+  inviteBatch: protectedProcedure
+    .input(
+      z.object({
+        invites: z.array(
+          z.object({
+            email: z.string().email(),
+            role: z.enum(OrganizationRole),
+          })
+        ),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const memberService = new MemberService(ctx.db)
+      const [org] = await ctx.db
+        .select({ name: schema.Organization.name })
+        .from(schema.Organization)
+        .where(eq(schema.Organization.id, ctx.session.organizationId))
+        .limit(1)
+
+      const results = []
+      for (const invite of input.invites) {
+        try {
+          const result = await memberService.inviteMember({
+            organizationId: ctx.session.organizationId,
+            inviterUserId: ctx.session.user.id,
+            inviterName: ctx.session.user.name,
+            organizationName: org?.name,
+            email: invite.email,
+            role: invite.role,
+          })
+          results.push({ email: invite.email, success: true, message: result.message })
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Failed to send invitation'
+          results.push({ email: invite.email, success: false, error: errorMessage })
+        }
+      }
+      return results
+    }),
+
+  /** Accept invitation by token */
+  acceptInvitation: protectedProcedure
+    .input(z.object({ token: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const memberService = new MemberService(ctx.db)
+      try {
+        return await memberService.acceptInvitation({
+          token: input.token,
+          acceptingUserId: ctx.session.user.id,
+          acceptingUserEmail: ctx.session.user.email,
+        })
+      } catch (error) {
+        if (error instanceof TRPCError) throw error
+        logger.error('Unexpected error during acceptInvitation:', {
+          error,
+          token: input.token,
+          userId: ctx.session.user.id,
+        })
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to accept invitation.',
+        })
+      }
+    }),
+
+  /** Accept invitation by ID */
+  acceptInvitationById: protectedProcedure
+    .input(z.object({ invitationId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const memberService = new MemberService(ctx.db)
+      try {
+        return await memberService.acceptInvitationByIdentity({
+          invitationId: input.invitationId,
+          acceptingUserId: ctx.session.user.id,
+          acceptingUserEmail: ctx.session.user.email,
+        })
+      } catch (error) {
+        if (error instanceof TRPCError) throw error
+        logger.error('Unexpected error during acceptInvitationById:', {
+          error,
+          invitationId: input.invitationId,
+          userId: ctx.session.user.id,
+        })
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to accept invitation.',
+        })
+      }
+    }),
+
+  /** Cancel a pending invitation */
+  cancelInvitation: protectedProcedure
+    .input(z.object({ invitationId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const memberService = new MemberService(ctx.db)
+      try {
+        return await memberService.cancelInvitation({
+          invitationId: input.invitationId,
+          cancellerUserId: ctx.session.user.id,
+          organizationId: ctx.session.organizationId,
+        })
+      } catch (error) {
+        if (error instanceof TRPCError) throw error
+        logger.error('Unexpected error during cancelInvitation:', {
+          error,
+          invitationId: input.invitationId,
+        })
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to cancel invitation.',
+        })
+      }
+    }),
+
+  /** Resend a pending invitation */
+  resendInvitation: protectedProcedure
+    .input(z.object({ invitationId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const memberService = new MemberService(ctx.db)
+      try {
+        return await memberService.resendInvitation({
+          invitationId: input.invitationId,
+          resenderUserId: ctx.session.user.id,
+          organizationId: ctx.session.organizationId,
+        })
+      } catch (error) {
+        if (error instanceof TRPCError) throw error
+        logger.error('Unexpected error during resendInvitation:', {
+          error,
+          invitationId: input.invitationId,
+        })
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to resend invitation.',
+        })
+      }
+    }),
+
+  /** Get invitation link for sharing */
+  getInvitationLink: protectedProcedure
+    .input(z.object({ invitationId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const memberService = new MemberService(ctx.db)
+      try {
+        const link = await memberService.getInvitationLink({
+          invitationId: input.invitationId,
+          requestingUserId: ctx.session.user.id,
+          organizationId: ctx.session.organizationId,
+        })
+        return { link }
+      } catch (error) {
+        if (error instanceof TRPCError) throw error
+        logger.error('Unexpected error during getInvitationLink:', {
+          error,
+          invitationId: input.invitationId,
+        })
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to retrieve invitation link.',
+        })
+      }
+    }),
 })

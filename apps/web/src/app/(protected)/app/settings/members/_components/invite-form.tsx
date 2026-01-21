@@ -38,7 +38,7 @@ interface InviteFormProps {
 export default function InviteForm({ organizationId, onInviteSuccess }: InviteFormProps) {
   const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const inviteUser = api.organization.inviteUser.useMutation({
+  const inviteUser = api.member.invite.useMutation({
     onSuccess: () => {
       toastSuccess({
         title: 'Invitation sent',

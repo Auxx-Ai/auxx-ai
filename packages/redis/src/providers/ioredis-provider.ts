@@ -123,6 +123,13 @@ export function createIORedisClient(provider: 'aws' | 'hosted'): RedisClient {
     // Cursor-based iteration
     scan: async (cursor: string, ...args: any[]) => await client.scan(cursor, ...args),
 
+    // Set operations (fully supported by IORedis)
+    sadd: async (key: string, ...members: string[]) =>
+      (await client.sadd(key, ...members)) as number,
+    srem: async (key: string, ...members: string[]) =>
+      (await client.srem(key, ...members)) as number,
+    smembers: async (key: string) => await client.smembers(key),
+
     // Sorted set operations (fully supported by IORedis)
     zadd: async (key: string, ...args: any[]) => {
       if (args.length === 2 && typeof args[0] === 'number' && typeof args[1] === 'string') {

@@ -28,7 +28,6 @@ import { emailTemplateRouter } from './routers/emailTemplate'
 import { contactRouter } from './routers/contact'
 import { settingsRouter } from './routers/setting'
 import { customFieldRouter } from './routers/customField'
-import { groupRouter } from './routers/group'
 import { snippetsRouter } from './routers/snippet'
 import { embeddingRouter } from './routers/embedding'
 import { commentRouter } from './routers/comment'
@@ -69,6 +68,7 @@ import { dataImportRouter } from './routers/data-import'
 import { fieldValueRouter } from './routers/fieldValue'
 import { taskRouter } from './routers/task'
 import { entityGroupRouter } from './routers/entityGroup'
+import { resourceAccessRouter } from './routers/resourceAccess'
 
 /**
  * This is the primary router for your server.
@@ -106,7 +106,6 @@ export const appRouter = createTRPCRouter({
   entityGroup: entityGroupRouter,
   featurePermission: featurePermissionsRouter,
   googleOAuth: googleOAuthRouter,
-  group: groupRouter,
   inbox: inboxRouter,
   integration: integrationRouter,
   integrationReauth: integrationReauthRouter,
@@ -123,6 +122,7 @@ export const appRouter = createTRPCRouter({
   product: productRouter,
   record: recordRouter,
   resource: resourceRouter,
+  resourceAccess: resourceAccessRouter,
   search: searchRouter,
   setting: settingsRouter,
   shopify: shopifyRouter,

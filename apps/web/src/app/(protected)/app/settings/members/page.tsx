@@ -24,15 +24,17 @@ export default async function MembersPage({}: Props) {
   const defaultOrganizationId = session?.user?.defaultOrganizationId
 
   // Get data using new tRPC procedures
-  const activeMemberCount = await api.organization.getActiveMemberCount()
-  const organization = await api.member.getOrganizationDetails()
-  const members = await api.member.all()
+  const activeMemberCount = await api.member.activeCount()
+  const organization = await api.organization.byId({ id: defaultOrganizationId! })
+  const membersResult = await api.member.all()
   const invitations = await api.member.invitations()
 
   if (!organization) {
     console.error(`Organization not found for ID: ${defaultOrganizationId}. Redirecting.`)
     redirect('/app?error=org_not_found')
   }
+
+  const members = membersResult.members
 
   const features = new FeaturePermissionService(db)
   const hasAccess = await features.hasAccess(defaultOrganizationId!, FeatureKey.TEAMMATES)

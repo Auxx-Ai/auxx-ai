@@ -1,7 +1,8 @@
-// components/organization/GroupPicker.tsx
-import React, { useState, useEffect } from 'react'
-import { api } from '~/trpc/react'
-import { Check, ChevronsUpDown, PlusCircle, X } from 'lucide-react'
+// apps/web/src/components/groups/ui/group-picker.tsx
+'use client'
+
+import { useState } from 'react'
+import { Check, ChevronsUpDown, PlusCircle } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
 import {
   Command,
@@ -16,19 +17,39 @@ import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/pop
 import { Badge } from '@auxx/ui/components/badge'
 import { cn } from '@auxx/ui/lib/utils'
 import { Skeleton } from '@auxx/ui/components/skeleton'
+import { useGroups } from '../hooks'
+import { getGroupMetadata } from '../utils'
 
-export type GroupOption = { id: string; name: string; emoji?: string; color?: string }
+/** Group option for display */
+export type GroupOption = {
+  id: string
+  name: string
+  emoji?: string
+  color?: string
+}
 
+/** Props for GroupPicker component */
 type GroupPickerProps = {
+  /** Currently selected group IDs */
   selectedGroups: string[]
+  /** Called when selection changes */
   onChange: (value: string[]) => void
+  /** Placeholder text */
   placeholder?: string
+  /** URL for create new group */
   createNewHref?: string
+  /** Whether picker is disabled */
   disabled?: boolean
+  /** Additional class names */
   className?: string
+  /** Whether to hide create option */
   disableCreate?: boolean
 }
 
+/**
+ * Multi-select group picker with badges
+ * Fetches groups from the new entityGroup API
+ */
 export function GroupPicker({
   selectedGroups,
   onChange,
@@ -41,25 +62,20 @@ export function GroupPicker({
   const [open, setOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
 
-  // Fetch all groups
-  const { data, isLoading } = api.group.all.useQuery(undefined, {
-    staleTime: 1000 * 60 * 5, // 5 minutes
-  })
-
-  const groups = data?.groups || []
+  const { data: groups, isLoading } = useGroups()
 
   // Format groups for the picker
-  const groupOptions: GroupOption[] = groups.map((group) => {
-    const properties = (group.properties as Record<string, any>) || {}
+  const groupOptions: GroupOption[] = (groups ?? []).map((group) => {
+    const metadata = getGroupMetadata(group)
     return {
       id: group.id,
-      name: group.name,
-      emoji: properties.emoji || '👥',
-      color: properties.color || '#4f46e5',
+      name: group.displayName || '',
+      emoji: metadata.icon || '👥',
+      color: metadata.color || '#4f46e5',
     }
   })
 
-  // Toggle selection of a group
+  /** Toggle selection of a group */
   const toggleGroup = (groupId: string) => {
     const newSelection = selectedGroups.includes(groupId)
       ? selectedGroups.filter((id) => id !== groupId)
@@ -68,7 +84,7 @@ export function GroupPicker({
     onChange(newSelection)
   }
 
-  // Get group names to display in the button
+  // Get selected group details for display
   const selectedGroupsDetails = groupOptions.filter((group) => selectedGroups.includes(group.id))
 
   return (
@@ -83,10 +99,7 @@ export function GroupPicker({
           {selectedGroups.length > 0 ? (
             <div className="flex flex-wrap gap-1 overflow-hidden">
               {selectedGroupsDetails.map((group) => (
-                <Badge
-                  key={group.id}
-                  style={{ backgroundColor: group.color }}
-                  className="mr-1 flex items-center">
+                <Badge key={group.id} style={{ backgroundColor: group.color }} className="mr-1 flex items-center">
                   <span className="mr-1">{group.emoji}</span>
                   {group.name}
                 </Badge>
@@ -100,11 +113,7 @@ export function GroupPicker({
       </PopoverTrigger>
       <PopoverContent className="w-full min-w-[300px] p-0">
         <Command>
-          <CommandInput
-            placeholder="Search groups..."
-            value={searchQuery}
-            onValueChange={setSearchQuery}
-          />
+          <CommandInput placeholder="Search groups..." value={searchQuery} onValueChange={setSearchQuery} />
           <CommandList>
             <CommandEmpty>{searchQuery ? 'No groups found.' : 'No groups available.'}</CommandEmpty>
             {isLoading ? (
@@ -126,9 +135,7 @@ export function GroupPicker({
                       className="flex items-center">
                       <span className="mr-2">{group.emoji}</span>
                       <span>{group.name}</span>
-                      <Check
-                        className={cn('ml-auto h-4 w-4', isSelected ? 'opacity-100' : 'opacity-0')}
-                      />
+                      <Check className={cn('ml-auto h-4 w-4', isSelected ? 'opacity-100' : 'opacity-0')} />
                     </CommandItem>
                   )
                 })}
@@ -156,19 +163,22 @@ export function GroupPicker({
   )
 }
 
-// Form-connected version for use with react-hook-form
-export function FormGroupPicker({
-  value = [],
-  onChange,
-  onBlur,
-  name,
-  ...props
-}: Omit<GroupPickerProps, 'selectedGroups' | 'onChange'> & {
+/** Props for FormGroupPicker component */
+type FormGroupPickerProps = Omit<GroupPickerProps, 'selectedGroups' | 'onChange'> & {
+  /** Current value from form */
   value?: string[]
+  /** Called on blur */
   onBlur?: () => void
+  /** Field name */
   name?: string
+  /** Called when value changes */
   onChange?: (value: string[]) => void
-}) {
+}
+
+/**
+ * Form-connected version for use with react-hook-form
+ */
+export function FormGroupPicker({ value = [], onChange, onBlur, name, ...props }: FormGroupPickerProps) {
   const handleChange = (newValue: string[]) => {
     onChange?.(newValue)
   }

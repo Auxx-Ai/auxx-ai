@@ -11,6 +11,8 @@ import {
   useDehydratedOrganizations,
 } from '~/providers/dehydrated-state-provider'
 import { useOrganizationIdContext } from '~/providers/feature-flag-provider'
+import { clearResourceCaches } from '~/components/resources'
+import { client as authClient } from '~/auth/auth-client'
 
 export interface OrganizationMember {
   id: string
@@ -161,10 +163,13 @@ export function useUser(options: UseUserOptions = {}): UseUserResult {
       switchOrganizationMutation.mutate(
         { organizationId: newOrganizationId },
         {
-          onSuccess: () => {
+          onSuccess: async () => {
+            // Clear client-side caches before reload to prevent stale data
+            clearResourceCaches()
+            // Force session cache refresh to get updated defaultOrganizationId
+            await authClient.getSession({ query: { disableCookieCache: true } })
+            // Full page reload to get fresh dehydrated state from server
             window.location.reload()
-            // Optionally, refresh the page or perform other actions after switching
-            router.refresh()
           },
         }
       )

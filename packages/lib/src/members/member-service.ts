@@ -3,7 +3,7 @@
  * Service for managing organization members and invitations.
  */
 import { database, type Database } from '@auxx/database'
-import { eq, and, gt, count, sql, asc } from 'drizzle-orm'
+import { eq, and, gt, count, sql, asc, ilike } from 'drizzle-orm'
 import { schema } from '@auxx/database'
 import {
   OrganizationMemberModel,
@@ -102,6 +102,20 @@ export class MemberService {
   }
 
   /**
+   * Get membership record for a user in an organization
+   */
+  static async getMembership(
+    userId: string,
+    organizationId: string,
+    db: Database = database
+  ) {
+    return db.query.OrganizationMember.findFirst({
+      where: (om, { and, eq }) =>
+        and(eq(om.userId, userId), eq(om.organizationId, organizationId)),
+    })
+  }
+
+  /**
    * Static version: Checks if a user is a member of the specified organization.
    */
   static async isMember(
@@ -109,25 +123,19 @@ export class MemberService {
     organizationId: string,
     db: Database = database
   ): Promise<boolean> {
-    const memberModel = new OrganizationMemberModel(organizationId, db)
-    const membershipResult = await memberModel.findMemberByUser(userId)
-
-    if (!membershipResult.ok) {
+    const membership = await MemberService.getMembership(userId, organizationId, db)
+    if (!membership) {
       return false
     }
 
     // Additional check for user type - need to query user table
-    if (membershipResult.value) {
-      const [user] = await db
-        .select({ userType: schema.User.userType })
-        .from(schema.User)
-        .where(eq(schema.User.id, userId))
-        .limit(1)
+    const [user] = await db
+      .select({ userType: schema.User.userType })
+      .from(schema.User)
+      .where(eq(schema.User.id, userId))
+      .limit(1)
 
-      return user?.userType === 'USER'
-    }
-
-    return false
+    return user?.userType === 'USER'
   }
 
   // --- Core Member Operations ---
@@ -1303,5 +1311,60 @@ export class MemberService {
     const link = generateAcceptLink(invitation.token)
     logger.info('Invitation link retrieved successfully', { invitationId })
     return link
+  }
+
+  /**
+   * Get count of active members in organization
+   */
+  async getActiveMemberCount(organizationId: string): Promise<number> {
+    const rows = await this.db
+      .select({ id: schema.OrganizationMember.id })
+      .from(schema.OrganizationMember)
+      .where(
+        and(
+          eq(schema.OrganizationMember.organizationId, organizationId),
+          eq(schema.OrganizationMember.status, 'ACTIVE')
+        )
+      )
+    return rows.length
+  }
+
+  /**
+   * Get pending invitations for current user across all organizations
+   */
+  async getMyPendingInvitations(userEmail: string | null) {
+    if (!userEmail) {
+      return []
+    }
+
+    return this.db
+      .select({
+        id: schema.OrganizationInvitation.id,
+        role: schema.OrganizationInvitation.role,
+        createdAt: schema.OrganizationInvitation.createdAt,
+        expiresAt: schema.OrganizationInvitation.expiresAt,
+        organization: {
+          id: schema.Organization.id,
+          name: schema.Organization.name,
+        },
+        invitedBy: {
+          id: schema.User.id,
+          name: schema.User.name,
+          image: schema.User.image,
+        },
+      })
+      .from(schema.OrganizationInvitation)
+      .innerJoin(
+        schema.Organization,
+        eq(schema.OrganizationInvitation.organizationId, schema.Organization.id)
+      )
+      .innerJoin(schema.User, eq(schema.OrganizationInvitation.invitedById, schema.User.id))
+      .where(
+        and(
+          ilike(schema.OrganizationInvitation.email, userEmail),
+          eq(schema.OrganizationInvitation.status, 'PENDING'),
+          gt(schema.OrganizationInvitation.expiresAt, new Date())
+        )
+      )
   }
 }

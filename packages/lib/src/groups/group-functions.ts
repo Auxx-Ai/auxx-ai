@@ -14,6 +14,7 @@ import type {
 } from '@auxx/types/groups'
 import { requireGroupPermission, hasGroupPermission } from './permissions'
 import { NotFoundError } from '../errors'
+import { createEntityInstance } from '@auxx/services/entity-instances'
 
 // ============================================================================
 // Group Metadata Type
@@ -50,7 +51,7 @@ export async function createGroup(ctx: GroupContext, input: CreateGroupInput): P
     throw new NotFoundError('Entity group definition not found. Please run entity seeder first.')
   }
 
-  // Create group instance with metadata
+  // Create group instance with metadata using service
   const metadata: GroupMetadata = {
     memberType: input.memberType,
     visibility: input.visibility,
@@ -59,21 +60,23 @@ export async function createGroup(ctx: GroupContext, input: CreateGroupInput): P
     memberCount: 0,
   }
 
-  const [groupInstance] = await db
-    .insert(schema.EntityInstance)
-    .values({
+  const result = await createEntityInstance(
+    {
       entityDefinitionId: groupDef.id,
       organizationId,
       createdById: userId,
       displayName: input.name,
       secondaryDisplayValue: input.description,
       metadata,
-    })
-    .returning()
+    },
+    db
+  )
 
-  if (!groupInstance) {
-    throw new Error('Failed to create group instance')
+  if (result.isErr()) {
+    throw new Error(`Failed to create group instance: ${result.error.message}`)
   }
+
+  const groupInstance = result.value
 
   // Create default permissions
   await createDefaultPermissions(ctx, groupInstance.id, input.visibility)
@@ -137,12 +140,15 @@ export async function listAccessibleGroups(
     })
   }
 
-  // Get user's teams
-  const userTeams = await db.query.GroupMember.findMany({
-    where: eq(schema.GroupMember.userId, userId),
-    columns: { groupId: true },
+  // Get user's teams (from EntityGroupMember)
+  const userTeamMemberships = await db.query.EntityGroupMember.findMany({
+    where: and(
+      eq(schema.EntityGroupMember.memberType, MemberType.user),
+      eq(schema.EntityGroupMember.memberRefId, userId)
+    ),
+    columns: { groupInstanceId: true },
   })
-  const teamIds = userTeams.map((t) => t.groupId)
+  const teamIds = userTeamMemberships.map((t) => t.groupInstanceId)
 
   // Build grantee conditions
   const granteeConditions = [

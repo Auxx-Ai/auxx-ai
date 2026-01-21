@@ -1,5 +1,5 @@
 // lib/inbox/inbox-service.ts
-import { InboxStatus } from '@auxx/database/enums'
+import { InboxStatus, MemberType } from '@auxx/database/enums'
 import { type InboxIntegrationEntity as InboxIntegration } from '@auxx/database/models'
 
 import { database as db, schema, type Database } from '@auxx/database'
@@ -661,15 +661,15 @@ export class InboxService {
           .where(eq(schema.InboxGroupAccess.inboxId, inboxId))
 
         if (inboxGroups.length) {
-          // Check if user is a member of any of these groups
-          const userInGroup = await db.query.GroupMember.findFirst({
+          // Check if user is a member of any of these groups (via EntityGroupMember)
+          const userInGroup = await db.query.EntityGroupMember.findFirst({
             where: and(
-              eq(schema.GroupMember.userId, userId),
+              eq(schema.EntityGroupMember.memberType, MemberType.user),
+              eq(schema.EntityGroupMember.memberRefId, userId),
               inArray(
-                schema.GroupMember.groupId,
+                schema.EntityGroupMember.groupInstanceId,
                 inboxGroups.map((g) => g.groupId)
-              ),
-              eq(schema.GroupMember.isActive, true)
+              )
             ),
           })
 
@@ -723,16 +723,16 @@ export class InboxService {
 
       if (!orgMember) return []
 
-      // Get user's group IDs
+      // Get user's group IDs (from EntityGroupMember)
       const userGroups = await db
-        .select({ groupId: schema.GroupMember.groupId })
-        .from(schema.GroupMember)
-        .innerJoin(schema.Group, eq(schema.GroupMember.groupId, schema.Group.id))
+        .select({ groupId: schema.EntityGroupMember.groupInstanceId })
+        .from(schema.EntityGroupMember)
+        .innerJoin(schema.EntityInstance, eq(schema.EntityGroupMember.groupInstanceId, schema.EntityInstance.id))
         .where(
           and(
-            eq(schema.GroupMember.userId, userId),
-            eq(schema.GroupMember.isActive, true),
-            eq(schema.Group.organizationId, this.organizationId)
+            eq(schema.EntityGroupMember.memberType, MemberType.user),
+            eq(schema.EntityGroupMember.memberRefId, userId),
+            eq(schema.EntityInstance.organizationId, this.organizationId)
           )
         )
 
@@ -810,28 +810,31 @@ export class InboxService {
     try {
       const inboxes = await this.getInboxesForUser(userId)
 
-      // Get detailed group information
-      const userGroups = await db.query.GroupMember.findMany({
-        where: and(eq(schema.GroupMember.userId, userId), eq(schema.GroupMember.isActive, true)),
+      // Get detailed group information (from EntityGroupMember)
+      const userGroups = await db.query.EntityGroupMember.findMany({
+        where: and(
+          eq(schema.EntityGroupMember.memberType, MemberType.user),
+          eq(schema.EntityGroupMember.memberRefId, userId)
+        ),
         with: {
-          group: true,
+          groupInstance: true,
         },
       })
 
       // Filter out groups that don't belong to this organization
       const filteredUserGroups = userGroups.filter(
-        (groupMember) => groupMember.group.organizationId === this.organizationId
+        (membership) => membership.groupInstance.organizationId === this.organizationId
       )
 
       // Enhance inbox objects with detailed group information
       return inboxes.map((inbox) => {
-        const accessGroups = filteredUserGroups.filter((groupMember) =>
+        const accessGroups = filteredUserGroups.filter((membership) =>
           inbox.groupAccess.some(
-            (access: { groupId: string }) => access.groupId === groupMember.groupId
+            (access: { groupId: string }) => access.groupId === membership.groupInstanceId
           )
         )
 
-        return { ...inbox, accessGroups: accessGroups.map((g) => g.group) }
+        return { ...inbox, accessGroups: accessGroups.map((g) => g.groupInstance) }
       })
     } catch (error) {
       logger.error('Error getting inboxes with group details', {

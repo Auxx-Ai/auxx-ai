@@ -161,6 +161,7 @@ export * from './field-value'
 export * from './system-model-default'
 export * from './entity-group-member'
 export * from './entity-group-permission'
+export * from './resource-access'
 
 // Import tables
 export * from './import-mapping'

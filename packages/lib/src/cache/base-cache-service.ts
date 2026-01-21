@@ -41,57 +41,18 @@ export interface CacheEntry<T> {
  * Features:
  * - Automatic Redis connection with in-memory fallback
  * - TTL-based expiration
- * - Tag-based invalidation
- * - Pattern-based invalidation
+ * - Tag-based invalidation (using Redis Sets for reliable cross-instance invalidation)
+ * - Pattern-based invalidation (using Redis SCAN)
  * - Graceful error handling
  * - Debug logging in development mode (NODE_ENV=development)
- *
- * @example
- * ```typescript
- * // Basic usage
- * const cache = new BaseCacheService('user:', 3600); // 1 hour default TTL
- *
- * // Store data
- * await cache.set('profile:123', { name: 'John', email: 'john@example.com' });
- *
- * // Retrieve data
- * const profile = await cache.get<UserProfile>('profile:123');
- *
- * // Store with custom TTL and tags
- * await cache.set('temp:data', { value: 42 }, {
- *   ttl: 300, // 5 minutes
- *   tags: ['temp', 'calculations']
- * });
- *
- * // Invalidate by tag
- * await cache.invalidateByTag('temp');
- * ```
- *
- * @example
- * ```typescript
- * // Extending for specific use cases
- * class UserCacheService extends BaseCacheService {
- *   constructor() {
- *     super('user:', 1800); // 30 minutes
- *   }
- *
- *   async cacheUserProfile(userId: string, profile: UserProfile) {
- *     const key = this.buildKey('profile', userId);
- *     await this.set(key, profile, { tags: ['user', 'profile'] });
- *   }
- *
- *   async getUserProfile(userId: string): Promise<UserProfile | null> {
- *     const key = this.buildKey('profile', userId);
- *     return this.get<UserProfile>(key);
- *   }
- * }
- * ```
  */
 export class BaseCacheService {
   /** In-memory cache as fallback when Redis is unavailable */
   private memoryCache = new Map<string, CacheEntry<any>>()
-  /** Redis client instance, null if unavailable */
+  /** Redis client instance, undefined if unavailable */
   private redisClient: RedisClient | undefined = undefined
+  /** Promise that resolves when Redis initialization is complete */
+  private redisReady: Promise<void>
   /** Flag indicating if Redis is available for use */
   private useRedis = true
   /** Flag indicating if we're in development mode for debug logging */
@@ -102,25 +63,17 @@ export class BaseCacheService {
    *
    * @param keyPrefix - Prefix for all cache keys to avoid collisions
    * @param defaultTtl - Default time to live in seconds (default: 900 = 15 minutes)
-   *
-   * @example
-   * ```typescript
-   * const userCache = new BaseCacheService('user:', 3600);
-   * const sessionCache = new BaseCacheService('session:', 1800);
-   * ```
    */
   constructor(
     private keyPrefix: string = '',
     private defaultTtl: number = 900 // 15 minutes
   ) {
-    this.initializeRedis()
+    this.redisReady = this.initializeRedis()
   }
 
   /**
    * Initializes Redis connection with graceful fallback to in-memory cache
    * Called automatically during construction
-   *
-   * @private
    */
   private async initializeRedis(): Promise<void> {
     try {
@@ -134,6 +87,23 @@ export class BaseCacheService {
   }
 
   /**
+   * Ensures Redis is ready before performing operations
+   * Awaits the initialization promise and returns the client if available
+   */
+  private async ensureRedisReady(): Promise<RedisClient | undefined> {
+    await this.redisReady
+    return this.redisClient
+  }
+
+  /**
+   * Generates the Redis key for a tag set
+   * Tag sets store all cache keys that have a specific tag
+   */
+  private getTagSetKey(tag: string): string {
+    return `${this.keyPrefix}:_tags:${tag}`
+  }
+
+  /**
    * Retrieves a value from the cache by key
    * Tries Redis first, then falls back to in-memory cache
    * Automatically cleans up expired entries
@@ -141,19 +111,6 @@ export class BaseCacheService {
    * @template T - The expected type of the cached value
    * @param key - The cache key (without prefix)
    * @returns Promise resolving to the cached value or null if not found/expired
-   *
-   * @example
-   * ```typescript
-   * // Get user profile
-   * const profile = await cache.get<UserProfile>('profile:123');
-   * if (profile) {
-   *   console.log(`User: ${profile.name}`);
-   * }
-   *
-   * // Get with type safety
-   * interface ApiResponse { data: string[], total: number }
-   * const response = await cache.get<ApiResponse>('api:users');
-   * ```
    */
   async get<T>(key: string): Promise<T | null> {
     const fullKey = this.getFullKey(key)
@@ -163,9 +120,12 @@ export class BaseCacheService {
     }
 
     try {
+      // Ensure Redis is ready before attempting to use it
+      const client = await this.ensureRedisReady()
+
       // Try Redis first if available
-      if (this.useRedis && this.redisClient) {
-        const data = await this.redisClient.get(fullKey)
+      if (this.useRedis && client) {
+        const data = await client.get(fullKey)
         if (data) {
           try {
             const entry: CacheEntry<T> = JSON.parse(data)
@@ -225,32 +185,12 @@ export class BaseCacheService {
   /**
    * Stores a value in the cache with optional TTL and tags
    * Stores in both Redis and in-memory cache for redundancy
+   * Registers keys with tag sets in Redis for reliable tag-based invalidation
    *
    * @template T - The type of the value to cache
    * @param key - The cache key (without prefix)
    * @param value - The value to cache
    * @param options - Cache options including TTL and tags
-   *
-   * @example
-   * ```typescript
-   * // Simple caching with default TTL
-   * await cache.set('user:123', { name: 'John', email: 'john@example.com' });
-   *
-   * // Cache with custom TTL (5 minutes)
-   * await cache.set('temp:data', calculations, { ttl: 300 });
-   *
-   * // Cache with tags for bulk invalidation
-   * await cache.set('product:456', productData, {
-   *   ttl: 3600,
-   *   tags: ['product', 'catalog', 'user:123']
-   * });
-   *
-   * // Cache API response with short TTL
-   * await cache.set('api:weather', weatherData, {
-   *   ttl: 600, // 10 minutes
-   *   tags: ['external-api', 'weather']
-   * });
-   * ```
    */
   async set<T>(key: string, value: T, options: CacheOptions = {}): Promise<void> {
     const ttl = options.ttl ?? this.defaultTtl
@@ -274,11 +214,24 @@ export class BaseCacheService {
     }
 
     try {
+      // Ensure Redis is ready before attempting to use it
+      const client = await this.ensureRedisReady()
+
       // Store in Redis if available
-      if (this.useRedis && this.redisClient) {
-        await this.redisClient.setex(fullKey, ttl, JSON.stringify(entry))
+      if (this.useRedis && client) {
+        await client.setex(fullKey, ttl, JSON.stringify(entry))
+
+        // Register this key with each tag set for reliable tag-based invalidation
+        // Use same TTL for tag sets so they auto-expire with the entries
+        for (const tag of tags) {
+          const tagSetKey = this.getTagSetKey(tag)
+          const added = await client.sadd(tagSetKey, fullKey)
+          await client.expire(tagSetKey, ttl)
+          logger.debug(`Tag set updated:[${tagSetKey}]`, { key: fullKey, added, ttl })
+        }
+
         if (this.isDevelopment) {
-          logger.debug(`Cache stored in Redis:[${fullKey}]`)
+          logger.debug(`Cache stored in Redis:[${fullKey}]`, { tags })
         }
       }
 
@@ -303,17 +256,9 @@ export class BaseCacheService {
   /**
    * Deletes a specific cache entry by key
    * Removes from both Redis and in-memory cache
+   * Also removes the key from any tag sets it belongs to
    *
    * @param key - The cache key to delete (without prefix)
-   *
-   * @example
-   * ```typescript
-   * // Delete specific user data
-   * await cache.delete('user:123');
-   *
-   * // Delete temporary calculation
-   * await cache.delete('temp:calculation:abc');
-   * ```
    */
   async delete(key: string): Promise<void> {
     const fullKey = this.getFullKey(key)
@@ -323,17 +268,40 @@ export class BaseCacheService {
     }
 
     try {
-      if (this.useRedis && this.redisClient) {
-        await this.redisClient.del(fullKey)
+      // Ensure Redis is ready before attempting to use it
+      const client = await this.ensureRedisReady()
+
+      if (this.useRedis && client) {
+        // Get the entry first to find its tags
+        const data = await client.get(fullKey)
+        if (data) {
+          try {
+            const entry: CacheEntry<unknown> = JSON.parse(data)
+            // Remove this key from all its tag sets
+            for (const tag of entry.tags) {
+              const tagSetKey = this.getTagSetKey(tag)
+              await client.srem(tagSetKey, fullKey)
+            }
+          } catch {
+            // Ignore parse errors, just delete the key
+          }
+        }
+
+        await client.del(fullKey)
         if (this.isDevelopment) {
           logger.debug(`Cache deleted from Redis:[${fullKey}]`)
         }
       }
+
+      // Also get tags from memory entry for cleanup
+      const memEntry = this.memoryCache.get(fullKey)
       this.memoryCache.delete(fullKey)
+
       if (this.isDevelopment) {
         logger.debug(`Cache deleted from memory:[${fullKey}]`, {
           key: fullKey,
           memorySize: this.memoryCache.size,
+          hadTags: memEntry?.tags?.length ?? 0,
         })
       }
     } catch (error) {
@@ -345,22 +313,9 @@ export class BaseCacheService {
 
   /**
    * Invalidates all cache entries that contain the specified tag
-   * Note: Only works reliably for in-memory cache entries.
-   * For Redis, only entries also present in memory will be invalidated.
+   * Uses Redis Sets for reliable cross-instance invalidation
    *
    * @param tag - The tag to invalidate
-   *
-   * @example
-   * ```typescript
-   * // Invalidate all user-related cache entries
-   * await cache.invalidateByTag('user');
-   *
-   * // Invalidate all product catalog entries
-   * await cache.invalidateByTag('catalog');
-   *
-   * // Invalidate entries for specific user
-   * await cache.invalidateByTag('user:123');
-   * ```
    */
   async invalidateByTag(tag: string): Promise<void> {
     if (this.isDevelopment) {
@@ -369,15 +324,39 @@ export class BaseCacheService {
 
     try {
       let invalidatedCount = 0
-      // Handle in-memory cache entries
+
+      // Ensure Redis is ready before attempting to use it
+      const client = await this.ensureRedisReady()
+
+      // Handle Redis tag-based invalidation using Sets
+      if (this.useRedis && client) {
+        const tagSetKey = this.getTagSetKey(tag)
+        logger.debug(`Looking up tag set:[${tagSetKey}]`)
+
+        // Get all keys with this tag from the Redis Set
+        const keys = await client.smembers(tagSetKey)
+        logger.debug(`Tag set members:[${tagSetKey}]`, { keys, count: keys?.length ?? 0 })
+
+        if (keys && keys.length > 0) {
+          // Delete all the cache entries
+          await client.del(...keys)
+          invalidatedCount = keys.length
+          logger.debug(`Deleted ${keys.length} Redis keys for tag:[${tag}]`, { keys })
+        }
+
+        // Delete the tag set itself
+        await client.del(tagSetKey)
+      } else {
+        logger.warn(`Redis not available for tag invalidation:[${tag}]`, {
+          useRedis: this.useRedis,
+          hasClient: !!client,
+        })
+      }
+
+      // Also clean memory cache entries with this tag
       for (const [key, entry] of this.memoryCache.entries()) {
         if (entry.tags.includes(tag)) {
           this.memoryCache.delete(key)
-          invalidatedCount++
-          // Also delete from Redis
-          if (this.useRedis && this.redisClient) {
-            this.redisClient.del(key).catch(() => {})
-          }
         }
       }
 
@@ -388,10 +367,6 @@ export class BaseCacheService {
           memorySize: this.memoryCache.size,
         })
       }
-
-      // Note: For Redis, tag-based invalidation is limited to in-memory entries.
-      // Services should use explicit key deletion for reliable Redis invalidation.
-      logger.debug(`Tag invalidation completed for in-memory cache:[${tag}]`)
     } catch (error) {
       logger.error(`Cache invalidate by tag error:[${tag}]`, {
         error: error instanceof Error ? error.message : String(error),
@@ -401,25 +376,9 @@ export class BaseCacheService {
 
   /**
    * Invalidates all cache entries whose keys match the specified pattern
-   * Note: Only works reliably for in-memory cache entries.
-   * For Redis, only entries also present in memory will be invalidated.
+   * Uses Redis SCAN for reliable cross-instance invalidation
    *
    * @param pattern - Regular expression pattern to match against full cache keys (including prefix)
-   *
-   * @example
-   * ```typescript
-   * // Invalidate all user profile entries
-   * await cache.invalidateByPattern(/user:profile:/);
-   *
-   * // Invalidate all temporary entries
-   * await cache.invalidateByPattern(/temp:/);
-   *
-   * // Invalidate entries for specific user
-   * await cache.invalidateByPattern(/user:123:/);
-   *
-   * // Invalidate all API cache entries
-   * await cache.invalidateByPattern(/api:./);
-   * ```
    */
   async invalidateByPattern(pattern: RegExp): Promise<void> {
     if (this.isDevelopment) {
@@ -428,13 +387,58 @@ export class BaseCacheService {
 
     try {
       let invalidatedCount = 0
+
+      // Ensure Redis is ready before attempting to use it
+      const client = await this.ensureRedisReady()
+
+      // Handle Redis pattern-based invalidation using SCAN
+      if (this.useRedis && client) {
+        const redisPattern = `${this.keyPrefix}:*`
+        let cursor = '0'
+
+        do {
+          // SCAN is non-blocking and iterates through keys
+          const result = await client.scan(cursor, 'MATCH', redisPattern, 'COUNT', 100)
+          cursor = result[0]
+          const keys = result[1]
+
+          // Filter keys that match the RegExp pattern
+          const keysToDelete = keys.filter((key: string) => pattern.test(key))
+
+          if (keysToDelete.length > 0) {
+            // Also remove from tag sets before deleting
+            for (const key of keysToDelete) {
+              const data = await client.get(key)
+              if (data) {
+                try {
+                  const entry: CacheEntry<unknown> = JSON.parse(data)
+                  for (const tag of entry.tags) {
+                    const tagSetKey = this.getTagSetKey(tag)
+                    await client.srem(tagSetKey, key)
+                  }
+                } catch {
+                  // Ignore parse errors
+                }
+              }
+            }
+
+            await client.del(...keysToDelete)
+            invalidatedCount += keysToDelete.length
+
+            if (this.isDevelopment) {
+              logger.debug(`Deleted ${keysToDelete.length} Redis keys matching pattern`, {
+                pattern: pattern.source,
+                keys: keysToDelete,
+              })
+            }
+          }
+        } while (cursor !== '0')
+      }
+
+      // Also clean memory cache
       for (const key of this.memoryCache.keys()) {
         if (pattern.test(key)) {
           this.memoryCache.delete(key)
-          invalidatedCount++
-          if (this.useRedis && this.redisClient) {
-            this.redisClient.del(key).catch(() => {})
-          }
         }
       }
 
@@ -456,17 +460,7 @@ export class BaseCacheService {
   /**
    * Clears all cache entries for this service instance
    * Removes all entries from both in-memory cache and Redis (matching the key prefix)
-   *
-   * @example
-   * ```typescript
-   * // Clear all user cache
-   * const userCache = new BaseCacheService('user:', 3600);
-   * await userCache.clear(); // Only clears keys starting with 'user:'
-   *
-   * // Clear all cache
-   * const globalCache = new BaseCacheService('', 900);
-   * await globalCache.clear(); // Clears all keys (dangerous!)
-   * ```
+   * Uses SCAN for non-blocking iteration
    */
   async clear(): Promise<void> {
     if (this.isDevelopment) {
@@ -477,14 +471,25 @@ export class BaseCacheService {
       const memorySize = this.memoryCache.size
       this.memoryCache.clear()
 
+      // Ensure Redis is ready before attempting to use it
+      const client = await this.ensureRedisReady()
+
       let redisKeysCleared = 0
-      if (this.useRedis && this.redisClient) {
-        // Clear only keys with our prefix
-        const keys = await this.redisClient.keys?.(`${this.keyPrefix}*`)
-        if (keys && keys.length > 0) {
-          redisKeysCleared = keys.length
-          await this.redisClient.del(keys)
-        }
+      if (this.useRedis && client) {
+        // Use SCAN instead of KEYS for non-blocking iteration
+        const pattern = `${this.keyPrefix}:*`
+        let cursor = '0'
+
+        do {
+          const result = await client.scan(cursor, 'MATCH', pattern, 'COUNT', 100)
+          cursor = result[0]
+          const keys = result[1]
+
+          if (keys.length > 0) {
+            await client.del(...keys)
+            redisKeysCleared += keys.length
+          }
+        } while (cursor !== '0')
       }
 
       if (this.isDevelopment) {
@@ -503,10 +508,6 @@ export class BaseCacheService {
 
   /**
    * Generates the full cache key by combining prefix with the provided key
-   *
-   * @private
-   * @param key - The base cache key
-   * @returns The full cache key with prefix
    */
   private getFullKey(key: string): string {
     return this.keyPrefix ? `${this.keyPrefix}:${key}` : key
@@ -515,27 +516,6 @@ export class BaseCacheService {
   /**
    * Utility method for building hierarchical cache keys from multiple parts
    * Filters out empty/falsy parts and joins with colons
-   *
-   * @protected
-   * @param parts - Array of key parts to join
-   * @returns Joined cache key
-   *
-   * @example
-   * ```typescript
-   * class UserCacheService extends BaseCacheService {
-   *   async cacheUserProfile(userId: string, profileType: string) {
-   *     const key = this.buildKey('profile', profileType, userId);
-   *     // Result: 'profile:basic:123' or 'profile:extended:456'
-   *     await this.set(key, profileData);
-   *   }
-   *
-   *   async cacheUserPreferences(userId: string, category?: string) {
-   *     const key = this.buildKey('preferences', category, userId);
-   *     // Result: 'preferences:ui:123' or 'preferences:123' (if category is empty)
-   *     await this.set(key, preferences);
-   *   }
-   * }
-   * ```
    */
   protected buildKey(...parts: string[]): string {
     return parts.filter(Boolean).join(':')

@@ -1,12 +1,13 @@
 // packages/lib/src/organizations/organization-service.ts
 // ** CONTAINS LOGIC TO DELETE OTHER USERS - USE WITH EXTREME CAUTION **
 import { schema, type Database } from '@auxx/database'
-import { eq, and, sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 
 import { MessageService, IntegrationProviderType } from '../email/message-service' // Adjust path as needed
 import { OrganizationRole } from '@auxx/database/enums'
+import { MemberService } from '../members/member-service'
 const logger = createScopedLogger('organization-service')
 /**
  * Service class for managing core Organization operations, including deletion.
@@ -29,16 +30,8 @@ export class OrganizationService {
    */
   private async verifyOwnerOrFail(userId: string, organizationId: string): Promise<void> {
     logger.debug(`Verifying owner status for user ${userId} in org ${organizationId}`)
-    const [membership] = await this.db
-      .select({ role: schema.OrganizationMember.role })
-      .from(schema.OrganizationMember)
-      .where(
-        and(
-          eq(schema.OrganizationMember.userId, userId),
-          eq(schema.OrganizationMember.organizationId, organizationId)
-        )
-      )
-      .limit(1)
+    const membership = await MemberService.getMembership(userId, organizationId, this.db)
+
     if (!membership) {
       logger.warn(`Verification failed: User ${userId} not found in org ${organizationId}`)
       throw new TRPCError({

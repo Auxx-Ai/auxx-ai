@@ -114,7 +114,7 @@ export function MemberList({
   const [isRoleDialogOpen, setIsRoleDialogOpen] = useState(false)
   const [newRole, setNewRole] = useState<OrganizationRole | null>(null)
   const [copyingInviteId, setCopyingInviteId] = useState<string | null>(null) // Track which link is being copied
-  const removeUserMutation = api.organization.removeMember.useMutation({
+  const removeUserMutation = api.member.remove.useMutation({
     onSuccess: () => {
       toastSuccess({ description: 'Member removed' })
       setIsRemoveDialogOpen(false)
@@ -123,7 +123,7 @@ export function MemberList({
     },
     onError: (error) => toastError({ title: 'Error removing member', description: error.message }),
   })
-  const updateRoleMutation = api.organization.updateMemberRole.useMutation({
+  const updateRoleMutation = api.member.updateRole.useMutation({
     onSuccess: () => {
       toastSuccess({
         title: 'Role updated',
@@ -137,7 +137,7 @@ export function MemberList({
       toastError({ title: 'Error', description: error.message })
     },
   })
-  const cancelInviteMutation = api.organization.cancelInvitation.useMutation({
+  const cancelInviteMutation = api.member.cancelInvitation.useMutation({
     onSuccess: () => {
       toastSuccess({ description: 'Invitation cancelled' })
       setIsCancelInviteDialogOpen(false)
@@ -147,7 +147,7 @@ export function MemberList({
     onError: (error) =>
       toastError({ title: 'Error cancelling invitation', description: error.message }),
   })
-  const resendInviteMutation = api.organization.resendInvitation.useMutation({
+  const resendInviteMutation = api.member.resendInvitation.useMutation({
     onSuccess: (data) => {
       toastSuccess({ description: data.message || 'Invitation resent' })
       onMemberUpdate?.()
@@ -155,7 +155,7 @@ export function MemberList({
     onError: (error) =>
       toastError({ title: 'Error resending invitation', description: error.message }),
   })
-  const getAndCopyLinkMutation = api.organization.getInvitationLink.useMutation({
+  const getAndCopyLinkMutation = api.member.getInvitationLink.useMutation({
     // onSuccess is called with the *direct return value* of the procedure
     onSuccess: async (data) => {
       // data here is { link: "..." } as returned by the query

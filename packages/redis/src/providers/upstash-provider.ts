@@ -210,6 +210,37 @@ export function createUpstashClient(): RedisClient {
       }
     },
 
+    // Set operations
+    sadd: async (key: string, ...members: string[]) => {
+      try {
+        return await upstashClient.sadd(key, ...members)
+      } catch (error) {
+        logger.error('Error adding to set in Upstash', { key, error: (error as Error).message })
+        throw error
+      }
+    },
+
+    srem: async (key: string, ...members: string[]) => {
+      try {
+        return await upstashClient.srem(key, ...members)
+      } catch (error) {
+        logger.error('Error removing from set in Upstash', { key, error: (error as Error).message })
+        throw error
+      }
+    },
+
+    smembers: async (key: string) => {
+      try {
+        return await upstashClient.smembers(key)
+      } catch (error) {
+        logger.error('Error getting set members in Upstash', {
+          key,
+          error: (error as Error).message,
+        })
+        throw error
+      }
+    },
+
     // Sorted set operations
     zadd: async (key: string, ...args: any[]) => {
       try {

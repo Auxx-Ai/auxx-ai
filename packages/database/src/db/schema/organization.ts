@@ -7,6 +7,7 @@ import {
   index,
   text,
   timestamp,
+  boolean,
   type AnyPgColumn,
   organizationType,
 } from './_shared'
@@ -37,6 +38,7 @@ export const Organization = pgTable(
     disabledAt: timestamp({ precision: 3 }),
     disabledReason: text(),
     disabledBy: text(),
+    completedOnboarding: boolean().default(false),
   },
   (table) => [
     index('Organization_handle_idx').using('btree', table.handle.asc().nullsLast()),

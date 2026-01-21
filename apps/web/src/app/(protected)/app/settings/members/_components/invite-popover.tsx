@@ -43,7 +43,7 @@ export default function InviteFormPopover({ children }: InviteFormProps) {
     resolver: standardSchemaResolver(formSchema),
     defaultValues: { email: '', role: OrganizationRole.USER },
   })
-  const inviteUser = api.organization.inviteUser.useMutation({
+  const inviteUser = api.member.invite.useMutation({
     onSuccess: () => {
       toastSuccess({
         title: 'Invitation sent',

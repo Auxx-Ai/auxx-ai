@@ -1,0 +1,1 @@
+ALTER TABLE "Organization" ADD COLUMN "completedOnboarding" boolean DEFAULT false;

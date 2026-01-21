@@ -38,6 +38,7 @@ export class DehydrationCacheService extends BaseCacheService {
 
   /**
    * Invalidate cache for a specific user
+   * Uses Redis Sets for reliable cross-instance invalidation
    * @param userId - User ID
    */
   async invalidateUser(userId: string): Promise<void> {

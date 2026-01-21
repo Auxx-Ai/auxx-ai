@@ -85,6 +85,8 @@ const OnboardingContext = createContext<OnboardingContextValue | null>(null)
  */
 interface OnboardingProviderProps {
   children: ReactNode
+  /** Optional starting step (1-4) to skip completed steps */
+  startStep?: 1 | 2 | 3 | 4
 }
 /**
  * Maps route paths to step numbers
@@ -107,22 +109,30 @@ const stepToPath: Record<number, string> = {
 /**
  * Onboarding provider component
  */
-export function OnboardingProvider({ children }: OnboardingProviderProps) {
+export function OnboardingProvider({ children, startStep = 1 }: OnboardingProviderProps) {
   const router = useRouter()
   const pathname = usePathname()
-  const [state, setState] = useState<OnboardingState>(defaultState)
+  const [state, setState] = useState<OnboardingState>(() => ({
+    ...defaultState,
+    currentStep: startStep,
+    // Mark previous steps as completed when starting from a later step
+    completedSteps: Array.from({ length: startStep - 1 }, (_, i) => i + 1),
+  }))
   // Load state from sessionStorage on mount
   useEffect(() => {
     const savedState = sessionStorage.getItem(STORAGE_KEY)
     if (savedState) {
       try {
         const parsed = JSON.parse(savedState)
-        setState(parsed)
+        // Only use saved state if it's from the same or later step
+        if (parsed.currentStep >= startStep) {
+          setState(parsed)
+        }
       } catch (error) {
         console.error('Failed to parse saved onboarding state:', error)
       }
     }
-  }, [])
+  }, [startStep])
   // Save state to sessionStorage whenever it changes
   useEffect(() => {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state))

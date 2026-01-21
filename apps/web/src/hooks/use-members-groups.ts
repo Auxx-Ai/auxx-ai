@@ -1,15 +1,17 @@
-// /app/settings/inbox/_hooks/use-members-and-groups.ts
+// apps/web/src/hooks/use-members-groups.ts
 import { keepPreviousData } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { api } from '~/trpc/react'
-// import { Group, Member } from '../_components/member-group-popover'
 
+/** Result interface for the useMembersGroups hook */
 interface UseMembersAndGroupsResult {
   members: Member[]
   groups: Group[]
   isLoading: boolean
   error: Error | null
 }
+
+/** Member data structure */
 export interface Member {
   id: string // OrganizationMember ID
   userId: string // User ID for notifications
@@ -18,6 +20,7 @@ export interface Member {
   picture?: string
 }
 
+/** Group data structure */
 export interface Group {
   id: string
   name: string
@@ -37,26 +40,22 @@ export function useMembersGroups(searchQuery?: string): UseMembersAndGroupsResul
     data: membersData,
     isLoading: isLoadingMembers,
     error: membersError,
-  } = api.organization.allMembers.useQuery(
+  } = api.member.all.useQuery(
     { search: searchQuery || '' },
     {
-      // Only refetch when search query changes
       placeholderData: keepPreviousData,
-      onError: (err) => setError(err),
     }
   )
 
-  // Fetch groups
+  // Fetch groups (using new entityGroup API)
   const {
     data: groupsData,
     isLoading: isLoadingGroups,
     error: groupsError,
-  } = api.group.all.useQuery(
-    { search: searchQuery || '' },
+  } = api.entityGroup.list.useQuery(
+    { search: searchQuery },
     {
-      // Only refetch when search query changes
       placeholderData: keepPreviousData,
-      onError: (err) => setError(err),
     }
   )
 
@@ -76,12 +75,16 @@ export function useMembersGroups(searchQuery?: string): UseMembersAndGroupsResul
       picture: member.user.image || undefined,
     })) || []
 
+  // Map groups from EntityInstance format to Group format
   const groups: Group[] =
-    groupsData?.groups?.map((group) => ({
-      id: group.id,
-      name: group.name,
-      memberCount: group.memberCount || 0,
-    })) || []
+    groupsData?.map((group) => {
+      const metadata = (group.metadata as { memberCount?: number }) || {}
+      return {
+        id: group.id,
+        name: group.displayName || 'Group',
+        memberCount: metadata.memberCount || 0,
+      }
+    }) || []
 
   return {
     members,

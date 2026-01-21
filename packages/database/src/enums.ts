@@ -1356,3 +1356,45 @@ export const GroupVisibility = {
   public: 'public',
   private: 'private',
 } as const
+
+// ============================================================================
+// RESOURCE ACCESS ENUMS
+// ============================================================================
+
+/**
+ * Built-in entity definition identifiers for system resources.
+ * These are used as entityDefinitionId values for non-custom entities.
+ *
+ * Custom entities use their actual EntityDefinition.id (CUID) instead.
+ */
+export const BuiltInEntityTypeValues = ['inbox', 'snippet', 'folder', 'workflow', 'document'] as const
+export type BuiltInEntityType = (typeof BuiltInEntityTypeValues)[number]
+
+export const BuiltInEntityType = {
+  inbox: 'inbox',
+  snippet: 'snippet',
+  folder: 'folder',
+  workflow: 'workflow',
+  document: 'document',
+} as const
+
+/** Grantee types for resource access */
+export const ResourceGranteeTypeValues = ['group', 'user', 'team', 'role'] as const
+export type ResourceGranteeType = (typeof ResourceGranteeTypeValues)[number]
+
+export const ResourceGranteeType = {
+  group: 'group',
+  user: 'user',
+  team: 'team',
+  role: 'role',
+} as const
+
+/** Permission levels for resource access - hierarchical */
+export const ResourcePermissionValues = ['view', 'edit', 'admin'] as const
+export type ResourcePermission = (typeof ResourcePermissionValues)[number]
+
+export const ResourcePermission = {
+  view: 'view',
+  edit: 'edit',
+  admin: 'admin',
+} as const

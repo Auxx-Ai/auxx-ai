@@ -243,6 +243,7 @@ export class DehydrationService {
       handle: org.handle,
       about: org.about,
       createdAt: org.createdAt.toISOString(),
+      completedOnboarding: org.completedOnboarding ?? false,
       subscription: subscription
         ? {
             id: subscription.id,

@@ -2,7 +2,7 @@
 
 import { and, eq, inArray, or, desc } from 'drizzle-orm'
 import { schema } from '@auxx/database'
-import { PermissionLevel, GranteeType } from '@auxx/database/enums'
+import { PermissionLevel, GranteeType, MemberType } from '@auxx/database/enums'
 import type { GroupContext } from '@auxx/types/groups'
 import { satisfiesPermission } from '@auxx/types/groups'
 import { ForbiddenError } from '../errors'
@@ -30,12 +30,15 @@ export async function getGroupPermission(
     return PermissionLevel.admin
   }
 
-  // Get user's teams for team-based permissions
-  const userTeams = await db.query.GroupMember.findMany({
-    where: eq(schema.GroupMember.userId, userId),
-    columns: { groupId: true },
+  // Get user's teams for team-based permissions (from EntityGroupMember)
+  const userTeamMemberships = await db.query.EntityGroupMember.findMany({
+    where: and(
+      eq(schema.EntityGroupMember.memberType, MemberType.user),
+      eq(schema.EntityGroupMember.memberRefId, userId)
+    ),
+    columns: { groupInstanceId: true },
   })
-  const teamIds = userTeams.map((t) => t.groupId)
+  const teamIds = userTeamMemberships.map((t) => t.groupInstanceId)
 
   // Build OR conditions for permission lookup
   const granteeConditions = [

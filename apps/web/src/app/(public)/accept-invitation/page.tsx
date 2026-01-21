@@ -19,7 +19,7 @@ export default function AcceptInvitationPage() {
   const [error, setError] = useState<string | null>(null)
   const [processed, setProcessed] = useState(false) // Prevent multiple calls
 
-  const acceptMutation = api.organization.acceptInvitation.useMutation({
+  const acceptMutation = api.member.acceptInvitation.useMutation({
     onSuccess: (data) => {
       // Success! Redirect to the app dashboard or specific org page
       // Assumes session context/default org updates automatically or is refreshed

@@ -442,6 +442,20 @@
       "when": 1768939336507,
       "tag": "0062_add_entity_groups",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1768944795399,
+      "tag": "0063_add_group_member",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1768952494110,
+      "tag": "0064_add_onboarding_org",
+      "breakpoints": true
     }
   ]
 }

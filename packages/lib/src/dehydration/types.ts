@@ -98,6 +98,7 @@ export interface DehydratedOrganization {
   handle: string | null
   about: string | null
   createdAt: string
+  completedOnboarding: boolean
 
   // Subscription (nullable)
   subscription: {

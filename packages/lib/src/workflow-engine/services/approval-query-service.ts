@@ -4,7 +4,7 @@ import type { ApprovalStatus as ApprovalStatusType } from '@auxx/database/types'
 import { eq, and, or, gt, lt, gte, lte, sql, inArray, desc, count } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
 import { NotificationService } from '../../notifications/notification-service'
-import { ApprovalStatus } from '@auxx/database/enums'
+import { ApprovalStatus, MemberType } from '@auxx/database/enums'
 
 const logger = createScopedLogger('approval-query-service')
 /**
@@ -17,16 +17,16 @@ export class ApprovalQueryService {
    * Filters out approvals for workflows that are no longer running
    */
   async getPendingApprovalsForUser(userId: string, organizationId: string) {
-    // Get user's groups through groupMember relationship
+    // Get user's groups through EntityGroupMember
     const userGroupMemberships = await this.db
-      .select({ groupId: schema.GroupMember.groupId })
-      .from(schema.GroupMember)
-      .leftJoin(schema.Group, eq(schema.GroupMember.groupId, schema.Group.id))
+      .select({ groupId: schema.EntityGroupMember.groupInstanceId })
+      .from(schema.EntityGroupMember)
+      .innerJoin(schema.EntityInstance, eq(schema.EntityGroupMember.groupInstanceId, schema.EntityInstance.id))
       .where(
         and(
-          eq(schema.GroupMember.userId, userId),
-          eq(schema.GroupMember.isActive, true),
-          eq(schema.Group.organizationId, organizationId)
+          eq(schema.EntityGroupMember.memberType, MemberType.user),
+          eq(schema.EntityGroupMember.memberRefId, userId),
+          eq(schema.EntityInstance.organizationId, organizationId)
         )
       )
     const userGroups = userGroupMemberships.map((gm) => gm.groupId)
@@ -74,16 +74,16 @@ export class ApprovalQueryService {
    * Filters out approvals for workflows that are no longer running
    */
   async getPendingCount(userId: string, organizationId: string): Promise<number> {
-    // Get user's groups through groupMember relationship
+    // Get user's groups through EntityGroupMember
     const userGroupMemberships = await this.db
-      .select({ groupId: schema.GroupMember.groupId })
-      .from(schema.GroupMember)
-      .leftJoin(schema.Group, eq(schema.GroupMember.groupId, schema.Group.id))
+      .select({ groupId: schema.EntityGroupMember.groupInstanceId })
+      .from(schema.EntityGroupMember)
+      .innerJoin(schema.EntityInstance, eq(schema.EntityGroupMember.groupInstanceId, schema.EntityInstance.id))
       .where(
         and(
-          eq(schema.GroupMember.userId, userId),
-          eq(schema.GroupMember.isActive, true),
-          eq(schema.Group.organizationId, organizationId)
+          eq(schema.EntityGroupMember.memberType, MemberType.user),
+          eq(schema.EntityGroupMember.memberRefId, userId),
+          eq(schema.EntityInstance.organizationId, organizationId)
         )
       )
     const userGroups = userGroupMemberships.map((gm) => gm.groupId)
@@ -131,16 +131,16 @@ export class ApprovalQueryService {
       )
       .limit(1)
     if (!userMembership) return false
-    // Get user's groups through groupMember relationship
+    // Get user's groups through EntityGroupMember
     const userGroupMemberships = await this.db
-      .select({ groupId: schema.GroupMember.groupId })
-      .from(schema.GroupMember)
-      .leftJoin(schema.Group, eq(schema.GroupMember.groupId, schema.Group.id))
+      .select({ groupId: schema.EntityGroupMember.groupInstanceId })
+      .from(schema.EntityGroupMember)
+      .innerJoin(schema.EntityInstance, eq(schema.EntityGroupMember.groupInstanceId, schema.EntityInstance.id))
       .where(
         and(
-          eq(schema.GroupMember.userId, userId),
-          eq(schema.GroupMember.isActive, true),
-          eq(schema.Group.organizationId, request.organizationId)
+          eq(schema.EntityGroupMember.memberType, MemberType.user),
+          eq(schema.EntityGroupMember.memberRefId, userId),
+          eq(schema.EntityInstance.organizationId, request.organizationId)
         )
       )
     const userGroupIds = userGroupMemberships.map((gm) => gm.groupId)
@@ -494,14 +494,16 @@ export class ApprovalQueryService {
     const respondedUserIds = new Set((request.responses ?? []).map((r) => r.userId))
     // Get all potential approvers
     const allApprovers = new Set<string>(request.assigneeUsers ?? [])
-    // Add users from groups
+    // Add users from groups (via EntityGroupMember)
     if ((request.assigneeGroups?.length ?? 0) > 0) {
-      const groupMembers = await this.db.query.GroupMember.findMany({
-        where: (t, { inArray, eq }) =>
-          and(inArray(t.groupId, request.assigneeGroups as string[]), eq(t.isActive, true as any)),
-        columns: { userId: true },
+      const groupMembers = await this.db.query.EntityGroupMember.findMany({
+        where: and(
+          inArray(schema.EntityGroupMember.groupInstanceId, request.assigneeGroups as string[]),
+          eq(schema.EntityGroupMember.memberType, MemberType.user)
+        ),
+        columns: { memberRefId: true },
       })
-      groupMembers.forEach((member: { userId: string }) => allApprovers.add(member.userId))
+      groupMembers.forEach((member) => allApprovers.add(member.memberRefId))
     }
     // Return users who haven't responded
     return Array.from(allApprovers).filter((userId) => !respondedUserIds.has(userId))

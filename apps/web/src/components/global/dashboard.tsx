@@ -27,6 +27,10 @@ import { PusherProvider } from '~/providers/pusher-provider'
 import { useQueryClient } from '@tanstack/react-query'
 import { getQueryKey } from '@trpc/react-query'
 import { SidebarInset, SidebarProvider } from '@auxx/ui/components/sidebar'
+import {
+  useDehydratedOrganization,
+  useDehydratedOrganizationId,
+} from '~/providers/dehydrated-state-provider'
 
 type Props = { user?: any; children: React.ReactNode }
 
@@ -37,6 +41,11 @@ export const Dashboard = ({
 }: Props) => {
   const pathname = usePathname()
   const router = useRouter()
+
+  // Get organization's onboarding status from dehydrated state
+  const organizationId = useDehydratedOrganizationId()
+  const currentOrg = useDehydratedOrganization(organizationId)
+  const orgCompletedOnboarding = currentOrg?.completedOnboarding ?? false
 
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
   const [activeDragData, setActiveDragData] = useState<Record<string, any> | null>(null)
@@ -61,15 +70,13 @@ export const Dashboard = ({
   const utils = api.useUtils()
   const queryClient = useQueryClient()
 
-  if (!user?.completedOnboarding) {
+  // Check organization's onboarding status (not user's)
+  if (!orgCompletedOnboarding) {
     if (!pathname.includes('/app/onboarding')) {
-      // Redirect to onboarding if the user has not completed it
+      // Redirect to onboarding if the organization has not completed it
       window.location.href = '/app/onboarding'
-      // router.push('/app/onboarding')
       return null
     } else {
-      console.log(pathname)
-
       return <div className="onboarding">{children}</div>
     }
   }

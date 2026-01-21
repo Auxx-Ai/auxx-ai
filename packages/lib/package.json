@@ -82,6 +82,8 @@
     "./queues/types": "./src/jobs/queues/types.ts",
     "./realtime": "./src/realtime/index.ts",
     "./realtime/client": "./src/realtime/client/index.ts",
+    "./resource-access": "./src/resource-access/index.ts",
+    "./resource-access/client": "./src/resource-access/client.ts",
     "./resources": "./src/resources/index.ts",
     "./resources/client": "./src/resources/client.ts",
     "./resources/merge": "./src/resources/merge/index.ts",

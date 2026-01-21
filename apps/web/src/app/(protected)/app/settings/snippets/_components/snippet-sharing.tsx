@@ -60,10 +60,10 @@ export function SnippetSharing({
   const [selectedItems, setSelectedItems] = React.useState<ShareItem[]>([])
   const [memberSearchTerm, setMemberSearchTerm] = React.useState('')
   const [groupSearchTerm, setGroupSearchTerm] = React.useState('')
-  // Fetch groups
-  const { data: groupsData } = api.group.all.useQuery()
+  // Fetch groups (using new entityGroup API)
+  const { data: groupsData } = api.entityGroup.list.useQuery()
   // Fetch members
-  const { data: membersData } = api.organization.allMembers.useQuery({})
+  const { data: membersData } = api.member.all.useQuery({})
   // Fetch existing snippet shares if editing
   const { data: snippetData, isLoading: isLoadingSnippet } = api.snippet.byId.useQuery(
     { id: snippetId || '' },
@@ -99,13 +99,13 @@ export function SnippetSharing({
   )
   // Filter groups
   const filteredGroups = React.useMemo(() => {
-    if (!groupsData?.groups) return []
-    return groupsData.groups.filter(
+    if (!groupsData) return []
+    return groupsData.filter(
       (group) =>
         !selectedItems.some((item) => item.type === 'group' && item.id === group.id) &&
-        (groupSearchTerm ? group.name.toLowerCase().includes(groupSearchTerm.toLowerCase()) : true)
+        (groupSearchTerm ? group.displayName?.toLowerCase().includes(groupSearchTerm.toLowerCase()) : true)
     )
-  }, [groupsData?.groups, selectedItems, groupSearchTerm])
+  }, [groupsData, selectedItems, groupSearchTerm])
   // Filter members
   const filteredMembers = React.useMemo(() => {
     if (!membersData?.members) return []
@@ -119,10 +119,11 @@ export function SnippetSharing({
     )
   }, [membersData?.members, selectedItems, memberSearchTerm])
   // Add group to selection
-  const addGroup = (group: (typeof groupsData.groups)[0]) => {
+  const addGroup = (group: (typeof groupsData)[0]) => {
+    const metadata = (group.metadata as { memberCount?: number }) || {}
     setSelectedItems([
       ...selectedItems,
-      { id: group.id, type: 'group', name: group.name, permission: 'VIEW' },
+      { id: group.id, type: 'group', name: group.displayName || 'Group', permission: 'VIEW' },
     ])
   }
   // Add member to selection
@@ -293,26 +294,29 @@ export function SnippetSharing({
                           : 'No available groups to add'}
                       </div>
                     ) : (
-                      filteredGroups.map((group) => (
-                        <div
-                          key={group.id}
-                          className="flex cursor-pointer items-center justify-between rounded-2xl border p-1 hover:bg-gray-50 dark:hover:bg-gray-800"
-                          onClick={() => addGroup(group)}>
-                          <div className="flex items-center">
-                            <Users2Icon size={18} className="mr-2" />
-                            <div className="flex flex-row gap-2">
-                              <div className="text-sm">{group.name}</div>
-                              <div className="text-xs text-gray-500">
-                                {group._count.members} member
-                                {group._count.members !== 1 ? 's' : ''}
+                      filteredGroups.map((group) => {
+                        const metadata = (group.metadata as { memberCount?: number }) || {}
+                        const memberCount = metadata.memberCount ?? 0
+                        return (
+                          <div
+                            key={group.id}
+                            className="flex cursor-pointer items-center justify-between rounded-2xl border p-1 hover:bg-gray-50 dark:hover:bg-gray-800"
+                            onClick={() => addGroup(group)}>
+                            <div className="flex items-center">
+                              <Users2Icon size={18} className="mr-2" />
+                              <div className="flex flex-row gap-2">
+                                <div className="text-sm">{group.displayName}</div>
+                                <div className="text-xs text-gray-500">
+                                  {memberCount} member{memberCount !== 1 ? 's' : ''}
+                                </div>
                               </div>
                             </div>
+                            <Button variant="ghost" size="icon" className="rounded-full">
+                              <PlusIcon />
+                            </Button>
                           </div>
-                          <Button variant="ghost" size="icon" className="rounded-full">
-                            <PlusIcon />
-                          </Button>
-                        </div>
-                      ))
+                        )
+                      })
                     )}
                   </div>
                 </div>

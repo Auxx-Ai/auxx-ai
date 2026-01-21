@@ -1,6 +1,6 @@
 // packages/services/src/entity-instances/create-entity-instance.ts
 
-import { database, schema } from '@auxx/database'
+import { type Database, database, schema } from '@auxx/database'
 import { ok, err } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 
@@ -8,23 +8,47 @@ import { fromDatabase } from '../shared/utils'
 export interface CreateEntityInstanceParams {
   entityDefinitionId: string
   organizationId: string
-  createdById?: string
+  createdById?: string | null
+  /** Primary display name */
+  displayName?: string | null
+  /** Secondary display value (subtitle/description) */
+  secondaryDisplayValue?: string | null
+  /** Avatar URL */
+  avatarUrl?: string | null
+  /** Generic metadata JSONB */
+  metadata?: Record<string, unknown> | null
 }
 
 /**
  * Create a new entity instance
  * Field values should be set separately using the custom field value service
+ * @param params - Creation parameters
+ * @param tx - Optional transaction context
  */
-export async function createEntityInstance(params: CreateEntityInstanceParams) {
-  const { entityDefinitionId, organizationId, createdById } = params
+export async function createEntityInstance(params: CreateEntityInstanceParams, tx?: Database) {
+  const {
+    entityDefinitionId,
+    organizationId,
+    createdById,
+    displayName,
+    secondaryDisplayValue,
+    avatarUrl,
+    metadata,
+  } = params
+
+  const db = tx ?? database
 
   const dbResult = await fromDatabase(
-    database
+    db
       .insert(schema.EntityInstance)
       .values({
         entityDefinitionId,
         organizationId,
         createdById: createdById ?? null,
+        displayName: displayName ?? null,
+        secondaryDisplayValue: secondaryDisplayValue ?? null,
+        avatarUrl: avatarUrl ?? null,
+        metadata: metadata ?? null,
         updatedAt: new Date(),
       })
       .returning(),

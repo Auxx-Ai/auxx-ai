@@ -1,9 +1,10 @@
 // server/email/permissions.ts
 import { TRPCError } from '@trpc/server'
-import { database as db, schema } from '@auxx/database'
-import { and, eq } from 'drizzle-orm'
+import { database as db } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { OrganizationRole } from '@auxx/database/enums'
+import { MemberService } from '../members/member-service'
+
 const logger = createScopedLogger('permissions')
 interface SessionUser {
   id: string
@@ -23,20 +24,11 @@ interface SessionUser {
  */
 async function checkIsAdmin(userId: string, organizationId: string): Promise<boolean> {
   try {
-    const [member] = await db
-      .select({ role: schema.OrganizationMember.role })
-      .from(schema.OrganizationMember)
-      .where(
-        and(
-          eq(schema.OrganizationMember.userId, userId),
-          eq(schema.OrganizationMember.organizationId, organizationId)
-        )
-      )
-      .limit(1)
-    if (!member) {
+    const membership = await MemberService.getMembership(userId, organizationId, db)
+    if (!membership) {
       return false
     }
-    return member.role === OrganizationRole.ADMIN || member.role === OrganizationRole.OWNER
+    return membership.role === OrganizationRole.ADMIN || membership.role === OrganizationRole.OWNER
   } catch (error) {
     logger.error('Error checking admin permissions:', { error })
     return false

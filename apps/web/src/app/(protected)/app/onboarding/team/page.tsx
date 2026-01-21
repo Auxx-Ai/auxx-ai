@@ -42,7 +42,7 @@ export default function TeamOnboardingPage() {
   // API mutations
   const updateOrganization = api.organization.update.useMutation()
   const updateUserProfile = api.user.updateProfile.useMutation()
-  const inviteBatch = api.organization.inviteBatch.useMutation()
+  const inviteBatch = api.member.inviteBatch.useMutation()
   // Add new invite row
   const addInvite = () => {
     setInvites([...invites, { email: '', role: OrganizationRoleEnum.USER }])

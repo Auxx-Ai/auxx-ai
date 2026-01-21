@@ -42,6 +42,11 @@ export interface RedisClient {
   // Cursor-based iteration (safe for production)
   scan(cursor: string, ...args: any[]): Promise<[string, string[]]>
 
+  // Set operations (Redis 1.0+)
+  sadd(key: string, ...members: string[]): Promise<number>
+  srem(key: string, ...members: string[]): Promise<number>
+  smembers(key: string): Promise<string[]>
+
   // Sorted set operations (Redis 2.0+)
   zadd(key: string, score: number, member: string): Promise<number>
   zadd(key: string, ...args: (number | string)[]): Promise<number>

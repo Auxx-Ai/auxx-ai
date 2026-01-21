@@ -29,6 +29,3 @@ export {
   GroupVisibility,
   GroupVisibilityValues,
 } from '@auxx/database/enums'
-
-// Re-export enum types
-export type { MemberType, PermissionLevel, GranteeType, GroupVisibility } from '@auxx/database/enums'
