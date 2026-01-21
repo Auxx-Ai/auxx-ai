@@ -70,6 +70,7 @@ export const FieldTypeValues = [
   'FILE',
   'NAME',
   'RELATIONSHIP',
+  'CALC',
 ] as const
 
 export const CustomerSourceTypeValues = [
@@ -695,6 +696,7 @@ export const FieldType = {
   FILE: 'FILE',
   NAME: 'NAME',
   RELATIONSHIP: 'RELATIONSHIP',
+  CALC: 'CALC',
 } as const
 
 export const CustomerSourceType = {

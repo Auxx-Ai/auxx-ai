@@ -32,6 +32,7 @@ export const FIELD_TYPE_TO_VALUE_TYPE = {
   [FieldType.FILE]: 'json',
   [FieldType.ADDRESS]: 'text',
   [FieldType.ADDRESS_STRUCT]: 'json',
+  [FieldType.CALC]: 'computed', // Computed on-the-fly, not stored
 } as const
 
 /** Value type discriminator */

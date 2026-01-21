@@ -59,25 +59,15 @@ export function EditableSidebarItem({
           // Draggable handle (only if draggable and not locked)
           <div
             className="mr-2 cursor-move touch-none"
-            {...attributes} // DnD attributes for the handle
-            {...listeners} // DnD listeners for the handle
-          >
+            {...attributes}
+            {...listeners}>
             <GripVertical className="size-4 text-muted-foreground" />
           </div>
         ) : (
-          // Placeholder or Lock icon/space
-          <div className="mr-2 size-4" /> // Keep spacing consistent
-          // Could potentially show a Lock icon here if isLocked is true
+          // For locked items, show icon in place of drag handle
+          icon && <span className="mr-2">{icon}</span>
         )}
-        <div className="flex items-center">
-          {/* Show icon only if locked (as per original logic) OR if not draggable */}
-          {/* Adjust this logic if icons should always show */}
-          {(isLocked || !isDraggable) && icon && <span className="mr-2">{icon}</span>}
-          {/* If item is draggable, maybe we want to show the inbox color dot? */}
-          {/* This requires passing the color prop */}
-          {/* {isDraggable && color && ( <div className='mr-2 h-2 w-2 rounded-full' style={{ backgroundColor: color }} /> )} */}
-          <span>{name}</span>
-        </div>
+        <span>{name}</span>
       </div>
 
       {/* Locked items can't be toggled */}

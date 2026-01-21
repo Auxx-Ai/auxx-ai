@@ -177,6 +177,7 @@ import {
   CalendarClock,
   ListChecks,
   Link2,
+  Calculator,
 } from 'lucide-react'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@auxx/ui/lib/utils'
@@ -493,6 +494,7 @@ export const ICON_DATA: IconItem[] = [
   { id: 'calendar-clock', label: 'Calendar Clock', icon: CalendarClock },
   { id: 'list-checks', label: 'List Checks', icon: ListChecks },
   { id: 'link-2', label: 'Link 2', icon: Link2 },
+  { id: 'calculator', label: 'Calculator', icon: Calculator },
 ]
 
 /** Get icon item by ID */

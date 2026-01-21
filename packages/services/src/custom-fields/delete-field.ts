@@ -7,6 +7,7 @@ import { fromDatabase } from '../shared/utils'
 import { type RelationshipConfig, getInverseFieldId } from './types'
 import type { CustomFieldNotFoundError, AccessDeniedError } from './errors'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
+import type { CalcOptions } from '@auxx/lib/custom-fields/field-options'
 
 /**
  * Input for deleting a custom field
@@ -86,6 +87,54 @@ export async function deleteCustomField(input: DeleteCustomFieldInput) {
           )
       }
 
+      // Find and disable CALC fields that depend on the deleted field
+      const deletedFieldId = id
+      const allCalcFields = await tx
+        .select()
+        .from(schema.CustomField)
+        .where(
+          and(
+            eq(schema.CustomField.organizationId, organizationId),
+            eq(schema.CustomField.entityDefinitionId, field.entityDefinitionId!),
+            eq(schema.CustomField.type, 'CALC' as any)
+          )
+        )
+
+      // Check each CALC field's sourceFields for dependency on deleted field
+      const disabledCalcFieldIds: string[] = []
+      for (const calcField of allCalcFields) {
+        const calcOptions = (calcField.options as { calc?: CalcOptions })?.calc
+        if (!calcOptions?.sourceFields) continue
+
+        // sourceFields is Record<placeholderName, fieldId>
+        const sourceFieldIds = Object.values(calcOptions.sourceFields)
+        if (sourceFieldIds.includes(deletedFieldId)) {
+          // Disable this CALC field
+          await tx
+            .update(schema.CustomField)
+            .set({
+              options: {
+                ...calcField.options,
+                calc: {
+                  ...calcOptions,
+                  disabled: true,
+                  disabledReason: `Source field was deleted`,
+                },
+              },
+              updatedAt: new Date(),
+            })
+            .where(eq(schema.CustomField.id, calcField.id))
+
+          disabledCalcFieldIds.push(calcField.id)
+        }
+      }
+
+      if (disabledCalcFieldIds.length > 0) {
+        console.log(
+          `Disabled ${disabledCalcFieldIds.length} CALC fields due to deletion of field ${deletedFieldId}`
+        )
+      }
+
       // Delete primary field
       await tx
         .delete(schema.CustomField)
@@ -96,6 +145,7 @@ export async function deleteCustomField(input: DeleteCustomFieldInput) {
       return {
         success: true,
         deletedFieldIds: inverseFieldId ? [id, inverseFieldId] : [id],
+        disabledCalcFieldIds,
       }
     }),
     'delete-custom-field'

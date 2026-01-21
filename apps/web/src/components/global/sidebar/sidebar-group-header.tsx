@@ -104,7 +104,11 @@ export function SidebarGroupHeader({
             <DropdownMenuGroup>
               {additionalOptions}
               {!hideEditOption && (
-                <DropdownMenuItem onClick={onToggleEditMode}>
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onToggleEditMode()
+                  }}>
                   {isEditMode ? <Check /> : <Pencil />}
                   {isEditMode ? 'Done Editing' : 'Edit Sidebar'}
                 </DropdownMenuItem>

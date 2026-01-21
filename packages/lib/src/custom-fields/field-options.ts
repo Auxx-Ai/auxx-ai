@@ -1,6 +1,7 @@
 // packages/lib/src/custom-fields/field-options.ts
 
 import type { CurrencyOptions, RelationshipConfig } from '@auxx/types/custom-field'
+import type { FieldType } from '@auxx/database/types'
 
 /**
  * Unified field options interface.
@@ -89,7 +90,37 @@ export interface FieldOptions {
   icon?: string
   /** Whether this is a custom field (false for system fields) */
   isCustom?: boolean
+
+  // ─────────────────────────────────────────────────────────────
+  // CALC (calculated/formula field)
+  // ─────────────────────────────────────────────────────────────
+  calc?: CalcOptions
 }
+
+/**
+ * Options for CALC (calculated) fields.
+ * CALC fields compute their value based on expressions referencing other fields.
+ * Values are computed on-the-fly during display (not stored in the database).
+ */
+export interface CalcOptions {
+  /** The expression to evaluate, e.g., 'multiply({{quantity}}, {{unitPrice}})' */
+  expression: string
+  /**
+   * Maps expression placeholder names to field IDs (database UUIDs).
+   * Key: placeholder name used in expression (e.g., 'quantity')
+   * Value: the field ID (UUID) of the referenced field
+   */
+  sourceFields: Record<string, string>
+  /** Field type to use for formatting the result (e.g., 'CURRENCY', 'NUMBER', 'TEXT') */
+  resultFieldType: FieldType
+  /** Whether this field is disabled due to missing dependencies */
+  disabled?: boolean
+  /** Reason why the field is disabled (e.g., 'Source field "quantity" was deleted') */
+  disabledReason?: string
+}
+
+/** Narrowed options type for CALC fields */
+export type CalcFieldOptions = Pick<FieldOptions, 'calc'>
 
 // ─────────────────────────────────────────────────────────────
 // NARROWED FIELD OPTIONS (Pick from FieldOptions)

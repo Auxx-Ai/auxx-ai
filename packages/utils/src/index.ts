@@ -156,3 +156,13 @@ export {
   formatTimeRemaining,
   formatAbsoluteDate,
 } from './task-date'
+
+// Calc expression utilities
+export {
+  evaluateCalcExpression,
+  validateCalcExpression,
+  getAvailableFunctions,
+  CALC_FUNCTIONS,
+  type CalcFunction,
+  type ParsedExpression,
+} from './calc-expression'

@@ -73,7 +73,17 @@ export {
   jsonConverter,
   nameConverter,
   fileConverter,
+  calcConverter,
 } from './converters'
+
+// CALC expression evaluator - re-exported from @auxx/utils
+export {
+  evaluateCalcExpression,
+  validateCalcExpression,
+  getAvailableFunctions,
+  type CalcFunction,
+  type ParsedExpression,
+} from '@auxx/utils/calc-expression'
 
 // Relationship utilities
 export {

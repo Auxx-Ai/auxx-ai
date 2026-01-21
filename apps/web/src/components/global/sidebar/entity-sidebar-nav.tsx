@@ -1,34 +1,55 @@
 // apps/web/src/components/global/sidebar/entity-sidebar-nav.tsx
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { api } from '~/trpc/react'
-import { Archive, Calculator, PackagePlus, Pencil, Plus, Settings, UserPlus } from 'lucide-react'
-import { useResources } from '~/components/resources/hooks'
+import { Archive, Pencil, Plus, Settings, Settings2 } from 'lucide-react'
 import type { CustomResource } from '@auxx/lib/resources/client'
 
-/** Entity ID type for sidebar state */
-type EntityDefinitionId = string
 import {
   SidebarGroup,
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuSkeleton,
+  SidebarMenuButton,
 } from '@auxx/ui/components/sidebar'
+import { Button } from '@auxx/ui/components/button'
 import { SidebarGroupHeader } from '~/components/global/sidebar/sidebar-group-header'
+import { SidebarItem } from './sidebar-item'
+import { EditableSidebarItem } from './editable-sidebar-item'
 import { useSidebarStateContext } from './sidebar-state-context'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
-import { SidebarItem } from './sidebar-item'
-import { EntityIcon, getIcon } from '@auxx/ui/components/icons'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import { EntityDefinitionDialog } from '~/components/custom-fields/ui/entity-definition-dialog'
 import { useConfirm } from '~/hooks/use-confirm'
-import { useEntityDefinitionMutations } from '~/components/resources/hooks'
-import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { useEntityDefinitionMutations, useResources } from '~/components/resources/hooks'
+import { useEntitySidebar, type ProcessedEntity } from '~/hooks/use-entity-sidebar'
+import { toastError } from '@auxx/ui/components/toast'
+
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
+
+/** Entity ID type for sidebar state */
+type EntityDefinitionId = string
 
 /**
  * Sidebar navigation component for dynamic entity definitions.
  * Displays entity definitions under "Records" section with icons.
+ * Supports edit mode with drag-and-drop reordering and visibility toggles.
  */
 export function EntitySidebarNav() {
   const pathname = usePathname()
@@ -40,29 +61,75 @@ export function EntitySidebarNav() {
   const { getGroupOpen, toggleGroup } = useSidebarStateContext()
   const isOpen = getGroupOpen('records')
 
-  // Recalculate all part costs mutation
-  const calculateAllCosts = api.part.calculateAllCosts.useMutation({
-    onSuccess: () => {
-      toastSuccess({ title: 'Costs recalculated successfully' })
-    },
-    onError: (error) => {
-      toastError({ title: 'Error recalculating costs', description: error.message })
-    },
-  })
+  // Use the entity sidebar hook for edit mode, visibility, and ordering
+  const {
+    isEditMode,
+    entities,
+    isLoading,
+    toggleEditMode,
+    updateEntityVisibility,
+    updateEntityOrder,
+    isGroupVisible,
+    toggleGroupVisibility,
+  } = useEntitySidebar()
+
+  // Get custom resources for entity actions (edit/archive)
+  const { customResources } = useResources()
+
+  // DnD sensors setup
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 5 },
+    }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
+
+  // Close edit mode when unmounting
+  useEffect(() => {
+    return () => {
+      if (isEditMode) {
+        toggleEditMode()
+      }
+    }
+  }, [isEditMode, toggleEditMode])
 
   /** Toggle the Records group open/closed state */
   function handleToggleOpen() {
     toggleGroup('records')
   }
 
-  // Get custom entities from resource store
-  const { customResources, isLoading } = useResources()
+  /** Toggle entity visibility in edit mode */
+  const handleToggleVisibility = useCallback(
+    (entityId: string) => {
+      const entity = entities.find((e) => e.id === entityId)
+      if (entity && !entity.isLocked) {
+        updateEntityVisibility(entityId, !entity.isVisible)
+      }
+    },
+    [entities, updateEntityVisibility]
+  )
 
-  const dynamicEntities = customResources
+  /** Handle drag end event for reordering */
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event
+
+      if (over && active.id !== over.id) {
+        const oldIndex = entities.findIndex((item) => item.id === active.id)
+        const newIndex = entities.findIndex((item) => item.id === over.id)
+
+        if (oldIndex !== -1 && newIndex !== -1) {
+          const newOrderedEntities = arrayMove(entities, oldIndex, newIndex)
+          const newOrderIds = newOrderedEntities.map((entity) => entity.id)
+          updateEntityOrder(newOrderIds)
+        }
+      }
+    },
+    [entities, updateEntityOrder]
+  )
 
   /** Open dialog in edit mode */
   function handleEditEntity(entity: CustomResource) {
-    // Just store the ID - dialog will fetch data from store
     setEditingEntityId(entity.id)
     setDialogOpen(true)
   }
@@ -90,32 +157,18 @@ export function EntitySidebarNav() {
     }
   }
 
-  /** Check if contacts route is active */
-  function isContactsActive() {
-    return pathname === '/app/contacts' || pathname.startsWith('/app/contacts/')
-  }
-
-  /** Check if parts route is active */
-  function isPartsActive() {
-    return pathname === '/app/parts' || pathname.startsWith('/app/parts/')
-  }
-
   /** Check if tickets route is active */
   function isTicketsActive() {
     return pathname === '/app/tickets' || pathname.startsWith('/app/tickets/')
   }
 
-  /**
-   * Check if a route is active
-   */
+  /** Check if a custom entity route is active */
   function isActive(slug: string) {
     const url = `/app/custom/${slug}`
     return pathname === url || pathname.startsWith(`${url}/`)
   }
 
-  /**
-   * Render icon component for entity definition
-   */
+  /** Render icon component for entity definition */
   function renderIcon(iconId: string, color: string) {
     return (
       <EntityIcon
@@ -126,10 +179,113 @@ export function EntitySidebarNav() {
         className="-ms-0.5 inset-shadow-xs inset-shadow-black/20"
       />
     )
-    // const iconData = getIcon(iconId ?? 'circle')
-    // if (!iconData) return null
-    // const IconComponent = iconData.icon
-    // return <IconComponent className="size-4" />
+  }
+
+  // Filtered entities for normal mode (only visible ones)
+  const visibleEntities = entities.filter((e) => e.isVisible)
+  const allEntityIds = entities.map((e) => e.id)
+  const allItemsHidden = visibleEntities.length === 0
+
+  /** Get edit items for an entity */
+  function getEditItems(entity: ProcessedEntity) {
+    // Static entities don't have edit/archive options
+    if (entity.isStatic) {
+      return (
+        <DropdownMenuItem onClick={() => router.push('/app/tickets?create=true')}>
+          <Plus /> Create Ticket
+        </DropdownMenuItem>
+      )
+    }
+
+    // Find the corresponding custom resource for edit/archive actions
+    const resource = customResources?.find((r) => r.id === entity.id)
+    if (!resource) return null
+
+    const isSystemEntity = !!resource.entityType
+
+    return (
+      <>
+        {!isSystemEntity && (
+          <DropdownMenuItem onClick={() => handleEditEntity(resource)}>
+            <Pencil /> Edit Entity
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem
+          onClick={() => router.push(`/app/settings/custom-fields/${entity.apiSlug}`)}>
+          <Settings /> Manage Fields
+        </DropdownMenuItem>
+        {!isSystemEntity && <DropdownMenuSeparator />}
+        {!isSystemEntity && (
+          <DropdownMenuItem onClick={() => handleArchiveEntity(resource)} variant="destructive">
+            <Archive /> Archive
+          </DropdownMenuItem>
+        )}
+      </>
+    )
+  }
+
+  /** Render entity list in edit mode with DnD */
+  function renderEditModeList() {
+    if (entities.length === 0) {
+      return (
+        <SidebarMenuItem>
+          <div className="px-2 py-1.5 text-sm text-muted-foreground">No entities to edit</div>
+        </SidebarMenuItem>
+      )
+    }
+
+    return (
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+        modifiers={[restrictToVerticalAxis]}>
+        <SortableContext items={allEntityIds} strategy={verticalListSortingStrategy}>
+          {entities.map((entity) => (
+            <SidebarMenuItem key={entity.id} className="p-0">
+              <EditableSidebarItem
+                id={entity.id}
+                name={entity.isStatic ? entity.plural : entity.plural}
+                icon={renderIcon(entity.icon, entity.color)}
+                isVisible={entity.isVisible}
+                isLocked={entity.isLocked}
+                onToggleVisibility={handleToggleVisibility}
+                isDraggable={true}
+              />
+            </SidebarMenuItem>
+          ))}
+        </SortableContext>
+      </DndContext>
+    )
+  }
+
+  /** Render entity list in normal mode */
+  function renderNormalModeList() {
+    if (isLoading) {
+      return (
+        <>
+          <SidebarMenuSkeleton showIcon />
+          <SidebarMenuSkeleton showIcon />
+        </>
+      )
+    }
+
+    return visibleEntities.map((entity) => {
+      const entityActive = entity.isStatic ? isTicketsActive() : isActive(entity.apiSlug)
+
+      return (
+        <SidebarMenuItem key={entity.id}>
+          <SidebarItem
+            id={entity.id}
+            name={entity.plural}
+            href={entity.href}
+            icon={renderIcon(entity.icon, entity.color)}
+            isActive={entityActive}
+            editItems={getEditItems(entity)}
+          />
+        </SidebarMenuItem>
+      )
+    })
   }
 
   return (
@@ -137,10 +293,12 @@ export function EntitySidebarNav() {
       <SidebarGroup className="group">
         <SidebarGroupHeader
           title="Records"
-          isEditMode={false}
-          onToggleEditMode={() => {}}
+          isEditMode={isEditMode}
+          onToggleEditMode={toggleEditMode}
           isOpen={isOpen}
           toggleOpen={handleToggleOpen}
+          isGroupVisible={isGroupVisible}
+          onToggleGroupVisibility={toggleGroupVisibility}
           additionalOptions={
             <DropdownMenuItem
               onClick={(e) => {
@@ -151,130 +309,40 @@ export function EntitySidebarNav() {
             </DropdownMenuItem>
           }
         />
-        {isOpen && (
+
+        {/* Empty state when all items hidden (but group is visible) */}
+        {allItemsHidden && !isEditMode && isOpen && isGroupVisible && (
           <SidebarMenu className="gap-0">
-            {/* Static Contacts item - always first */}
             <SidebarMenuItem>
-              <SidebarItem
-                id="contacts"
-                name="Contacts"
-                href="/app/contacts"
-                icon={
-                  <EntityIcon
-                    iconId="users"
-                    color="gray"
-                    size="sm"
-                    inverse
-                    className="-ms-0.5 inset-shadow-xs inset-shadow-black/20"
-                  />
-                }
-                isActive={isContactsActive()}
-                editItems={
-                  <DropdownMenuItem onClick={() => router.push('/app/contacts?create=true')}>
-                    <UserPlus /> Create Contact
-                  </DropdownMenuItem>
-                }
-              />
+              <SidebarMenuButton onClick={toggleEditMode}>
+                <Settings2 />
+                <span>Edit Sidebar</span>
+              </SidebarMenuButton>
             </SidebarMenuItem>
-
-            {/* Static Support Tickets item - below Contacts */}
-            <SidebarMenuItem>
-              <SidebarItem
-                id="tickets"
-                name="Support Tickets"
-                href="/app/tickets"
-                icon={
-                  <EntityIcon
-                    iconId="tags"
-                    color="gray"
-                    size="sm"
-                    inverse
-                    className="-ms-0.5 inset-shadow-xs inset-shadow-black/20"
-                  />
-                }
-                isActive={isTicketsActive()}
-                editItems={
-                  <DropdownMenuItem onClick={() => router.push('/app/tickets?create=true')}>
-                    <Plus /> Create Ticket
-                  </DropdownMenuItem>
-                }
-              />
-            </SidebarMenuItem>
-
-            {/* Static Parts item - below Tickets */}
-            <SidebarMenuItem>
-              <SidebarItem
-                id="parts"
-                name="Parts"
-                href="/app/parts"
-                icon={
-                  <EntityIcon
-                    iconId="boxes"
-                    color="gray"
-                    size="sm"
-                    inverse
-                    className="-ms-0.5 inset-shadow-xs inset-shadow-black/20"
-                  />
-                }
-                isActive={isPartsActive()}
-                editItems={
-                  <>
-                    <DropdownMenuItem onClick={() => router.push('/app/parts?create=true')}>
-                      <PackagePlus /> Create Part
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => calculateAllCosts.mutate()}
-                      disabled={calculateAllCosts.isPending}>
-                      <Calculator /> Recalculate Costs
-                    </DropdownMenuItem>
-                  </>
-                }
-              />
-            </SidebarMenuItem>
-
-            {isLoading ? (
-              // Loading skeleton
-              <>
-                <SidebarMenuSkeleton showIcon />
-                <SidebarMenuSkeleton showIcon />
-              </>
-            ) : (
-              dynamicEntities?.map((entity) => {
-                const editItems = (
-                  <>
-                    <DropdownMenuItem onClick={() => handleEditEntity(entity)}>
-                      <Pencil /> Edit Entity
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => router.push(`/app/settings/custom-fields/${entity.apiSlug}`)}>
-                      <Settings /> Manage Fields
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={() => handleArchiveEntity(entity)}
-                      variant="destructive">
-                      <Archive /> Archive
-                    </DropdownMenuItem>
-                  </>
-                )
-
-                return (
-                  <SidebarMenuItem key={entity.id}>
-                    <SidebarItem
-                      id={entity.id}
-                      name={entity.plural}
-                      href={`/app/custom/${entity.apiSlug}`}
-                      icon={renderIcon(entity.icon, entity.color)}
-                      isActive={isActive(entity.apiSlug)}
-                      editItems={editItems}
-                    />
-                  </SidebarMenuItem>
-                )
-              })
-            )}
           </SidebarMenu>
         )}
+
+        {/* Entity list - only show when group is visible or in edit mode */}
+        {(isEditMode || (isOpen && isGroupVisible)) && !allItemsHidden && (
+          <SidebarMenu className="gap-0">
+            {isEditMode ? renderEditModeList() : renderNormalModeList()}
+          </SidebarMenu>
+        )}
+
+        {/* Edit mode list when all items are hidden */}
+        {isEditMode && allItemsHidden && (
+          <SidebarMenu className="gap-0">{renderEditModeList()}</SidebarMenu>
+        )}
       </SidebarGroup>
+
+      {/* Done button footer for edit mode */}
+      {isEditMode && (
+        <div className="flex shrink-0 items-center justify-end gap-2 border-t p-2">
+          <Button className="w-full rounded-md" size="sm" onClick={toggleEditMode}>
+            Done
+          </Button>
+        </div>
+      )}
 
       {dialogOpen && (
         <EntityDefinitionDialog

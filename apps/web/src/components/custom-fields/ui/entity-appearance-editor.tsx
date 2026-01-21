@@ -177,7 +177,7 @@ export function EntityAppearanceEditor({
         </div>
 
         {/* Right column: Preview */}
-        <div className="flex items-center justify-center border rounded-2xl p-4 bg-muted">
+        <div className="flex items-center justify-center border rounded-2xl p-4 bg-muted min-h-[120px]">
           <div className="max-w-[300px] w-full">
             <div className="flex items-center gap-2 rounded-2xl border bg-background py-2 ps-1 pe-2">
               <Avatar className="size-6">

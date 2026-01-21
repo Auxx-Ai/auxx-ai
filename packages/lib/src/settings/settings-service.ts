@@ -54,6 +54,27 @@ export const sidebarSettings = {
     type: 'object',
     description: 'Visibility settings for sidebar groups (Me, Views, Shared)',
   },
+  'sidebar.entities.order': {
+    key: 'sidebar.entities.order',
+    scope: 'SIDEBAR',
+    defaultValue: [],
+    type: 'object',
+    description: 'Order of entity definitions in the Records sidebar',
+  },
+  'sidebar.entities.visibility': {
+    key: 'sidebar.entities.visibility',
+    scope: 'SIDEBAR',
+    defaultValue: {},
+    type: 'object',
+    description: 'Visibility settings for entity definitions in the Records sidebar',
+  },
+  'sidebar.entities.groupVisible': {
+    key: 'sidebar.entities.groupVisible',
+    scope: 'SIDEBAR',
+    defaultValue: true,
+    type: 'boolean',
+    description: 'Visibility of the Records group in sidebar',
+  },
 }
 
 // Define a catalog of available settings with their metadata

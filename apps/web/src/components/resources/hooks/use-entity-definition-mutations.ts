@@ -3,7 +3,7 @@
 import { api } from '~/trpc/react'
 import { getResourceStoreState } from '~/components/resources/store/resource-store'
 import { toastError } from '@auxx/ui/components/toast'
-import type { CustomResource } from '@auxx/lib/resources/client'
+import type { CustomResource, DisplayFieldConfig } from '@auxx/lib/resources/client'
 
 /**
  * Hook that provides entity definition mutations with optimistic updates.
@@ -84,6 +84,40 @@ export function useEntityDefinitionMutations() {
       if (variables.data.plural !== undefined) optimisticUpdates.plural = variables.data.plural
       if (variables.data.icon !== undefined) optimisticUpdates.icon = variables.data.icon
       if (variables.data.color !== undefined) optimisticUpdates.color = variables.data.color
+
+      // Handle display field updates (primaryDisplayFieldId, secondaryDisplayFieldId, avatarFieldId)
+      const hasDisplayFieldUpdate =
+        variables.data.primaryDisplayFieldId !== undefined ||
+        variables.data.secondaryDisplayFieldId !== undefined ||
+        variables.data.avatarFieldId !== undefined
+
+      if (hasDisplayFieldUpdate) {
+        // Helper to build DisplayFieldConfig from field ID
+        const buildDisplayFieldConfig = (fieldId: string | null | undefined): DisplayFieldConfig | null => {
+          if (fieldId === null || fieldId === undefined) return null
+          const field = resource.fields.find((f) => f.id === fieldId)
+          if (!field) return null
+          return {
+            id: field.id,
+            name: field.label ?? field.key,
+            type: field.fieldType ?? field.type,
+          }
+        }
+
+        // Build updated display object (spread existing to preserve other properties)
+        optimisticUpdates.display = {
+          ...resource.display,
+          ...(variables.data.primaryDisplayFieldId !== undefined && {
+            primaryDisplayField: buildDisplayFieldConfig(variables.data.primaryDisplayFieldId),
+          }),
+          ...(variables.data.secondaryDisplayFieldId !== undefined && {
+            secondaryDisplayField: buildDisplayFieldConfig(variables.data.secondaryDisplayFieldId),
+          }),
+          ...(variables.data.avatarFieldId !== undefined && {
+            avatarField: buildDisplayFieldConfig(variables.data.avatarFieldId),
+          }),
+        }
+      }
 
       // Only apply optimistic update if there are changes
       if (Object.keys(optimisticUpdates).length > 0) {

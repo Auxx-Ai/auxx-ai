@@ -23,6 +23,8 @@ import {
   mergeDisplayOptions,
 } from './types'
 import { FieldType as FieldTypeEnum, ModelTypeValues } from '@auxx/database/enums'
+import { validateCalcExpression } from '@auxx/utils/calc-expression'
+import type { CalcOptions } from '@auxx/lib/custom-fields/field-options'
 import type { FieldType } from '@auxx/database/types'
 import type { CustomFieldEntity } from '@auxx/database/models'
 
@@ -162,6 +164,64 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
     )
   }
 
+  // Handle CALC type validation
+  if (type === FieldTypeEnum.CALC) {
+    const calcOptions = options && !Array.isArray(options) && 'calc' in options
+      ? (options as { calc: CalcOptions }).calc
+      : undefined
+
+    if (!calcOptions?.expression) {
+      return err({
+        code: 'VALIDATION_ERROR' as const,
+        message: 'CALC field requires an expression',
+      })
+    }
+
+    // Validate expression syntax
+    const validation = validateCalcExpression(calcOptions.expression)
+    if (!validation.isValid) {
+      return err({
+        code: 'VALIDATION_ERROR' as const,
+        message: `Invalid expression: ${validation.error}`,
+      })
+    }
+
+    // Verify all source fields exist on this entity
+    // sourceFields is a Record<placeholderName, fieldId>
+    const sourceFieldIds = Object.values(calcOptions.sourceFields || {})
+    if (sourceFieldIds.length > 0) {
+      const existingFields = await db.query.CustomField.findMany({
+        where: and(
+          eq(schema.CustomField.organizationId, organizationId),
+          eq(schema.CustomField.modelType, dbModelType as any),
+          ...(dbModelType === ModelTypes.ENTITY
+            ? [eq(schema.CustomField.entityDefinitionId, entityDefinitionId!)]
+            : [])
+        ),
+        columns: { id: true, type: true },
+      })
+      const existingIds = new Set(existingFields.map(f => f.id))
+
+      const missingFieldIds = sourceFieldIds.filter(id => !existingIds.has(id))
+      if (missingFieldIds.length > 0) {
+        return err({
+          code: 'VALIDATION_ERROR' as const,
+          message: `Source fields not found: ${missingFieldIds.join(', ')}`,
+        })
+      }
+
+      // Check for circular dependencies (CALC field referencing another CALC field)
+      const referencedCalcFields = existingFields.filter(
+        f => f.type === 'CALC' && sourceFieldIds.includes(f.id)
+      )
+      if (referencedCalcFields.length > 0) {
+        console.warn(
+          `CALC field references other CALC fields: ${referencedCalcFields.map(f => f.id).join(', ')}`
+        )
+      }
+    }
+  }
+
   // Build field options for non-relationship types
   const fieldOptions: Record<string, any> = {
     icon,
@@ -193,6 +253,13 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
   if (type === FieldTypeEnum.CURRENCY) {
     if (options && !Array.isArray(options) && 'currency' in options) {
       fieldOptions.currency = (options as { currency: any }).currency
+    }
+  }
+
+  // Handle CALC field options
+  if (type === FieldTypeEnum.CALC) {
+    if (options && !Array.isArray(options) && 'calc' in options) {
+      fieldOptions.calc = (options as { calc: CalcOptions }).calc
     }
   }
 

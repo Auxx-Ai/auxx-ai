@@ -72,11 +72,17 @@ import {
   formatDisplayOptions,
   type DisplayOptions,
 } from './formatting-editors'
+import {
+  CalcFieldEditor,
+  parseCalcOptions,
+  formatCalcOptions,
+  type CalcEditorOptions,
+} from './calc-editor'
 import type { FieldOptions } from '@auxx/lib/field-values/client'
 import type { RelationshipConfig } from '@auxx/types/custom-field'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
-import { useField } from '~/components/resources'
+import { useField, useResourceFields } from '~/components/resources'
 import { toastError } from '@auxx/ui/components/toast'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
 
@@ -159,12 +165,32 @@ export function CustomFieldDialog({
   const [currencyOptions, setCurrencyOptions] = useState<CurrencyOptions>(parseCurrencyOptions())
   const [displayOptions, setDisplayOptions] = useState<DisplayOptions>({})
   const [showDisplayOptions, setShowDisplayOptions] = useState(false)
+  const [calcOptions, setCalcOptions] = useState<CalcEditorOptions>(parseCalcOptions())
   // State for inverse field name in edit mode
   const [inverseName, setInverseName] = useState('')
 
   // Fetch inverse field for edit mode to get initial label
   const inverseResourceFieldId = editingField?.options?.relationship?.inverseResourceFieldId
   const inverseField = useField(isEditing ? inverseResourceFieldId : null)
+
+  // Fetch available fields for CALC editor (exclude the current field being edited and other CALC fields)
+  const { fields: resourceFields } = useResourceFields(effectiveEntityDefId)
+  const calcAvailableFields = useMemo(() => {
+    return resourceFields
+      .filter((f) => {
+        // Exclude the field being edited
+        if (editingField && f.id === editingField.id) return false
+        // Exclude other CALC fields to prevent circular references
+        if (f.fieldType === FieldType.CALC) return false
+        return true
+      })
+      .map((f) => ({
+        id: f.id,
+        key: f.key || f.id,
+        label: f.label,
+        type: f.fieldType,
+      }))
+  }, [resourceFields, editingField])
 
   // Track initial values for extra state (not managed by react-hook-form)
   const [initialExtraState, setInitialExtraState] = useState<{
@@ -174,6 +200,7 @@ export function CustomFieldDialog({
     relationshipOptions: RelationshipOptions
     currencyOptions: CurrencyOptions
     displayOptions: DisplayOptions
+    calcOptions: CalcEditorOptions
     inverseName: string
   } | null>(null)
 
@@ -191,6 +218,8 @@ export function CustomFieldDialog({
       JSON.stringify(currencyOptions) !== JSON.stringify(initialExtraState.currencyOptions)
     const displayOptionsChanged =
       JSON.stringify(displayOptions) !== JSON.stringify(initialExtraState.displayOptions)
+    const calcOptionsChanged =
+      JSON.stringify(calcOptions) !== JSON.stringify(initialExtraState.calcOptions)
     const inverseNameChanged = inverseName !== initialExtraState.inverseName
     return (
       selectOptionsChanged ||
@@ -199,6 +228,7 @@ export function CustomFieldDialog({
       relationshipChanged ||
       currencyChanged ||
       displayOptionsChanged ||
+      calcOptionsChanged ||
       inverseNameChanged
     )
   }, [
@@ -208,6 +238,7 @@ export function CustomFieldDialog({
     relationshipOptions,
     currencyOptions,
     displayOptions,
+    calcOptions,
     inverseName,
     initialExtraState,
   ])
@@ -240,6 +271,7 @@ export function CustomFieldDialog({
       }
       let initCurrencyOptions: CurrencyOptions = parseCurrencyOptions()
       let initDisplayOptions: DisplayOptions = {}
+      let initCalcOptions: CalcEditorOptions = parseCalcOptions()
       let initInverseName = ''
 
       if (editingField) {
@@ -278,6 +310,9 @@ export function CustomFieldDialog({
         setDisplayOptions(initDisplayOptions)
         setShowDisplayOptions(false)
 
+        initCalcOptions = parseCalcOptions(editingField.options as Record<string, unknown>)
+        setCalcOptions(initCalcOptions)
+
         // Initialize inverse name from inverse field (will update when inverseField loads)
         initInverseName = inverseField?.label ?? ''
         setInverseName(initInverseName)
@@ -301,6 +336,7 @@ export function CustomFieldDialog({
         setCurrencyOptions(initCurrencyOptions)
         setDisplayOptions(initDisplayOptions)
         setShowDisplayOptions(false)
+        setCalcOptions(initCalcOptions)
         setInverseName(initInverseName)
       }
 
@@ -312,6 +348,7 @@ export function CustomFieldDialog({
         relationshipOptions: initRelationshipOptions,
         currencyOptions: initCurrencyOptions,
         displayOptions: initDisplayOptions,
+        calcOptions: initCalcOptions,
         inverseName: initInverseName,
       })
     }
@@ -370,6 +407,10 @@ export function CustomFieldDialog({
 
     if (values.type === FieldType.CURRENCY) {
       submitObj.options = formatCurrencyOptions(currencyOptions)
+    }
+
+    if (values.type === FieldType.CALC) {
+      submitObj.options = formatCalcOptions(calcOptions)
     }
 
     // Merge display options using format helper
@@ -441,6 +482,14 @@ export function CustomFieldDialog({
         )
       case FieldType.CURRENCY:
         return <CurrencyOptionsEditor options={currencyOptions} onChange={setCurrencyOptions} />
+      case FieldType.CALC:
+        return (
+          <CalcFieldEditor
+            options={calcOptions}
+            onChange={setCalcOptions}
+            availableFields={calcAvailableFields}
+          />
+        )
       default:
         return null
     }

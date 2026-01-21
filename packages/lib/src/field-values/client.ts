@@ -31,6 +31,16 @@ export {
 // Converters (for direct access if needed)
 export { converters } from './converters'
 
+// CALC expression evaluator (client-safe) - re-exported from @auxx/utils
+export {
+  evaluateCalcExpression,
+  validateCalcExpression,
+  getAvailableFunctions,
+  CALC_FUNCTIONS,
+  type CalcFunction,
+  type ParsedExpression,
+} from '@auxx/utils/calc-expression'
+
 // Re-export relationship type guards from converter (centralized location)
 export {
   isRelationshipFieldValue,

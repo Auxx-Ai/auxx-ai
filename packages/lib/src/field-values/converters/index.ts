@@ -68,6 +68,7 @@ import { selectConverter } from './select'
 import { relationshipConverter } from './relationship'
 import { jsonConverter, nameConverter, fileConverter } from './json'
 import { phoneConverter } from './phone'
+import { calcConverter } from './calc'
 
 /**
  * Map of all converters keyed by FieldType.
@@ -106,6 +107,9 @@ export const converters: Record<FieldType, FieldValueConverter> = {
   NAME: nameConverter,
   ADDRESS_STRUCT: jsonConverter,
   FILE: fileConverter,
+
+  // Computed field - not stored in database
+  CALC: calcConverter,
 }
 
 export {
@@ -120,4 +124,5 @@ export {
   nameConverter,
   fileConverter,
   phoneConverter,
+  calcConverter,
 }

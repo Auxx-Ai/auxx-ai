@@ -32,6 +32,7 @@ export const FIELD_TYPE_GROUPS: Record<string, FieldType[]> = {
     FieldTypeEnum.RICH_TEXT,
     FieldTypeEnum.RELATIONSHIP,
   ],
+  Advanced: [FieldTypeEnum.CALC],
 }
 
 /**
@@ -218,6 +219,12 @@ export const fieldTypeOptions: Record<FieldType, FieldTypeOption> = {
     description: 'Link to another entity (contact, company, or custom entity)',
     minWidth: 200,
   },
+  [FieldTypeEnum.CALC]: {
+    label: 'Calculated',
+    iconId: 'calculator',
+    description: 'Formula field that computes value from other fields',
+    minWidth: 200,
+  },
 }
 /**
  * Record of default empty values for each FieldType
@@ -249,6 +256,7 @@ export const fieldTypeDefaults: Record<FieldType, unknown> = {
   [FieldTypeEnum.RICH_TEXT]: '',
   [FieldTypeEnum.FILE]: null,
   [FieldTypeEnum.RELATIONSHIP]: null,
+  [FieldTypeEnum.CALC]: null, // Computed, no default
 }
 /**
  * Common options for all field types
@@ -309,6 +317,23 @@ export const fileFieldOptionsSchema = baseFieldOptionsSchema.extend({
 
 /** File field options type (includes base options + file) */
 export type FileFieldOptions = z.infer<typeof fileFieldOptionsSchema>
+
+/** CALC (calculated) field options schema */
+export const calcFieldOptionsSchema = baseFieldOptionsSchema.extend({
+  calc: z
+    .object({
+      expression: z.string().min(1),
+      sourceFields: z.record(z.string(), z.string()), // Record<placeholderName, fieldId>
+      resultFieldType: z.string(),
+      disabled: z.boolean().optional(),
+      disabledReason: z.string().optional(),
+    })
+    .optional(),
+})
+
+/** CALC field options type */
+export type CalcFieldOptions = z.infer<typeof calcFieldOptionsSchema>
+
 /**
  * Map of field type to options schema
  */
@@ -332,6 +357,7 @@ export const fieldTypeOptionsSchemaMap: Record<FieldType, z.ZodTypeAny> = {
   [FieldTypeEnum.RICH_TEXT]: baseFieldOptionsSchema,
   [FieldTypeEnum.FILE]: fileFieldOptionsSchema,
   [FieldTypeEnum.RELATIONSHIP]: relationshipFieldOptionsSchema,
+  [FieldTypeEnum.CALC]: calcFieldOptionsSchema,
 }
 /**
  * Get the correct Zod schema for a field type

@@ -22,7 +22,8 @@
     "./retry": "./src/retry.ts",
     "./strings": "./src/strings.ts",
     "./timezone": "./src/timezone.ts",
-    "./task-date": "./src/task-date.ts"
+    "./task-date": "./src/task-date.ts",
+    "./calc-expression": "./src/calc-expression.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

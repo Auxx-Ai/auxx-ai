@@ -30,6 +30,8 @@ export {
   type TextFieldOptions,
   type PhoneFieldOptions,
   type SelectFieldOptions,
+  type CalcOptions,
+  type CalcFieldOptions,
 } from './field-options'
 
 // Export default display options (for converters and seeder)

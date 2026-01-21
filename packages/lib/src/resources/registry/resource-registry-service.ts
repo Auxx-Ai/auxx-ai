@@ -12,7 +12,7 @@ import type {
 } from './types'
 import type { ResourceField } from './field-types'
 import { mapFieldTypeToBaseType } from '../../workflow-engine/utils/field-type-mapper'
-import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
+import { FieldType as FieldTypeEnum, ModelTypeMeta, type ModelType } from '@auxx/database/enums'
 import { getEntityInstanceFields } from './entity-instance-fields'
 import { toFieldId, toResourceFieldId } from '@auxx/types/field'
 import type { RelationshipConfig } from '@auxx/types/custom-field'
@@ -81,7 +81,7 @@ function toCustomResourceBase(
     id: def.id as CustomResourceId,
     apiSlug: def.apiSlug,
     type: 'custom', // Type assertion for now - will be fixed when we update CustomResource type
-    label: def.singular,
+    label: def.singular || ModelTypeMeta[def.entityType as ModelType]?.label || def.apiSlug,
     entityType: def.entityType ?? undefined,
     plural: def.plural,
     icon: def.icon,
