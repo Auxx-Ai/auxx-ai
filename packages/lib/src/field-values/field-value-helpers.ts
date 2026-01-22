@@ -175,6 +175,15 @@ export function rowToTypedValue(row: FieldValueRow, fieldType: FieldType): Typed
           ? toRecordId(row.relatedEntityDefinitionId, row.relatedEntityId)
           : ('' as RecordId),
       }
+    case 'actor':
+      // Actor can be stored as actorId (for users) or relatedEntityId (for groups)
+      if (row.actorId) {
+        return { ...base, type: 'actor', actorType: 'user', id: row.actorId }
+      } else if (row.relatedEntityId) {
+        return { ...base, type: 'actor', actorType: 'group', id: row.relatedEntityId }
+      }
+      // Fallback for empty actor
+      return { ...base, type: 'actor', actorType: 'user', id: '' }
   }
 }
 
@@ -225,6 +234,13 @@ export function isValidTypedValue(value: TypedFieldValue, fieldType: FieldType):
         'recordId' in value &&
         typeof (value as any).recordId === 'string'
       )
+    case 'actor':
+      return (
+        value.type === 'actor' &&
+        'actorType' in value &&
+        'id' in value &&
+        typeof (value as any).id === 'string'
+      )
     default:
       return true
   }
@@ -251,6 +267,14 @@ export function validateRowReferences(row: FieldValueRow, fieldType: FieldType):
     }
     if (!row.relatedEntityDefinitionId || row.relatedEntityDefinitionId.trim() === '') {
       issues.push('Missing related entity definition ID')
+    }
+  }
+
+  // Check for orphaned actor references
+  if (valueType === 'actor') {
+    // Actor must have either actorId (user) or relatedEntityId (group)
+    if (!row.actorId && !row.relatedEntityId) {
+      issues.push('Missing actor ID (neither actorId nor relatedEntityId set)')
     }
   }
 
@@ -422,6 +446,30 @@ export async function validateSingleValue(
       const result = ctx.validator.validateFileJson(value)
       if (!result.success) throwValidationError(result)
       return { type: 'json', value: result.data || {} }
+    }
+
+    case 'ACTOR': {
+      // Actor field accepts { actorType, id } or just a string (assumes user type)
+      if (typeof value === 'string') {
+        return { type: 'actor', actorType: 'user', id: value }
+      }
+      if (typeof value === 'object' && value !== null) {
+        const obj = value as Record<string, unknown>
+        const actorType = (obj.actorType ?? obj.type ?? 'user') as 'user' | 'group'
+        const id = obj.id as string
+        if (!id) {
+          throwValidationError({
+            success: false,
+            error: { issues: [{ message: 'Actor ID is required', path: ['id'] }] },
+          })
+        }
+        return { type: 'actor', actorType, id }
+      }
+      throwValidationError({
+        success: false,
+        error: { issues: [{ message: 'Invalid actor value', path: [] }] },
+      })
+      return null // unreachable but TypeScript needs it
     }
 
     default: {

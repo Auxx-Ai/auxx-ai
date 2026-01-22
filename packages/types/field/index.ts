@@ -58,6 +58,12 @@ export type FieldPath = [ResourceFieldId, ...ResourceFieldId[]] // At least 1 el
 export type FieldReference = FieldId | ResourceFieldId | FieldPath
 
 export { resourceFieldIdSchema, fieldIdSchema } from './schema'
+export type {
+  ActorFieldOptions,
+  ActorUserValue,
+  ActorGroupValue,
+  ActorFieldValue,
+} from './actor-field'
 export {
   toFieldId,
   toResourceFieldId,

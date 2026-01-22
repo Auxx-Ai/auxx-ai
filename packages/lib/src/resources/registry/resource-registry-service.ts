@@ -3,6 +3,11 @@
 import type { Database } from '@auxx/database'
 import { RESOURCE_TABLE_REGISTRY, RESOURCE_FIELD_REGISTRY, type TableId } from './field-registry'
 import { RESOURCE_DISPLAY_CONFIG } from './display-config'
+import {
+  resolveNewSystemEntityDefId,
+  NEW_SYSTEM_ENTITY_TYPES,
+  type NewSystemEntityType,
+} from './entity-def-resolver'
 import type {
   Resource,
   SystemResource,
@@ -12,10 +17,34 @@ import type {
 } from './types'
 import type { ResourceField } from './field-types'
 import { mapFieldTypeToBaseType } from '../../workflow-engine/utils/field-type-mapper'
-import { FieldType as FieldTypeEnum, ModelTypeMeta, type ModelType } from '@auxx/database/enums'
+import { FieldType as FieldTypeEnum, ModelTypeMeta, ModelTypeValues, type ModelType } from '@auxx/database/enums'
 import { getEntityInstanceFields } from './entity-instance-fields'
 import { toFieldId, toResourceFieldId } from '@auxx/types/field'
 import type { RelationshipConfig } from '@auxx/types/custom-field'
+
+/**
+ * Old system types that use modelType string directly as entityDefinitionId.
+ * These don't have an EntityDefinition row - the modelType IS the entityDefinitionId.
+ */
+const OLD_SYSTEM_TYPES = ModelTypeValues.filter(
+  (t) => !NEW_SYSTEM_ENTITY_TYPES.includes(t as NewSystemEntityType) && t !== 'entity'
+) as readonly ModelType[]
+
+/**
+ * ApiSlug to ModelType mapping for old system types.
+ * e.g., 'threads' -> 'thread', 'users' -> 'user'
+ */
+const OLD_SYSTEM_API_SLUG_MAP = Object.fromEntries(
+  OLD_SYSTEM_TYPES.map((t) => [ModelTypeMeta[t].apiSlug, t])
+) as Record<string, ModelType>
+
+/**
+ * ApiSlug to EntityType mapping for new system types.
+ * e.g., 'contacts' -> 'contact', 'tickets' -> 'ticket'
+ */
+const NEW_SYSTEM_API_SLUG_MAP = Object.fromEntries(
+  NEW_SYSTEM_ENTITY_TYPES.map((t) => [ModelTypeMeta[t].apiSlug, t])
+) as Record<string, NewSystemEntityType>
 
 /** CustomField entity from database */
 type CustomFieldRecord = {
@@ -603,6 +632,86 @@ export class ResourceRegistryService {
   getDefaultIdentifierField(resource: Resource): ResourceField | undefined {
     const identifiers = this.getIdentifierFields(resource)
     return identifiers[0]
+  }
+
+  /**
+   * Resolves an entity type or entity definition ID to the actual entityDefinitionId.
+   *
+   * Input can be:
+   * 1. Old system type (thread, user, inbox, etc.) - returns the type string directly
+   * 2. New system type (contact, part, ticket) - queries EntityDefinition, caches result
+   * 3. Actual entityDefinitionId (CUID) - returns as-is
+   *
+   * @param entityTypeOrDefId - An entity type string or entityDefinitionId
+   * @returns The resolved entityDefinitionId
+   */
+  async resolveEntityDefId(entityTypeOrDefId: string): Promise<string> {
+    // 1. Check if it's an old system type - return directly
+    if (OLD_SYSTEM_TYPES.includes(entityTypeOrDefId as ModelType)) {
+      return entityTypeOrDefId
+    }
+
+    // 2. Check if it's a new system type - query DB with caching
+    if (NEW_SYSTEM_ENTITY_TYPES.includes(entityTypeOrDefId as NewSystemEntityType)) {
+      return resolveNewSystemEntityDefId(
+        this.organizationId,
+        entityTypeOrDefId as NewSystemEntityType,
+        this.db
+      )
+    }
+
+    // 3. Assume it's an actual entityDefinitionId - return as-is
+    return entityTypeOrDefId
+  }
+
+  /**
+   * Resolves an apiSlug to the actual entityDefinitionId.
+   *
+   * Input can be:
+   * 1. Old system apiSlug (threads, users, inboxes, etc.) - returns the modelType string directly
+   * 2. New system apiSlug (contacts, parts, tickets) - queries EntityDefinition by entityType, caches result
+   * 3. Custom entity apiSlug (products, companies, etc.) - queries EntityDefinition by apiSlug, NO caching
+   *
+   * @param apiSlug - An apiSlug string (e.g., 'contacts', 'threads', 'products')
+   * @returns The resolved entityDefinitionId
+   */
+  async resolveEntityDefIdFromApiSlug(apiSlug: string): Promise<string> {
+    // 1. Check if it's an old system apiSlug - return the modelType directly
+    const oldSystemType = OLD_SYSTEM_API_SLUG_MAP[apiSlug]
+    if (oldSystemType) {
+      return oldSystemType
+    }
+
+    // 2. Check if it's a new system apiSlug - query DB with caching (uses standalone function)
+    const newSystemType = NEW_SYSTEM_API_SLUG_MAP[apiSlug]
+    if (newSystemType) {
+      return resolveNewSystemEntityDefId(this.organizationId, newSystemType, this.db)
+    }
+
+    // 3. Custom entity apiSlug - query DB without caching (apiSlug can change)
+    return this.resolveCustomEntityDefIdBySlug(apiSlug)
+  }
+
+  /**
+   * Resolves a custom entity apiSlug to its entityDefinitionId.
+   * Does NOT cache because apiSlugs can be changed by users.
+   */
+  private async resolveCustomEntityDefIdBySlug(apiSlug: string): Promise<string> {
+    const entityDef = await this.db.query.EntityDefinition.findFirst({
+      where: (defs, { eq, and, isNull }) =>
+        and(
+          eq(defs.organizationId, this.organizationId),
+          eq(defs.apiSlug, apiSlug),
+          isNull(defs.archivedAt)
+        ),
+      columns: { id: true },
+    })
+
+    if (!entityDef) {
+      throw new Error(`EntityDefinition not found for apiSlug: ${apiSlug}`)
+    }
+
+    return entityDef.id
   }
 
   /**

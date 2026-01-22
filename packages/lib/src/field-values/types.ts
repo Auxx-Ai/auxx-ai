@@ -207,6 +207,7 @@ export interface FieldValueRow {
   optionId: string | null
   relatedEntityId: string | null
   relatedEntityDefinitionId: string | null
+  actorId: string | null
   sortKey: string
   createdAt: string
   updatedAt: string

@@ -832,6 +832,7 @@ function buildInsertData(
   optionId?: string | null
   relatedEntityId?: string | null
   relatedEntityDefinitionId?: string | null
+  actorId?: string | null
 } {
   switch (value.type) {
     case 'text':
@@ -856,6 +857,19 @@ function buildInsertData(
         relatedEntityDefinitionId: entityDefinitionId,
       }
     }
+    case 'actor': {
+      if (value.actorType === 'user') {
+        // User actor - store in actorId column
+        return { actorId: value.id }
+      } else {
+        // Group actor - store in relatedEntityId/relatedEntityDefinitionId
+        // Note: entityDefinitionId for groups should be passed in field options
+        return {
+          relatedEntityId: value.id,
+          // relatedEntityDefinitionId will be set from field options if needed
+        }
+      }
+    }
   }
 }
 
@@ -872,6 +886,7 @@ function buildUpdateData(value: TypedFieldValueInput): {
   optionId?: string | null
   relatedEntityId?: string | null
   relatedEntityDefinitionId?: string | null
+  actorId?: string | null
 } {
   // Same structure as insert data (fieldType not needed for structure)
   switch (value.type) {
@@ -895,6 +910,17 @@ function buildUpdateData(value: TypedFieldValueInput): {
       return {
         relatedEntityId: entityInstanceId,
         relatedEntityDefinitionId: entityDefinitionId,
+      }
+    }
+    case 'actor': {
+      if (value.actorType === 'user') {
+        // User actor - store in actorId column
+        return { actorId: value.id }
+      } else {
+        // Group actor - store in relatedEntityId/relatedEntityDefinitionId
+        return {
+          relatedEntityId: value.id,
+        }
       }
     }
   }
@@ -928,6 +954,7 @@ function buildInsertRow(
     optionId: null as string | null,
     relatedEntityId: null as string | null,
     relatedEntityDefinitionId: null as string | null,
+    actorId: null as string | null,
   }
 
   switch (value.type) {
@@ -953,6 +980,15 @@ function buildInsertRow(
         ...base,
         relatedEntityId: relInstId,
         relatedEntityDefinitionId: relDefId,
+      }
+    }
+    case 'actor': {
+      if (value.actorType === 'user') {
+        // User actor - store in actorId column
+        return { ...base, actorId: value.id }
+      } else {
+        // Group actor - store in relatedEntityId
+        return { ...base, relatedEntityId: value.id }
       }
     }
   }

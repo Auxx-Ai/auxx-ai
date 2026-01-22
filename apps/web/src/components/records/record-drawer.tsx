@@ -1,12 +1,12 @@
-// apps/web/src/app/(protected)/app/custom/[slug]/_components/entity-record-drawer.tsx
+// apps/web/src/components/records/record-drawer.tsx
 'use client'
 
 import * as React from 'react'
-import { MessagesSquare, Trash } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Expand, MessagesSquare, Trash } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 
 import { Button } from '@auxx/ui/components/button'
-import { useParams } from 'next/navigation'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Tooltip } from '~/components/global/tooltip'
 import { EntityIcon } from '@auxx/ui/components/icons'
@@ -20,8 +20,8 @@ import { BaseEntityDrawer } from '~/components/drawers/base-entity-drawer'
 import { useFieldValue } from '~/components/resources/hooks/use-field-values'
 import { formatToDisplayValue } from '@auxx/lib/field-values/client'
 
-/** Props for EntityRecordDrawer */
-interface EntityRecordDrawerProps {
+/** Props for RecordDrawer */
+interface RecordDrawerProps {
   /** Whether the drawer is open (for controlled usage) */
   open?: boolean
   /** Callback when open state changes */
@@ -35,20 +35,18 @@ interface EntityRecordDrawerProps {
 }
 
 /**
- * EntityRecordDrawer renders the right-side entity instance detail drawer with tabbed content.
+ * RecordDrawer renders the right-side entity instance detail drawer with tabbed content.
  * Supports both overlay and docked modes.
- * Now uses BaseEntityDrawer with registry-based configuration.
+ * Uses BaseEntityDrawer with registry-based configuration.
  */
-export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
+export const RecordDrawer = React.memo(function RecordDrawer({
   open,
   onOpenChange,
   recordId,
   onDeleteInstance,
   onMutationSuccess,
-}: EntityRecordDrawerProps) {
-  // const params = useParams<{ slug: string }>()
-  // const entitySlug = params.slug
-
+}: RecordDrawerProps) {
+  const router = useRouter()
   const isDocked = useEffectiveDockState()
   const dockedWidth = useDockStore((state) => state.dockedWidth)
   const setDockedWidth = useDockStore((state) => state.setDockedWidth)
@@ -198,6 +196,18 @@ export const EntityRecordDrawer = React.memo(function EntityRecordDrawer({
                 }
               }}>
               <Trash className="text-bad-500" />
+            </Button>
+          </Tooltip>
+          <Tooltip content="Open full page">
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => {
+                if (resource?.apiSlug && entityInstanceId) {
+                  router.push(`/app/custom/${resource.apiSlug}/${entityInstanceId}`)
+                }
+              }}>
+              <Expand />
             </Button>
           </Tooltip>
           <DockToggleButton />

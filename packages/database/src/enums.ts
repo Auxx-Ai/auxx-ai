@@ -71,6 +71,7 @@ export const FieldTypeValues = [
   'NAME',
   'RELATIONSHIP',
   'CALC',
+  'ACTOR',
 ] as const
 
 export const CustomerSourceTypeValues = [
@@ -697,6 +698,7 @@ export const FieldType = {
   NAME: 'NAME',
   RELATIONSHIP: 'RELATIONSHIP',
   CALC: 'CALC',
+  ACTOR: 'ACTOR',
 } as const
 
 export const CustomerSourceType = {
@@ -1398,4 +1400,17 @@ export const ResourcePermission = {
   view: 'view',
   edit: 'edit',
   admin: 'admin',
+} as const
+
+// ============================================================================
+// ACTOR FIELD ENUMS
+// ============================================================================
+
+/** Target type for ACTOR fields - determines what kind of entity the actor references */
+export const ActorTargetValues = ['user', 'group'] as const
+export type ActorTarget = (typeof ActorTargetValues)[number]
+
+export const ActorTarget = {
+  user: 'user',
+  group: 'group',
 } as const

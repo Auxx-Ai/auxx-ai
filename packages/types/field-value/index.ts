@@ -33,6 +33,7 @@ export const FIELD_TYPE_TO_VALUE_TYPE = {
   [FieldType.ADDRESS]: 'text',
   [FieldType.ADDRESS_STRUCT]: 'json',
   [FieldType.CALC]: 'computed', // Computed on-the-fly, not stored
+  [FieldType.ACTOR]: 'actor', // User or group reference
 } as const
 
 /** Value type discriminator */
@@ -61,6 +62,7 @@ export const FIELD_TYPE_TO_COLUMN = {
   [FieldType.FILE]: 'valueJson',
   [FieldType.ADDRESS]: 'valueText',
   [FieldType.ADDRESS_STRUCT]: 'valueJson',
+  [FieldType.ACTOR]: 'actorId', // User ID when actorType is 'user', or uses relatedEntityId for groups
 } as const
 
 /** Column name in FieldValue table */
@@ -154,6 +156,17 @@ export interface RelationshipFieldValue extends BaseFieldValue {
   displayName?: string
 }
 
+/** Actor value for ACTOR fields - references a user or group */
+export interface ActorFieldValue extends BaseFieldValue {
+  type: 'actor'
+  /** Type of actor: 'user' or 'group' */
+  actorType: 'user' | 'group'
+  /** The actor's ID (User.id for 'user', EntityGroup instance ID for 'group') */
+  id: string
+  /** Denormalized for display */
+  displayName?: string
+}
+
 /** Discriminated union of all typed field values */
 export type TypedFieldValue =
   | TextFieldValue
@@ -163,6 +176,7 @@ export type TypedFieldValue =
   | JsonFieldValue
   | OptionFieldValue
   | RelationshipFieldValue
+  | ActorFieldValue
 
 // =============================================================================
 // TYPED FIELD VALUE INPUT - For mutations (no id/timestamps/sortKey)
@@ -211,6 +225,15 @@ export interface RelationshipFieldValueInput {
   recordId: RecordId
 }
 
+/** Actor value input */
+export interface ActorFieldValueInput {
+  type: 'actor'
+  /** Type of actor: 'user' or 'group' */
+  actorType: 'user' | 'group'
+  /** The actor's ID (User.id for 'user', EntityGroup instance ID for 'group') */
+  id: string
+}
+
 /** Discriminated union of all typed field value inputs */
 export type TypedFieldValueInput =
   | TextFieldValueInput
@@ -220,6 +243,7 @@ export type TypedFieldValueInput =
   | JsonFieldValueInput
   | OptionFieldValueInput
   | RelationshipFieldValueInput
+  | ActorFieldValueInput
 
 // =============================================================================
 // ZOD SCHEMAS
@@ -267,6 +291,13 @@ export const relationshipFieldValueInputSchema = z.object({
   recordId: recordIdSchema,
 })
 
+/** Schema for actor value input */
+export const actorFieldValueInputSchema = z.object({
+  type: z.literal('actor'),
+  actorType: z.enum(['user', 'group']),
+  id: z.string(),
+})
+
 /** Schema for typed field value input (discriminated union) */
 export const typedFieldValueInputSchema = z.discriminatedUnion('type', [
   textFieldValueInputSchema,
@@ -276,6 +307,7 @@ export const typedFieldValueInputSchema = z.discriminatedUnion('type', [
   jsonFieldValueInputSchema,
   optionFieldValueInputSchema,
   relationshipFieldValueInputSchema,
+  actorFieldValueInputSchema,
 ])
 
 // =============================================================================
@@ -341,6 +373,8 @@ export function extractValue(
       return typedValue.optionId
     case 'relationship':
       return typedValue.recordId
+    case 'actor':
+      return { actorType: typedValue.actorType, id: typedValue.id }
   }
 }
 
@@ -390,6 +424,17 @@ export function createTypedValueInput(
       if (typeof rawValue === 'object' && rawValue !== null && 'recordId' in rawValue) {
         const obj = rawValue as { recordId: RecordId }
         return { type: 'relationship', recordId: obj.recordId }
+      }
+      return null
+    case 'actor':
+      // Handle object with actorType and id
+      if (typeof rawValue === 'object' && rawValue !== null && 'actorType' in rawValue && 'id' in rawValue) {
+        const obj = rawValue as { actorType: 'user' | 'group'; id: string }
+        return { type: 'actor', actorType: obj.actorType, id: obj.id }
+      }
+      // Handle string input - assume user type
+      if (typeof rawValue === 'string') {
+        return { type: 'actor', actorType: 'user', id: rawValue }
       }
       return null
   }

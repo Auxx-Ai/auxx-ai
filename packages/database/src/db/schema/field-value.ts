@@ -15,6 +15,7 @@ import {
 import { createId } from '@paralleldrive/cuid2'
 import { CustomField } from './custom-field'
 import { Organization } from './organization'
+import { User } from './user'
 
 /**
  * FieldValue stores typed field values with support for multi-value fields.
@@ -91,6 +92,9 @@ export const FieldValue = pgTable(
     /** Related entity definition ID for RELATIONSHIP fields (UUID or system resource name like "contacts") */
     relatedEntityDefinitionId: text(),
 
+    /** Actor ID for ACTOR fields - references User.id when actorType is 'user' */
+    actorId: text().references((): AnyPgColumn => User.id, { onDelete: 'set null' }),
+
     // ========================================
     // Multi-value ordering
     // ========================================
@@ -128,6 +132,9 @@ export const FieldValue = pgTable(
       'btree',
       table.relatedEntityDefinitionId.asc().nullsLast()
     ),
+
+    // Actor lookups
+    index('FieldValue_actorId_idx').using('btree', table.actorId.asc().nullsLast()),
 
     // Unique per sortKey (allows multi-value with ordering)
     uniqueIndex('FieldValue_entity_field_sortKey_key').using(

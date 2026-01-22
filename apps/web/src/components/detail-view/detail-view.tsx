@@ -1,0 +1,134 @@
+// apps/web/src/components/detail-view/detail-view.tsx
+'use client'
+
+import { useState } from 'react'
+import { useQueryState } from 'nuqs'
+import { getDetailViewConfig, type ModelType } from '@auxx/lib/resources/client'
+import {
+  MainPage,
+  MainPageBreadcrumb,
+  MainPageBreadcrumbItem,
+  MainPageContent,
+  MainPageHeader,
+} from '@auxx/ui/components/main-page'
+import { useResourceProperty, useRecord, toRecordId } from '~/components/resources'
+import { useDockStore } from '~/stores/dock-store'
+import { DetailViewSidebar } from './detail-view-sidebar'
+import { DetailViewMainTabs } from './detail-view-main-tabs'
+import { DetailViewActions } from './components/detail-view-actions'
+import { DetailViewSkeleton } from './detail-view-skeleton'
+import { DetailViewNotFound } from './detail-view-not-found'
+import type { DetailViewProps } from './types'
+
+/**
+ * DetailView - Universal full-page detail view component
+ * Works for all entity types (system and custom) using registry-based configuration
+ */
+export function DetailView({ apiSlug, instanceId, backUrl: backUrlOverride }: DetailViewProps) {
+  // Get resource properties including id (entityDefinitionId) and entityType
+  const resourceProps = useResourceProperty(apiSlug, [
+    'id', // entityDefinitionId
+    'entityType', // ModelType: 'contact' | 'ticket' | 'part' | 'entity' | etc.
+    'label',
+    'plural',
+    'icon',
+    'color',
+  ])
+
+  // Extract with defaults
+  const entityDefinitionId = resourceProps?.id ?? apiSlug
+  const entityType: ModelType = (resourceProps?.entityType as ModelType) ?? 'entity'
+  const { label, plural, icon, color } = resourceProps ?? {}
+
+  // Build recordId with the actual entityDefinitionId
+  const recordId = toRecordId(entityDefinitionId, instanceId)
+
+  // Get record data
+  const { record, isLoading, isNotFound } = useRecord({ recordId, enabled: true })
+
+  // Get config from registry based on entityType
+  const config = getDetailViewConfig(entityType)
+
+  // Tab state
+  const [mainTab, setMainTab] = useQueryState('tab', { defaultValue: config.defaultTab ?? 'overview' })
+  const [sidebarTab, setSidebarTab] = useState(config.defaultSidebarTab ?? 'overview')
+
+  // Dock state for resizable sidebar
+  const dockedWidth = useDockStore((state) => state.dockedWidth)
+  const setDockedWidth = useDockStore((state) => state.setDockedWidth)
+  const minWidth = useDockStore((state) => state.minWidth)
+  const maxWidth = useDockStore((state) => state.maxWidth)
+
+  // Determine back URL based on entity type
+  const defaultBackUrl =
+    entityType === 'contact'
+      ? '/app/contacts'
+      : entityType === 'ticket'
+        ? '/app/tickets'
+        : `/app/custom/${apiSlug}`
+
+  const backUrl = backUrlOverride ?? defaultBackUrl
+
+  // Loading state
+  if (isLoading) {
+    return <DetailViewSkeleton label={label} backUrl={backUrl} />
+  }
+
+  // Not found state
+  if (isNotFound || !record) {
+    return <DetailViewNotFound label={label} backUrl={backUrl} />
+  }
+
+  const displayName = (record.displayName as string) || (record.name as string) || 'Untitled'
+
+  return (
+    <MainPage>
+      <MainPageHeader
+        action={
+          <DetailViewActions
+            entityType={entityType}
+            recordId={recordId}
+            record={record}
+            config={config}
+          />
+        }>
+        <MainPageBreadcrumb>
+          <MainPageBreadcrumbItem title={plural ?? label ?? 'Records'} href={backUrl} />
+          <MainPageBreadcrumbItem title={displayName} last />
+        </MainPageBreadcrumb>
+      </MainPageHeader>
+
+      <MainPageContent
+        dockedPanels={[
+          {
+            key: 'sidebar',
+            content: (
+              <DetailViewSidebar
+                recordId={recordId}
+                record={record}
+                config={config}
+                activeTab={sidebarTab}
+                onTabChange={setSidebarTab}
+                icon={icon}
+                color={color}
+                displayName={displayName}
+              />
+            ),
+            width: dockedWidth,
+            onWidthChange: setDockedWidth,
+            minWidth,
+            maxWidth,
+          },
+        ]}>
+        <DetailViewMainTabs
+          recordId={recordId}
+          entityType={entityType}
+          config={config}
+          activeTab={mainTab ?? config.defaultTab ?? 'overview'}
+          onTabChange={setMainTab}
+          record={record}
+        />
+      </MainPageContent>
+    </MainPage>
+  )
+}

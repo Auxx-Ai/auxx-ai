@@ -1,4 +1,9 @@
 // apps/web/src/app/(protected)/app/contacts/_components/contact-detail.tsx
+/**
+ * @deprecated Use DetailView from '~/components/detail-view' instead.
+ * This component is kept for reference during migration.
+ * Will be removed in a future release.
+ */
 'use client'
 
 import React, { useState } from 'react'

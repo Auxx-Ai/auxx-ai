@@ -1,4 +1,4 @@
-// apps/web/src/app/(protected)/app/custom/[slug]/_components/entity-records-content.tsx
+// apps/web/src/components/records/records-view.tsx
 'use client'
 
 import { useMemo, useState, useCallback } from 'react'
@@ -44,7 +44,7 @@ import {
 import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
 import { BulkUpdateEntityInstanceDialog } from '~/components/custom-fields/ui/bulk-update-entity-instance-dialog'
 import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
-import { EntityRecordDrawer } from './entity-record-drawer'
+import { RecordDrawer } from './record-drawer'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
@@ -103,10 +103,10 @@ function HeaderActionsDropdown({ onNewField }: HeaderActionsDropdownProps) {
 }
 
 /**
- * Entity records content component
+ * RecordsView component
  * Displays the table of entity instances using data from context
  */
-export function EntityRecordsContent() {
+export function RecordsView() {
   const params = useParams<{ slug: string }>()
   const slug = params.slug
 
@@ -579,7 +579,7 @@ export function EntityRecordsContent() {
   // Build docked panel content
   const dockedPanel =
     isDocked && isDrawerOpen && selectedInstanceId && entityDefinitionId ? (
-      <EntityRecordDrawer
+      <RecordDrawer
         open={isDrawerOpen}
         onOpenChange={handleDrawerOpenChange}
         recordId={toRecordId(entityDefinitionId, selectedInstanceId)}
@@ -724,9 +724,9 @@ export function EntityRecordsContent() {
       <ConfirmDeleteDialog />
       <ConfirmArchiveDialog />
 
-      {/* Entity Record Drawer - only render overlay when NOT docked */}
+      {/* Record Drawer - only render overlay when NOT docked */}
       {!isDocked && (
-        <EntityRecordDrawer
+        <RecordDrawer
           open={isDrawerOpen}
           onOpenChange={handleDrawerOpenChange}
           recordId={

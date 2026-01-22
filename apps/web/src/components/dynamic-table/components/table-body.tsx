@@ -33,7 +33,8 @@ export function TableBody<TData extends object>({
   scrollContainerRef,
 }: TableBodyProps) {
   // Get config from focused contexts
-  const { isLoading, headerActions, dragDropConfig, emptyState, standalone } = useTableConfig<TData>()
+  const { isLoading, headerActions, dragDropConfig, emptyState, standalone } =
+    useTableConfig<TData>()
   const { table } = useTableInstance<TData>()
   const { cellSelectionConfig } = useCellSelection()
 

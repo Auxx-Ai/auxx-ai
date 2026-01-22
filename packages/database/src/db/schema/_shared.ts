@@ -73,6 +73,7 @@ export const contactFieldType = pgEnum('ContactFieldType', [
   'NAME',
   'RELATIONSHIP',
   'CALC',
+  'ACTOR',
 ])
 export const credentialSource = pgEnum('CredentialSource', [
   'SYSTEM', // Platform-provided credentials from env vars

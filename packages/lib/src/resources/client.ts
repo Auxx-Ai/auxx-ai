@@ -73,6 +73,17 @@ export type { MergeFieldInput, MergeFieldResult } from './merge/client'
 export { DRAWER_CONFIG_REGISTRY, getEntityDrawerConfig, hasDrawerConfig } from './registry'
 export type { DrawerConfig, DrawerTabDefinition, DrawerActions, DrawerConfigRegistry } from './registry'
 
+// Detail view configuration (client-safe)
+export { DETAIL_VIEW_CONFIG_REGISTRY, getDetailViewConfig, hasDetailViewConfig } from './registry'
+export type {
+  DetailViewConfig,
+  DetailViewEntityType,
+  DetailViewConfigRegistry,
+  MainTabDefinition,
+  SidebarTabDefinition,
+  DetailViewActions,
+} from './registry'
+
 // Relationship helpers (for deriving values from RelationshipConfig)
 export {
   getRelatedEntityDefinitionId,

@@ -155,6 +155,7 @@ export {
   RESOURCE_FIELD_REGISTRY,
   RESOURCE_TABLE_REGISTRY,
   RESOURCE_TABLE_MAP,
+  EXCLUDED_RESOURCE_TYPES,
 } from './field-registry'
 export type {
   ResourceField,
@@ -195,6 +196,13 @@ export type { ResourceDisplayConfig, OrgScopingStrategy, JoinScopingConfig } fro
 // Re-export resource registry service and types
 export { ResourceRegistryService } from './resource-registry-service'
 
+// Re-export entity definition resolver
+export {
+  resolveNewSystemEntityDefId,
+  NEW_SYSTEM_ENTITY_TYPES,
+  type NewSystemEntityType,
+} from './entity-def-resolver'
+
 // Re-export entity instance system fields
 export { ENTITY_INSTANCE_FIELDS, getEntityInstanceFields } from './entity-instance-fields'
 export { isSystemResource, isCustomResource, isSystemResourceId, isCustomResourceId } from './types'
@@ -210,3 +218,14 @@ export type {
 // Re-export drawer configuration
 export { DRAWER_CONFIG_REGISTRY, getEntityDrawerConfig, hasDrawerConfig } from './drawer-config'
 export type { DrawerConfig, DrawerTabDefinition, DrawerActions, DrawerConfigRegistry } from './drawer-config-types'
+
+// Re-export detail view configuration
+export { DETAIL_VIEW_CONFIG_REGISTRY, getDetailViewConfig, hasDetailViewConfig } from './detail-view-config'
+export type {
+  DetailViewConfig,
+  DetailViewEntityType,
+  DetailViewConfigRegistry,
+  MainTabDefinition,
+  SidebarTabDefinition,
+  DetailViewActions,
+} from './detail-view-config-types'

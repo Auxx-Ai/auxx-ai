@@ -14,11 +14,11 @@ import { ModelTypeValues, ModelTypeMeta, type ModelType } from '@auxx/database/e
 import type { FieldId } from '@auxx/types/field'
 
 /**
- * Resource types to exclude from the registry
- * - 'entity' is handled via EntityDefinition
- * - 'contact' is excluded from table registry
+ * Resource types to exclude from the table registry.
+ * - 'entity' is the generic custom entity marker
+ * - 'contact', 'part', 'ticket' are now stored in EntityDefinition table with entityType field
  */
-const EXCLUDED_RESOURCE_TYPES = ['entity', 'contact', 'part', 'ticket'] as const
+export const EXCLUDED_RESOURCE_TYPES = ['entity', 'contact', 'part', 'ticket'] as const
 
 /**
  * Resource Table Registry - Metadata about resource tables themselves
