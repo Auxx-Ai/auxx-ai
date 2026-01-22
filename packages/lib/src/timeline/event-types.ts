@@ -62,6 +62,9 @@ export enum TicketEventType {
   // Lifecycle
   CREATED = 'ticket:created',
   UPDATED = 'ticket:updated',
+  DELETED = 'ticket:deleted',
+  ARCHIVED = 'ticket:archived',
+  RESTORED = 'ticket:restored',
   STATUS_CHANGED = 'ticket:status:changed',
   PRIORITY_CHANGED = 'ticket:priority:changed',
   TYPE_CHANGED = 'ticket:type:changed',

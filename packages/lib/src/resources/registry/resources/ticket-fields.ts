@@ -39,8 +39,8 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
     id: toFieldId('number'),
     key: 'number',
     label: 'Ticket #',
-    type: BaseType.NUMBER,
-    fieldType: FieldType.NUMBER,
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
     isSystem: true,
     systemAttribute: 'ticket_number',
     systemSortOrder: 5,
@@ -54,7 +54,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description: 'Sequential ticket number',
+    description: 'Auto-generated ticket number (e.g., 2501-0042)',
   },
 
   title: {
@@ -161,7 +161,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
     type: BaseType.RELATION,
     fieldType: FieldType.RELATIONSHIP,
     isSystem: true,
-    systemAttribute: 'contact_id',
+    systemAttribute: 'ticket_contact',
     systemSortOrder: 45,
     dynamicOptionsKey: 'contacts',
     dbColumn: 'contactId',

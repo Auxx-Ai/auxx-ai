@@ -133,26 +133,26 @@ export const useWorkflowSave = () => {
         }
       }
 
-      // Other trigger types (non-resource)
-      const manualNode = cleanNodes.find((n) => n.data.type === 'manual-trigger')
+      // Other trigger types (non-resource) - use NodeType enum values aligned with backend
+      const manualNode = cleanNodes.find((n) => n.data.type === 'manual')
       if (manualNode) {
         triggerType = TriggerType.FORM
         entityDefinitionId = undefined // Form triggers don't have entity
       }
 
-      const webhookNode = cleanNodes.find((n) => n.data.type === 'webhook-trigger')
+      const webhookNode = cleanNodes.find((n) => n.data.type === 'webhook')
       if (webhookNode) {
         triggerType = TriggerType.WEBHOOK
         entityDefinitionId = undefined
       }
 
-      const scheduledNode = cleanNodes.find((n) => n.data.type === 'scheduled-trigger')
+      const scheduledNode = cleanNodes.find((n) => n.data.type === 'scheduled')
       if (scheduledNode) {
         triggerType = TriggerType.SCHEDULED
         entityDefinitionId = undefined
       }
 
-      const messageNode = cleanNodes.find((n) => n.data.type === 'message-received-trigger')
+      const messageNode = cleanNodes.find((n) => n.data.type === 'message-received')
       if (messageNode) {
         triggerType = TriggerType.MESSAGE_RECEIVED
         entityDefinitionId = undefined

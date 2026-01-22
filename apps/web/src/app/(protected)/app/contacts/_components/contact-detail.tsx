@@ -133,7 +133,6 @@ function ContactDetailSidebar({
 export function ContactDetail({ id }: { id: string }) {
   const router = useRouter()
   const [tab, setTab] = useQueryState('tab', { defaultValue: 'tickets' })
-  console.log('ContactDetail render with id:', id)
 
   const recordId = toRecordId('contact', id)
   // Dock state for resizable sidebar

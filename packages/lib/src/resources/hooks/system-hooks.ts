@@ -1,6 +1,7 @@
 // packages/lib/src/resources/hooks/system-hooks.ts
 
 import { CONTACT_HOOKS } from './contact-hooks'
+import { TICKET_HOOKS } from './ticket-hooks'
 import type { SystemHook, SystemHookRegistry } from './types'
 
 /**
@@ -11,22 +12,10 @@ import type { SystemHook, SystemHookRegistry } from './types'
  * 1. Create a new hooks file (e.g., ticket-hooks.ts)
  * 2. Define system attribute hooks in that file
  * 3. Import and register here in HOOKS_BY_ENTITY_TYPE
- *
- * Example:
- * ```typescript
- * import { TICKET_HOOKS } from './ticket-hooks'
- *
- * const HOOKS_BY_ENTITY_TYPE: Record<string, SystemHookRegistry> = {
- *   contact: CONTACT_HOOKS,
- *   ticket: TICKET_HOOKS,
- * }
- * ```
  */
 const HOOKS_BY_ENTITY_TYPE: Record<string, SystemHookRegistry> = {
   contact: CONTACT_HOOKS,
-  // Future system entities:
-  // ticket: TICKET_HOOKS,
-  // conversation: CONVERSATION_HOOKS,
+  ticket: TICKET_HOOKS,
 }
 
 /**

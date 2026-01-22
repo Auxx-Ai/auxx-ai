@@ -105,6 +105,7 @@ export type {
   UpdateRecordOptions,
   FindByFieldOptions,
   FieldChange,
+  CreateEntityResult,
 } from './crud'
 
 // Merge service (server-side)

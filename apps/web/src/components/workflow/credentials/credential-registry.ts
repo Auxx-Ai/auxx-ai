@@ -117,7 +117,7 @@ export const CREDENTIAL_REGISTRY: CredentialTypeMetadata[] = [
     category: 'email',
     icon: Inbox,
     credentialType: new Imap(),
-    compatibleNodeTypes: ['email', 'message-received-trigger'],
+    compatibleNodeTypes: ['email', 'message-received'],
   },
 
   // Social Media

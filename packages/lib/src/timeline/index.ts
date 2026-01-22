@@ -6,6 +6,7 @@ export {
   TimelineEntityType,
   TimelineActorType,
   ContactEventType,
+  TicketEventType,
   EntityInstanceEventType,
   ENTITY_TYPE_PREFIX,
   SYSTEM_ENTITY_TYPES,

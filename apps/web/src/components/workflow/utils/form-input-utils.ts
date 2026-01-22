@@ -21,10 +21,8 @@ export function extractFormInputNodes(graph: WorkflowGraph): FormInputConfig[] {
   const nodes = graph.nodes || []
   const edges = graph.edges || []
 
-  // Find the manual trigger node
-  const manualTrigger = nodes.find(
-    (node) => node.data?.type === 'manual-trigger' || node.data?.type === 'manual'
-  )
+  // Find the manual trigger node (type is 'manual', aligned with backend)
+  const manualTrigger = nodes.find((node) => node.data?.type === 'manual')
 
   if (!manualTrigger) {
     return []

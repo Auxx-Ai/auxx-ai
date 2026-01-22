@@ -15,7 +15,7 @@ export {
 export type { ListFilteredInput, ListFilteredResult } from './unified-handler-queries'
 
 // Mutation utilities (for advanced use cases)
-export type { MutationContext } from './unified-handler-mutations'
+export type { MutationContext, CreateEntityResult } from './unified-handler-mutations'
 
 // Types
 export {

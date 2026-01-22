@@ -122,6 +122,9 @@ export function ItemsCellView<T extends ItemsListItem>({
         data-slot="expandable-cell-inner"
         className={cn('relative w-full min-h-9 flex items-center ps-3', className)}>
         {emptyContent ?? <span className="text-muted-foreground">-</span>}
+        <div className="hidden [.cell-selected_&]:flex">
+          <CellSelectionOverlay isSelected isEditing={false} />
+        </div>
       </div>
     )
   }

@@ -5,11 +5,11 @@
  * Use this enum instead of string literals throughout the codebase
  */
 export enum NodeType {
-  // Trigger nodes
-  MESSAGE_RECEIVED = 'message-received-trigger',
-  WEBHOOK = 'webhook-trigger',
-  SCHEDULED = 'scheduled-trigger',
-  MANUAL = 'manual-trigger',
+  // Trigger nodes - aligned with backend WorkflowTriggerType
+  MESSAGE_RECEIVED = 'message-received',
+  WEBHOOK = 'webhook',
+  SCHEDULED = 'scheduled',
+  MANUAL = 'manual',
   RESOURCE_TRIGGER = 'resource-trigger', // Unified resource trigger
 
   // Resource trigger nodes (legacy - kept for backwards compatibility)

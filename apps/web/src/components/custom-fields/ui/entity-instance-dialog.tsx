@@ -276,30 +276,42 @@ export function EntityInstanceDialog({
       let instanceId: string
 
       if (isEditing && editingInstanceId) {
-        // Edit mode: just update values
+        // Edit mode: update values via saveMultipleAsync
         instanceId = editingInstanceId
+        const instanceRecordId = toRecordId(entityDefinitionId, instanceId)
+
+        // Save all field values
+        const valuesToSave = Object.entries(values)
+          .filter(([_, value]) => value !== undefined && value !== null && value !== '')
+          .map(([fieldId, value]) => {
+            const field = editableFields.find((f) => f.id === fieldId)
+            return { fieldId, value, fieldType: field?.fieldType }
+          })
+
+        if (valuesToSave.length > 0) {
+          const success = await saveMultipleAsync(instanceRecordId, valuesToSave)
+          if (!success) return
+        }
       } else {
-        // Create mode: create instance first
-        const created = await createInstance.mutateAsync({
+        // Create mode: single create call with values
+        // Build values object from form state
+        const formValues = Object.fromEntries(
+          Object.entries(values).filter(
+            ([_, value]) => value !== undefined && value !== null && value !== ''
+          )
+        )
+
+        // Create instance with values - hooks run and auto-generate fields like ticket_number
+        const result = await createInstance.mutateAsync({
           entityDefinitionId,
-        })
-        instanceId = created.id
-      }
-
-      // Convert to RecordId
-      const instanceRecordId = toRecordId(entityDefinitionId, instanceId)
-
-      // Save all field values
-      const valuesToSave = Object.entries(values)
-        .filter(([_, value]) => value !== undefined && value !== null && value !== '')
-        .map(([fieldId, value]) => {
-          const field = editableFields.find((f) => f.id === fieldId)
-          return { fieldId, value, fieldType: field?.fieldType }
+          values: formValues,
         })
 
-      if (valuesToSave.length > 0) {
-        const success = await saveMultipleAsync(instanceRecordId, valuesToSave)
-        if (!success) return
+        instanceId = result.instance.id
+
+        // The returned values include auto-generated fields (e.g., ticket_number)
+        // These are already saved to the database by the handler
+        // The field value store will be hydrated on next fetch
       }
 
       onSaved?.(instanceId)

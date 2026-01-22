@@ -4,9 +4,7 @@ import { database, schema } from '@auxx/database'
 import { eq, and, asc } from 'drizzle-orm'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import { ModelTypes } from './types'
 import type { CustomFieldEntity } from '@auxx/database/models'
-import { getModelType } from '@auxx/types/resource'
 
 /**
  * Input for getting custom fields
@@ -25,18 +23,26 @@ export interface GetCustomFieldsInput {
 export async function getCustomFields(input: GetCustomFieldsInput) {
   const { organizationId, entityDefinitionId } = input
 
-  // Derive modelType from entityDefinitionId
-  const modelType = getModelType(entityDefinitionId)
+  // Resources that DON'T have EntityDefinitions (legacy model types)
+  // These are queried by modelType column directly
+  const legacyModelTypes = ['thread', 'message', 'inbox', 'user', 'participant', 'dataset']
+  const isLegacyModelType = legacyModelTypes.includes(entityDefinitionId)
 
-  // Build conditions
-  const conditions = [
-    eq(schema.CustomField.organizationId, organizationId),
-    eq(schema.CustomField.modelType, modelType as any),
-  ]
+  let conditions
 
-  // For custom entities (ENTITY type), filter by entityDefinitionId
-  if (modelType === ModelTypes.ENTITY) {
-    conditions.push(eq(schema.CustomField.entityDefinitionId, entityDefinitionId))
+  if (isLegacyModelType) {
+    // Legacy query by modelType (for thread, message, etc. without EntityDefinitions)
+    conditions = [
+      eq(schema.CustomField.organizationId, organizationId),
+      eq(schema.CustomField.modelType, entityDefinitionId as any),
+    ]
+  } else {
+    // Entity-based query by entityDefinitionId (for contact, ticket, part, custom entities)
+    // These have EntityDefinition records and CustomFields are linked via entityDefinitionId UUID
+    conditions = [
+      eq(schema.CustomField.organizationId, organizationId),
+      eq(schema.CustomField.entityDefinitionId, entityDefinitionId),
+    ]
   }
 
   const dbResult = await fromDatabase(

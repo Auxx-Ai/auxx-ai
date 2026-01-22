@@ -37,6 +37,7 @@ import {
   updateValues as updateValuesImpl,
   type CrudOptions,
   type MutationContext,
+  type CreateEntityResult,
 } from './unified-handler-mutations'
 import type { TableId } from '../registry/field-registry'
 // import type { EntityDefinitionEntity } from '@auxx/database/schema/entity-definition'
@@ -129,6 +130,7 @@ export class UnifiedCrudHandler {
       userId: this.userId,
       fieldValueService: this.fieldValueService,
       resolveEntityDefinition: this.resolveEntityDefinition.bind(this),
+      getFields: this.getCustomFieldsCached.bind(this),
       runPreHooks: this.runPreHooks.bind(this),
       validateUniqueFields: this.validateUniqueFields.bind(this),
       setFieldValues: this.setFieldValues.bind(this),
@@ -154,17 +156,20 @@ export class UnifiedCrudHandler {
   // ═══════════════════════════════════════════════════════════════════════════
 
   /**
-   * Create entity instance with field values and system hooks
+   * Create entity instance with field values and system hooks.
+   * Returns the created instance, recordId, and all processed values
+   * (including auto-generated values like ticket_number).
    *
    * @param entityDefinitionId - 'contact', 'ticket', or UUID for custom entities
    * @param values - Field values to set (map of fieldId -> value)
    * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
+   * @returns CreateEntityResult with instance, recordId, and all field values
    */
   async create(
     entityDefinitionId: string,
     values: Record<string, unknown>,
     options: CrudOptions = {}
-  ) {
+  ): Promise<CreateEntityResult> {
     await this.warmCache(entityDefinitionId)
     return createEntity(this.getMutationContext(), entityDefinitionId, values, options)
   }
@@ -740,10 +745,17 @@ export class UnifiedCrudHandler {
     const hooks = getSystemHooks(entityDef.entityType)
     let processedValues = { ...values }
 
+    // Get all fields for the entity (needed for looking up related fields in hooks)
+    const allFields = await this.getCustomFieldsCached(entityDef.id)
+
     for (const [systemAttribute, hookFns] of Object.entries(hooks)) {
       // Find field with this systemAttribute
       const field = await this.getFieldBySystemAttribute(entityDef.id, systemAttribute)
-      if (!field || !(field.id in processedValues)) continue
+      if (!field) continue
+
+      // For create operations, always run hooks (allows auto-generation like ticket_number)
+      // For update operations, only run hooks if the field is being updated
+      if (operation === 'update' && !(field.id in processedValues)) continue
 
       for (const hook of hookFns) {
         processedValues = await hook({
@@ -753,6 +765,8 @@ export class UnifiedCrudHandler {
           values: processedValues,
           existingInstance,
           organizationId: this.organizationId,
+          userId: this.userId,
+          allFields,
         })
       }
     }

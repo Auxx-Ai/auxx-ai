@@ -80,7 +80,7 @@ function SnippetsPageContent() {
       breadcrumbs={breadcrumbs}
       button={
         <Button variant="outline" size="sm" onClick={() => openCreateDialog()}>
-          <PlusIcon size={16} className="mr-2" />
+          <PlusIcon />
           New Snippet
         </Button>
       }>

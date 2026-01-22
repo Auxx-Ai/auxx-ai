@@ -1,5 +1,6 @@
 import type { InvitationStatus, SYNC_STATUS, TicketStatus } from '@auxx/database/types'
 import type { UserEntity as User } from '@auxx/database/models'
+import type { RecordId } from '@auxx/types/resource'
 export type Events =
   | 'user:created'
   | 'workspace:created'
@@ -65,69 +66,61 @@ export type AuxxEventGeneric<U extends Events, T extends Record<string, unknown>
 export type TicketCreatedEvent = AuxxEventGeneric<
   'ticket:created',
   {
-    ticketId: string
+    recordId: RecordId
+    relatedRecordId?: RecordId
     organizationId: string
     userId: string
-    // Timeline metadata (optional)
-    contactId?: string
-    ticketNumber?: string
-    ticketTitle?: string
-    ticketType?: string
+    eventData: Record<string, unknown>
   }
 >
 export type TicketUpdatedEvent = AuxxEventGeneric<
   'ticket:updated',
   {
-    ticketId: string
+    recordId: RecordId
+    relatedRecordId?: RecordId
     organizationId: string
     userId: string
-    // Timeline metadata (optional)
-    contactId?: string
-    ticketNumber?: string
-    changes?: Array<{
-      field: string
-      oldValue: any
-      newValue: any
-    }>
+    eventData: Record<string, unknown>
   }
 >
 export type TicketDeletedEvent = AuxxEventGeneric<
   'ticket:deleted',
   {
-    ticketId: string
+    recordId: RecordId
+    relatedRecordId?: RecordId
     organizationId: string
     userId: string
+    eventData: Record<string, unknown>
   }
 >
 export type TicketStatusChangedEvent = AuxxEventGeneric<
   'ticket:status:changed',
   {
-    ticketId: string
+    recordId: RecordId
+    relatedRecordId?: RecordId
     organizationId: string
     userId: string
-    status: TicketStatus
-    // Timeline metadata (optional)
-    contactId?: string
-    ticketNumber?: string
-    oldStatus?: TicketStatus
+    eventData: Record<string, unknown>
   }
 >
 export type TicketAssignedEvent = AuxxEventGeneric<
   'ticket:assignee:added',
   {
-    ticketId: string
+    recordId: RecordId
+    relatedRecordId?: RecordId
     organizationId: string
     userId: string
-    assigneeIds: string[]
+    eventData: Record<string, unknown>
   }
 >
 export type TicketUnassignedEvent = AuxxEventGeneric<
   'ticket:assignee:removed',
   {
-    ticketId: string
+    recordId: RecordId
+    relatedRecordId?: RecordId
     organizationId: string
     userId: string
-    assigneeIds: string[]
+    eventData: Record<string, unknown>
   }
 >
 export type TicketReplyCreatedEvent = AuxxEventGeneric<
@@ -404,42 +397,30 @@ export type ApprovalTimeoutEvent = AuxxEventGeneric<
 export type ContactCreatedEvent = AuxxEventGeneric<
   'contact:created',
   {
-    contactId: string
+    recordId: RecordId
     organizationId: string
-    userId?: string // Optional - may be created by system/automation
-    // Timeline metadata
-    firstName?: string
-    lastName?: string
-    email: string
-    phone?: string
-    sourceType?: string
+    userId?: string
+    eventData: Record<string, unknown>
   }
 >
 // Contact Updated Event
 export type ContactUpdatedEvent = AuxxEventGeneric<
   'contact:updated',
   {
-    contactId: string
+    recordId: RecordId
     organizationId: string
     userId: string
-    // Timeline metadata
-    firstName?: string
-    lastName?: string
-    email?: string
-    changes?: Array<{
-      field: string
-      oldValue: any
-      newValue: any
-    }>
+    eventData: Record<string, unknown>
   }
 >
-// Contact Updated Event
+// Contact Deleted Event
 export type ContactDeletedEvent = AuxxEventGeneric<
   'contact:deleted',
   {
-    contactId: string
+    recordId: RecordId
     organizationId: string
     userId: string
+    eventData: Record<string, unknown>
   }
 >
 
@@ -548,13 +529,12 @@ export type CommentRepliedEvent = AuxxEventGeneric<
 export type EntityInstanceCreatedEvent = AuxxEventGeneric<
   'entity:created',
   {
-    instanceId: string
+    recordId: RecordId
     entityDefinitionId: string
-    entitySlug: string // e.g., "vendors", "products" - for filtering
+    entitySlug: string
     organizationId: string
     userId: string
-    displayName?: string // Primary field display value if available
-    values: Record<string, unknown> // All custom field values
+    eventData: Record<string, unknown>
   }
 >
 
@@ -562,14 +542,12 @@ export type EntityInstanceCreatedEvent = AuxxEventGeneric<
 export type EntityInstanceUpdatedEvent = AuxxEventGeneric<
   'entity:updated',
   {
-    instanceId: string
+    recordId: RecordId
     entityDefinitionId: string
     entitySlug: string
     organizationId: string
     userId: string
-    displayName?: string
-    values: Record<string, unknown>
-    restored?: boolean // Flag indicating this was a restore from archive
+    eventData: Record<string, unknown>
   }
 >
 
@@ -577,12 +555,12 @@ export type EntityInstanceUpdatedEvent = AuxxEventGeneric<
 export type EntityInstanceDeletedEvent = AuxxEventGeneric<
   'entity:deleted',
   {
-    instanceId: string
+    recordId: RecordId
     entityDefinitionId: string
     entitySlug: string
     organizationId: string
     userId: string
-    hardDelete: boolean // true = permanent delete, false = archived (soft delete)
+    eventData: Record<string, unknown>
   }
 >
 

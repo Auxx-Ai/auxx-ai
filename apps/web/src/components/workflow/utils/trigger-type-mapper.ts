@@ -9,8 +9,8 @@ import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
 
 /**
  * Convert a node ID to its corresponding workflow trigger type
- * @param nodeId The node ID (e.g., 'message-received-trigger')
- * @returns The workflow trigger type (e.g., 'message-received-trigger') or undefined if not a trigger node
+ * @param nodeId The node ID (e.g., 'message-received')
+ * @returns The workflow trigger type (e.g., 'message-received') or undefined if not a trigger node
  */
 export function nodeIdToTriggerTypeMapper(nodeId: string): WorkflowTriggerType | undefined {
   // Simple validation check - node ID should match a trigger type value

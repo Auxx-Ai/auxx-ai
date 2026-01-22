@@ -14,7 +14,7 @@ export interface SystemHookContext {
   /** Entity definition being operated on */
   entityDef: EntityDefinitionEntity
 
-  /** Field being set */
+  /** Field being set (the field this hook is registered for) */
   field: CustomFieldEntity
 
   /** All field values being set in this operation */
@@ -25,6 +25,12 @@ export interface SystemHookContext {
 
   /** Organization ID for the operation */
   organizationId: string
+
+  /** User ID performing the operation (for timeline events) */
+  userId: string
+
+  /** All custom fields for this entity (for looking up related fields) */
+  allFields: CustomFieldEntity[]
 }
 
 /**

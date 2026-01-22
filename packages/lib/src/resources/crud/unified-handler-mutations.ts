@@ -14,6 +14,7 @@ import { invalidateSnapshots } from '../../snapshot'
 import { toRecordId, parseRecordId, type RecordId } from '../resource-id'
 import { EntityMergeService } from '../merge'
 import type { MergeEntitiesResult } from '../merge'
+import { extractEventData, findRelatedRecordId } from '../events/extract-event-data'
 // import type { EntityDefinitionEntity } from '@auxx/database/schema/entity-definition'
 // import type { EntityInstanceEntity } from '@auxx/database/schema/entity-instance'
 type EntityDefinitionEntity = typeof schema.EntityDefinition.$inferSelect
@@ -29,6 +30,9 @@ export interface CrudOptions {
   skipSnapshotInvalidation?: boolean
 }
 
+/** Inferred type for CustomField select */
+type CustomFieldEntity = typeof schema.CustomField.$inferSelect
+
 /**
  * Context for mutation operations
  * Provides access to common services and organization context
@@ -39,6 +43,7 @@ export interface MutationContext {
   userId: string
   fieldValueService: FieldValueService
   resolveEntityDefinition: (entityDefinitionId: string) => Promise<EntityDefinitionEntity>
+  getFields: (entityDefinitionId: string) => Promise<CustomFieldEntity[]>
   runPreHooks: (
     operation: 'create' | 'update',
     entityDef: EntityDefinitionEntity,
@@ -51,6 +56,15 @@ export interface MutationContext {
     excludeEntityId?: string
   ) => Promise<void>
   setFieldValues: (recordId: RecordId, values: Record<string, unknown>) => Promise<void>
+}
+
+/**
+ * Result type for entity creation
+ */
+export interface CreateEntityResult {
+  instance: EntityInstanceEntity
+  recordId: RecordId
+  values: Record<string, unknown>
 }
 
 /**
@@ -68,28 +82,55 @@ function unwrapResult<T, E extends { message: string }>(result: {
 }
 
 /**
- * Publish entity event
+ * Parameters for publishing entity events
  */
-async function publishEvent(
-  action: 'created' | 'updated' | 'deleted',
-  entityDef: EntityDefinitionEntity,
-  instanceId: string,
-  values: Record<string, unknown>,
-  organizationId: string,
-  userId: string,
-  extra?: Record<string, unknown>
-): Promise<void> {
+interface PublishEventParams {
+  recordId: RecordId
+  entityType: string | null
+  entityDefinitionId: string
+  entitySlug: string | null
+  action: 'created' | 'updated' | 'deleted'
+  organizationId: string
+  userId: string
+  eventData: Record<string, unknown>
+  relatedRecordId?: RecordId
+}
+
+/**
+ * Publish entity event.
+ * Uses entity-type-specific event type when available (e.g., 'ticket:created'),
+ * falls back to generic 'entity:created' for custom entities.
+ *
+ * @param params - Event parameters including recordId, eventData, etc.
+ */
+function publishEvent(params: PublishEventParams): void {
+  const {
+    recordId,
+    entityType,
+    entityDefinitionId,
+    entitySlug,
+    action,
+    organizationId,
+    userId,
+    eventData,
+    relatedRecordId,
+  } = params
+
+  const eventPrefix = entityType || 'entity'
+  const eventType = `${eventPrefix}:${action}` as const
+
+  // For custom entities, include entityDefinitionId and entitySlug for filtering
+  const customEntityMetadata = !entityType ? { entityDefinitionId, entitySlug } : {}
+
   publisher.publishLater({
-    type: `entity:${action}`,
+    type: eventType,
     data: {
-      instanceId,
-      entityDefinitionId: entityDef.id,
-      entitySlug: entityDef.apiSlug,
-      entityType: entityDef.entityType,
+      recordId,
       organizationId,
       userId,
-      values,
-      ...extra,
+      eventData,
+      ...customEntityMetadata,
+      ...(relatedRecordId && { relatedRecordId }),
     },
   })
 }
@@ -116,22 +157,25 @@ async function invalidateEntitySnapshots(
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Create entity instance with field values and system hooks
+ * Create entity instance with field values and system hooks.
+ * Returns the created instance, recordId, and all processed values
+ * (including auto-generated values like ticket_number).
  *
  * @param ctx - Mutation context
  * @param entityDefinitionId - 'contact', 'ticket', or UUID for custom entities
  * @param values - Field values to set (map of fieldId -> value)
  * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
+ * @returns CreateEntityResult with instance, recordId, and all field values
  */
 export async function createEntity(
   ctx: MutationContext,
   entityDefinitionId: string,
   values: Record<string, unknown>,
   options: CrudOptions = {}
-) {
+): Promise<CreateEntityResult> {
   const entityDef = await ctx.resolveEntityDefinition(entityDefinitionId)
 
-  // Run pre-create hooks (validation, normalization)
+  // Run pre-create hooks (validation, normalization, auto-generation)
   const processedValues = await ctx.runPreHooks('create', entityDef, values)
 
   // Check uniqueness constraints
@@ -159,17 +203,29 @@ export async function createEntity(
 
   // Publish event (unless skipped for bulk imports)
   if (!options.skipEvents) {
-    await publishEvent(
-      'created',
-      entityDef,
-      instance.id,
-      processedValues,
-      ctx.organizationId,
-      ctx.userId
-    )
+    const fields = await ctx.getFields(entityDef.id)
+    const eventData = extractEventData(entityDef.entityType, fields, processedValues)
+    const relatedRecordId = findRelatedRecordId(entityDef.entityType, eventData)
+
+    publishEvent({
+      recordId,
+      entityType: entityDef.entityType,
+      entityDefinitionId: entityDef.id,
+      entitySlug: entityDef.apiSlug,
+      action: 'created',
+      organizationId: ctx.organizationId,
+      userId: ctx.userId,
+      eventData,
+      relatedRecordId,
+    })
   }
 
-  return instance
+  // Return instance, recordId, and all processed values (including auto-generated ones)
+  return {
+    instance,
+    recordId,
+    values: processedValues,
+  }
 }
 
 /**
@@ -214,14 +270,21 @@ export async function updateEntity(
 
   // Publish event (unless skipped for bulk imports)
   if (!options.skipEvents) {
-    await publishEvent(
-      'updated',
-      entityDef,
-      entityInstanceId,
-      processedValues,
-      ctx.organizationId,
-      ctx.userId
-    )
+    const fields = await ctx.getFields(entityDef.id)
+    const eventData = extractEventData(entityDef.entityType, fields, processedValues)
+    const relatedRecordId = findRelatedRecordId(entityDef.entityType, eventData)
+
+    publishEvent({
+      recordId,
+      entityType: entityDef.entityType,
+      entityDefinitionId: entityDef.id,
+      entitySlug: entityDef.apiSlug,
+      action: 'updated',
+      organizationId: ctx.organizationId,
+      userId: ctx.userId,
+      eventData,
+      relatedRecordId,
+    })
   }
 
   // Return the instance we already fetched (field values are in FieldValue table, not on instance)
@@ -263,8 +326,15 @@ export async function archiveEntity(
     await invalidateEntitySnapshots(ctx.organizationId, entityDef.id)
   }
   if (!options.skipEvents) {
-    await publishEvent('deleted', entityDef, entityInstanceId, {}, ctx.organizationId, ctx.userId, {
-      hardDelete: false,
+    publishEvent({
+      recordId,
+      entityType: entityDef.entityType,
+      entityDefinitionId: entityDef.id,
+      entitySlug: entityDef.apiSlug,
+      action: 'deleted',
+      organizationId: ctx.organizationId,
+      userId: ctx.userId,
+      eventData: { hardDelete: false },
     })
   }
 
@@ -307,8 +377,15 @@ export async function restoreEntity(
     await invalidateEntitySnapshots(ctx.organizationId, entityDef.id)
   }
   if (!options.skipEvents) {
-    await publishEvent('updated', entityDef, entityInstanceId, {}, ctx.organizationId, ctx.userId, {
-      restored: true,
+    publishEvent({
+      recordId,
+      entityType: entityDef.entityType,
+      entityDefinitionId: entityDef.id,
+      entitySlug: entityDef.apiSlug,
+      action: 'updated',
+      organizationId: ctx.organizationId,
+      userId: ctx.userId,
+      eventData: { restored: true },
     })
   }
 
@@ -354,8 +431,15 @@ export async function deleteEntity(
     await invalidateEntitySnapshots(ctx.organizationId, entityDef.id)
   }
   if (!options.skipEvents) {
-    await publishEvent('deleted', entityDef, entityInstanceId, {}, ctx.organizationId, ctx.userId, {
-      hardDelete: true,
+    publishEvent({
+      recordId,
+      entityType: entityDef.entityType,
+      entityDefinitionId: entityDef.id,
+      entitySlug: entityDef.apiSlug,
+      action: 'deleted',
+      organizationId: ctx.organizationId,
+      userId: ctx.userId,
+      eventData: { hardDelete: true },
     })
   }
 }
@@ -388,11 +472,11 @@ export async function bulkCreateEntities(
   // Create all records without individual snapshot invalidation
   for (let i = 0; i < items.length; i++) {
     try {
-      const instance = await createEntity(ctx, entityDefinitionId, items[i]!, {
+      const result = await createEntity(ctx, entityDefinitionId, items[i]!, {
         skipEvents: options.skipEvents,
         skipSnapshotInvalidation: true, // Always skip - we'll do it once at end
       })
-      created.push(instance)
+      created.push(result.instance)
     } catch (e) {
       errors.push({ index: i, error: e instanceof Error ? e.message : 'Unknown error' })
     }
@@ -593,8 +677,8 @@ export async function createWithValues(
   entityDefinitionId: string,
   values: Record<string, unknown>
 ): Promise<{ entityInstance: EntityInstanceEntity; id: string }> {
-  const instance = await createEntity(ctx, entityDefinitionId, values)
-  return { entityInstance: instance, id: instance.id }
+  const result = await createEntity(ctx, entityDefinitionId, values)
+  return { entityInstance: result.instance, id: result.instance.id }
 }
 
 /**

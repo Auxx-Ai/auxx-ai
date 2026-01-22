@@ -22,7 +22,7 @@ export interface MessageReceivedNodeData extends BaseNodeData {
 /**
  * Full Message Received node type for React Flow
  */
-export type MessageReceivedNode = SpecificNode<'message-received-trigger', MessageReceivedNodeData>
+export type MessageReceivedNode = SpecificNode<'message-received', MessageReceivedNodeData>
 
 /**
  * Execution result for message-received nodes
