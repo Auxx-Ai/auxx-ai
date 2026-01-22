@@ -1,3 +1,5 @@
+// apps/web/src/components/fields/displays/display-field.tsx
+
 import { DisplayDate } from './display-date'
 import { DisplayText } from './display-text'
 import { DisplayNumber } from './display-number'
@@ -14,7 +16,6 @@ import { DisplayRichText } from './display-rich-text'
 import { DisplayFile } from './display-file'
 import { DisplayName } from './display-name'
 import { DisplayRelationship } from './display-relationship'
-import { DisplayCalc } from './display-calc'
 import { usePropertyContext } from '../property-provider'
 import { useDisplayOnlyContext } from '../display-only-provider'
 import { FieldType } from '@auxx/database/enums'
@@ -30,13 +31,28 @@ export function useFieldContext() {
     return useDisplayOnlyContext()
   }
 }
+
+/**
+ * Get the effective field type for rendering.
+ * For CALC fields, returns the resultFieldType; otherwise returns the field's type.
+ */
+function getEffectiveFieldType(field: { fieldType: string; options?: { calc?: { resultFieldType?: string } } }): string {
+  if (field.fieldType === FieldType.CALC) {
+    return field.options?.calc?.resultFieldType ?? FieldType.TEXT
+  }
+  return field.fieldType
+}
+
 /**
  * DisplayField component
- * Renders the correct display component for a contact field type
+ * Renders the correct display component for a field type.
+ * For CALC fields, uses the resultFieldType to determine which display component to render.
  */
 export function DisplayField() {
   const { field } = useFieldContext()
-  switch (field.fieldType) {
+  const effectiveFieldType = getEffectiveFieldType(field)
+
+  switch (effectiveFieldType) {
     case FieldType.DATE:
     case FieldType.DATETIME:
     case FieldType.TIME:
@@ -73,8 +89,6 @@ export function DisplayField() {
       return <DisplayName />
     case FieldType.RELATIONSHIP:
       return <DisplayRelationship />
-    case FieldType.CALC:
-      return <DisplayCalc />
     default:
       return <DisplayText />
   }

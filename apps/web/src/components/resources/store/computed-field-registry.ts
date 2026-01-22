@@ -1,6 +1,6 @@
 // apps/web/src/components/resources/store/computed-field-registry.ts
 
-import type { CalcOptions } from '@auxx/lib/custom-fields/field-options'
+import type { CalcOptions } from '@auxx/lib/custom-fields/client'
 import type { ResourceFieldId } from '@auxx/types/field'
 import type { ResourceField } from '@auxx/lib/resources/client'
 import { FieldType } from '@auxx/database/enums'
@@ -129,7 +129,10 @@ function syncCalcFields(fieldMap: Record<string, ResourceField>) {
       newCalcIds.add(resourceFieldId)
 
       // Register (will update if already exists)
-      computedFieldRegistry.register(resourceFieldId as ResourceFieldId, field.options.calc as CalcOptions)
+      computedFieldRegistry.register(
+        resourceFieldId as ResourceFieldId,
+        field.options.calc as CalcOptions
+      )
     }
   }
 

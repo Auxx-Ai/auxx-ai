@@ -6,7 +6,7 @@ import { ok, err } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import { type RelationshipConfig, getInverseFieldId } from './types'
 import type { CustomFieldNotFoundError, AccessDeniedError } from './errors'
-import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
+import { parseResourceFieldId, isResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import type { CalcOptions } from '@auxx/lib/custom-fields/field-options'
 
 /**
@@ -88,6 +88,7 @@ export async function deleteCustomField(input: DeleteCustomFieldInput) {
       }
 
       // Find and disable CALC fields that depend on the deleted field
+      // Search all CALC fields in org (source fields can reference any entity via relationships)
       const deletedFieldId = id
       const allCalcFields = await tx
         .select()
@@ -95,7 +96,6 @@ export async function deleteCustomField(input: DeleteCustomFieldInput) {
         .where(
           and(
             eq(schema.CustomField.organizationId, organizationId),
-            eq(schema.CustomField.entityDefinitionId, field.entityDefinitionId!),
             eq(schema.CustomField.type, 'CALC' as any)
           )
         )
@@ -106,9 +106,17 @@ export async function deleteCustomField(input: DeleteCustomFieldInput) {
         const calcOptions = (calcField.options as { calc?: CalcOptions })?.calc
         if (!calcOptions?.sourceFields) continue
 
-        // sourceFields is Record<placeholderName, fieldId>
+        // sourceFields is Record<placeholderName, ResourceFieldId>
+        // Extract plain fieldId from ResourceFieldId format and check if deleted field is referenced
         const sourceFieldIds = Object.values(calcOptions.sourceFields)
-        if (sourceFieldIds.includes(deletedFieldId)) {
+        const referencesDeletedField = sourceFieldIds.some(resourceFieldId => {
+          if (isResourceFieldId(resourceFieldId)) {
+            const { fieldId } = parseResourceFieldId(resourceFieldId as ResourceFieldId)
+            return fieldId === deletedFieldId
+          }
+          return resourceFieldId === deletedFieldId // fallback for legacy format
+        })
+        if (referencesDeletedField) {
           // Disable this CALC field
           await tx
             .update(schema.CustomField)

@@ -10,6 +10,8 @@ import {
 } from '@auxx/ui/components/input-currency'
 import { InputGroup } from '@auxx/ui/components/input-group'
 import type { CurrencyDisplayOptions } from '@auxx/utils'
+import { cn } from '@auxx/ui/lib/utils'
+import { NumberInputArrows } from '@auxx/ui/components/input-number'
 
 /**
  * CurrencyInputField
@@ -100,15 +102,16 @@ export function CurrencyInputField() {
       currencyCode={options.currencyCode}
       decimalPlaces={options.decimalPlaces}
       disabled={isSaving}>
-      <div className="h-6.5 flex items-center">
+      <InputGroup className={cn('h-[27px] ring-0! border-0', isSaving ? 'opacity-70' : '')}>
         {/* <InputGroup> */}
         <BaseCurrencyInputField
           onBlur={handleBlur}
           onKeyDown={handleKeyDown}
           placeholder="0.00"
           autoFocus
+          className="text-left pl-0!"
         />
-      </div>
+      </InputGroup>
       {/* </InputGroup> */}
     </CurrencyInput>
   )

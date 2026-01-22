@@ -1,9 +1,11 @@
 // lib/inbox/inbox-service.ts
-import { InboxStatus, MemberType } from '@auxx/database/enums'
+import { InboxStatus, MemberType, BuiltInEntityType, ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
 import { type InboxIntegrationEntity as InboxIntegration } from '@auxx/database/models'
 
 import { database as db, schema, type Database } from '@auxx/database'
 import { eq, and, or, inArray, sql, desc } from 'drizzle-orm'
+import { setInstanceAccess, getInstanceAccess, getUserAccessibleInstances } from '@auxx/lib/resource-access'
+import { toRecordId, parseRecordId } from '@auxx/types/resource'
 
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
@@ -21,7 +23,7 @@ const DefaultInboxWith = {
     with: { integration: { columns: { name: true, email: true, provider: true } } },
   },
   memberAccess: true,
-  groupAccess: true,
+  // Note: groupAccess removed - migrated to ResourceAccess
 } as const
 
 export class InboxService {
@@ -352,7 +354,15 @@ export class InboxService {
           .delete(schema.InboxMemberAccess)
           .where(eq(schema.InboxMemberAccess.inboxId, inboxId))
 
-        await tx.delete(schema.InboxGroupAccess).where(eq(schema.InboxGroupAccess.inboxId, inboxId))
+        // Delete ResourceAccess records for this inbox
+        await tx
+          .delete(schema.ResourceAccess)
+          .where(
+            and(
+              eq(schema.ResourceAccess.entityDefinitionId, BuiltInEntityType.inbox),
+              eq(schema.ResourceAccess.entityInstanceId, inboxId)
+            )
+          )
 
         await tx.delete(schema.InboxIntegration).where(eq(schema.InboxIntegration.inboxId, inboxId))
 
@@ -545,23 +555,14 @@ export class InboxService {
           }
         }
 
-        // Update group access if provided
+        // Update group access if provided using ResourceAccess
         if (accessData.groupIds !== undefined) {
-          // First delete existing group access entries
-          await tx
-            .delete(schema.InboxGroupAccess)
-            .where(eq(schema.InboxGroupAccess.inboxId, inboxId))
-
-          // Then create new group access entries
-          if (accessData.groupIds.length > 0) {
-            await tx.insert(schema.InboxGroupAccess).values(
-              accessData.groupIds.map((groupId) => ({
-                inboxId,
-                groupId,
-                updatedAt: new Date(),
-              }))
-            )
-          }
+          await setInstanceAccess(
+            { db: tx, organizationId: this.organizationId },
+            toRecordId(BuiltInEntityType.inbox, inboxId),
+            ResourceGranteeType.group,
+            accessData.groupIds.map((gid) => ({ granteeId: gid, permission: ResourcePermission.view }))
+          )
         }
 
         // Return the updated inbox with all its relations
@@ -652,24 +653,24 @@ export class InboxService {
         }
       }
 
-      // Check group-based access
+      // Check group-based access via ResourceAccess
       if (inbox.enableGroupAccess) {
-        // Get all groups with access to this inbox
-        const inboxGroups = await db
-          .select({ groupId: schema.InboxGroupAccess.groupId })
-          .from(schema.InboxGroupAccess)
-          .where(eq(schema.InboxGroupAccess.inboxId, inboxId))
+        // Get all groups with access to this inbox via ResourceAccess
+        const accessRecords = await getInstanceAccess(
+          { db, organizationId: this.organizationId },
+          toRecordId(BuiltInEntityType.inbox, inboxId)
+        )
+        const groupIds = accessRecords
+          .filter((a) => a.granteeType === ResourceGranteeType.group)
+          .map((a) => a.granteeId)
 
-        if (inboxGroups.length) {
+        if (groupIds.length) {
           // Check if user is a member of any of these groups (via EntityGroupMember)
           const userInGroup = await db.query.EntityGroupMember.findFirst({
             where: and(
               eq(schema.EntityGroupMember.memberType, MemberType.user),
               eq(schema.EntityGroupMember.memberRefId, userId),
-              inArray(
-                schema.EntityGroupMember.groupInstanceId,
-                inboxGroups.map((g) => g.groupId)
-              )
+              inArray(schema.EntityGroupMember.groupInstanceId, groupIds)
             ),
           })
 
@@ -764,21 +765,36 @@ export class InboxService {
         )
         .then((rows) => rows.map((row) => row.Inbox))
 
-      // 3. Group access (if user has groups)
+      // 3. Group access via ResourceAccess (if user has groups)
       let groupAccessInboxes: any[] = []
       if (userGroupIds.length > 0) {
-        groupAccessInboxes = await db
-          .select()
-          .from(schema.Inbox)
-          .innerJoin(schema.InboxGroupAccess, eq(schema.Inbox.id, schema.InboxGroupAccess.inboxId))
+        // Get all inbox access records for user's groups from ResourceAccess
+        const groupAccessRecords = await db
+          .select({ entityInstanceId: schema.ResourceAccess.entityInstanceId })
+          .from(schema.ResourceAccess)
           .where(
             and(
-              eq(schema.Inbox.organizationId, this.organizationId),
-              eq(schema.Inbox.enableGroupAccess, true),
-              inArray(schema.InboxGroupAccess.groupId, userGroupIds)
+              eq(schema.ResourceAccess.organizationId, this.organizationId),
+              eq(schema.ResourceAccess.entityDefinitionId, BuiltInEntityType.inbox),
+              eq(schema.ResourceAccess.granteeType, ResourceGranteeType.group),
+              inArray(schema.ResourceAccess.granteeId, userGroupIds)
             )
           )
-          .then((rows) => rows.map((row) => row.Inbox))
+
+        const inboxIdsWithGroupAccess = groupAccessRecords.map((r) => r.entityInstanceId)
+
+        if (inboxIdsWithGroupAccess.length > 0) {
+          groupAccessInboxes = await db
+            .select()
+            .from(schema.Inbox)
+            .where(
+              and(
+                eq(schema.Inbox.organizationId, this.organizationId),
+                eq(schema.Inbox.enableGroupAccess, true),
+                inArray(schema.Inbox.id, inboxIdsWithGroupAccess)
+              )
+            )
+        }
       }
 
       // Combine and deduplicate inboxes
@@ -826,15 +842,36 @@ export class InboxService {
         (membership) => membership.groupInstance.organizationId === this.organizationId
       )
 
-      // Enhance inbox objects with detailed group information
-      return inboxes.map((inbox) => {
-        const accessGroups = filteredUserGroups.filter((membership) =>
-          inbox.groupAccess.some(
-            (access: { groupId: string }) => access.groupId === membership.groupInstanceId
+      const userGroupIds = filteredUserGroups.map((m) => m.groupInstanceId)
+
+      // Get all inbox access records from ResourceAccess for this organization
+      const inboxAccessRecords = await db
+        .select({
+          inboxId: schema.ResourceAccess.entityInstanceId,
+          groupId: schema.ResourceAccess.granteeId,
+        })
+        .from(schema.ResourceAccess)
+        .where(
+          and(
+            eq(schema.ResourceAccess.organizationId, this.organizationId),
+            eq(schema.ResourceAccess.entityDefinitionId, BuiltInEntityType.inbox),
+            eq(schema.ResourceAccess.granteeType, ResourceGranteeType.group),
+            inArray(schema.ResourceAccess.granteeId, userGroupIds.length > 0 ? userGroupIds : [''])
           )
         )
 
-        return { ...inbox, accessGroups: accessGroups.map((g) => g.groupInstance) }
+      // Enhance inbox objects with detailed group information
+      return inboxes.map((inbox) => {
+        // Find which groups gave access to this inbox
+        const inboxGroupIds = inboxAccessRecords
+          .filter((r) => r.inboxId === inbox.id)
+          .map((r) => r.groupId)
+
+        const accessGroups = filteredUserGroups
+          .filter((membership) => inboxGroupIds.includes(membership.groupInstanceId))
+          .map((g) => g.groupInstance)
+
+        return { ...inbox, accessGroups }
       })
     } catch (error) {
       logger.error('Error getting inboxes with group details', {

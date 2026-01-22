@@ -186,40 +186,9 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
       })
     }
 
-    // Verify all source fields exist on this entity
-    // sourceFields is a Record<placeholderName, fieldId>
-    const sourceFieldIds = Object.values(calcOptions.sourceFields || {})
-    if (sourceFieldIds.length > 0) {
-      const existingFields = await db.query.CustomField.findMany({
-        where: and(
-          eq(schema.CustomField.organizationId, organizationId),
-          eq(schema.CustomField.modelType, dbModelType as any),
-          ...(dbModelType === ModelTypes.ENTITY
-            ? [eq(schema.CustomField.entityDefinitionId, entityDefinitionId!)]
-            : [])
-        ),
-        columns: { id: true, type: true },
-      })
-      const existingIds = new Set(existingFields.map(f => f.id))
-
-      const missingFieldIds = sourceFieldIds.filter(id => !existingIds.has(id))
-      if (missingFieldIds.length > 0) {
-        return err({
-          code: 'VALIDATION_ERROR' as const,
-          message: `Source fields not found: ${missingFieldIds.join(', ')}`,
-        })
-      }
-
-      // Check for circular dependencies (CALC field referencing another CALC field)
-      const referencedCalcFields = existingFields.filter(
-        f => f.type === 'CALC' && sourceFieldIds.includes(f.id)
-      )
-      if (referencedCalcFields.length > 0) {
-        console.warn(
-          `CALC field references other CALC fields: ${referencedCalcFields.map(f => f.id).join(', ')}`
-        )
-      }
-    }
+    // Source fields are now stored as ResourceFieldId format (entityDefinitionId:fieldId)
+    // and can reference fields from related entities via relationships.
+    // We trust the frontend field picker to select valid fields.
   }
 
   // Build field options for non-relationship types

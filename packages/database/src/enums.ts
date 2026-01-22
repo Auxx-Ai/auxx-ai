@@ -478,7 +478,7 @@ export const SignatureSharingTypeValues = [
 
 export const SnippetPermissionValues = ['VIEW', 'EDIT'] as const
 
-export const SnippetSharingTypeValues = ['PRIVATE', 'ORGANIZATION', 'GROUPS', 'MEMBERS'] as const
+export const SnippetSharingTypeValues = ['PRIVATE', 'ORGANIZATION', 'GROUPS'] as const
 
 export const StaticRuleTypeValues = [
   'SENDER_DOMAIN',
@@ -1171,8 +1171,7 @@ export const SnippetPermission = {
 export const SnippetSharingType = {
   PRIVATE: 'PRIVATE',
   ORGANIZATION: 'ORGANIZATION',
-  GROUPS: 'GROUPS',
-  MEMBERS: 'MEMBERS',
+  GROUPS: 'GROUPS', // Semantically means "custom" - check ResourceAccess
 } as const
 
 export const StaticRuleType = {

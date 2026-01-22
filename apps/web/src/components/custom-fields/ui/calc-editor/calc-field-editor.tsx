@@ -33,7 +33,7 @@ import type { ResourceField } from '@auxx/lib/resources/client'
 /** Options for a CALC field stored in field.options.calc */
 export interface CalcEditorOptions {
   expression: string
-  sourceFields: Record<string, string> // Record<placeholderKey, fieldId>
+  sourceFields: Record<string, string> // Record<placeholderKey, ResourceFieldId>
   resultFieldType: FieldTypeType
   disabled?: boolean
   disabledReason?: string
@@ -94,7 +94,7 @@ export function CalcFieldEditor({
       const sourceFieldsMap: Record<string, string> = {}
       for (const key of extractedFields) {
         if (fieldKeyToId[key]) {
-          sourceFieldsMap[key] = fieldKeyToId[key]
+          sourceFieldsMap[key] = `${entityDefinitionId}:${fieldKeyToId[key]}`
         }
       }
 

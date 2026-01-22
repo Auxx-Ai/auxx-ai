@@ -38,6 +38,7 @@ export function createFileColumns(actions: FileColumnsActions): ExtendedColumnDe
       minSize: 300,
       primaryCell: true,
       enableHiding: false,
+      defaultVisible: true,
       cell: ({ row }) => (
         <FileNameCell
           item={row.original}
@@ -52,6 +53,7 @@ export function createFileColumns(actions: FileColumnsActions): ExtendedColumnDe
     {
       accessorKey: 'displaySize',
       header: 'Size',
+      defaultVisible: true,
       cell: ({ row }) => {
         const item = row.original
         const isUploading = item.isUploading
@@ -79,6 +81,7 @@ export function createFileColumns(actions: FileColumnsActions): ExtendedColumnDe
     {
       accessorKey: 'type',
       header: 'Type',
+      defaultVisible: true,
       cell: ({ row }) => {
         const item = row.original
         if (item.type === 'folder') {
@@ -95,6 +98,7 @@ export function createFileColumns(actions: FileColumnsActions): ExtendedColumnDe
       header: 'Created',
       fieldType: 'DATE',
       columnType: 'date',
+      defaultVisible: true,
       cell: ({ getValue }) => (
         <FormattedCell value={getValue()} fieldType="DATE" columnId="createdAt" />
       ),
@@ -104,6 +108,7 @@ export function createFileColumns(actions: FileColumnsActions): ExtendedColumnDe
     {
       accessorKey: 'path',
       header: 'Path',
+      defaultVisible: true,
       cell: ({ row }) => {
         const item = row.original
         const fullPath = item.path || '/'

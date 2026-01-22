@@ -45,10 +45,7 @@ import {
   File,
   Folder,
   FolderFile,
-  Group,
-  GroupMember,
   Inbox,
-  InboxGroupAccess,
   InboxIntegration,
   InboxMemberAccess,
   Integration,
@@ -90,7 +87,6 @@ import {
   SignatureIntegrationShare,
   Snippet,
   SnippetFolder,
-  SnippetShare,
   Subpart,
   Subscription,
   SyncJob,
@@ -139,7 +135,6 @@ export const userRelations = relations(User, ({ one, many }) => ({
   sentInvitations: many(OrganizationInvitation, {
     relationName: 'organizationInvitation_invitedById_user_id',
   }),
-  groupMemberships: many(GroupMember),
   userSettings: many(UserSetting),
   shopifyIntegrations: many(ShopifyIntegration),
   shopifyAuthStates: many(ShopifyAuthState),
@@ -227,7 +222,6 @@ export const organizationRelations = relations(Organization, ({ one, many }) => 
   }),
   members: many(OrganizationMember),
   invitations: many(OrganizationInvitation),
-  groups: many(Group),
   settings: many(OrganizationSetting),
   shopifyIntegrations: many(ShopifyIntegration),
   shopifyAuthStates: many(ShopifyAuthState),
@@ -318,7 +312,6 @@ export const organizationMemberRelations = relations(OrganizationMember, ({ one,
     references: [User.id],
   }),
   inboxAccess: many(InboxMemberAccess),
-  snippetShares: many(SnippetShare),
 }))
 
 export const organizationInvitationRelations = relations(OrganizationInvitation, ({ one }) => ({
@@ -335,27 +328,6 @@ export const organizationInvitationRelations = relations(OrganizationInvitation,
   organization: one(Organization, {
     fields: [OrganizationInvitation.organizationId],
     references: [Organization.id],
-  }),
-}))
-
-export const groupRelations = relations(Group, ({ one, many }) => ({
-  organization: one(Organization, {
-    fields: [Group.organizationId],
-    references: [Organization.id],
-  }),
-  members: many(GroupMember),
-  inboxAccess: many(InboxGroupAccess),
-  snippetShares: many(SnippetShare),
-}))
-
-export const groupMemberRelations = relations(GroupMember, ({ one }) => ({
-  group: one(Group, {
-    fields: [GroupMember.groupId],
-    references: [Group.id],
-  }),
-  user: one(User, {
-    fields: [GroupMember.userId],
-    references: [User.id],
   }),
 }))
 

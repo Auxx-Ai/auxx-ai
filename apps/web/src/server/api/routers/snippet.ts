@@ -4,7 +4,7 @@ import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { createScopedLogger } from '@auxx/logger'
 import { database, schema } from '@auxx/database'
-import { SnippetSharingType } from '@auxx/database/enums'
+import { SnippetSharingType, BuiltInEntityType, ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
 import {
   and,
   or,
@@ -20,6 +20,8 @@ import {
   exists,
   type SQL,
 } from 'drizzle-orm'
+import { getUserAccessibleInstances, setInstanceAccess, getInstanceAccess } from '@auxx/lib/resource-access'
+import { toRecordId, parseRecordId } from '@auxx/types/resource'
 
 const logger = createScopedLogger('snippets-router')
 
@@ -69,44 +71,40 @@ export const snippetsRouter = createTRPCRouter({
 
         // Handle shared snippets visibility
         if (includeShared) {
-          // Include user's own OR org shared OR shared to user's groups/membership
-          filters.push(
-            or(
-              eq(schema.Snippet.createdById, userId),
-              eq(schema.Snippet.sharingType, SnippetSharingType.ORGANIZATION),
-              // Shared to user's groups
-              exists(
-                ctx.db
-                  .select()
-                  .from(schema.SnippetShare)
-                  .innerJoin(schema.Group, eq(schema.SnippetShare.groupId, schema.Group.id))
-                  .innerJoin(schema.GroupMember, eq(schema.Group.id, schema.GroupMember.groupId))
-                  .where(
-                    and(
-                      eq(schema.SnippetShare.snippetId, schema.Snippet.id),
-                      eq(schema.GroupMember.userId, userId),
-                      eq(schema.GroupMember.isActive, true)
-                    )
-                  )
-              ),
-              // Shared directly to user
-              exists(
-                ctx.db
-                  .select()
-                  .from(schema.SnippetShare)
-                  .innerJoin(
-                    schema.OrganizationMember,
-                    eq(schema.SnippetShare.memberId, schema.OrganizationMember.id)
-                  )
-                  .where(
-                    and(
-                      eq(schema.SnippetShare.snippetId, schema.Snippet.id),
-                      eq(schema.OrganizationMember.userId, userId)
-                    )
-                  )
-              )
-            )!
+          // Get snippets user has access to via ResourceAccess
+          const accessResult = await getUserAccessibleInstances(
+            { db: ctx.db, organizationId, userId },
+            userId,
+            BuiltInEntityType.snippet
           )
+
+          if (accessResult.hasTypeAccess) {
+            // User has access to ALL snippets (org admin), no additional filter needed
+            // but still filter to own + org-shared + CUSTOM shared
+            filters.push(
+              or(
+                eq(schema.Snippet.createdById, userId),
+                eq(schema.Snippet.sharingType, SnippetSharingType.ORGANIZATION),
+                eq(schema.Snippet.sharingType, SnippetSharingType.GROUPS)
+              )!
+            )
+          } else {
+            // Get snippet IDs from ResourceAccess instances
+            const sharedSnippetIds = accessResult.instances.map((a) =>
+              parseRecordId(a.recordId).entityInstanceId
+            )
+
+            // Include user's own OR org shared OR specifically shared via ResourceAccess
+            filters.push(
+              or(
+                eq(schema.Snippet.createdById, userId),
+                eq(schema.Snippet.sharingType, SnippetSharingType.ORGANIZATION),
+                sharedSnippetIds.length > 0
+                  ? inArray(schema.Snippet.id, sharedSnippetIds)
+                  : sql`false`
+              )!
+            )
+          }
         } else {
           // Only include user's own snippets
           filters.push(eq(schema.Snippet.createdById, userId))
@@ -124,18 +122,23 @@ export const snippetsRouter = createTRPCRouter({
           orderBy: [desc(schema.Snippet.updatedAt)],
         })
 
-        // Get shares count for each snippet
+        // Get shares count for each snippet from ResourceAccess
         const snippetIds = snippets.map((s) => s.id)
         const sharesCounts =
           snippetIds.length > 0
             ? await ctx.db
                 .select({
-                  snippetId: schema.SnippetShare.snippetId,
-                  count: count(schema.SnippetShare.id),
+                  snippetId: schema.ResourceAccess.entityInstanceId,
+                  count: count(schema.ResourceAccess.id),
                 })
-                .from(schema.SnippetShare)
-                .where(inArray(schema.SnippetShare.snippetId, snippetIds))
-                .groupBy(schema.SnippetShare.snippetId)
+                .from(schema.ResourceAccess)
+                .where(
+                  and(
+                    eq(schema.ResourceAccess.entityDefinitionId, BuiltInEntityType.snippet),
+                    inArray(schema.ResourceAccess.entityInstanceId, snippetIds)
+                  )
+                )
+                .groupBy(schema.ResourceAccess.entityInstanceId)
             : []
 
         // Merge the counts back into snippets
@@ -158,6 +161,16 @@ export const snippetsRouter = createTRPCRouter({
     const { organizationId, userId } = ctx.session
     const { id } = input
     try {
+      // Check if user has access via ResourceAccess
+      const accessResult = await getUserAccessibleInstances(
+        { db: ctx.db, organizationId, userId },
+        userId,
+        BuiltInEntityType.snippet
+      )
+      const sharedSnippetIds = accessResult.instances.map((a) =>
+        parseRecordId(a.recordId).entityInstanceId
+      )
+
       const snippet = await ctx.db.query.Snippet.findFirst({
         where: and(
           eq(schema.Snippet.id, id),
@@ -165,22 +178,14 @@ export const snippetsRouter = createTRPCRouter({
           eq(schema.Snippet.isDeleted, false),
           or(
             eq(schema.Snippet.createdById, userId), // User's own snippets
-            eq(schema.Snippet.sharingType, SnippetSharingType.ORGANIZATION) // Org-wide shared snippets
-            // TODO: Add shared snippets logic - requires complex subqueries
+            eq(schema.Snippet.sharingType, SnippetSharingType.ORGANIZATION), // Org-wide shared snippets
+            accessResult.hasTypeAccess ? sql`true` : (sharedSnippetIds.includes(id) ? sql`true` : sql`false`) // Shared via ResourceAccess
           )!
         ),
         with: {
           folder: true,
           createdBy: {
             columns: { id: true, name: true, email: true, image: true },
-          },
-          shares: {
-            with: {
-              group: true,
-              member: {
-                with: { user: true },
-              },
-            },
           },
         },
       })
@@ -189,16 +194,48 @@ export const snippetsRouter = createTRPCRouter({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Snippet not found' })
       }
 
-      // Check if user can edit the snippet
-      const canEdit =
-        snippet.createdById === userId ||
-        snippet.shares.some(
-          (share: any) =>
-            (share.groupId && share.group?.members.some((m: any) => m.userId === userId)) ||
-            (share.memberId && share.member?.userId === userId && share.permission === 'EDIT')
-        )
+      // Get shares from ResourceAccess for display
+      const shares = await getInstanceAccess(
+        { db: ctx.db, organizationId },
+        toRecordId(BuiltInEntityType.snippet, id)
+      )
 
-      return { snippet, canEdit }
+      // Check if user can edit the snippet
+      let canEdit = snippet.createdById === userId
+
+      if (!canEdit && shares.length > 0) {
+        // Check if user has EDIT permission directly
+        const userShare = shares.find(
+          (s) => s.granteeType === ResourceGranteeType.user && s.granteeId === userId
+        )
+        if (userShare && userShare.permission === ResourcePermission.edit) {
+          canEdit = true
+        }
+
+        // Check if user has EDIT permission via group membership
+        if (!canEdit) {
+          const groupShares = shares.filter(
+            (s) => s.granteeType === ResourceGranteeType.group && s.permission === ResourcePermission.edit
+          )
+          if (groupShares.length > 0) {
+            const userGroupMembership = await ctx.db.query.EntityGroupMember.findFirst({
+              where: and(
+                eq(schema.EntityGroupMember.memberType, 'user'),
+                eq(schema.EntityGroupMember.memberRefId, userId),
+                inArray(
+                  schema.EntityGroupMember.groupInstanceId,
+                  groupShares.map((s) => s.granteeId)
+                )
+              ),
+            })
+            if (userGroupMembership) {
+              canEdit = true
+            }
+          }
+        }
+      }
+
+      return { snippet: { ...snippet, shares }, canEdit }
     } catch (error) {
       logger.error('Error getting snippet:', { error, snippetId: id })
       if (error instanceof TRPCError) {
@@ -295,40 +332,67 @@ export const snippetsRouter = createTRPCRouter({
         input
 
       try {
-        // Check if snippet exists and user has edit access
+        // Check if snippet exists
         const existingSnippet = await ctx.db.query.Snippet.findFirst({
           where: and(
             eq(schema.Snippet.id, id),
             eq(schema.Snippet.organizationId, organizationId),
-            eq(schema.Snippet.isDeleted, false),
-            or(
-              eq(schema.Snippet.createdById, userId) // User's own snippets
-              // TODO: Add shared snippets with EDIT permission logic - requires complex subqueries
-            )!
+            eq(schema.Snippet.isDeleted, false)
           ),
-          with: {
-            shares: {
-              with: {
-                group: {
-                  with: {
-                    members: {
-                      where: and(
-                        eq(schema.GroupMember.userId, userId),
-                        eq(schema.GroupMember.isActive, true)
-                      ),
-                    },
-                  },
-                },
-                member: true,
-              },
-            },
-          },
         })
 
         if (!existingSnippet) {
           throw new TRPCError({
             code: 'NOT_FOUND',
-            message: 'Snippet not found or you do not have permission to edit it',
+            message: 'Snippet not found',
+          })
+        }
+
+        // Check if user has edit access
+        let canEdit = existingSnippet.createdById === userId
+
+        if (!canEdit) {
+          // Check ResourceAccess for edit permissions
+          const shares = await getInstanceAccess(
+            { db: ctx.db, organizationId },
+            toRecordId(BuiltInEntityType.snippet, id)
+          )
+
+          // Check direct user permission
+          const userShare = shares.find(
+            (s) => s.granteeType === ResourceGranteeType.user && s.granteeId === userId
+          )
+          if (userShare && userShare.permission === ResourcePermission.edit) {
+            canEdit = true
+          }
+
+          // Check group-based permission
+          if (!canEdit) {
+            const groupShares = shares.filter(
+              (s) => s.granteeType === ResourceGranteeType.group && s.permission === ResourcePermission.edit
+            )
+            if (groupShares.length > 0) {
+              const userGroupMembership = await ctx.db.query.EntityGroupMember.findFirst({
+                where: and(
+                  eq(schema.EntityGroupMember.memberType, 'user'),
+                  eq(schema.EntityGroupMember.memberRefId, userId),
+                  inArray(
+                    schema.EntityGroupMember.groupInstanceId,
+                    groupShares.map((s) => s.granteeId)
+                  )
+                ),
+              })
+              if (userGroupMembership) {
+                canEdit = true
+              }
+            }
+          }
+        }
+
+        if (!canEdit) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'You do not have permission to edit this snippet',
           })
         }
 
@@ -444,18 +508,18 @@ export const snippetsRouter = createTRPCRouter({
       }
     }),
 
-  // Share a snippet with groups or members
+  // Share a snippet with groups or members via ResourceAccess
   share: protectedProcedure
     .input(
       z.object({
         snippetId: z.string(),
         sharingType: z.enum(SnippetSharingType),
-        // For GROUPS or MEMBERS sharing type
+        // For CUSTOM sharing type - supports both groups and users
         shares: z
           .array(
             z.object({
-              groupId: z.string().optional(),
-              memberId: z.string().optional(),
+              granteeType: z.enum(['group', 'user']),
+              granteeId: z.string(),
               permission: z.enum(['VIEW', 'EDIT']).default('VIEW'),
             })
           )
@@ -489,44 +553,45 @@ export const snippetsRouter = createTRPCRouter({
           await tx
             .update(schema.Snippet)
             .set({ sharingType, updatedAt: new Date() })
-            .where(eq(schema.Snippet.id, input.snippetId))
+            .where(eq(schema.Snippet.id, snippetId))
 
-          // Remove existing shares
-          await tx.delete(schema.SnippetShare).where(eq(schema.SnippetShare.snippetId, snippetId))
+          // If sharing type is CUSTOM, use ResourceAccess to set permissions
+          if (sharingType === SnippetSharingType.GROUPS && shares && shares.length > 0) {
+            // Separate group and user shares
+            const groupShares = shares.filter((s) => s.granteeType === 'group')
+            const userShares = shares.filter((s) => s.granteeType === 'user')
 
-          // If sharing with groups or members, create the new shares
-          if (
-            (sharingType === SnippetSharingType.GROUPS ||
-              sharingType === SnippetSharingType.MEMBERS) &&
-            shares &&
-            shares.length > 0
-          ) {
-            // Validate shares
-            for (const share of shares) {
-              if (input.sharingType === SnippetSharingType.GROUPS && !share.groupId) {
-                throw new TRPCError({
-                  code: 'BAD_REQUEST',
-                  message: 'Group ID is required when sharing type is GROUPS',
-                })
-              }
-              if (input.sharingType === SnippetSharingType.MEMBERS && !share.memberId) {
-                throw new TRPCError({
-                  code: 'BAD_REQUEST',
-                  message: 'Member ID is required when sharing type is MEMBERS',
-                })
-              }
-            }
-
-            // Create the shares
-            await tx.insert(schema.SnippetShare).values(
-              shares.map((share) => ({
-                snippetId,
-                groupId: share.groupId,
-                memberId: share.memberId,
-                permission: share.permission,
-                updatedAt: new Date(),
+            // Set group access
+            await setInstanceAccess(
+              { db: tx, organizationId },
+              toRecordId(BuiltInEntityType.snippet, snippetId),
+              ResourceGranteeType.group,
+              groupShares.map((s) => ({
+                granteeId: s.granteeId,
+                permission: s.permission === 'EDIT' ? ResourcePermission.edit : ResourcePermission.view,
               }))
             )
+
+            // Set user access
+            await setInstanceAccess(
+              { db: tx, organizationId },
+              toRecordId(BuiltInEntityType.snippet, snippetId),
+              ResourceGranteeType.user,
+              userShares.map((s) => ({
+                granteeId: s.granteeId,
+                permission: s.permission === 'EDIT' ? ResourcePermission.edit : ResourcePermission.view,
+              }))
+            )
+          } else if (sharingType !== SnippetSharingType.GROUPS) {
+            // Clear all ResourceAccess for this snippet when not using CUSTOM sharing
+            await tx
+              .delete(schema.ResourceAccess)
+              .where(
+                and(
+                  eq(schema.ResourceAccess.entityDefinitionId, BuiltInEntityType.snippet),
+                  eq(schema.ResourceAccess.entityInstanceId, snippetId)
+                )
+              )
           }
         })
 

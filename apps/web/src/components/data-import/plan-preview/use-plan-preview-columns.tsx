@@ -38,6 +38,7 @@ export function usePlanPreviewColumns(options: UsePlanPreviewColumnsOptions) {
       enableFiltering: false,
       enableResize: false,
       primaryCell: true,
+      defaultVisible: true,
       size: 60,
       minSize: 60,
       maxSize: 60,
@@ -56,6 +57,7 @@ export function usePlanPreviewColumns(options: UsePlanPreviewColumnsOptions) {
       enableFiltering: true,
       enableResize: true,
       primaryCell: true,
+      defaultVisible: true,
       size: 140,
       minSize: 100,
       cell: ({ row }) => <StrategyCell strategy={row.original.strategy} errors={row.original.errors} />,
@@ -75,6 +77,7 @@ export function usePlanPreviewColumns(options: UsePlanPreviewColumnsOptions) {
         enableSorting: true,
         enableFiltering: false,
         enableResize: true,
+        defaultVisible: true,
         size: 150,
         minSize: 80,
         cell: ({ getValue }) => {

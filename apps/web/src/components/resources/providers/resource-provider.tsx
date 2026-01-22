@@ -8,7 +8,7 @@ import { getRelationshipStoreState, useRelationshipStore, getRecordStoreState } 
 import { getResourceStoreState } from '../store/resource-store'
 import { fieldValueFetchQueue } from '../store/field-value-fetch-queue'
 import { initComputedFieldSync } from '../store/computed-field-registry'
-import { clearComputedCache } from '../store/computed-value-middleware'
+import { useFieldValueStore } from '../store/field-value-store'
 import type { RecordId } from '@auxx/lib/resources/client'
 import { useRecordBatchFetcher } from '../hooks/use-record-batch-fetcher'
 
@@ -122,5 +122,5 @@ export function clearResourceCaches() {
   getResourceStoreState().reset()
   getRelationshipStoreState().reset()
   getRecordStoreState().clearAll()
-  clearComputedCache()
+  useFieldValueStore.getState().clearAll()
 }

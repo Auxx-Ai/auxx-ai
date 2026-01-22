@@ -1,8 +1,8 @@
 // apps/web/src/components/resources/hooks/use-field-values.ts
 
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { fieldRefToKey, type FieldReference, type ResourceFieldId, isResourceFieldId } from '@auxx/types/field'
+import { fieldRefToKey, type FieldReference } from '@auxx/types/field'
 import type { RecordId } from '@auxx/lib/resources/client'
 import {
   useFieldValueStore,
@@ -11,8 +11,6 @@ import {
   type StoredFieldValue,
 } from '../store/field-value-store'
 import { fieldValueFetchQueue } from '../store/field-value-fetch-queue'
-import { computedFieldRegistry } from '../store/computed-field-registry'
-import { getFieldValueWithComputed } from '../store/computed-value-middleware'
 
 /**
  * Options for useFieldValue hook.
@@ -24,7 +22,7 @@ interface UseFieldValueOptions {
 
 /**
  * Subscribe to a field value and its loading state.
- * Supports computed (CALC) fields - automatically computes values from source fields.
+ * Works uniformly for both regular fields and CALC fields.
  * Component only re-renders when this specific value or loading state changes.
  *
  * @example
@@ -49,19 +47,8 @@ export function useFieldValue(
   options: UseFieldValueOptions = {}
 ): { value: StoredFieldValue | undefined; isLoading: boolean } {
   const { autoFetch = false } = options
-
-  // Handle undefined fieldRef - return early with undefined value
   const key = fieldRef ? buildFieldValueKey(recordId, fieldRef) : ('' as any)
 
-  // Check if this is a computed field (only for direct ResourceFieldId references)
-  const isComputed = useMemo(() => {
-    if (!fieldRef || typeof fieldRef !== 'string') return false
-    if (!isResourceFieldId(fieldRef)) return false
-    return computedFieldRegistry.isComputed(fieldRef as ResourceFieldId)
-  }, [fieldRef])
-
-  // Stable selector - avoid creating new objects in the selector
-  // For computed fields, we handle them separately below
   const selector = useCallback(
     (state: CustomFieldValueState) => {
       if (!fieldRef) {
@@ -75,62 +62,14 @@ export function useFieldValue(
     [key, fieldRef]
   )
 
-  // Use shallow comparison to prevent unnecessary re-renders
-  const { value: storeValue, isLoading: storeLoading } = useFieldValueStore(useShallow(selector))
+  const { value, isLoading } = useFieldValueStore(useShallow(selector))
 
-  // Handle computed fields OUTSIDE the selector to avoid infinite loops
-  const { value, isLoading } = useMemo(() => {
-    if (!fieldRef) {
-      return { value: undefined, isLoading: false }
-    }
-
-    // For computed fields, compute value from source fields
-    if (isComputed && typeof fieldRef === 'string') {
-      const values = useFieldValueStore.getState().values
-      const computedValue = getFieldValueWithComputed(recordId, fieldRef as ResourceFieldId, values)
-
-      // Check if source values are still loading
-      const config = computedFieldRegistry.getConfig(fieldRef as ResourceFieldId)
-      let sourceLoading = false
-      if (config) {
-        for (const sourceFieldId of Object.values(config.sourceFields)) {
-          const sourceKey = buildFieldValueKey(recordId, sourceFieldId)
-          if (useFieldValueStore.getState().isKeyLoading(sourceKey)) {
-            sourceLoading = true
-            break
-          }
-        }
-      }
-
-      return {
-        value: computedValue,
-        isLoading: computedValue === undefined || sourceLoading,
-      }
-    }
-
-    // Regular field
-    return { value: storeValue, isLoading: storeLoading }
-  }, [fieldRef, isComputed, recordId, storeValue, storeLoading])
-
-  // Auto-fetch source fields for computed fields
+  // Auto-fetch if needed
   useEffect(() => {
-    if (!autoFetch || !isComputed || !fieldRef) return
-
-    const config = computedFieldRegistry.getConfig(fieldRef as ResourceFieldId)
-    if (!config) return
-
-    // Queue fetch for each source field
-    for (const sourceFieldId of Object.values(config.sourceFields)) {
-      fieldValueFetchQueue.queueFetch(recordId, sourceFieldId)
-    }
-  }, [autoFetch, isComputed, recordId, fieldRef])
-
-  // Standard auto-fetch for non-computed fields
-  useEffect(() => {
-    if (autoFetch && !isComputed && fieldRef && value === undefined && !isLoading) {
+    if (autoFetch && fieldRef && value === undefined && !isLoading) {
       fieldValueFetchQueue.queueFetch(recordId, fieldRef)
     }
-  }, [autoFetch, isComputed, value, isLoading, recordId, fieldRef])
+  }, [autoFetch, value, isLoading, recordId, fieldRef])
 
   return { value, isLoading }
 }

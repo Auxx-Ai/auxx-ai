@@ -1,7 +1,7 @@
 // apps/web/src/components/custom-fields/ui/custom-fields-list.tsx
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import {
   DndContext,
   closestCenter,
@@ -12,13 +12,11 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core'
 import {
-  arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
-import { generateKeyBetween } from '@auxx/utils'
 
 import { TableBody, TableHead, TableHeader, TableRow } from '@auxx/ui/components/table'
 import { Rows3, Plus } from 'lucide-react'
@@ -28,6 +26,7 @@ import { EmptyState } from '~/components/global/empty-state'
 import { CustomFieldRow } from '~/components/custom-fields/ui/field-list'
 import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useResourceFields } from '~/components/resources'
 import type { Resource } from '@auxx/lib/resources/client'
 import { toResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 
@@ -48,14 +47,18 @@ export function CustomFieldsList({ resource }: CustomFieldsListProps) {
   // Confirm dialog for delete
   const [confirmDelete, ConfirmDeleteDialog] = useConfirm()
 
-  // Get mutations (create handled in CustomFieldDialog, update for reorder, destroy for delete)
-  const { update, destroy, isPending } = useCustomFieldMutations({
+  // Get mutations (create handled in CustomFieldDialog, reorderField for reorder, destroy for delete)
+  const { destroy, reorderField, isPending } = useCustomFieldMutations({
     entityDefinitionId: resource.entityDefinitionId,
   })
 
-  // Use resource.fields directly (includes both system and custom fields)
-  const sortedFields = [...resource.fields].sort((a, b) =>
-    (a.sortOrder ?? '').localeCompare(b.sortOrder ?? '')
+  // Subscribe to store for live updates (optimistic updates propagate here)
+  const { fields } = useResourceFields(resource.entityDefinitionId)
+
+  // Sort fields by sortOrder
+  const sortedFields = useMemo(
+    () => [...fields].sort((a, b) => (a.sortOrder ?? '').localeCompare(b.sortOrder ?? '')),
+    [fields]
   )
 
   const sensors = useSensors(
@@ -97,27 +100,9 @@ export function CustomFieldsList({ resource }: CustomFieldsListProps) {
   /** Handle drag end for reordering */
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
-    if (!over || active.id === over.id) return
+    if (!over) return
 
-    const oldIndex = sortedFields.findIndex((item) => item.id === active.id)
-    const newIndex = sortedFields.findIndex((item) => item.id === over.id)
-    if (oldIndex === -1 || newIndex === -1) return
-
-    // Reorder array first, then find neighbors at new position
-    const reordered = arrayMove(sortedFields, oldIndex, newIndex)
-    const prevField = newIndex > 0 ? reordered[newIndex - 1] : null
-    const nextField = newIndex < reordered.length - 1 ? reordered[newIndex + 1] : null
-
-    const newSortOrder = generateKeyBetween(
-      prevField?.sortOrder ?? null,
-      nextField?.sortOrder ?? null
-    )
-
-    // Fire optimistic mutation (UI updates immediately via optimistic update hook)
-    update.mutate({
-      resourceFieldId: toResourceFieldId(resource.entityDefinitionId, active.id as string),
-      sortOrder: newSortOrder,
-    })
+    reorderField(sortedFields, active.id, over.id)
   }
 
   return (

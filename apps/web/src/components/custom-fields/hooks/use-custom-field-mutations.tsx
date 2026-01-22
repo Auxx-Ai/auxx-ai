@@ -2,6 +2,7 @@
 
 import { useCallback } from 'react'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { arrayMove } from '@dnd-kit/sortable'
 import { api } from '~/trpc/react'
 import { getResourceStoreState } from '~/components/resources/store/resource-store'
 import { toResourceFieldId, toFieldId, parseResourceFieldId } from '@auxx/types/field'
@@ -386,11 +387,66 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
     },
   })
 
+  /**
+   * Reorder a field via drag-and-drop.
+   * Computes new sortOrder by finding valid neighbors (skips fields without sortOrder).
+   *
+   * @param fields - The list of fields being reordered
+   * @param activeId - The id of the field being dragged (from DragEndEvent.active.id)
+   * @param overId - The id of the field being dropped on (from DragEndEvent.over.id)
+   */
+  const reorderField = useCallback(
+    <T extends { id: string; sortOrder?: string | null }>(
+      fields: T[],
+      activeId: string | number,
+      overId: string | number
+    ) => {
+      if (!entityDefinitionId) return
+      if (activeId === overId) return
+
+      const oldIndex = fields.findIndex((f) => f.id === activeId)
+      const newIndex = fields.findIndex((f) => f.id === overId)
+      if (oldIndex === -1 || newIndex === -1) return
+
+      const movedField = fields[oldIndex]
+      if (!movedField) return
+
+      // Reorder array to find neighbors at new position
+      const reordered = arrayMove(fields, oldIndex, newIndex)
+
+      // Find neighbors that have a sortOrder (skip special fields like recordId, createdAt, updatedAt)
+      let beforeOrder: string | null = null
+      for (let i = newIndex - 1; i >= 0; i--) {
+        if (reordered[i]?.sortOrder) {
+          beforeOrder = reordered[i].sortOrder!
+          break
+        }
+      }
+
+      let afterOrder: string | null = null
+      for (let i = newIndex + 1; i < reordered.length; i++) {
+        if (reordered[i]?.sortOrder) {
+          afterOrder = reordered[i].sortOrder!
+          break
+        }
+      }
+
+      const newSortOrder = generateKeyBetween(beforeOrder, afterOrder)
+
+      updateField.mutate({
+        resourceFieldId: toResourceFieldId(entityDefinitionId, toFieldId(movedField.id)),
+        sortOrder: newSortOrder,
+      })
+    },
+    [entityDefinitionId, updateField]
+  )
+
   return {
     isPending: createField.isPending || updateField.isPending || deleteField.isPending,
     create: createField,
     update: updateField,
     destroy: deleteField,
+    reorderField,
   }
 }
 

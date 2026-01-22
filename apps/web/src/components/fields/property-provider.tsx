@@ -204,6 +204,11 @@ export function PropertyProvider({
   const { value: storeValue, isLoading: storeLoading } = useFieldValue(recordId, field.id, {
     autoFetch: true,
   })
+
+  // if (field.fieldType === 'CALC') {
+  //   console.log('VALUE:', storeValue)
+  // }
+
   // Field metadata provider for relationship sync
   // The field object already contains options.relationship from the registry
   const getFieldMetadata = useCallback(

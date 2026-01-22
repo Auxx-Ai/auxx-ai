@@ -58,6 +58,7 @@ function DynamicViewInner<TData extends object>({
     footerElement,
     isLoading,
     hideToolbar = false,
+    standalone,
   } = useTableConfig<TData>()
 
   const { table } = useTableInstance<TData>()
@@ -65,8 +66,8 @@ function DynamicViewInner<TData extends object>({
   const { selectFields, selectedKanbanCardIds, onSelectedKanbanCardIdsChange } =
     useViewMetadata<TData>()
 
-  // View store state
-  const isViewsLoaded = useDynamicTableStore((state) => state.initialized)
+  // View store state (skip check for standalone tables)
+  const isViewsLoaded = standalone || useDynamicTableStore((state) => state.initialized)
 
   // Cell selection from separate context
   const { selectedCell, setSelectedCell, editingCell, setEditingCell, cellSelectionConfig } =

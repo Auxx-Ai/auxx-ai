@@ -27,11 +27,4 @@ export { fieldValueFetchQueue } from './field-value-fetch-queue'
 
 export { computedFieldRegistry, initComputedFieldSync, type ComputedFieldConfig } from './computed-field-registry'
 
-export { computedValueCache } from './computed-value-cache'
-
-export {
-  getFieldValueWithComputed,
-  invalidateComputedCacheForKeys,
-  invalidateComputedCacheForRecord,
-  clearComputedCache,
-} from './computed-value-middleware'
+export { computeDependentCalcValues } from './calc-value-computer'

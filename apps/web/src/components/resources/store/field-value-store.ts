@@ -14,6 +14,7 @@ import {
   isResourceFieldId,
   toResourceFieldId,
 } from '@auxx/types/field'
+import { computeDependentCalcValues } from './calc-value-computer'
 
 /**
  * Composite key for field values.
@@ -267,16 +268,11 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
 
     setValues: (entries) => {
       const now = Date.now()
-
-      // Invalidate computed cache for changed keys before updating
-      // This ensures CALC fields recompute on source changes
       const keys = entries.map((e) => e.key)
-      import('./computed-value-middleware').then(({ invalidateComputedCacheForKeys }) => {
-        invalidateComputedCacheForKeys(keys)
-      })
 
       set((state) => {
-        const newValues = { ...state.values }
+        // First, apply the new values
+        let newValues = { ...state.values }
         const newUpdatedAt = { ...state.updatedAt }
 
         for (const { key, value } of entries) {
@@ -284,37 +280,55 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
           newUpdatedAt[key] = now
         }
 
+        // Then compute dependent CALC values
+        const calcValues = computeDependentCalcValues(keys, newValues)
+        for (const [calcKey, calcValue] of Object.entries(calcValues)) {
+          newValues[calcKey as FieldValueKey] = calcValue
+          newUpdatedAt[calcKey as FieldValueKey] = now
+        }
+
         return { values: newValues, updatedAt: newUpdatedAt }
       })
     },
 
     setValue: (key, value) => {
-      // Invalidate computed cache for this key
-      import('./computed-value-middleware').then(({ invalidateComputedCacheForKeys }) => {
-        invalidateComputedCacheForKeys([key])
-      })
+      set((state) => {
+        const now = Date.now()
+        let newValues = { ...state.values, [key]: value }
+        const newUpdatedAt = { ...state.updatedAt, [key]: now }
 
-      set((state) => ({
-        values: { ...state.values, [key]: value },
-        updatedAt: { ...state.updatedAt, [key]: Date.now() },
-      }))
+        // Compute dependent CALC values
+        const calcValues = computeDependentCalcValues([key], newValues)
+        for (const [calcKey, calcValue] of Object.entries(calcValues)) {
+          newValues[calcKey as FieldValueKey] = calcValue
+          newUpdatedAt[calcKey as FieldValueKey] = now
+        }
+
+        return { values: newValues, updatedAt: newUpdatedAt }
+      })
     },
 
     setValueOptimistic: (key, newValue) => {
-      // Invalidate computed cache for this key
-      import('./computed-value-middleware').then(({ invalidateComputedCacheForKeys }) => {
-        invalidateComputedCacheForKeys([key])
-      })
-
       set((state) => {
+        const now = Date.now()
         const original = state.values[key]
+        let newValues = { ...state.values, [key]: newValue }
+        const newUpdatedAt = { ...state.updatedAt, [key]: now }
+
+        // Compute dependent CALC values
+        const calcValues = computeDependentCalcValues([key], newValues)
+        for (const [calcKey, calcValue] of Object.entries(calcValues)) {
+          newValues[calcKey as FieldValueKey] = calcValue
+          newUpdatedAt[calcKey as FieldValueKey] = now
+        }
+
         return {
-          values: { ...state.values, [key]: newValue },
+          values: newValues,
           pendingUpdates: {
             ...state.pendingUpdates,
             [key]: { value: newValue, original },
           },
-          updatedAt: { ...state.updatedAt, [key]: Date.now() },
+          updatedAt: newUpdatedAt,
         }
       })
     },
@@ -426,11 +440,6 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
     },
 
     clearAll: () => {
-      // Clear computed cache when all values are cleared
-      import('./computed-value-middleware').then(({ clearComputedCache }) => {
-        clearComputedCache()
-      })
-
       set({
         values: {},
         loadingBatches: {},

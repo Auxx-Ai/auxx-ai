@@ -10,14 +10,11 @@ import {
   CommentMention,
   CommentReaction,
   File,
-  Group,
   KnowledgeBase,
   MediaAsset,
   Organization,
-  OrganizationMember,
   Snippet,
   SnippetFolder,
-  SnippetShare,
   TagsOnArticle,
   Thread,
   Ticket,
@@ -112,7 +109,7 @@ export const snippetFolderRelations = relations(SnippetFolder, ({ one, many }) =
   snippets: many(Snippet),
 }))
 
-export const snippetRelations = relations(Snippet, ({ one, many }) => ({
+export const snippetRelations = relations(Snippet, ({ one }) => ({
   createdBy: one(User, {
     fields: [Snippet.createdById],
     references: [User.id],
@@ -125,22 +122,7 @@ export const snippetRelations = relations(Snippet, ({ one, many }) => ({
     fields: [Snippet.organizationId],
     references: [Organization.id],
   }),
-  shares: many(SnippetShare),
-}))
-
-export const snippetShareRelations = relations(SnippetShare, ({ one }) => ({
-  group: one(Group, {
-    fields: [SnippetShare.groupId],
-    references: [Group.id],
-  }),
-  member: one(OrganizationMember, {
-    fields: [SnippetShare.memberId],
-    references: [OrganizationMember.id],
-  }),
-  snippet: one(Snippet, {
-    fields: [SnippetShare.snippetId],
-    references: [Snippet.id],
-  }),
+  // Note: shares removed - migrated to ResourceAccess
 }))
 
 export const commentRelations = relations(Comment, ({ one, many }) => ({

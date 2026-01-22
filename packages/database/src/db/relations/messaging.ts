@@ -10,9 +10,7 @@ import {
   Comment,
   EmailAttachment,
   EmailEmbedding,
-  Group,
   Inbox,
-  InboxGroupAccess,
   InboxIntegration,
   InboxMemberAccess,
   Integration,
@@ -43,9 +41,9 @@ export const inboxRelations = relations(Inbox, ({ one, many }) => ({
   }),
   integrations: many(InboxIntegration),
   memberAccess: many(InboxMemberAccess),
-  groupAccess: many(InboxGroupAccess),
   unreadCounts: many(UserInboxUnreadCount),
   // Note: threads relation removed - Thread.inboxId was removed in migration 0028
+  // Note: groupAccess removed - migrated to ResourceAccess
 }))
 
 export const inboxIntegrationRelations = relations(InboxIntegration, ({ one }) => ({
@@ -67,17 +65,6 @@ export const inboxMemberAccessRelations = relations(InboxMemberAccess, ({ one })
   organizationMember: one(OrganizationMember, {
     fields: [InboxMemberAccess.organizationMemberId],
     references: [OrganizationMember.id],
-  }),
-}))
-
-export const inboxGroupAccessRelations = relations(InboxGroupAccess, ({ one }) => ({
-  group: one(Group, {
-    fields: [InboxGroupAccess.groupId],
-    references: [Group.id],
-  }),
-  inbox: one(Inbox, {
-    fields: [InboxGroupAccess.inboxId],
-    references: [Inbox.id],
   }),
 }))
 

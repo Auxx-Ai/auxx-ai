@@ -1,11 +1,21 @@
 // apps/web/src/components/resources/hooks/use-field.ts
 
+import { useMemo } from 'react'
 import { useResourceStore } from '../store/resource-store'
 import { useShallow } from 'zustand/react/shallow'
 import type { ResourceFieldId } from '@auxx/types/field'
+import type { FieldType } from '@auxx/database/types'
 import type { ResourceField } from '@auxx/lib/resources/client'
 import type { Resource } from '@auxx/lib/resources/client'
 import type { SelectOption } from '@auxx/types/custom-field'
+
+/**
+ * Extended ResourceField with effectiveFieldType for CALC fields.
+ */
+export interface ResourceFieldWithEffective extends ResourceField {
+  /** The effective field type for rendering - for CALC fields, this is the resultFieldType */
+  effectiveFieldType: FieldType
+}
 
 /**
  * FIELD ACCESS PATTERNS - When to Use What
@@ -32,9 +42,10 @@ import type { SelectOption } from '@auxx/types/custom-field'
 /**
  * Subscribe to a specific field definition.
  * Only re-renders when this field's definition changes.
+ * Returns extended field with effectiveFieldType for CALC field rendering.
  *
  * @param resourceFieldId - ResourceFieldId (or null/undefined for conditional usage)
- * @returns ResourceField or undefined if not found
+ * @returns ResourceFieldWithEffective or undefined if not found
  *
  * @example
  * // Basic usage
@@ -45,10 +56,15 @@ import type { SelectOption } from '@auxx/types/custom-field'
  *
  * // Conditional usage
  * const field = useField(someCondition ? resourceFieldId : null)
+ *
+ * // CALC field - use effectiveFieldType for rendering
+ * const calcField = useField('order:total')
+ * // calcField.fieldType === 'CALC'
+ * // calcField.effectiveFieldType === 'CURRENCY' (resultFieldType from calc options)
  */
 export function useField(
   resourceFieldId: ResourceFieldId | null | undefined
-): ResourceField | undefined {
+): ResourceFieldWithEffective | undefined {
   // Subscribe to specific field in fieldMap
   // Only re-renders when this specific field changes (due to reference stability)
   const field = useResourceStore((state) => {
@@ -56,7 +72,20 @@ export function useField(
     return state.fieldMap[resourceFieldId]
   })
 
-  return field
+  // Add effectiveFieldType for CALC fields
+  return useMemo(() => {
+    if (!field) return undefined
+
+    const effectiveFieldType =
+      field.fieldType === 'CALC'
+        ? ((field.options?.calc?.resultFieldType as FieldType) ?? 'TEXT')
+        : field.fieldType
+
+    return {
+      ...field,
+      effectiveFieldType,
+    }
+  }, [field])
 }
 
 /**

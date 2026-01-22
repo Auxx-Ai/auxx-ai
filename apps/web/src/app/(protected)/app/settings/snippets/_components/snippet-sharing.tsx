@@ -43,8 +43,8 @@ interface SnippetSharingProps {
   onSave: (
     sharingType: SnippetSharingType,
     shares?: Array<{
-      groupId?: string
-      memberId?: string
+      granteeType: 'group' | 'user'
+      granteeId: string
       permission: 'VIEW' | 'EDIT'
     }>
   ) => void
@@ -65,45 +65,76 @@ export function SnippetSharing({
   // Fetch members
   const { data: membersData } = api.member.all.useQuery({})
   // Fetch existing snippet shares if editing
-  const { data: snippetData, isLoading: isLoadingSnippet } = api.snippet.byId.useQuery(
+  const { data: snippetData } = api.snippet.byId.useQuery(
     { id: snippetId || '' },
-    {
-      enabled: !!snippetId,
-      onSuccess: (data) => {
-        // Initialize selected items from existing shares
-        if (data?.snippet?.shares) {
-          const shareItems: ShareItem[] = []
-          data.snippet.shares.forEach((share) => {
-            if (share.group) {
-              shareItems.push({
-                id: share.group.id,
-                type: 'group',
-                name: share.group.name,
-                permission: share.permission as 'VIEW' | 'EDIT',
-              })
-            } else if (share.member?.user) {
-              shareItems.push({
-                id: share.member.id,
-                type: 'member',
-                name: share.member.user.name || share.member.user.email || 'Unknown',
-                permission: share.permission as 'VIEW' | 'EDIT',
-                icon: share.member.user.image || undefined,
-              })
-            }
-          })
-          setSelectedItems(shareItems)
-          setSharingType(data.snippet.sharingType as SnippetSharingType)
-        }
-      },
-    }
+    { enabled: !!snippetId }
   )
+
+  // Initialize state when snippet data loads
+  React.useEffect(() => {
+    if (!snippetData?.snippet) return
+
+    const { snippet } = snippetData
+    setSharingType(snippet.sharingType as SnippetSharingType)
+
+    if (!snippet.shares || snippet.shares.length === 0) {
+      setSelectedItems([])
+      return
+    }
+
+    // Map ResourceAccessInfo to ShareItem using groupsData and membersData
+    const shareItems: ShareItem[] = []
+
+    for (const share of snippet.shares) {
+      // Permission is lowercase in ResourceAccess ('view'/'edit'), uppercase in UI
+      const permission = share.permission.toUpperCase() as 'VIEW' | 'EDIT'
+
+      if (share.granteeType === 'group') {
+        const group = groupsData?.find((g) => g.id === share.granteeId)
+        if (group) {
+          shareItems.push({
+            id: share.granteeId,
+            type: 'group',
+            name: group.displayName || 'Group',
+            permission,
+          })
+        }
+      } else if (share.granteeType === 'user') {
+        const member = membersData?.members?.find(
+          (m) => m.userId === share.granteeId || m.id === share.granteeId
+        )
+        if (member) {
+          shareItems.push({
+            id: member.id,
+            type: 'member',
+            name: member.user.name || member.user.email || 'Unknown',
+            permission,
+            icon: member.user.image || undefined,
+          })
+        }
+      }
+    }
+
+    setSelectedItems(shareItems)
+  }, [snippetData, groupsData, membersData?.members])
+
+  // Reset state when dialog closes
+  React.useEffect(() => {
+    if (!open) {
+      setSelectedItems([])
+      setMemberSearchTerm('')
+      setGroupSearchTerm('')
+    }
+  }, [open])
   // Filter groups
   const filteredGroups = React.useMemo(() => {
     if (!groupsData) return []
     return groupsData.filter(
       (group) =>
         !selectedItems.some((item) => item.type === 'group' && item.id === group.id) &&
-        (groupSearchTerm ? group.displayName?.toLowerCase().includes(groupSearchTerm.toLowerCase()) : true)
+        (groupSearchTerm
+          ? group.displayName?.toLowerCase().includes(groupSearchTerm.toLowerCase())
+          : true)
     )
   }, [groupsData, selectedItems, groupSearchTerm])
   // Filter members
@@ -150,12 +181,10 @@ export function SnippetSharing({
   // Handle save
   const handleSave = () => {
     let shares
-    if (
-      sharingType === SnippetSharingTypeEnum.GROUPS ||
-      sharingType === SnippetSharingTypeEnum.MEMBERS
-    ) {
+    if (sharingType === SnippetSharingTypeEnum.GROUPS) {
       shares = selectedItems.map((item) => ({
-        [item.type === 'group' ? 'groupId' : 'memberId']: item.id,
+        granteeType: item.type === 'group' ? ('group' as const) : ('user' as const),
+        granteeId: item.id,
         permission: item.permission,
       }))
     }
@@ -164,9 +193,7 @@ export function SnippetSharing({
 
   // Compute disabled state for submit
   const isSubmitDisabled =
-    (sharingType === SnippetSharingTypeEnum.GROUPS ||
-      sharingType === SnippetSharingTypeEnum.MEMBERS) &&
-    selectedItems.length === 0
+    sharingType === SnippetSharingTypeEnum.GROUPS && selectedItems.length === 0
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -198,34 +225,21 @@ export function SnippetSharing({
               />
               <RadioGroupItemCard
                 value={SnippetSharingTypeEnum.GROUPS}
-                label="Groups"
+                label="Custom"
                 icon={<Users2Icon />}
-                description="Share with specific groups"
-              />
-              <RadioGroupItemCard
-                value={SnippetSharingTypeEnum.MEMBERS}
-                label="Members"
-                icon={<UserIcon />}
-                description="Share with specific members"
+                description="Share with specific groups and members"
               />
             </RadioGroup>
           </div>
 
-          {/* Group or Member selection */}
-          {(sharingType === SnippetSharingTypeEnum.GROUPS ||
-            sharingType === SnippetSharingTypeEnum.MEMBERS) && (
+          {/* Custom sharing - Groups and Members selection */}
+          {sharingType === SnippetSharingTypeEnum.GROUPS && (
             <div className="space-y-4">
+              {/* Selected items */}
               <div>
-                <label className="text-sm font-medium">
-                  {sharingType === SnippetSharingTypeEnum.GROUPS
-                    ? 'Selected Groups'
-                    : 'Selected Members'}
-                </label>
+                <label className="text-sm font-medium">Selected Groups & Members</label>
                 {selectedItems.length === 0 ? (
-                  <div className="mt-2 text-sm text-gray-500">
-                    No {sharingType === SnippetSharingTypeEnum.GROUPS ? 'groups' : 'members'}{' '}
-                    selected
-                  </div>
+                  <div className="mt-2 text-sm text-gray-500">No groups or members selected</div>
                 ) : (
                   <div className="mt-2 space-y-2">
                     {selectedItems.map((item) => (
@@ -242,6 +256,9 @@ export function SnippetSharing({
                             </Avatar>
                           )}
                           <span className="text-sm">{item.name}</span>
+                          <Badge variant="outline" className="ml-2 px-1 text-xs">
+                            {item.type === 'group' ? 'Group' : 'Member'}
+                          </Badge>
                         </div>
                         <div className="flex items-center space-x-2">
                           <Select
@@ -271,107 +288,108 @@ export function SnippetSharing({
                 )}
               </div>
 
-              {sharingType === SnippetSharingTypeEnum.GROUPS && (
-                <div className="space-y-4">
-                  <div className="relative">
-                    <SearchIcon
-                      size={16}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400"
-                    />
-                    <Input
-                      placeholder="Search groups..."
-                      value={groupSearchTerm}
-                      onChange={(e) => setGroupSearchTerm(e.target.value)}
-                      className="pl-9"
-                    />
-                  </div>
-
-                  <div className="max-h-60 space-y-2 overflow-y-auto">
-                    {filteredGroups.length === 0 ? (
-                      <div className="py-8 text-center text-gray-500">
-                        {groupSearchTerm
-                          ? 'No groups match your search'
-                          : 'No available groups to add'}
-                      </div>
-                    ) : (
-                      filteredGroups.map((group) => {
-                        const metadata = (group.metadata as { memberCount?: number }) || {}
-                        const memberCount = metadata.memberCount ?? 0
-                        return (
-                          <div
-                            key={group.id}
-                            className="flex cursor-pointer items-center justify-between rounded-2xl border p-1 hover:bg-gray-50 dark:hover:bg-gray-800"
-                            onClick={() => addGroup(group)}>
-                            <div className="flex items-center">
-                              <Users2Icon size={18} className="mr-2" />
-                              <div className="flex flex-row gap-2">
-                                <div className="text-sm">{group.displayName}</div>
-                                <div className="text-xs text-gray-500">
-                                  {memberCount} member{memberCount !== 1 ? 's' : ''}
-                                </div>
-                              </div>
-                            </div>
-                            <Button variant="ghost" size="icon" className="rounded-full">
-                              <PlusIcon />
-                            </Button>
-                          </div>
-                        )
-                      })
-                    )}
-                  </div>
+              {/* Groups section */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Add Groups</label>
+                <div className="relative">
+                  <SearchIcon
+                    size={16}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400"
+                  />
+                  <Input
+                    placeholder="Search groups..."
+                    value={groupSearchTerm}
+                    onChange={(e) => setGroupSearchTerm(e.target.value)}
+                    className="pl-9"
+                  />
                 </div>
-              )}
-              {sharingType === SnippetSharingTypeEnum.MEMBERS && (
-                <div className="space-y-4">
-                  <div className="relative">
-                    <SearchIcon
-                      size={16}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400"
-                    />
-                    <Input
-                      placeholder="Search members..."
-                      value={memberSearchTerm}
-                      onChange={(e) => setMemberSearchTerm(e.target.value)}
-                      className="pl-9"
-                    />
-                  </div>
 
-                  <div className="max-h-60 space-y-2 overflow-y-auto">
-                    {filteredMembers.length === 0 ? (
-                      <div className="py-8 text-center text-gray-500">
-                        {memberSearchTerm
-                          ? 'No members match your search'
-                          : 'No available members to add'}
-                      </div>
-                    ) : (
-                      filteredMembers.map((member) => (
+                <div className="max-h-40 space-y-2 overflow-y-auto">
+                  {filteredGroups.length === 0 ? (
+                    <div className="py-4 text-center text-gray-500 text-sm">
+                      {groupSearchTerm
+                        ? 'No groups match your search'
+                        : 'No available groups to add'}
+                    </div>
+                  ) : (
+                    filteredGroups.map((group) => {
+                      const metadata = (group.metadata as { memberCount?: number }) || {}
+                      const memberCount = metadata.memberCount ?? 0
+                      return (
                         <div
-                          key={member.id}
+                          key={group.id}
                           className="flex cursor-pointer items-center justify-between rounded-2xl border p-1 hover:bg-gray-50 dark:hover:bg-gray-800"
-                          onClick={() => addMember(member)}>
+                          onClick={() => addGroup(group)}>
                           <div className="flex items-center">
-                            <Avatar className="mr-2 size-8 border">
-                              <AvatarImage src={member.user.image || undefined} />
-                              <AvatarFallback>
-                                {member.user.name?.charAt(0) || member.user.email?.charAt(0) || '?'}
-                              </AvatarFallback>
-                            </Avatar>
+                            <Users2Icon size={18} className="mr-2" />
                             <div className="flex flex-row gap-2">
-                              <div className="text-sm">{member.user.name || member.user.email}</div>
-                              <Badge variant="outline" className="px-1 text-xs">
-                                {member.role}
-                              </Badge>
+                              <div className="text-sm">{group.displayName}</div>
+                              <div className="text-xs text-gray-500">
+                                {memberCount} member{memberCount !== 1 ? 's' : ''}
+                              </div>
                             </div>
                           </div>
                           <Button variant="ghost" size="icon" className="rounded-full">
-                            <PlusIcon size={16} />
+                            <PlusIcon />
                           </Button>
                         </div>
-                      ))
-                    )}
-                  </div>
+                      )
+                    })
+                  )}
                 </div>
-              )}
+              </div>
+
+              {/* Members section */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Add Members</label>
+                <div className="relative">
+                  <SearchIcon
+                    size={16}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400"
+                  />
+                  <Input
+                    placeholder="Search members..."
+                    value={memberSearchTerm}
+                    onChange={(e) => setMemberSearchTerm(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+
+                <div className="max-h-40 space-y-2 overflow-y-auto">
+                  {filteredMembers.length === 0 ? (
+                    <div className="py-4 text-center text-gray-500 text-sm">
+                      {memberSearchTerm
+                        ? 'No members match your search'
+                        : 'No available members to add'}
+                    </div>
+                  ) : (
+                    filteredMembers.map((member) => (
+                      <div
+                        key={member.id}
+                        className="flex cursor-pointer items-center justify-between rounded-2xl border p-1 hover:bg-gray-50 dark:hover:bg-gray-800"
+                        onClick={() => addMember(member)}>
+                        <div className="flex items-center">
+                          <Avatar className="mr-2 size-8 border">
+                            <AvatarImage src={member.user.image || undefined} />
+                            <AvatarFallback>
+                              {member.user.name?.charAt(0) || member.user.email?.charAt(0) || '?'}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex flex-row gap-2">
+                            <div className="text-sm">{member.user.name || member.user.email}</div>
+                            <Badge variant="outline" className="px-1 text-xs">
+                              {member.role}
+                            </Badge>
+                          </div>
+                        </div>
+                        <Button variant="ghost" size="icon" className="rounded-full">
+                          <PlusIcon size={16} />
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
             </div>
           )}
         </div>

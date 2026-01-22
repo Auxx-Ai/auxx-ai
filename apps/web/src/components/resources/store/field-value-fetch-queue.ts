@@ -2,6 +2,7 @@
 
 import { generateId } from '@auxx/utils/generateId'
 import type { RecordId } from '@auxx/lib/resources/client'
+import type { ResourceFieldId } from '@auxx/types/field'
 import {
   useFieldValueStore,
   buildFieldValueKey,
@@ -10,6 +11,7 @@ import {
   type FieldReference,
   type StoredFieldValue,
 } from './field-value-store'
+import { computedFieldRegistry } from './computed-field-registry'
 
 const BATCH_SIZE = 100
 const DEFAULT_DEBOUNCE_MS = 50
@@ -58,8 +60,24 @@ class FieldValueFetchQueue {
   /**
    * Queue a fetch request. Will be batched and deduplicated automatically.
    * Returns true if the request was queued, false if already loading/cached.
+   * For CALC fields, queues source fields instead since CALC values are computed client-side.
    */
   queueFetch(recordId: RecordId, fieldRef: FieldReference): boolean {
+    // Check if this is a CALC field (only for string fieldRefs, not paths)
+    if (typeof fieldRef === 'string' && computedFieldRegistry.isComputed(fieldRef as ResourceFieldId)) {
+      const config = computedFieldRegistry.getConfig(fieldRef as ResourceFieldId)
+      if (config) {
+        // Queue source fields instead of the CALC field itself
+        let queued = false
+        for (const sourceFieldId of Object.values(config.sourceFields)) {
+          if (this.queueFetch(recordId, sourceFieldId)) {
+            queued = true
+          }
+        }
+        return queued
+      }
+    }
+
     const key = buildFieldValueKey(recordId, fieldRef)
     const store = useFieldValueStore.getState()
 

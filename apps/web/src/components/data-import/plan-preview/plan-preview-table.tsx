@@ -51,7 +51,7 @@ export function PlanPreviewTable({
       />
     )
   }, [isPlanning])
-  console.log(columns)
+
   return (
     <div className="h-full flex flex-col dark:bg-muted/10 overflow-hidden">
       <DynamicTable

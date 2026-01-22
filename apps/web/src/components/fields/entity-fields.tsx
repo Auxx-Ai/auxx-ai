@@ -9,8 +9,7 @@ import {
   useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core'
-import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
-import { generateKeyBetween } from '@auxx/utils'
+import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { FieldNavigationProvider } from './field-navigation-context'
 import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -73,8 +72,8 @@ function EntityFields({
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingResourceFieldId, setEditingResourceFieldId] = useState<ResourceFieldId | null>(null)
 
-  // Use custom field mutations hook (update for reorder, destroy for delete, create handled in CustomFieldDialog)
-  const { update, destroy } = useCustomFieldMutations({
+  // Use custom field mutations hook (reorderField for reorder, destroy for delete, create handled in CustomFieldDialog)
+  const { destroy, reorderField } = useCustomFieldMutations({
     entityDefinitionId,
   })
 
@@ -159,33 +158,10 @@ function EntityFields({
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
-    if (!over || active.id === over.id) return
+    if (!over) return
 
-    // Only allow reordering of custom fields from FILTERED list
     const customFields = filteredFields.filter((f) => !f.isSystem)
-    const oldIndex = customFields.findIndex((item) => item.id === active.id)
-    const newIndex = customFields.findIndex((item) => item.id === over.id)
-    if (oldIndex === -1 || newIndex === -1) return
-
-    const movedField = customFields[oldIndex]
-    if (!movedField) return
-
-    // Reorder to find neighbors at new position
-    const reorderedCustom = arrayMove(customFields, oldIndex, newIndex)
-    const beforeField = newIndex > 0 ? reorderedCustom[newIndex - 1] : null
-    const afterField = newIndex < reorderedCustom.length - 1 ? reorderedCustom[newIndex + 1] : null
-
-    // Generate ONE key between neighbors
-    const newSortOrder = generateKeyBetween(
-      beforeField?.sortOrder ?? null,
-      afterField?.sortOrder ?? null
-    )
-
-    // Update only the moved field - store handles optimistic updates via setFieldOptimistic
-    update.mutate({
-      resourceFieldId: toResourceFieldId(entityDefinitionId, movedField.id),
-      sortOrder: newSortOrder,
-    })
+    reorderField(customFields, active.id, over.id)
   }
 
   // ─────────────────────────────────────────────────────────────────
@@ -225,7 +201,7 @@ function EntityFields({
    * Determine if a field is sortable (only custom fields)
    */
   const isSortable = (field: ResourceField) => {
-    return !field.isSystem && field.capabilities.updatable !== false
+    return !field.isSystem // && field.capabilities.updatable !== false
   }
 
   const isLoading = fieldsLoading || optionsLoading

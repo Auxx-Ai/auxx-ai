@@ -8,7 +8,7 @@ import PropertyRow from './property-row'
 import { PropertyProvider, usePropertyContext } from './property-provider'
 import { useFieldNavigationOptional } from './field-navigation-context'
 import { Button } from '@auxx/ui/components/button'
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useMemo, memo } from 'react'
 import { cn } from '@auxx/ui/lib/utils'
 import type { RecordId } from '@auxx/lib/resources/client'
 
@@ -49,7 +49,7 @@ interface SortablePropertyRowProps {
  * In edit mode: shows only drag handle and field name (no values, not clickable)
  * In normal mode: shows full PropertyRow with values and editing capability
  */
-export function SortablePropertyRow({
+export const SortablePropertyRow = memo(function SortablePropertyRow({
   id,
   providerId,
   field,
@@ -104,12 +104,21 @@ export function SortablePropertyRow({
   // Check if this row is focused
   const isFocused = nav?.focusedRowId === providerId
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    zIndex: isDragging ? 10 : 1,
-    opacity: isDragging ? 0.8 : 1,
-  }
+  // Memoize style to prevent unnecessary re-renders during drag
+  const style = useMemo(
+    () => ({
+      transform: CSS.Transform.toString(transform),
+      transition,
+      zIndex: isDragging ? 10 : 1,
+      opacity: isDragging ? 0.8 : 1,
+    }),
+    [transform, transition, isDragging]
+  )
+
+  // Memoize onFocus handler to prevent child re-renders
+  const handleFocus = useCallback(() => {
+    nav?.setFocusedRow(providerId)
+  }, [nav, providerId])
 
   // Get the original icon for the field
   // let OriginalIcon: LucideIcon | undefined
@@ -120,7 +129,6 @@ export function SortablePropertyRow({
   // }
 
   // Value should be TypedFieldValue directly (no legacy { data: x } wrapping)
-
   // In edit mode with sortable fields: show simplified row with drag handle, name, and delete button
   if (isEditMode && isSortable) {
     return (
@@ -187,18 +195,19 @@ export function SortablePropertyRow({
         showTitle={showTitle}>
         <PropertyRowWithNavigation
           openFnRef={openFnRef}
-          onFocus={() => nav?.setFocusedRow(providerId)}
+          onFocus={handleFocus}
           onOpenReady={handleOpenReady}
         />
       </PropertyProvider>
     </div>
   )
-}
+})
 
 /**
  * Wrapper that provides navigation integration to PropertyRow
+ * Memoized to prevent re-renders when parent updates during drag
  */
-function PropertyRowWithNavigation({
+const PropertyRowWithNavigation = memo(function PropertyRowWithNavigation({
   openFnRef,
   onFocus,
   onOpenReady,
@@ -216,4 +225,4 @@ function PropertyRowWithNavigation({
   }, [open, openFnRef, onOpenReady])
 
   return <PropertyRow onFocus={onFocus} />
-}
+})

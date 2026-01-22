@@ -3,7 +3,6 @@ import type {
   Inbox,
   InboxIntegration,
   InboxMemberAccess,
-  InboxGroupAccess,
 } from '@auxx/database/types'
 export type BaseIntegration = {
   provider: string
@@ -16,7 +15,7 @@ type InboxWithIntegrations = InboxIntegration & {
 export type InboxWithRelations = Inbox & {
   integrations: InboxWithIntegrations[]
   memberAccess: InboxMemberAccess[]
-  groupAccess: InboxGroupAccess[]
+  // Note: groupAccess removed - migrated to ResourceAccess
 }
 export type CreateInboxInput = {
   name: string

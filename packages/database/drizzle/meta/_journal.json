@@ -470,6 +470,13 @@
       "when": 1769027469393,
       "tag": "0066_add_calc_field_type",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1769038521238,
+      "tag": "0067_blue_quicksilver",
+      "breakpoints": true
     }
   ]
 }
