@@ -9,6 +9,7 @@ import {
   HouseIcon,
   Clock,
   MessagesSquare,
+  ListTodo,
   Ticket,
   ShoppingBag,
   Mail,
@@ -22,6 +23,7 @@ import { useResource, useRecord } from '~/components/resources'
 import EntityFields from '~/components/fields/entity-fields'
 import DrawerComments from '~/components/global/comments/drawer-comments'
 import { TimelineTab } from '~/components/timeline'
+import { TasksSection } from '~/components/tasks/ui/tasks-section'
 import { useQueryState } from 'nuqs'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
@@ -120,6 +122,7 @@ export function BaseEntityDrawer({
       { value: 'overview', label: 'Overview', icon: HouseIcon },
       { value: 'timeline', label: 'Timeline', icon: Clock },
       { value: 'comments', label: 'Comments', icon: MessagesSquare },
+      { value: 'tasks', label: 'Tasks', icon: ListTodo },
     ]
 
     const additionalTabs = drawerConfig.additionalTabs.map((tab) => ({
@@ -204,6 +207,10 @@ export function BaseEntityDrawer({
                   </ScrollArea>
                 </TabsContent>
 
+                <TabsContent value="tasks" className="w-full h-full mt-0">
+                  <TasksSection recordId={recordId} />
+                </TabsContent>
+
                 {/* Dynamic tabs from registry */}
                 {drawerConfig.additionalTabs.map((tab) => (
                   <TabsContent key={tab.value} value={tab.value} className="w-full">
@@ -276,6 +283,7 @@ function getIconComponent(iconName: string) {
     messages: MessagesSquare,
     layers: Layers,
     truck: Truck,
+    'list-todo': ListTodo,
     // Add more as needed
   }
   return icons[iconName] ?? HouseIcon

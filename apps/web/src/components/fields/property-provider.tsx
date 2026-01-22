@@ -18,6 +18,7 @@ import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-v
 import { formatToRawValue } from '@auxx/lib/field-values/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import type { FieldType } from '@auxx/database/types'
+import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 /**
  * property-provider.tsx
  * Context provider for a single contact property row with helper methods
@@ -272,6 +273,22 @@ export function PropertyProvider({
         return
       }
 
+      // Handle NAME field writes - split to source fields
+      if (field.fieldType === FieldTypeEnum.NAME && field.options?.name) {
+        const { firstNameFieldId, lastNameFieldId } = field.options.name
+        const nameValue = newValue as { firstName: string; lastName: string }
+
+        // Update local state SYNCHRONOUSLY
+        setCurrentValue(newValue)
+        setIsDirty(false)
+        setServerValue(newValue)
+
+        // Fire mutations to both source fields (computed system auto-updates NAME value)
+        storeSave(recordId, firstNameFieldId, nameValue.firstName ?? '', FieldTypeEnum.TEXT)
+        storeSave(recordId, lastNameFieldId, nameValue.lastName ?? '', FieldTypeEnum.TEXT)
+        return
+      }
+
       // 1. Update local state SYNCHRONOUSLY (instant UI update)
       setCurrentValue(newValue)
       setIsDirty(false)
@@ -281,7 +298,7 @@ export function PropertyProvider({
       // Store handles the optimistic update, so also update local serverValue
       setServerValue(newValue)
     },
-    [recordId, serverValue, storeSave, field.id, field.fieldType]
+    [recordId, serverValue, storeSave, field.id, field.fieldType, field.options]
   )
 
   /**

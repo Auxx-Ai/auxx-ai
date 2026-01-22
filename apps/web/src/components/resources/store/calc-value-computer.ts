@@ -3,6 +3,7 @@
 import { evaluateCalcExpression } from '@auxx/utils/calc-expression'
 import { formatToTypedInput } from '@auxx/lib/field-values/client'
 import type { FieldType } from '@auxx/database/types'
+import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import { computedFieldRegistry } from './computed-field-registry'
 import { buildFieldValueKey, parseFieldValueKey, type FieldValueKey, type StoredFieldValue } from './field-value-store'
 
@@ -12,6 +13,24 @@ import { buildFieldValueKey, parseFieldValueKey, type FieldValueKey, type Stored
 function wrapCalcValue(value: unknown, resultType: string): StoredFieldValue {
   // Use existing formatToTypedInput which handles all field types correctly
   return formatToTypedInput(value, resultType as FieldType)
+}
+
+/**
+ * Extract a text value from a stored field value.
+ * Handles TypedFieldValue wrapper format or raw string values.
+ */
+function extractTextValue(stored: unknown): string | null {
+  if (stored === null || stored === undefined) return null
+
+  // Handle TypedFieldValue format: { type, text: string }
+  if (typeof stored === 'object' && 'text' in (stored as object)) {
+    return (stored as { text: string }).text ?? null
+  }
+
+  // Handle raw string values
+  if (typeof stored === 'string') return stored
+
+  return null
 }
 
 /**
@@ -92,7 +111,14 @@ export function computeDependentCalcValues(
         return undefined
       }
 
-      // Evaluate expression
+      // Handle NAME fields (no expression, just combine firstName + lastName)
+      if (config.resultFieldType === FieldTypeEnum.NAME || !config.expression) {
+        const firstName = extractTextValue(sourceValues['firstName'])
+        const lastName = extractTextValue(sourceValues['lastName'])
+        return wrapCalcValue({ firstName: firstName ?? '', lastName: lastName ?? '' }, 'NAME')
+      }
+
+      // Evaluate expression for CALC fields
       try {
         const result = evaluateCalcExpression(config.expression, sourceValues)
         return wrapCalcValue(result, config.resultFieldType)

@@ -53,7 +53,6 @@ export function VirtualTableBody<TData>({
   const columnOrder = tableState.columnOrder
   const visibleColumns = table.getVisibleLeafColumns()
   const visibleColumnIds = visibleColumns.map((c) => c.id).join(',')
-
   // Compute column signature - changes when column config changes
   const columnSignature = useMemo(() => {
     return JSON.stringify({
@@ -75,12 +74,17 @@ export function VirtualTableBody<TData>({
 
   // Calculate shadow position based on left-pinned columns
   const shadowLeftPosition = useMemo(() => {
-    const leftPinnedColumns = table.getAllColumns().filter((col) => col.getIsPinned() === 'left')
-    if (leftPinnedColumns.length === 0) return 0
-    const lastPinnedColumn = leftPinnedColumns[leftPinnedColumns.length - 1]
-    return lastPinnedColumn!.getStart('left') + lastPinnedColumn!.getSize()
-  }, [table, table.getState().columnPinning, table.getState().columnSizing])
+    const leftPinnedIds = columnPinning.left ?? []
+    if (leftPinnedIds.length === 0) return 0
 
+    // Get the last pinned column ID from the pinning array (which is in visual order)
+    const lastPinnedId = leftPinnedIds[leftPinnedIds.length - 1]
+    const lastPinnedColumn = table.getColumn(lastPinnedId!)
+
+    if (!lastPinnedColumn) return 0
+
+    return lastPinnedColumn.getStart('left') + lastPinnedColumn.getSize()
+  }, [table, columnPinning, table.getState().columnSizing])
   // Set CSS variable for scroll-margin-left
   useEffect(() => {
     if (scrollContainerRef.current) {

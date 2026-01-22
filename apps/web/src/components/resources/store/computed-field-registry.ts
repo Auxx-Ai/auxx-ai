@@ -1,6 +1,6 @@
 // apps/web/src/components/resources/store/computed-field-registry.ts
 
-import type { CalcOptions } from '@auxx/lib/custom-fields/client'
+import type { CalcOptions, NameFieldOptions } from '@auxx/lib/custom-fields/client'
 import type { ResourceFieldId } from '@auxx/types/field'
 import type { ResourceField } from '@auxx/lib/resources/client'
 import { FieldType } from '@auxx/database/enums'
@@ -123,8 +123,9 @@ function syncCalcFields(fieldMap: Record<string, ResourceField>) {
   const currentCalcIds = new Set(computedFieldRegistry.getAllFields().map((f) => f.fieldId))
   const newCalcIds = new Set<string>()
 
-  // Register/update CALC fields
+  // Register/update CALC and NAME fields
   for (const [resourceFieldId, field] of Object.entries(fieldMap)) {
+    // Register CALC fields
     if (field.fieldType === FieldType.CALC && field.options?.calc) {
       newCalcIds.add(resourceFieldId)
 
@@ -133,6 +134,22 @@ function syncCalcFields(fieldMap: Record<string, ResourceField>) {
         resourceFieldId as ResourceFieldId,
         field.options.calc as CalcOptions
       )
+    }
+
+    // Register NAME fields (treated as computed fields)
+    if (field.fieldType === FieldType.NAME && field.options?.name) {
+      const nameOptions = field.options.name as NameFieldOptions
+      newCalcIds.add(resourceFieldId)
+
+      // Convert NAME options to CalcOptions format for registry
+      computedFieldRegistry.register(resourceFieldId as ResourceFieldId, {
+        expression: '', // Empty = NAME field (no expression evaluation)
+        sourceFields: {
+          firstName: nameOptions.firstNameFieldId,
+          lastName: nameOptions.lastNameFieldId,
+        },
+        resultFieldType: FieldType.NAME,
+      })
     }
   }
 

@@ -41,7 +41,7 @@ const thumbVariants = cva(
         sm: 'size-3 data-[state=checked]:translate-x-3',
         xs: 'size-2 data-[state=checked]:translate-x-2',
       },
-      color: { default: 'bg-background', dark: 'bg-secondary' },
+      color: { default: 'bg-background dark:bg-foreground/50', dark: 'bg-secondary' },
       variant: {
         default: 'rounded-full',
         square: 'rounded',

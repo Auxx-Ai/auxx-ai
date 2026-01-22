@@ -9,6 +9,7 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { MoreVertical } from 'lucide-react'
 import { cn } from '@auxx/ui/lib/utils'
+import { CellSelectionOverlay } from '../components/cell-selection-overlay'
 
 /**
  * Props for PrimaryCell component
@@ -54,36 +55,39 @@ export function PrimaryCell({
   const fontWeightClass = fontWeight === 'normal' ? '' : `font-${fontWeight}`
 
   return (
-    <div className="flex items-center justify-between w-full pl-3 pr-2 text-sm group/primary">
-      <button
-        className={cn(
-          'flex items-center gap-2 text-left underline decoration-muted-foreground/50 hover:decoration-primary truncate max-w-[calc(100%-40px)]',
-          fontWeightClass,
-          titleClassName
-        )}
-        onClick={(e) => {
-          e.stopPropagation()
-          onTitleClick()
-        }}>
-        {prefixIcon}
-        <span className="truncate">{displayValue}</span>
-      </button>
+    <>
+      <div className="flex items-center justify-between w-full pl-3 pr-2 text-sm group/primary">
+        <button
+          className={cn(
+            'flex items-center gap-2 text-left underline decoration-muted-foreground/50 hover:decoration-primary truncate max-w-[calc(100%-40px)]',
+            fontWeightClass,
+            titleClassName
+          )}
+          onClick={(e) => {
+            e.stopPropagation()
+            onTitleClick()
+          }}>
+          {prefixIcon}
+          <span className="truncate">{displayValue}</span>
+        </button>
 
-      <div onClick={(e) => e.stopPropagation()} className="shrink-0">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="opacity-0 group-hover/primary:opacity-100 transition-opacity data-[state=open]:opacity-100! rounded-full">
-              <MoreVertical />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {children}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div onClick={(e) => e.stopPropagation()} className="shrink-0">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="opacity-0 group-hover/primary:opacity-100 transition-opacity data-[state=open]:opacity-100! rounded-full">
+                <MoreVertical />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">{children}</DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
-    </div>
+      <div className="hidden [.cell-selected:not(.cell-editing)_&]:flex">
+        <CellSelectionOverlay isSelected isEditing={false} />
+      </div>
+    </>
   )
 }

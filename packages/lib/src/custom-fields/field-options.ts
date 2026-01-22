@@ -95,6 +95,24 @@ export interface FieldOptions {
   // CALC (calculated/formula field)
   // ─────────────────────────────────────────────────────────────
   calc?: CalcOptions
+
+  // ─────────────────────────────────────────────────────────────
+  // NAME (composite name field)
+  // ─────────────────────────────────────────────────────────────
+  /** NAME field options - references two TEXT fields for firstName/lastName */
+  name?: NameFieldOptions
+}
+
+/**
+ * Options for NAME fields.
+ * NAME fields combine two TEXT fields (firstName, lastName) into a single editable name.
+ * Values are computed on-the-fly using the CALC infrastructure.
+ */
+export interface NameFieldOptions {
+  /** Field ID of the firstName TEXT field */
+  firstNameFieldId: string
+  /** Field ID of the lastName TEXT field */
+  lastNameFieldId: string
 }
 
 /**

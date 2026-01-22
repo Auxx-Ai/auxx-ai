@@ -167,7 +167,7 @@ export function EntityFieldsContent({
         tabIndex={0}
         onKeyDown={handleKeyDown}
         className={cn(
-          'group/entity-card bg-primary-100/50 dark:bg-primary-100 border rounded-2xl relative outline-none focus:outline-none',
+          'group/entity-card bg-primary-100/50 dark:bg-[#23272e]/50 border rounded-2xl relative outline-none focus:outline-none',
           className
         )}>
         <div className="flex rounded-md gap-0 p-3 pe-2 self-stretch flex-col">

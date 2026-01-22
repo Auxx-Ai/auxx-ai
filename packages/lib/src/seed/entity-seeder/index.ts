@@ -7,6 +7,7 @@ import { SystemUserService } from '../../users/system-user-service'
 import { createEntityDefinitions } from './create-entity-defs'
 import { createAllFields } from './create-fields'
 import { linkRelationships } from './link-relationships'
+import { linkNameFields } from './link-name-fields'
 import { linkDisplayFields } from './link-display-fields'
 import { createDefaultViews } from './create-default-views'
 
@@ -22,12 +23,13 @@ const logger = createScopedLogger('entity-seeder')
  * - Handles `user` as a special entity type
  * - Applies proper default options per field type
  *
- * 5-Pass Architecture:
+ * 6-Pass Architecture:
  * 1. Create EntityDefinitions
  * 2. Create ALL CustomFields (including relationships with inverseResourceFieldId=null)
  * 3. Link Relationship Fields (update inverseResourceFieldId)
- * 4. Link Display Fields to EntityDefinitions
- * 5. Create Default TableViews
+ * 4. Link NAME Fields (update name.firstNameFieldId, name.lastNameFieldId)
+ * 5. Link Display Fields to EntityDefinitions
+ * 6. Create Default TableViews
  */
 export class EntitySeeder {
   constructor(
@@ -65,16 +67,21 @@ export class EntitySeeder {
     await linkRelationships(this.db, entityDefMap, fieldMap)
     logger.info('Pass 3 complete: relationships linked')
 
-    // Pass 4: Link display fields
-    logger.info('Pass 4: Linking display fields')
-    await linkDisplayFields(this.db, entityDefMap, fieldMap)
-    logger.info('Pass 4 complete')
+    // Pass 4: Link NAME fields (update name.firstNameFieldId, name.lastNameFieldId)
+    logger.info('Pass 4: Linking NAME fields')
+    await linkNameFields(this.db, fieldMap)
+    logger.info('Pass 4 complete: NAME fields linked')
 
-    // Pass 5: Create default views (uses system user)
-    logger.info('Pass 5: Creating default views')
+    // Pass 5: Link display fields
+    logger.info('Pass 5: Linking display fields')
+    await linkDisplayFields(this.db, entityDefMap, fieldMap)
+    logger.info('Pass 5 complete')
+
+    // Pass 6: Create default views (uses system user)
+    logger.info('Pass 6: Creating default views')
     const systemUserId = await SystemUserService.getSystemUserForActions(this.organizationId)
     await createDefaultViews(this.db, this.organizationId, systemUserId, entityDefMap, fieldMap)
-    logger.info('Pass 5 complete')
+    logger.info('Pass 6 complete')
 
     logger.info('EntitySeeder complete', { organizationId: this.organizationId })
   }

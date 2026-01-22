@@ -29,7 +29,7 @@ export {
   fieldOptionsUnionSchema,
 } from '@auxx/types/custom-field'
 
-export { type CalcOptions } from './field-options'
+export { type CalcOptions, type NameFieldOptions } from './field-options'
 
 import type { SelectOptionColor } from '@auxx/types/custom-field'
 

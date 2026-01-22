@@ -26,7 +26,7 @@ import { ValidationErrorBadge } from './validation-error-badge'
 const varEditorFieldVariants = cva(
   [
     'relative grow rounded-2xl px-1.5 py-0.5',
-    'bg-primary-200/30 border flex flex-col focus-within:border-primary-300',
+    'bg-primary-200/30 dark:bg-[#23272e]/30 border flex flex-col focus-within:border-primary-300',
     '[&>[data-slot=field-row]:last-child]:border-b-0',
   ],
   {
@@ -107,7 +107,9 @@ const VarEditorFieldRow: React.FC<VarEditorFieldRowProps> = ({
   className,
 }) => {
   return (
-    <div data-slot="field-row" className={cn('relative flex border-b', className)}>
+    <div
+      data-slot="field-row"
+      className={cn('relative flex border-b dark:border-b-[#404754]/20', className)}>
       <div data-slot="field-row-label" className="flex flex-row gap-1 ps-2 items-center">
         {showIcon && (icon ? icon : <VarTypeIcon type={type!} />)}
         <div className="text-sm">

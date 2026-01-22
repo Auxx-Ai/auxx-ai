@@ -85,13 +85,8 @@ export function TaskItem({ task, onClick, showEntityReferences = false }: TaskIt
               {/* Entity References (shown in global mode) */}
               {hasReferences && (
                 <div className="flex items-center gap-1 flex-wrap">
-                  {task.references.slice(0, 3).map((resourceId) => (
-                    <ResourceBadge
-                      key={resourceId}
-                      resourceId={resourceId}
-                      showIcon={true}
-                      variant="default"
-                    />
+                  {task.references.slice(0, 3).map((recordId) => (
+                    <ResourceBadge key={recordId} recordId={recordId} showIcon variant="default" />
                   ))}
                   {task.references.length > 3 && (
                     <div className={cn(resourceBadgeVariants({ variant: 'default' }), 'text-xs')}>
