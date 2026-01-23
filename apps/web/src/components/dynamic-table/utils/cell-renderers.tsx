@@ -8,7 +8,8 @@ import { CopyableLinkCell } from '../components/copyable-link-cell'
 import { CellPadding, type CellConfig } from '../components/formatted-cell'
 import { TagsCellView } from '~/components/ui/tags-view'
 import { ItemsCellView } from '~/components/ui/items-list-view'
-import { ResourceBadge } from '~/components/resources/ui'
+import { ResourceBadge, ActorBadge } from '~/components/resources/ui'
+import { isActorId, toActorId, type ActorId } from '@auxx/types/actor'
 import {
   formatToRawValue,
   formatToDisplayValue,
@@ -53,6 +54,78 @@ function RelationshipCellContent({ value }: { value: unknown }) {
       items={items}
       isLoading={false} // ResourceBadge handles individual loading states
       renderItem={(item) => <ResourceBadge recordId={item.recordId} link />}
+    />
+  )
+}
+
+/** Actor value object from formatToRawValue */
+interface ActorValueObject {
+  actorType: 'user' | 'group'
+  id: string
+  actorId?: ActorId
+}
+
+/**
+ * Extract single ActorId from value.
+ * Handles: ActorId string, { actorId }, { actorType, id }
+ */
+function extractSingleActorId(val: unknown): ActorId | null {
+  if (!val) return null
+
+  // Already an ActorId string
+  if (typeof val === 'string' && isActorId(val)) {
+    return val as ActorId
+  }
+
+  // Object with actorId field
+  if (typeof val === 'object' && val !== null) {
+    const obj = val as ActorValueObject
+    if (obj.actorId && isActorId(obj.actorId)) {
+      return obj.actorId
+    }
+    // Fallback: construct from actorType + id
+    if (obj.actorType && obj.id) {
+      return toActorId(obj.actorType, obj.id)
+    }
+  }
+
+  return null
+}
+
+/**
+ * Extract ActorIds from various value formats.
+ * Handles: ActorId string, { actorType, id, actorId }, array of either
+ */
+function extractActorIds(value: unknown): ActorId[] {
+  if (!value) return []
+
+  // Handle array
+  if (Array.isArray(value)) {
+    return value.map(extractSingleActorId).filter((id): id is ActorId => id !== null)
+  }
+
+  // Handle single value
+  const actorId = extractSingleActorId(value)
+  return actorId ? [actorId] : []
+}
+
+/**
+ * Actor cell content - displays actor badges (users/groups).
+ * Uses ActorBadge component which handles its own data fetching and loading states.
+ */
+function ActorCellContent({ value }: { value: unknown }) {
+  const actorIds = useMemo(() => extractActorIds(value), [value])
+
+  const items = actorIds.map((actorId) => ({
+    id: actorId,
+    actorId,
+  }))
+
+  return (
+    <ItemsCellView
+      items={items}
+      isLoading={false} // ActorBadge handles individual loading states
+      renderItem={(item) => <ActorBadge actorId={item.actorId} />}
     />
   )
 }
@@ -529,6 +602,11 @@ const cellRenderers: Record<string, CellRenderer> = {
   // Relationship - uses RelationshipCellContent which extracts recordId from TypedFieldValue
   RELATIONSHIP: (value) => {
     return <RelationshipCellContent value={value} />
+  },
+
+  // Actor - uses ActorCellContent which extracts actorId from TypedFieldValue
+  ACTOR: (value) => {
+    return <ActorCellContent value={value} />
   },
 
   // Generic items renderer - for groups, sources, any list of items

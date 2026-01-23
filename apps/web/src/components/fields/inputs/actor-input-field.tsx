@@ -6,9 +6,44 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { ActorTarget } from '@auxx/database/enums'
 import type { ActorFieldOptions } from '@auxx/types/field'
 import type { ActorId, ActorType } from '@auxx/types/actor'
+import { isActorId, toActorId } from '@auxx/types/actor'
 import { ActorPickerContent } from '~/components/pickers/actor-picker'
 import { usePropertyContext } from '../property-provider'
 import { useFieldNavigationOptional } from '../field-navigation-context'
+
+/** Actor value object from formatToRawValue */
+interface ActorValueObject {
+  actorType: 'user' | 'group'
+  id: string
+  actorId?: ActorId
+}
+
+/**
+ * Extract ActorId from various value formats.
+ * Handles: ActorId string, { actorId }, { actorType, id }
+ */
+function extractActorId(val: unknown): ActorId | null {
+  if (!val) return null
+
+  // Already an ActorId string
+  if (typeof val === 'string' && isActorId(val)) {
+    return val as ActorId
+  }
+
+  // Object with actorId field
+  if (typeof val === 'object' && val !== null) {
+    const obj = val as ActorValueObject
+    if (obj.actorId && isActorId(obj.actorId)) {
+      return obj.actorId
+    }
+    // Fallback: construct from actorType + id
+    if (obj.actorType && obj.id) {
+      return toActorId(obj.actorType, obj.id)
+    }
+  }
+
+  return null
+}
 
 /**
  * Input component for ACTOR field type.
@@ -33,11 +68,18 @@ export function ActorInputField() {
   }, [options?.target])
 
   // Normalize value to array for picker
-  // Value can be a single ActorId or an array of ActorIds
+  // Value can be ActorId string, object { actorType, id, actorId }, or array
   const currentActorIds = useMemo<ActorId[]>(() => {
     if (!value) return []
-    if (Array.isArray(value)) return value as ActorId[]
-    return [value as ActorId]
+
+    // Handle array of values
+    if (Array.isArray(value)) {
+      return value.map(extractActorId).filter((id): id is ActorId => id !== null)
+    }
+
+    // Handle single value
+    const actorId = extractActorId(value)
+    return actorId ? [actorId] : []
   }, [value])
 
   // Track current selection in local state for save-on-close pattern

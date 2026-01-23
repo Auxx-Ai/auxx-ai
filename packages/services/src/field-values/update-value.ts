@@ -28,6 +28,7 @@ export async function updateFieldValue(input: UpdateFieldValueInput) {
         optionId: updateData.optionId ?? null,
         relatedEntityId: updateData.relatedEntityId ?? null,
         relatedEntityDefinitionId: updateData.relatedEntityDefinitionId ?? null,
+        actorId: updateData.actorId ?? null,
       })
       .where(
         and(

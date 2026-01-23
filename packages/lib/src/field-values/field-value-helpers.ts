@@ -15,6 +15,7 @@ import type { RecordId } from '@auxx/types/resource'
 import type { FieldValueRow, FieldReference } from './types'
 import type { InverseFieldInfo } from './relationship-sync'
 import { isFieldPath, parseResourceFieldId } from '@auxx/types/field'
+import { isActorId, parseActorId, toActorId, type ActorId } from '@auxx/types/actor'
 
 // Re-export for convenience
 export type { InverseFieldInfo }
@@ -178,12 +179,24 @@ export function rowToTypedValue(row: FieldValueRow, fieldType: FieldType): Typed
     case 'actor':
       // Actor can be stored as actorId (for users) or relatedEntityId (for groups)
       if (row.actorId) {
-        return { ...base, type: 'actor', actorType: 'user', id: row.actorId }
+        return {
+          ...base,
+          type: 'actor',
+          actorType: 'user',
+          id: row.actorId,
+          actorId: toActorId('user', row.actorId),
+        }
       } else if (row.relatedEntityId) {
-        return { ...base, type: 'actor', actorType: 'group', id: row.relatedEntityId }
+        return {
+          ...base,
+          type: 'actor',
+          actorType: 'group',
+          id: row.relatedEntityId,
+          actorId: toActorId('group', row.relatedEntityId),
+        }
       }
       // Fallback for empty actor
-      return { ...base, type: 'actor', actorType: 'user', id: '' }
+      return { ...base, type: 'actor', actorType: 'user', id: '', actorId: '' as ActorId }
   }
 }
 
@@ -449,19 +462,30 @@ export async function validateSingleValue(
     }
 
     case 'ACTOR': {
-      // Actor field accepts { actorType, id } or just a string (assumes user type)
+      // Actor field accepts ActorId string (e.g., "user:xxx" or "group:xxx") or { actorType, id }
       if (typeof value === 'string') {
+        // Check if it's an ActorId format (e.g., "user:abc123" or "group:xyz789")
+        if (isActorId(value)) {
+          const { type: actorType, id } = parseActorId(value as ActorId)
+          return { type: 'actor', actorType, id }
+        }
+        // Plain string without prefix - assume user type with raw ID
         return { type: 'actor', actorType: 'user', id: value }
       }
       if (typeof value === 'object' && value !== null) {
         const obj = value as Record<string, unknown>
         const actorType = (obj.actorType ?? obj.type ?? 'user') as 'user' | 'group'
-        const id = obj.id as string
+        let id = obj.id as string
         if (!id) {
           throwValidationError({
             success: false,
             error: { issues: [{ message: 'Actor ID is required', path: ['id'] }] },
           })
+        }
+        // Parse id if it's in ActorId format (e.g., "user:abc123")
+        if (isActorId(id)) {
+          const parsed = parseActorId(id as ActorId)
+          return { type: 'actor', actorType: parsed.type, id: parsed.id }
         }
         return { type: 'actor', actorType, id }
       }

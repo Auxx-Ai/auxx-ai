@@ -18,6 +18,12 @@ import { useAvailableActors, useActors } from '~/components/resources/hooks/use-
 import { api } from '~/trpc/react'
 import { ActorItem } from './actor-item'
 
+/** Stable default for actor types to prevent re-renders */
+const DEFAULT_ACTOR_TYPES: ActorType[] = ['user', 'group']
+
+/** Stable empty array for excludeIds to prevent re-renders */
+const EMPTY_EXCLUDE_IDS: ActorId[] = []
+
 /**
  * Props for the ActorPickerContent component
  */
@@ -72,7 +78,7 @@ export interface ActorPickerContentProps {
 export function ActorPickerContent({
   value,
   onChange,
-  types = ['user', 'group'],
+  types = DEFAULT_ACTOR_TYPES,
   roles,
   multi = true,
   onSelectSingle,
@@ -81,7 +87,7 @@ export function ActorPickerContent({
   placeholder = 'Search...',
   isLoading: externalLoading = false,
   className,
-  excludeIds = [],
+  excludeIds = EMPTY_EXCLUDE_IDS,
 }: ActorPickerContentProps) {
   const [search, setSearch] = useState('')
 
@@ -222,6 +228,7 @@ export function ActorPickerContent({
                     actor={actor}
                     isSelected={isSelected(actor.actorId)}
                     onToggle={handleToggle}
+                    multi={multi}
                   />
                 ))}
               </CommandGroup>
@@ -239,6 +246,7 @@ export function ActorPickerContent({
                     actor={actor}
                     isSelected={isSelected(actor.actorId)}
                     onToggle={handleToggle}
+                    multi={multi}
                   />
                 ))}
               </CommandGroup>
@@ -253,6 +261,7 @@ export function ActorPickerContent({
                     actor={actor}
                     isSelected={isSelected(actor.actorId)}
                     onToggle={handleToggle}
+                    multi={multi}
                   />
                 ))}
               </CommandGroup>

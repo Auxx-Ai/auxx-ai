@@ -76,6 +76,7 @@ export interface ExistingFieldValueRow {
   optionId: string | null
   relatedEntityId: string | null
   relatedEntityDefinitionId: string | null
+  actorId: string | null
   sortKey: string
 }
 
@@ -93,6 +94,7 @@ export interface InsertFieldValueInput {
   optionId?: string | null
   relatedEntityId?: string | null
   relatedEntityDefinitionId?: string | null
+  actorId?: string | null
 }
 
 /** Input for updating a field value */
@@ -107,6 +109,7 @@ export interface UpdateFieldValueInput {
   optionId?: string | null
   relatedEntityId?: string | null
   relatedEntityDefinitionId?: string | null
+  actorId?: string | null
 }
 
 /** Input for deleting field values */
@@ -138,6 +141,7 @@ export interface FieldValueRow {
   optionId: string | null
   relatedEntityId: string | null
   relatedEntityDefinitionId: string | null
+  actorId: string | null
   sortKey: string
   createdAt: string
   updatedAt: string

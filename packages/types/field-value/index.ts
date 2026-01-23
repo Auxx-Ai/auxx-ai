@@ -3,6 +3,7 @@
 import { z } from 'zod'
 import { FieldType } from '@auxx/database/enums'
 import { type RecordId, recordIdSchema, toRecordId, isRecordId } from '@auxx/types/resource'
+import { type ActorId } from '@auxx/types/actor'
 
 // =============================================================================
 // VALUE TYPE CONSTANTS
@@ -163,6 +164,8 @@ export interface ActorFieldValue extends BaseFieldValue {
   actorType: 'user' | 'group'
   /** The actor's ID (User.id for 'user', EntityGroup instance ID for 'group') */
   id: string
+  /** Full ActorId in format "user:xxx" or "group:xxx" */
+  actorId: ActorId
   /** Denormalized for display */
   displayName?: string
 }
@@ -430,10 +433,26 @@ export function createTypedValueInput(
       // Handle object with actorType and id
       if (typeof rawValue === 'object' && rawValue !== null && 'actorType' in rawValue && 'id' in rawValue) {
         const obj = rawValue as { actorType: 'user' | 'group'; id: string }
-        return { type: 'actor', actorType: obj.actorType, id: obj.id }
+        // Parse id if it's in ActorId format (e.g., "user:abc123")
+        let rawId = obj.id
+        if (typeof rawId === 'string' && rawId.includes(':')) {
+          const parts = rawId.split(':')
+          if (parts.length === 2 && ['user', 'group'].includes(parts[0]!)) {
+            rawId = parts[1]!
+          }
+        }
+        return { type: 'actor', actorType: obj.actorType, id: rawId }
       }
-      // Handle string input - assume user type
+      // Handle string input
       if (typeof rawValue === 'string') {
+        // Check if it's an ActorId format (e.g., "user:abc123")
+        if (rawValue.includes(':')) {
+          const parts = rawValue.split(':')
+          if (parts.length === 2 && ['user', 'group'].includes(parts[0]!)) {
+            return { type: 'actor', actorType: parts[0] as 'user' | 'group', id: parts[1]! }
+          }
+        }
+        // Plain string - assume user type
         return { type: 'actor', actorType: 'user', id: rawValue }
       }
       return null

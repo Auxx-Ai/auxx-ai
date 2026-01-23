@@ -6,6 +6,8 @@ import type {
   ActorFieldValue,
   ActorFieldValueInput,
 } from '@auxx/types/field-value'
+import type { ActorId } from '@auxx/types/actor'
+import { isActorId, parseActorId, toActorId } from '@auxx/types/actor'
 import type { FieldValueConverter, FieldOptions } from './index'
 
 /**
@@ -19,7 +21,8 @@ export const actorConverter: FieldValueConverter = {
   /**
    * Convert raw input to TypedFieldValueInput.
    * Accepts various input formats:
-   * - string (assumes 'user' type)
+   * - ActorId string (e.g., "user:abc123" or "group:xyz789")
+   * - string (raw ID, assumes 'user' type)
    * - { actorType: 'user' | 'group', id: string }
    * - { type?: 'user' | 'group', id: string }
    */
@@ -28,13 +31,15 @@ export const actorConverter: FieldValueConverter = {
       return null
     }
 
-    // Handle already-typed values (pass through)
+    // Handle already-typed values (pass through, but ensure id is raw)
     if (typeof value === 'object' && value !== null && 'type' in value) {
       const typed = value as { type: string }
       if (typed.type === 'actor') {
         const actorValue = typed as ActorFieldValueInput
         if (!actorValue.id) return null
-        return { type: 'actor', actorType: actorValue.actorType, id: actorValue.id }
+        // Parse id if it's in ActorId format
+        const rawId = isActorId(actorValue.id) ? parseActorId(actorValue.id as ActorId).id : actorValue.id
+        return { type: 'actor', actorType: actorValue.actorType, id: rawId }
       }
     }
 
@@ -47,17 +52,28 @@ export const actorConverter: FieldValueConverter = {
       const id = obj.id as string | undefined
 
       if (id) {
+        // Parse id if it's in ActorId format
+        const rawId = isActorId(id) ? parseActorId(id as ActorId).id : id
         return {
           type: 'actor',
           actorType: actorType ?? 'user',
-          id,
+          id: rawId,
         }
       }
     }
 
-    // Handle string input - assume user type
+    // Handle string input
     if (typeof value === 'string' && value.trim() !== '') {
-      return { type: 'actor', actorType: 'user', id: value.trim() }
+      const trimmed = value.trim()
+
+      // Check if it's an ActorId format (e.g., "user:abc123")
+      if (isActorId(trimmed)) {
+        const { type, id } = parseActorId(trimmed as ActorId)
+        return { type: 'actor', actorType: type, id }
+      }
+
+      // Plain string - assume user type with raw ID
+      return { type: 'actor', actorType: 'user', id: trimmed }
     }
 
     return null
@@ -65,7 +81,7 @@ export const actorConverter: FieldValueConverter = {
 
   /**
    * Convert TypedFieldValue/Input to raw object value.
-   * Returns { actorType, id } for API calls.
+   * Returns { actorType, id, actorId } for API calls.
    */
   toRawValue(value: TypedFieldValue | TypedFieldValueInput | unknown): unknown {
     if (value === null || value === undefined) {
@@ -77,7 +93,12 @@ export const actorConverter: FieldValueConverter = {
       const typed = value as { type: string }
       if (typed.type === 'actor') {
         const actorValue = typed as ActorFieldValue | ActorFieldValueInput
-        return { actorType: actorValue.actorType, id: actorValue.id }
+        // Use existing actorId if available, otherwise generate it
+        const actorId =
+          'actorId' in actorValue && actorValue.actorId
+            ? actorValue.actorId
+            : toActorId(actorValue.actorType, actorValue.id)
+        return { actorType: actorValue.actorType, id: actorValue.id, actorId }
       }
       return null
     }
@@ -86,16 +107,22 @@ export const actorConverter: FieldValueConverter = {
     if (typeof value === 'object' && value !== null) {
       const obj = value as Record<string, unknown>
       if ('actorType' in obj && 'id' in obj) {
-        return { actorType: obj.actorType, id: obj.id }
+        const actorType = obj.actorType as 'user' | 'group'
+        const id = obj.id as string
+        const actorId = obj.actorId ?? toActorId(actorType, id)
+        return { actorType, id, actorId }
       }
       if ('type' in obj && 'id' in obj) {
-        return { actorType: obj.type, id: obj.id }
+        const actorType = obj.type as 'user' | 'group'
+        const id = obj.id as string
+        const actorId = obj.actorId ?? toActorId(actorType, id)
+        return { actorType, id, actorId }
       }
     }
 
     // Handle string - assume user type
     if (typeof value === 'string') {
-      return { actorType: 'user', id: value }
+      return { actorType: 'user', id: value, actorId: toActorId('user', value) }
     }
 
     return null

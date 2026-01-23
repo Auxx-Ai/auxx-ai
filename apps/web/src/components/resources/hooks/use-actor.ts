@@ -1,11 +1,15 @@
 // apps/web/src/components/resources/hooks/use-actor.ts
 
-import { useCallback, useEffect, useRef } from 'react'
+import { useEffect, useRef } from 'react'
+import { useShallow } from 'zustand/shallow'
 import { useActorStore, getActorStoreState } from '../store/actor-store'
 import type { Actor, ActorId, ActorType } from '@auxx/types/actor'
 import { parseActorId } from '@auxx/types/actor'
 import type { GroupMember } from '@auxx/types/groups'
 import { api } from '~/trpc/react'
+
+/** Stable empty array to prevent re-renders */
+const EMPTY_MEMBERS: GroupMember[] = []
 
 // ============================================================================
 // useActor - Get a single actor
@@ -35,24 +39,16 @@ interface UseActorResult {
  * const { actor } = useActor({ actorId: 'group:xyz789' })
  */
 export function useActor({ actorId, enabled = true }: UseActorOptions): UseActorResult {
-  // Subscribe to actor
-  const actor = useActorStore(
-    useCallback((state) => (actorId ? state.actors.get(actorId) : undefined), [actorId])
+  // Subscribe to actor (primitive selector - returns same reference if actor unchanged)
+  const actor = useActorStore((state) => (actorId ? state.actors.get(actorId) : undefined))
+
+  // Subscribe to loading state (primitive boolean - stable)
+  const isLoading = useActorStore((state) =>
+    actorId ? state.loadingIds.has(actorId) || state.pendingIds.has(actorId) : false
   )
 
-  // Subscribe to loading state
-  const isLoading = useActorStore(
-    useCallback(
-      (state) =>
-        actorId ? state.loadingIds.has(actorId) || state.pendingIds.has(actorId) : false,
-      [actorId]
-    )
-  )
-
-  // Subscribe to not found state
-  const isNotFound = useActorStore(
-    useCallback((state) => (actorId ? state.notFoundIds.has(actorId) : false), [actorId])
-  )
+  // Subscribe to not found state (primitive boolean - stable)
+  const isNotFound = useActorStore((state) => (actorId ? state.notFoundIds.has(actorId) : false))
 
   // Track requested IDs
   const requestedRef = useRef<Set<ActorId>>(new Set())
@@ -87,24 +83,25 @@ export function useActor({ actorId, enabled = true }: UseActorOptions): UseActor
 /**
  * Hook to get multiple actors by ActorId.
  * Returns a Map for O(1) lookup.
+ * Uses useShallow to prevent infinite loops from new Map references.
  *
  * @example
  * const actors = useActors(['user:a', 'group:b'])
  * const actor = actors.get('user:a')
  */
 export function useActors(actorIds: ActorId[]): Map<ActorId, Actor> {
+  // Create stable key for comparison
+  const idsKey = actorIds.join(',')
+
   return useActorStore(
-    useCallback(
-      (state) => {
-        const result = new Map<ActorId, Actor>()
-        for (const actorId of actorIds) {
-          const actor = state.actors.get(actorId)
-          if (actor) result.set(actorId, actor)
-        }
-        return result
-      },
-      [actorIds]
-    )
+    useShallow((state) => {
+      const result = new Map<ActorId, Actor>()
+      for (const id of idsKey.split(',').filter(Boolean)) {
+        const actor = state.actors.get(id as ActorId)
+        if (actor) result.set(id as ActorId, actor)
+      }
+      return result
+    })
   )
 }
 
@@ -123,6 +120,7 @@ interface UseAvailableActorsOptions {
 
 /**
  * Hook to get all available actors for selection.
+ * Uses useShallow to prevent infinite loops from new array references.
  *
  * @example
  * const actors = useAvailableActors({ types: ['user'] })
@@ -132,37 +130,34 @@ export function useAvailableActors(options: UseAvailableActorsOptions = {}): Act
   const { types, roles, groupIds } = options
 
   return useActorStore(
-    useCallback(
-      (state) => {
-        let actors = Array.from(state.actors.values())
+    useShallow((state) => {
+      let actors = Array.from(state.actors.values())
 
-        // Filter by type
-        if (types?.length) {
-          actors = actors.filter((a) => types.includes(a.type))
-        }
+      // Filter by type
+      if (types?.length) {
+        actors = actors.filter((a) => types.includes(a.type))
+      }
 
-        // Filter by role (users only)
-        if (roles?.length) {
-          actors = actors.filter((a) => a.type !== 'user' || roles.includes(a.role))
-        }
+      // Filter by role (users only)
+      if (roles?.length) {
+        actors = actors.filter((a) => a.type !== 'user' || roles.includes(a.role))
+      }
 
-        // Filter by groupIds (groups only)
-        if (groupIds?.length) {
-          actors = actors.filter((a) => {
-            if (a.type !== 'group') return true
-            try {
-              const { id } = parseActorId(a.actorId)
-              return groupIds.includes(id)
-            } catch {
-              return false
-            }
-          })
-        }
+      // Filter by groupIds (groups only)
+      if (groupIds?.length) {
+        actors = actors.filter((a) => {
+          if (a.type !== 'group') return true
+          try {
+            const { id } = parseActorId(a.actorId)
+            return groupIds.includes(id)
+          } catch {
+            return false
+          }
+        })
+      }
 
-        return actors
-      },
-      [types, roles, groupIds]
-    )
+      return actors
+    })
   )
 }
 
@@ -211,15 +206,14 @@ export function useGroupMembers({
   }
 
   // Subscribe to cached members
-  const members = useActorStore(
-    useCallback((state) => (groupId ? state.groupMembers.get(groupId) ?? [] : []), [groupId])
-  )
+  const members = useActorStore((state) => (groupId ? state.groupMembers.get(groupId) : undefined))
+  const safeMembers = members ?? EMPTY_MEMBERS
 
   // Fetch if not cached
   const { data, isLoading, refetch } = api.actor.getGroupMembers.useQuery(
     { groupId: groupId! },
     {
-      enabled: enabled && !!groupId && members.length === 0,
+      enabled: enabled && !!groupId && safeMembers.length === 0,
       staleTime: 5 * 60 * 1000,
     }
   )
@@ -232,7 +226,7 @@ export function useGroupMembers({
   }, [data, groupId])
 
   return {
-    members,
+    members: safeMembers,
     isLoading,
     refetch,
   }
