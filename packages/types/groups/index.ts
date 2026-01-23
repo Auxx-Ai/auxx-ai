@@ -1,16 +1,21 @@
 // packages/types/groups/index.ts
 
-import type { Database } from '@auxx/database'
-import type { MemberType, GroupVisibility, PermissionLevel } from '@auxx/database/enums'
-import type { EntityInstanceEntity } from '@auxx/database'
+import type {
+  MemberType,
+  GroupVisibility,
+  ResourcePermission,
+  ResourceGranteeType,
+} from '@auxx/database/enums'
+import type { EntityInstanceEntity } from '@auxx/database/models'
 
 // ============================================================================
 // Context & Input Types
 // ============================================================================
 
-/** Context passed to all group functions */
+/** Context passed to all group functions (server-side only) */
 export interface GroupContext {
-  db: Database
+  /** Database instance - use `import type { Database } from '@auxx/database'` for full type */
+  db: unknown
   organizationId: string
   userId: string
 }
@@ -73,17 +78,17 @@ export interface GroupMember {
 /** Permission grant input */
 export interface GrantPermissionInput {
   groupId: string
-  granteeType: 'user' | 'team' | 'role'
+  granteeType: ResourceGranteeType
   granteeId: string
-  permission: PermissionLevel
+  permission: ResourcePermission
 }
 
 /** Permission info returned from queries */
 export interface GroupPermissionInfo {
   id: string
-  granteeType: 'user' | 'team' | 'role'
+  granteeType: ResourceGranteeType
   granteeId: string
-  permission: PermissionLevel
+  permission: ResourcePermission
   createdAt: Date
 }
 
@@ -92,16 +97,18 @@ export interface GroupPermissionInfo {
 // ============================================================================
 
 /** Permission hierarchy for level comparison */
-export const PERMISSION_HIERARCHY: Record<PermissionLevel, number> = {
+export const PERMISSION_HIERARCHY: Record<ResourcePermission, number> = {
   view: 1,
   edit: 2,
-  manage_members: 3,
-  admin: 4,
+  admin: 3,
 }
 
 /**
  * Check if a permission level satisfies a required level
  */
-export function satisfiesPermission(actual: PermissionLevel, required: PermissionLevel): boolean {
+export function satisfiesPermission(
+  actual: ResourcePermission,
+  required: ResourcePermission
+): boolean {
   return PERMISSION_HIERARCHY[actual] >= PERMISSION_HIERARCHY[required]
 }

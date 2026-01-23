@@ -1330,27 +1330,6 @@ export const MemberType = {
   user: 'user',
 } as const
 
-/** Permission levels for EntityGroupPermission - hierarchical */
-export const PermissionLevelValues = ['view', 'edit', 'manage_members', 'admin'] as const
-export type PermissionLevel = (typeof PermissionLevelValues)[number]
-
-export const PermissionLevel = {
-  view: 'view',
-  edit: 'edit',
-  manage_members: 'manage_members',
-  admin: 'admin',
-} as const
-
-/** Grantee types for EntityGroupPermission */
-export const GranteeTypeValues = ['user', 'team', 'role'] as const
-export type GranteeType = (typeof GranteeTypeValues)[number]
-
-export const GranteeType = {
-  user: 'user',
-  team: 'team',
-  role: 'role',
-} as const
-
 /** Visibility for entity groups */
 export const GroupVisibilityValues = ['public', 'private'] as const
 export type GroupVisibility = (typeof GroupVisibilityValues)[number]

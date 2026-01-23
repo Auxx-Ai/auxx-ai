@@ -1,8 +1,21 @@
 // packages/lib/src/workflow-engine/resources/find-definitions.ts
 import { RESOURCE_CONFIGS } from './definitions'
-import { RESOURCE_FIELD_REGISTRY, getFilterableFields, getSortableFields } from './registry'
+import { RESOURCE_FIELD_REGISTRY, type TableId } from './registry/field-registry'
 import type { ResourceField } from './registry/field-types'
-import type { TableId } from './registry/field-registry'
+
+/** Get all filterable fields for a resource */
+function getFilterableFields(resourceType: TableId): ResourceField[] {
+  const fields = RESOURCE_FIELD_REGISTRY[resourceType]
+  if (!fields) return []
+  return Object.values(fields).filter((f) => f.capabilities.filterable)
+}
+
+/** Get all sortable fields for a resource */
+function getSortableFields(resourceType: TableId): ResourceField[] {
+  const fields = RESOURCE_FIELD_REGISTRY[resourceType]
+  if (!fields) return []
+  return Object.values(fields).filter((f) => f.capabilities.sortable)
+}
 
 /**
  * Resource configuration extended for find operations

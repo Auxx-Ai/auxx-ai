@@ -11,10 +11,13 @@ export * from './utils/serialization'
 export { getDefaultValueForType } from './utils/default-values'
 
 // Registry exports (Phase 1: Single source of truth for field definitions)
-export * from '../resources/registry'
+// Import from client.ts to avoid server-side code in barrel exports
+export * from '../resources/client'
 
 // CRUD resource configurations (Phase 3: CRUD node refactor)
 export * from '../resources/crud-definitions'
+
+export { RESOURCE_TABLE_MAP, RESOURCE_FIELD_REGISTRY } from '../resources/registry/field-registry'
 
 // Core types
 export { BaseType, WorkflowTriggerType, TRIGGER_NAME_MAP } from './core/types'

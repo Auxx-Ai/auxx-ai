@@ -37,7 +37,6 @@ import {
   EndUser,
   EntityDefinition,
   EntityGroupMember,
-  EntityGroupPermission,
   EntityInstance,
   Event,
   FieldValue,
@@ -777,8 +776,6 @@ export const entityInstanceRelations = relations(EntityInstance, ({ one, many })
   typedValues: many(FieldValue),
   // Group members (when this instance IS a group with resourceType: 'entity_group')
   groupMembers: many(EntityGroupMember),
-  // Group permissions (when this instance IS a group with resourceType: 'entity_group')
-  groupPermissions: many(EntityGroupPermission),
 }))
 
 export const tableViewRelations = relations(TableView, ({ one }) => ({

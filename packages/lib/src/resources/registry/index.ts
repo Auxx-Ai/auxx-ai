@@ -89,7 +89,11 @@ export function getReadOnlyFields(resourceType: TableId): ResourceField[] {
  * Validate option value for a field.
  * Accepts both value (e.g., 'MEDIUM') and label (e.g., 'Medium') formats.
  */
-export function isValidFieldOptionValue(resourceType: TableId, fieldKey: string, value: string): boolean {
+export function isValidFieldOptionValue(
+  resourceType: TableId,
+  fieldKey: string,
+  value: string
+): boolean {
   const field = RESOURCE_FIELD_REGISTRY[resourceType]?.[fieldKey]
   return isValidOptionValue(field, value)
 }
@@ -105,7 +109,11 @@ export function getFieldOptionsForResource(resourceType: TableId, fieldKey: stri
 /**
  * Get option label for a stored value.
  */
-export function getFieldOptionLabel(resourceType: TableId, fieldKey: string, value: string): string {
+export function getFieldOptionLabel(
+  resourceType: TableId,
+  fieldKey: string,
+  value: string
+): string {
   const field = RESOURCE_FIELD_REGISTRY[resourceType]?.[fieldKey]
   return getOptionLabel(field, value)
 }
@@ -182,7 +190,6 @@ export {
   isValidOperatorForField,
   setResourceVariables,
   setEntityVariables,
-  isFieldReadOnly,
   isSystemField,
   isComputedField,
   sortFieldsForDisplay,
@@ -196,12 +203,11 @@ export type { ResourceDisplayConfig, OrgScopingStrategy, JoinScopingConfig } fro
 // Re-export resource registry service and types
 export { ResourceRegistryService } from './resource-registry-service'
 
-// Re-export entity definition resolver
-export {
-  resolveNewSystemEntityDefId,
-  NEW_SYSTEM_ENTITY_TYPES,
-  type NewSystemEntityType,
-} from './entity-def-resolver'
+// Re-export entity type constants (client-safe)
+export { NEW_SYSTEM_ENTITY_TYPES, type NewSystemEntityType } from './entity-types'
+
+// Re-export entity definition resolver (server-side only)
+export { resolveNewSystemEntityDefId } from './entity-def-resolver'
 
 // Re-export entity instance system fields
 export { ENTITY_INSTANCE_FIELDS, getEntityInstanceFields } from './entity-instance-fields'
@@ -217,10 +223,19 @@ export type {
 
 // Re-export drawer configuration
 export { DRAWER_CONFIG_REGISTRY, getEntityDrawerConfig, hasDrawerConfig } from './drawer-config'
-export type { DrawerConfig, DrawerTabDefinition, DrawerActions, DrawerConfigRegistry } from './drawer-config-types'
+export type {
+  DrawerConfig,
+  DrawerTabDefinition,
+  DrawerActions,
+  DrawerConfigRegistry,
+} from './drawer-config-types'
 
 // Re-export detail view configuration
-export { DETAIL_VIEW_CONFIG_REGISTRY, getDetailViewConfig, hasDetailViewConfig } from './detail-view-config'
+export {
+  DETAIL_VIEW_CONFIG_REGISTRY,
+  getDetailViewConfig,
+  hasDetailViewConfig,
+} from './detail-view-config'
 export type {
   DetailViewConfig,
   DetailViewEntityType,

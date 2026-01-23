@@ -1,16 +1,37 @@
 // packages/lib/src/workflow-engine/resources/crud-definitions.ts
 
-import {
-  RESOURCE_FIELD_REGISTRY,
-  getCreatableFields,
-  getUpdatableFields,
-  getRequiredFields,
-  getReadOnlyFields,
-  type ResourceField,
-} from './registry'
+import { RESOURCE_FIELD_REGISTRY, type TableId } from './registry/field-registry'
+import type { ResourceField } from './registry/field-types'
 import { RESOURCE_CONFIGS } from './definitions'
 import type { ResourceConfig } from './definitions'
-import type { TableId } from './registry/field-registry'
+
+/** Get all creatable fields for a resource */
+function getCreatableFields(resourceType: TableId): ResourceField[] {
+  const fields = RESOURCE_FIELD_REGISTRY[resourceType]
+  if (!fields) return []
+  return Object.values(fields).filter((f) => f.capabilities.creatable)
+}
+
+/** Get all updatable fields for a resource */
+function getUpdatableFields(resourceType: TableId): ResourceField[] {
+  const fields = RESOURCE_FIELD_REGISTRY[resourceType]
+  if (!fields) return []
+  return Object.values(fields).filter((f) => f.capabilities.updatable)
+}
+
+/** Get required fields for resource creation */
+function getRequiredFields(resourceType: TableId): ResourceField[] {
+  const fields = RESOURCE_FIELD_REGISTRY[resourceType]
+  if (!fields) return []
+  return Object.values(fields).filter((f) => f.capabilities.required === true)
+}
+
+/** Get read-only fields */
+function getReadOnlyFields(resourceType: TableId): ResourceField[] {
+  const fields = RESOURCE_FIELD_REGISTRY[resourceType]
+  if (!fields) return []
+  return Object.values(fields).filter((f) => !f.capabilities.creatable && !f.capabilities.updatable)
+}
 
 /**
  * Resource configuration for CRUD operations

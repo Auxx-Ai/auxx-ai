@@ -14,8 +14,8 @@ import {
   type Condition,
 } from '~/components/conditions'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
-import { getFieldOperators, BaseType } from '@auxx/lib/workflow-engine/client'
-import type { ResourceField } from '@auxx/lib/resources/client'
+import { BaseType } from '@auxx/lib/workflow-engine/client'
+import { type ResourceField, getFieldOperators } from '@auxx/lib/resources/client'
 import { Tooltip } from '~/components/global/tooltip'
 import { generateId } from '@auxx/utils/generateId'
 

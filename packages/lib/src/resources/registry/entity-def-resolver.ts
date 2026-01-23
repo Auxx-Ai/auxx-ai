@@ -2,21 +2,13 @@
 
 import type { Database } from '@auxx/database'
 import { getRedisClient } from '@auxx/redis'
+import { type NewSystemEntityType } from './entity-types'
 
 /** Cache key format: entity-def:{organizationId}:{entityType} */
 const ENTITY_DEF_CACHE_PREFIX = 'entity-def'
 
 /** TTL: 30 days (2592000 seconds) - these values never change */
 const ENTITY_DEF_CACHE_TTL = 60 * 60 * 24 * 30
-
-/**
- * System types that are now stored in EntityDefinition table (excluding 'entity' which is generic)
- * These types have their own EntityDefinition row with entityType field set.
- */
-export const NEW_SYSTEM_ENTITY_TYPES = ['contact', 'part', 'ticket'] as const
-
-/** Type for new system entity types */
-export type NewSystemEntityType = (typeof NEW_SYSTEM_ENTITY_TYPES)[number]
 
 /**
  * Resolves a new system entity type to its entityDefinitionId.

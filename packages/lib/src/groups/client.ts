@@ -22,10 +22,10 @@ export { PERMISSION_HIERARCHY, satisfiesPermission } from '@auxx/types/groups'
 export {
   MemberType,
   MemberTypeValues,
-  PermissionLevel,
-  PermissionLevelValues,
-  GranteeType,
-  GranteeTypeValues,
   GroupVisibility,
   GroupVisibilityValues,
+  ResourcePermission,
+  ResourcePermissionValues,
+  ResourceGranteeType,
+  ResourceGranteeTypeValues,
 } from '@auxx/database/enums'

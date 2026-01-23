@@ -1,4 +1,4 @@
-// packages/lib/src/workflow-engine/resources/registry/field-utils.ts
+// packages/lib/src/resources/registry/field-utils.ts
 
 import { getOperatorsForType } from '../../workflow-engine/operators/type-operator-map'
 import type { ResourceField } from './field-types'
@@ -158,14 +158,6 @@ export function setEntityVariables(
 // ─────────────────────────────────────────────────────────────
 // SYSTEM FIELD HELPERS
 // ─────────────────────────────────────────────────────────────
-
-/**
- * Determines if a field is read-only.
- * A field is read-only if capabilities.updatable is false.
- */
-export function isFieldReadOnly(field: ResourceField): boolean {
-  return field.capabilities.updatable === false
-}
 
 /**
  * Determines if a field is a system field (built-in to the table)

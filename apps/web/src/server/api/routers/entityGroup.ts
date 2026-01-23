@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import * as groups from '@auxx/lib/groups'
 import type { GroupContext } from '@auxx/types/groups'
-import { MemberType, GroupVisibility, PermissionLevel } from '@auxx/database/enums'
+import { MemberType, GroupVisibility, ResourcePermission, ResourceGranteeType } from '@auxx/database/enums'
 
 /**
  * Helper to create GroupContext from tRPC context
@@ -152,13 +152,17 @@ export const entityGroupRouter = createTRPCRouter({
     .input(
       z.object({
         groupId: z.string(),
-        granteeType: z.enum(['user', 'team', 'role']),
+        granteeType: z.enum([
+          ResourceGranteeType.group,
+          ResourceGranteeType.user,
+          ResourceGranteeType.team,
+          ResourceGranteeType.role,
+        ]),
         granteeId: z.string(),
         permission: z.enum([
-          PermissionLevel.view,
-          PermissionLevel.edit,
-          PermissionLevel.manage_members,
-          PermissionLevel.admin,
+          ResourcePermission.view,
+          ResourcePermission.edit,
+          ResourcePermission.admin,
         ]),
       })
     )
@@ -172,13 +176,23 @@ export const entityGroupRouter = createTRPCRouter({
     .input(
       z.object({
         groupId: z.string(),
-        granteeType: z.enum(['user', 'team', 'role']),
+        granteeType: z.enum([
+          ResourceGranteeType.group,
+          ResourceGranteeType.user,
+          ResourceGranteeType.team,
+          ResourceGranteeType.role,
+        ]),
         granteeId: z.string(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const groupCtx = toGroupContext(ctx)
-      const revoked = await groups.revokePermission(groupCtx, input.groupId, input.granteeType, input.granteeId)
+      const revoked = await groups.revokePermission(
+        groupCtx,
+        input.groupId,
+        input.granteeType,
+        input.granteeId
+      )
       return { revoked }
     }),
 

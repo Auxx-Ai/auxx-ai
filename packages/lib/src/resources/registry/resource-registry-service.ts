@@ -3,11 +3,8 @@
 import type { Database } from '@auxx/database'
 import { RESOURCE_TABLE_REGISTRY, RESOURCE_FIELD_REGISTRY, type TableId } from './field-registry'
 import { RESOURCE_DISPLAY_CONFIG } from './display-config'
-import {
-  resolveNewSystemEntityDefId,
-  NEW_SYSTEM_ENTITY_TYPES,
-  type NewSystemEntityType,
-} from './entity-def-resolver'
+import { NEW_SYSTEM_ENTITY_TYPES, type NewSystemEntityType } from './entity-types'
+import { resolveNewSystemEntityDefId } from './entity-def-resolver'
 import type {
   Resource,
   SystemResource,
@@ -39,11 +36,15 @@ const OLD_SYSTEM_API_SLUG_MAP = Object.fromEntries(
 ) as Record<string, ModelType>
 
 /**
- * ApiSlug to EntityType mapping for new system types.
+ * ApiSlug to EntityType mapping for new system types that have ModelTypeMeta entries.
  * e.g., 'contacts' -> 'contact', 'tickets' -> 'ticket'
+ * Note: Some NEW_SYSTEM_ENTITY_TYPES (like 'entity_group') don't have ModelTypeMeta entries.
  */
 const NEW_SYSTEM_API_SLUG_MAP = Object.fromEntries(
-  NEW_SYSTEM_ENTITY_TYPES.map((t) => [ModelTypeMeta[t].apiSlug, t])
+  NEW_SYSTEM_ENTITY_TYPES.filter((t) => t in ModelTypeMeta).map((t) => [
+    ModelTypeMeta[t as keyof typeof ModelTypeMeta].apiSlug,
+    t,
+  ])
 ) as Record<string, NewSystemEntityType>
 
 /** CustomField entity from database */

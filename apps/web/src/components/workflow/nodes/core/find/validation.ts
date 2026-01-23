@@ -5,11 +5,8 @@ import {
   findNodeDataSchema,
   createFindNodeDefaultData,
 } from './types'
-import {
-  FIND_RESOURCE_CONFIGS,
-  getOperatorsForType,
-  isCustomResourceId,
-} from '@auxx/lib/workflow-engine/client'
+import { FIND_RESOURCE_CONFIGS, getOperatorsForType } from '@auxx/lib/workflow-engine/client'
+import { isCustomResourceId } from '@auxx/lib/resources/client'
 import { validateCondition } from '~/components/conditions'
 
 /**

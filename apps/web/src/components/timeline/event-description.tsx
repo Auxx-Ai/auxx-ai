@@ -79,7 +79,7 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
             </div>
           )}
           {event.relatedRecordId && (
-            <div className="mt-1">
+            <div className="mt-1 flex">
               <ResourceBadge
                 recordId={event.relatedRecordId as RecordId}
                 showIcon
@@ -247,15 +247,18 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
       return (
         <>
           Ticket{' '}
-          <span className="emphasis">#{event.eventData.ticket_number || event.eventData.number}</span>{' '}
+          <span className="emphasis">
+            #{event.eventData.ticket_number || event.eventData.number}
+          </span>{' '}
           was created
           {(event.eventData.ticket_title || event.eventData.title) && (
             <div className="mt-0.5 truncate text-xs text-primary-500">
               {event.eventData.ticket_title || event.eventData.title}
             </div>
           )}
+          {' for'}
           {event.relatedRecordId && (
-            <div className="mt-1">
+            <div className="flex-inline">
               <ResourceBadge
                 recordId={event.relatedRecordId as RecordId}
                 showIcon
@@ -296,9 +299,7 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
       return (
         <>
           Type changed to{' '}
-          <span className="emphasis">
-            {event.eventData.ticket_type || event.eventData.newType}
-          </span>
+          <span className="emphasis">{event.eventData.ticket_type || event.eventData.newType}</span>
         </>
       )
 
@@ -327,7 +328,9 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
       return (
         <>
           Assigned to{' '}
-          <span className="emphasis">{event.eventData.assignee_name || event.eventData.assigneeName || 'someone'}</span>
+          <span className="emphasis">
+            {event.eventData.assignee_name || event.eventData.assigneeName || 'someone'}
+          </span>
         </>
       )
 
@@ -335,7 +338,9 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
       return (
         <>
           Unassigned from{' '}
-          <span className="emphasis">{event.eventData.assignee_name || event.eventData.assigneeName || 'someone'}</span>
+          <span className="emphasis">
+            {event.eventData.assignee_name || event.eventData.assigneeName || 'someone'}
+          </span>
         </>
       )
 
@@ -393,7 +398,9 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
       return (
         <>
           Ticket merged into{' '}
-          <span className="emphasis">#{event.eventData.target_ticket_number || event.eventData.targetTicketNumber}</span>
+          <span className="emphasis">
+            #{event.eventData.target_ticket_number || event.eventData.targetTicketNumber}
+          </span>
         </>
       )
 
@@ -401,7 +408,9 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
       return (
         <>
           Linked to ticket{' '}
-          <span className="emphasis">#{event.eventData.linked_ticket_number || event.eventData.linkedTicketNumber}</span>
+          <span className="emphasis">
+            #{event.eventData.linked_ticket_number || event.eventData.linkedTicketNumber}
+          </span>
         </>
       )
 
@@ -409,7 +418,9 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
       return (
         <>
           Unlinked from ticket{' '}
-          <span className="emphasis">#{event.eventData.unlinked_ticket_number || event.eventData.unlinkedTicketNumber}</span>
+          <span className="emphasis">
+            #{event.eventData.unlinked_ticket_number || event.eventData.unlinkedTicketNumber}
+          </span>
         </>
       )
 

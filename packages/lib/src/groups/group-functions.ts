@@ -3,7 +3,7 @@
 import { and, eq, inArray, isNull, sql, asc, or } from 'drizzle-orm'
 import { schema } from '@auxx/database'
 import type { EntityInstanceEntity } from '@auxx/database'
-import { MemberType, PermissionLevel, GranteeType, GroupVisibility } from '@auxx/database/enums'
+import { MemberType, GroupVisibility, ResourcePermission, ResourceGranteeType } from '@auxx/database/enums'
 import { generateNKeysBetween } from '@auxx/utils'
 import type {
   GroupContext,
@@ -90,7 +90,7 @@ export async function createGroup(ctx: GroupContext, input: CreateGroupInput): P
 export async function deleteGroup(ctx: GroupContext, groupId: string): Promise<void> {
   const { db } = ctx
 
-  await requireGroupPermission(ctx, groupId, PermissionLevel.admin)
+  await requireGroupPermission(ctx, groupId, ResourcePermission.admin)
 
   // Cascade deletes handle members and permissions
   await db.delete(schema.EntityInstance).where(eq(schema.EntityInstance.id, groupId))
@@ -140,44 +140,32 @@ export async function listAccessibleGroups(
     })
   }
 
-  // Get user's teams (from EntityGroupMember)
-  const userTeamMemberships = await db.query.EntityGroupMember.findMany({
-    where: and(
-      eq(schema.EntityGroupMember.memberType, MemberType.user),
-      eq(schema.EntityGroupMember.memberRefId, userId)
-    ),
-    columns: { groupInstanceId: true },
-  })
-  const teamIds = userTeamMemberships.map((t) => t.groupInstanceId)
+  // Use ResourceAccess to get accessible group IDs
+  const { getUserAccessibleInstances } = await import('../resource-access')
+  const { parseRecordId } = await import('@auxx/types/resource')
 
-  // Build grantee conditions
-  const granteeConditions = [
-    and(
-      eq(schema.EntityGroupPermission.granteeType, GranteeType.user),
-      eq(schema.EntityGroupPermission.granteeId, userId)
-    ),
-    and(
-      eq(schema.EntityGroupPermission.granteeType, GranteeType.role),
-      eq(schema.EntityGroupPermission.granteeId, 'org_member')
-    ),
-  ]
+  const result = await getUserAccessibleInstances(
+    { db, organizationId, userId },
+    userId,
+    groupDef.id
+  )
 
-  if (teamIds.length > 0) {
-    granteeConditions.push(
-      and(
-        eq(schema.EntityGroupPermission.granteeType, GranteeType.team),
-        inArray(schema.EntityGroupPermission.granteeId, teamIds)
-      )
-    )
+  if (result.hasTypeAccess) {
+    // User has type-level access to ALL groups
+    return db.query.EntityInstance.findMany({
+      where: and(
+        eq(schema.EntityInstance.entityDefinitionId, groupDef.id),
+        eq(schema.EntityInstance.organizationId, organizationId),
+        isNull(schema.EntityInstance.archivedAt)
+      ),
+      limit: options?.limit ?? 50,
+      offset: options?.offset ?? 0,
+    })
   }
 
-  // Get accessible group IDs from permissions
-  const permissions = await db.query.EntityGroupPermission.findMany({
-    where: or(...granteeConditions),
-    columns: { groupInstanceId: true },
-  })
-
-  const accessibleGroupIds = [...new Set(permissions.map((p) => p.groupInstanceId))]
+  const accessibleGroupIds = result.instances.map(
+    (i) => parseRecordId(i.recordId).entityInstanceId
+  )
 
   if (accessibleGroupIds.length === 0) return []
 
@@ -203,8 +191,8 @@ export async function addMembers(ctx: GroupContext, input: AddMembersInput): Pro
   const { db, userId } = ctx
   const { groupId, members } = input
 
-  // Check permission
-  await requireGroupPermission(ctx, groupId, PermissionLevel.manage_members)
+  // Check permission - edit permission allows member management
+  await requireGroupPermission(ctx, groupId, ResourcePermission.edit)
 
   if (members.length === 0) {
     return { added: 0, skipped: 0 }
@@ -247,7 +235,8 @@ export async function removeMembers(
 ): Promise<number> {
   const { db } = ctx
 
-  await requireGroupPermission(ctx, groupId, PermissionLevel.manage_members)
+  // Check permission - edit permission allows member management
+  await requireGroupPermission(ctx, groupId, ResourcePermission.edit)
 
   if (members.length === 0) return 0
 
@@ -276,7 +265,7 @@ export async function getMembers(
 ): Promise<GroupMember[]> {
   const { db } = ctx
 
-  await requireGroupPermission(ctx, groupId, PermissionLevel.view)
+  await requireGroupPermission(ctx, groupId, ResourcePermission.view)
 
   const memberships = await db.query.EntityGroupMember.findMany({
     where: eq(schema.EntityGroupMember.groupInstanceId, groupId),
@@ -348,7 +337,7 @@ export async function getGroupsForUser(ctx: GroupContext, targetUserId: string):
   const permissionChecks = await Promise.all(
     memberships.map(async (m) => ({
       group: m.groupInstance,
-      canView: await hasGroupPermission(ctx, m.groupInstanceId, PermissionLevel.view),
+      canView: await hasGroupPermission(ctx, m.groupInstanceId, ResourcePermission.view),
     }))
   )
 
@@ -378,7 +367,7 @@ export async function getGroupsForEntity(ctx: GroupContext, entityId: string): P
   const permissionChecks = await Promise.all(
     memberships.map(async (m) => ({
       group: m.groupInstance,
-      canView: await hasGroupPermission(ctx, m.groupInstanceId, PermissionLevel.view),
+      canView: await hasGroupPermission(ctx, m.groupInstanceId, ResourcePermission.view),
     }))
   )
 
@@ -390,43 +379,43 @@ export async function getGroupsForEntity(ctx: GroupContext, entityId: string): P
 // ============================================================================
 
 /**
- * Create default permissions for a new group
+ * Create default permissions for a new group via ResourceAccess
  */
 async function createDefaultPermissions(
   ctx: GroupContext,
   groupId: string,
   visibility: GroupVisibility
 ): Promise<void> {
-  const { db, userId } = ctx
+  const { db, organizationId, userId } = ctx
 
-  const permissions: Array<{
-    groupInstanceId: string
-    granteeType: typeof GranteeType.user | typeof GranteeType.team | typeof GranteeType.role
-    granteeId: string
-    permission: typeof PermissionLevel.view | typeof PermissionLevel.edit | typeof PermissionLevel.manage_members | typeof PermissionLevel.admin
-    grantedById: string
-  }> = [
-    // Creator gets admin
-    {
-      groupInstanceId: groupId,
-      granteeType: GranteeType.user,
-      granteeId: userId,
-      permission: PermissionLevel.admin,
-      grantedById: userId,
-    },
-  ]
+  // Get entity_group entityDefinitionId (cached for 30 days)
+  const { ResourceRegistryService } = await import('../resources/registry')
+  const registry = new ResourceRegistryService(organizationId, db)
+  const entityDefinitionId = await registry.resolveEntityDefId('entity_group')
 
+  const { grantInstanceAccess } = await import('../resource-access')
+  const { toRecordId } = await import('@auxx/types/resource')
+
+  const recordId = toRecordId(entityDefinitionId, groupId)
+  const resourceCtx = { db, organizationId, userId }
+
+  // Creator gets admin
+  await grantInstanceAccess(resourceCtx, {
+    recordId,
+    granteeType: ResourceGranteeType.user,
+    granteeId: userId,
+    permission: ResourcePermission.admin,
+  })
+
+  // Public groups: all org members get view
   if (visibility === GroupVisibility.public) {
-    permissions.push({
-      groupInstanceId: groupId,
-      granteeType: GranteeType.role,
+    await grantInstanceAccess(resourceCtx, {
+      recordId,
+      granteeType: ResourceGranteeType.role,
       granteeId: 'org_member',
-      permission: PermissionLevel.view,
-      grantedById: userId,
+      permission: ResourcePermission.view,
     })
   }
-
-  await db.insert(schema.EntityGroupPermission).values(permissions)
 }
 
 /**

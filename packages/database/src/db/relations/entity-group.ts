@@ -2,7 +2,7 @@
 // Relations for entity group tables
 
 import { relations } from 'drizzle-orm'
-import { EntityGroupMember, EntityGroupPermission, EntityInstance, User } from '../schema'
+import { EntityGroupMember, EntityInstance, User } from '../schema'
 
 /**
  * EntityGroupMember relations
@@ -20,26 +20,6 @@ export const entityGroupMemberRelations = relations(EntityGroupMember, ({ one })
   /** User who added this member */
   addedBy: one(User, {
     fields: [EntityGroupMember.addedById],
-    references: [User.id],
-  }),
-}))
-
-/**
- * EntityGroupPermission relations
- *
- * Note: granteeId is polymorphic (can reference User, Group/team, or role string based on granteeType).
- * We define the groupInstance and grantedBy relations, but resolving the grantee
- * must be done in application code based on granteeType.
- */
-export const entityGroupPermissionRelations = relations(EntityGroupPermission, ({ one }) => ({
-  /** The group this permission applies to */
-  groupInstance: one(EntityInstance, {
-    fields: [EntityGroupPermission.groupInstanceId],
-    references: [EntityInstance.id],
-  }),
-  /** User who granted this permission */
-  grantedBy: one(User, {
-    fields: [EntityGroupPermission.grantedById],
     references: [User.id],
   }),
 }))
