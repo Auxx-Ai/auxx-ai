@@ -477,6 +477,13 @@
       "when": 1769038521238,
       "tag": "0067_blue_quicksilver",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1769130059123,
+      "tag": "0068_add_actor_fieldtype",
+      "breakpoints": true
     }
   ]
 }

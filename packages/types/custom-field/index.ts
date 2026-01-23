@@ -1,7 +1,7 @@
 // packages/types/custom-field/index.ts
 
 import { z } from 'zod'
-import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
+import { FieldType as FieldTypeEnum, ActorTargetValues, OrganizationRoleValues } from '@auxx/database/enums'
 import { type ResourceFieldId, parseResourceFieldId } from '@auxx/types/field'
 
 // =============================================================================
@@ -133,6 +133,21 @@ export const calcOptionsSchema = z.object({
 export type CalcOptions = z.infer<typeof calcOptionsSchema>
 
 // =============================================================================
+// ACTOR OPTIONS
+// =============================================================================
+
+/** Zod schema for actor field options */
+export const actorOptionsSchema = z.object({
+  target: z.enum(ActorTargetValues),
+  multiple: z.boolean(),
+  roles: z.array(z.enum(OrganizationRoleValues)).optional(),
+  groupIds: z.array(z.string()).optional(),
+})
+
+/** Actor options type */
+export type ActorOptions = z.infer<typeof actorOptionsSchema>
+
+// =============================================================================
 // DISPLAY OPTIONS (flat structure in field.options)
 // =============================================================================
 
@@ -196,7 +211,7 @@ export function getDisplayOptionKeys(fieldType: string): (keyof DisplayOptions)[
 }
 
 /**
- * Type guard to check if options object is a DisplayOptions (not SelectOption[], file, currency, or calc)
+ * Type guard to check if options object is a DisplayOptions (not SelectOption[], file, currency, calc, or actor)
  */
 export function isDisplayOptions(options: unknown): options is DisplayOptions {
   if (!options || typeof options !== 'object') return false
@@ -204,6 +219,7 @@ export function isDisplayOptions(options: unknown): options is DisplayOptions {
   if ('file' in options) return false
   if ('currency' in options) return false
   if ('calc' in options) return false
+  if ('actor' in options) return false
   return true
 }
 
@@ -248,6 +264,7 @@ export const fieldOptionsUnionSchema = z.union([
   z.object({ file: fileOptionsSchema }),
   z.object({ currency: currencyOptionsSchema }),
   z.object({ calc: calcOptionsSchema }),
+  z.object({ actor: actorOptionsSchema }),
   // Flat display options for NUMBER, DATE, DATETIME, TIME, CHECKBOX
   displayOptionsSchema,
 ])

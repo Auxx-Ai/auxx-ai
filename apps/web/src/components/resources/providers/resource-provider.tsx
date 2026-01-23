@@ -4,12 +4,13 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { api } from '~/trpc/react'
-import { getRelationshipStoreState, useRelationshipStore, getRecordStoreState } from '../store'
+import { getRelationshipStoreState, useRelationshipStore, getRecordStoreState, useActorStore, getActorStoreState } from '../store'
 import { getResourceStoreState } from '../store/resource-store'
 import { fieldValueFetchQueue } from '../store/field-value-fetch-queue'
 import { initComputedFieldSync } from '../store/computed-field-registry'
 import { useFieldValueStore } from '../store/field-value-store'
 import type { RecordId } from '@auxx/lib/resources/client'
+import type { ActorId, Actor } from '@auxx/types/actor'
 import { useRecordBatchFetcher } from '../hooks/use-record-batch-fetcher'
 
 /**
@@ -71,6 +72,51 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
     })
   }, [fieldValueBatchGet])
 
+  // === PRELOADED: ACTORS (users + groups) ===
+  const actorsQuery = api.actor.list.useQuery(undefined, {
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  // Sync actors to store
+  useEffect(() => {
+    if (actorsQuery.data) {
+      getActorStoreState().setActors(actorsQuery.data)
+      getActorStoreState().setInitialized(true)
+    }
+  }, [actorsQuery.data])
+
+  useEffect(() => {
+    getActorStoreState().setLoading(actorsQuery.isLoading)
+  }, [actorsQuery.isLoading])
+
+  // === ACTOR BATCH FETCHER (for lazy loading) ===
+  const actorPendingSize = useActorStore((s) => s.pendingIds.size)
+  const [actorBatch, setActorBatch] = useState<ActorId[]>([])
+
+  useEffect(() => {
+    if (actorPendingSize === 0 || actorBatch.length > 0) return
+    const timeout = setTimeout(() => {
+      const actorIds = getActorStoreState().startBatch()
+      if (actorIds.length > 0) {
+        setActorBatch(actorIds)
+      }
+    }, BATCH_DELAY)
+    return () => clearTimeout(timeout)
+  }, [actorPendingSize, actorBatch.length])
+
+  const { data: actorData } = api.actor.getByIds.useQuery(
+    { ids: actorBatch },
+    { enabled: actorBatch.length > 0, staleTime: Infinity, refetchOnWindowFocus: false }
+  )
+
+  useEffect(() => {
+    if (!actorData || actorBatch.length === 0) return
+    const actors = Object.values(actorData) as Actor[]
+    getActorStoreState().completeBatch(actors, actorBatch)
+    setActorBatch([])
+  }, [actorData, actorBatch])
+
   // === RELATIONSHIP ITEMS BATCHING ===
   const [relationshipBatch, setRelationshipBatch] = useState<RecordId[]>([])
   const relationshipPendingSize = useRelationshipStore((s) => s.pendingIds.size)
@@ -123,4 +169,5 @@ export function clearResourceCaches() {
   getRelationshipStoreState().reset()
   getRecordStoreState().clearAll()
   useFieldValueStore.getState().clearAll()
+  getActorStoreState().reset()
 }

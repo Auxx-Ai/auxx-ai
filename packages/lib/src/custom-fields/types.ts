@@ -32,7 +32,7 @@ export const FIELD_TYPE_GROUPS: Record<string, FieldType[]> = {
     FieldTypeEnum.RICH_TEXT,
     FieldTypeEnum.RELATIONSHIP,
   ],
-  Advanced: [FieldTypeEnum.CALC],
+  Advanced: [FieldTypeEnum.CALC, FieldTypeEnum.ACTOR],
 }
 
 /**
@@ -225,6 +225,12 @@ export const fieldTypeOptions: Record<FieldType, FieldTypeOption> = {
     description: 'Formula field that computes value from other fields',
     minWidth: 200,
   },
+  [FieldTypeEnum.ACTOR]: {
+    label: 'Actor',
+    iconId: 'circle-user',
+    description: 'Assign users or groups to a record',
+    minWidth: 200,
+  },
 }
 /**
  * Record of default empty values for each FieldType
@@ -257,6 +263,7 @@ export const fieldTypeDefaults: Record<FieldType, unknown> = {
   [FieldTypeEnum.FILE]: null,
   [FieldTypeEnum.RELATIONSHIP]: null,
   [FieldTypeEnum.CALC]: null, // Computed, no default
+  [FieldTypeEnum.ACTOR]: null, // Users or groups, depends on multiple setting
 }
 /**
  * Common options for all field types
@@ -334,6 +341,21 @@ export const calcFieldOptionsSchema = baseFieldOptionsSchema.extend({
 /** CALC field options type */
 export type CalcFieldOptions = z.infer<typeof calcFieldOptionsSchema>
 
+/** ACTOR field options schema */
+export const actorFieldOptionsSchema = baseFieldOptionsSchema.extend({
+  actor: z
+    .object({
+      target: z.enum(['user', 'group', 'both']),
+      multiple: z.boolean(),
+      roles: z.array(z.enum(['OWNER', 'ADMIN', 'USER'])).optional(),
+      groupIds: z.array(z.string()).optional(),
+    })
+    .optional(),
+})
+
+/** ACTOR field options type */
+export type ActorFieldOptions = z.infer<typeof actorFieldOptionsSchema>
+
 /**
  * Map of field type to options schema
  */
@@ -358,6 +380,7 @@ export const fieldTypeOptionsSchemaMap: Record<FieldType, z.ZodTypeAny> = {
   [FieldTypeEnum.FILE]: fileFieldOptionsSchema,
   [FieldTypeEnum.RELATIONSHIP]: relationshipFieldOptionsSchema,
   [FieldTypeEnum.CALC]: calcFieldOptionsSchema,
+  [FieldTypeEnum.ACTOR]: actorFieldOptionsSchema,
 }
 /**
  * Get the correct Zod schema for a field type

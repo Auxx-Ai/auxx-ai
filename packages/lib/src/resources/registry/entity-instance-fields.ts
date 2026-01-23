@@ -20,7 +20,7 @@ export const ENTITY_INSTANCE_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.TEXT,
     isSystem: true,
     systemAttribute: 'record_id',
-    systemSortOrder: -1,
+    systemSortOrder: 'a0',
     showInPanel: false, // Never show ID in property panel
     dbColumn: 'id',
     nullable: false,
@@ -43,7 +43,7 @@ export const ENTITY_INSTANCE_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.DATETIME,
     isSystem: true,
     systemAttribute: 'created_at',
-    systemSortOrder: 100,
+    systemSortOrder: 'a1',
     dbColumn: 'createdAt',
     nullable: false,
     capabilities: {
@@ -63,7 +63,7 @@ export const ENTITY_INSTANCE_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.DATETIME,
     isSystem: true,
     systemAttribute: 'updated_at',
-    systemSortOrder: 101,
+    systemSortOrder: 'a2',
     dbColumn: 'updatedAt',
     nullable: false,
     capabilities: {

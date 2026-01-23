@@ -28,3 +28,5 @@ export { fieldValueFetchQueue } from './field-value-fetch-queue'
 export { computedFieldRegistry, initComputedFieldSync, type ComputedFieldConfig } from './computed-field-registry'
 
 export { computeDependentCalcValues } from './calc-value-computer'
+
+export { useActorStore, getActorStoreState } from './actor-store'

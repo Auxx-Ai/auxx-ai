@@ -14,6 +14,7 @@ import {
   type CurrencyOptions,
   type FileOptions,
   type DisplayOptions,
+  type ActorOptions,
   supportsDisplayOptions,
   isDisplayOptions,
   mergeDisplayOptions,
@@ -159,6 +160,26 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
     if (fieldType === FieldTypeEnum.CURRENCY) {
       if (options !== undefined && !Array.isArray(options) && 'currency' in options) {
         fieldOptions.currency = options.currency
+      }
+    }
+
+    if (fieldType === FieldTypeEnum.ACTOR) {
+      if (options !== undefined && !Array.isArray(options) && 'actor' in options) {
+        const actorOpts = (options as { actor: ActorOptions }).actor
+
+        // Merge with existing actor options (allow partial updates)
+        const existingActor = (currentField.options as { actor?: ActorOptions })?.actor
+        fieldOptions.actor = {
+          ...existingActor,
+          ...actorOpts,
+        }
+
+        // Don't allow changing target or multiple in edit mode
+        // (These are structural and changing them could cause data issues)
+        if (existingActor) {
+          fieldOptions.actor.target = existingActor.target
+          fieldOptions.actor.multiple = existingActor.multiple
+        }
       }
     }
 

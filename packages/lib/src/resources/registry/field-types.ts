@@ -238,10 +238,11 @@ export interface ResourceField {
   targetFields?: string[]
 
   /**
-   * Sort order within system fields (lower = higher priority).
+   * Sort order within system fields (fractional indexing string).
+   * Uses format: 'a0', 'a1', ..., 'a9', 'aA', ..., 'aZ', 'aa', ..., 'az'
    * Custom fields use their own sortOrder from CustomField entity.
    */
-  systemSortOrder?: number
+  systemSortOrder?: string
 
   /**
    * Whether to show this field in the property panel.

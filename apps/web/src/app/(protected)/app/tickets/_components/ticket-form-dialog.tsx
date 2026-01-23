@@ -43,7 +43,7 @@ import { ReturnForm } from './return-form'
 import { ProductIssueForm } from './product-issue-form'
 import { api } from '~/trpc/react'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { RecordPickerPopover } from '~/components/pickers/record-picker-popover'
+import { RecordPicker } from '~/components/pickers/record-picker'
 import { useRecord } from '~/components/resources'
 import { TicketPriorityColors, TicketTypeIcons } from '~/components/tickets/shared'
 import { TicketType, TicketPriority } from '@auxx/database/enums'
@@ -429,7 +429,7 @@ export default function TicketFormDialog({
                       <span className="ml-1 text-destructive">*</span>
                     </FormLabel>
                     <FormControl>
-                      <RecordPickerPopover
+                      <RecordPicker
                         entityDefinitionId="contact"
                         value={field.value ? [toRecordId('contact', field.value)] : []}
                         onChange={(recordIds: RecordId[]) =>
@@ -448,7 +448,7 @@ export default function TicketFormDialog({
                           </span>
                           <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
-                      </RecordPickerPopover>
+                      </RecordPicker>
                     </FormControl>
                     <FormMessage />
                   </FormItem>

@@ -1386,10 +1386,11 @@ export const ResourcePermission = {
 // ============================================================================
 
 /** Target type for ACTOR fields - determines what kind of entity the actor references */
-export const ActorTargetValues = ['user', 'group'] as const
+export const ActorTargetValues = ['user', 'group', 'both'] as const
 export type ActorTarget = (typeof ActorTargetValues)[number]
 
 export const ActorTarget = {
   user: 'user',
   group: 'group',
+  both: 'both',
 } as const

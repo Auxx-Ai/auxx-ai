@@ -25,6 +25,7 @@ import {
 import { FieldType as FieldTypeEnum, ModelTypeValues } from '@auxx/database/enums'
 import { validateCalcExpression } from '@auxx/utils/calc-expression'
 import type { CalcOptions } from '@auxx/lib/custom-fields/field-options'
+import type { ActorOptions } from '@auxx/types/custom-field'
 import type { FieldType } from '@auxx/database/types'
 import type { CustomFieldEntity } from '@auxx/database/models'
 
@@ -191,6 +192,45 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
     // We trust the frontend field picker to select valid fields.
   }
 
+  // Handle ACTOR type validation
+  if (type === FieldTypeEnum.ACTOR) {
+    if (options && !Array.isArray(options) && 'actor' in options) {
+      const actorOpts = (options as { actor: ActorOptions }).actor
+
+      // Validate required fields
+      if (!actorOpts.target) {
+        return err({
+          code: 'VALIDATION_ERROR' as const,
+          message: 'ACTOR field requires a target type (user, group, or both)',
+        })
+      }
+      if (typeof actorOpts.multiple !== 'boolean') {
+        return err({
+          code: 'VALIDATION_ERROR' as const,
+          message: 'ACTOR field requires multiple: boolean',
+        })
+      }
+
+      // Validate roles if provided
+      if (actorOpts.roles?.length) {
+        const validRoles = ['OWNER', 'ADMIN', 'USER']
+        for (const role of actorOpts.roles) {
+          if (!validRoles.includes(role)) {
+            return err({
+              code: 'VALIDATION_ERROR' as const,
+              message: `Invalid role: ${role}. Must be one of: ${validRoles.join(', ')}`,
+            })
+          }
+        }
+      }
+    } else {
+      return err({
+        code: 'VALIDATION_ERROR' as const,
+        message: 'ACTOR field requires options.actor configuration',
+      })
+    }
+  }
+
   // Build field options for non-relationship types
   const fieldOptions: Record<string, any> = {
     icon,
@@ -229,6 +269,13 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
   if (type === FieldTypeEnum.CALC) {
     if (options && !Array.isArray(options) && 'calc' in options) {
       fieldOptions.calc = (options as { calc: CalcOptions }).calc
+    }
+  }
+
+  // Handle ACTOR field options
+  if (type === FieldTypeEnum.ACTOR) {
+    if (options && !Array.isArray(options) && 'actor' in options) {
+      fieldOptions.actor = (options as { actor: ActorOptions }).actor
     }
   }
 

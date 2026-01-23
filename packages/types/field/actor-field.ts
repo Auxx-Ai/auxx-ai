@@ -4,11 +4,20 @@ import type { ActorTarget } from '@auxx/database/enums'
 
 /**
  * Configuration options for ACTOR field type.
- * Stored in CustomField.options JSON column.
+ * Stored in CustomField.options.actor JSON field.
  */
 export interface ActorFieldOptions {
-  /** Target type for this actor field - determines what kind of entity can be assigned */
+  /** Target type - determines who can be assigned ('user', 'group', or 'both') */
   target: ActorTarget
+
+  /** Allow selecting multiple actors */
+  multiple: boolean
+
+  /** Limit to specific org roles (optional, only when target includes 'user') */
+  roles?: ('OWNER' | 'ADMIN' | 'USER')[]
+
+  /** Limit to specific groups (optional, only when target includes 'group') */
+  groupIds?: string[]
 }
 
 /**

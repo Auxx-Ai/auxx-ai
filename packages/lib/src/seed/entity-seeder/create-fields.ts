@@ -61,7 +61,7 @@ export async function createAllFields(
           type: field.fieldType!,
           description: field.description,
           systemAttribute: field.systemAttribute,
-          sortOrder: String(field.systemSortOrder ?? 0),
+          sortOrder: field.systemSortOrder ?? 'a0',
           options: buildFieldOptions(field),
           isCustom: false, // System fields
           updatedAt: now,

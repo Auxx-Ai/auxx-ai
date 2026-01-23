@@ -1,5 +1,6 @@
 // packages/types/groups/index.ts
 
+import type { Database } from '@auxx/database'
 import type {
   MemberType,
   GroupVisibility,
@@ -15,7 +16,7 @@ import type { EntityInstanceEntity } from '@auxx/database/models'
 /** Context passed to all group functions (server-side only) */
 export interface GroupContext {
   /** Database instance - use `import type { Database } from '@auxx/database'` for full type */
-  db: unknown
+  db: Database
   organizationId: string
   userId: string
 }

@@ -97,6 +97,13 @@ import {
   formatCalcOptions,
   type CalcEditorOptions,
 } from './calc-editor'
+import {
+  ActorOptionsEditor,
+  getDefaultActorOptions,
+  parseActorOptions,
+  formatActorOptions,
+  type ActorFieldOptions,
+} from './actor-options-editor'
 import type { FieldOptions } from '@auxx/lib/field-values/client'
 import type { RelationshipConfig } from '@auxx/types/custom-field'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
@@ -112,6 +119,7 @@ const TYPES_WITHOUT_DEFAULT_VALUE: FieldTypeType[] = [
   FieldType.RELATIONSHIP,
   FieldType.CURRENCY,
   FieldType.CALC,
+  FieldType.ACTOR,
 ]
 
 /** Field types that don't support required validation */
@@ -199,6 +207,7 @@ export function CustomFieldDialog({
   const [displayOptions, setDisplayOptions] = useState<DisplayOptions>({})
   const [showDisplayOptions, setShowDisplayOptions] = useState(false)
   const [calcOptions, setCalcOptions] = useState<CalcEditorOptions>(parseCalcOptions())
+  const [actorOptions, setActorOptions] = useState<ActorFieldOptions>(getDefaultActorOptions())
   // State for inverse field name in edit mode
   const [inverseName, setInverseName] = useState('')
 
@@ -234,6 +243,7 @@ export function CustomFieldDialog({
     currencyOptions: CurrencyOptions
     displayOptions: DisplayOptions
     calcOptions: CalcEditorOptions
+    actorOptions: ActorFieldOptions
     inverseName: string
   } | null>(null)
 
@@ -254,6 +264,8 @@ export function CustomFieldDialog({
       JSON.stringify(displayOptions) !== JSON.stringify(initialExtraState.displayOptions)
     const calcOptionsChanged =
       JSON.stringify(calcOptions) !== JSON.stringify(initialExtraState.calcOptions)
+    const actorOptionsChanged =
+      JSON.stringify(actorOptions) !== JSON.stringify(initialExtraState.actorOptions)
     const inverseNameChanged = inverseName !== initialExtraState.inverseName
     return (
       selectOptionsChanged ||
@@ -263,6 +275,7 @@ export function CustomFieldDialog({
       currencyChanged ||
       displayOptionsChanged ||
       calcOptionsChanged ||
+      actorOptionsChanged ||
       inverseNameChanged
     )
   }, [
@@ -273,6 +286,7 @@ export function CustomFieldDialog({
     currencyOptions,
     displayOptions,
     calcOptions,
+    actorOptions,
     inverseName,
     initialExtraState,
   ])
@@ -306,6 +320,7 @@ export function CustomFieldDialog({
       let initCurrencyOptions: CurrencyOptions = parseCurrencyOptions()
       let initDisplayOptions: DisplayOptions = {}
       let initCalcOptions: CalcEditorOptions = parseCalcOptions()
+      let initActorOptions: ActorFieldOptions = getDefaultActorOptions()
       let initInverseName = ''
 
       if (editingField) {
@@ -347,6 +362,9 @@ export function CustomFieldDialog({
         initCalcOptions = parseCalcOptions(editingField.options as Record<string, unknown>)
         setCalcOptions(initCalcOptions)
 
+        initActorOptions = parseActorOptions(editingField.options as FieldOptions)
+        setActorOptions(initActorOptions)
+
         // Initialize inverse name from inverse field (will update when inverseField loads)
         initInverseName = inverseField?.label ?? ''
         setInverseName(initInverseName)
@@ -371,6 +389,7 @@ export function CustomFieldDialog({
         setDisplayOptions(initDisplayOptions)
         setShowDisplayOptions(false)
         setCalcOptions(initCalcOptions)
+        setActorOptions(initActorOptions)
         setInverseName(initInverseName)
       }
 
@@ -383,6 +402,7 @@ export function CustomFieldDialog({
         currencyOptions: initCurrencyOptions,
         displayOptions: initDisplayOptions,
         calcOptions: initCalcOptions,
+        actorOptions: initActorOptions,
         inverseName: initInverseName,
       })
     }
@@ -447,6 +467,10 @@ export function CustomFieldDialog({
       console.log('[CustomFieldDialog] calcOptions on submit:', calcOptions)
       submitObj.options = formatCalcOptions(calcOptions)
       console.log('[CustomFieldDialog] formatted options:', submitObj.options)
+    }
+
+    if (values.type === FieldType.ACTOR) {
+      submitObj.options = formatActorOptions(actorOptions)
     }
 
     // Merge display options using format helper
@@ -526,6 +550,14 @@ export function CustomFieldDialog({
             entityDefinitionId={effectiveEntityDefId}
             currentFieldId={editingField?.id}
             availableFields={calcAvailableFields}
+          />
+        )
+      case FieldType.ACTOR:
+        return (
+          <ActorOptionsEditor
+            options={actorOptions}
+            onChange={setActorOptions}
+            mode={isEditing ? 'edit' : 'create'}
           />
         )
       default:

@@ -17,7 +17,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.TEXT,
     isSystem: true,
     systemAttribute: 'id',
-    systemSortOrder: -1,
+    systemSortOrder: 'a0',
     showInPanel: false,
     dbColumn: 'id',
     nullable: false,
@@ -41,7 +41,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.TEXT,
     isSystem: true,
     systemAttribute: 'part_title',
-    systemSortOrder: 10,
+    systemSortOrder: 'a1',
     dbColumn: 'title',
     nullable: false,
     capabilities: {
@@ -63,7 +63,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.TEXT,
     isSystem: true,
     systemAttribute: 'part_sku',
-    systemSortOrder: 15,
+    systemSortOrder: 'a2',
     dbColumn: 'sku',
     nullable: false,
     isIdentifier: true,
@@ -87,7 +87,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.TEXT,
     isSystem: true,
     systemAttribute: 'description',
-    systemSortOrder: 20,
+    systemSortOrder: 'a3',
     dbColumn: 'description',
     nullable: true,
     capabilities: {
@@ -108,7 +108,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.TEXT,
     isSystem: true,
     systemAttribute: 'category',
-    systemSortOrder: 25,
+    systemSortOrder: 'a4',
     dbColumn: 'category',
     nullable: true,
     capabilities: {
@@ -129,7 +129,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.CURRENCY,
     isSystem: true,
     systemAttribute: 'cost',
-    systemSortOrder: 35,
+    systemSortOrder: 'a6',
     dbColumn: 'cost',
     nullable: true,
     capabilities: {
@@ -150,7 +150,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.TEXT,
     isSystem: true,
     systemAttribute: 'hs_code',
-    systemSortOrder: 30,
+    systemSortOrder: 'a5',
     dbColumn: 'hsCode',
     nullable: true,
     capabilities: {
@@ -193,7 +193,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.DATETIME,
     isSystem: true,
     systemAttribute: 'created_at',
-    systemSortOrder: 100,
+    systemSortOrder: 'a7',
     dbColumn: 'createdAt',
     nullable: false,
     capabilities: {
@@ -214,7 +214,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.DATETIME,
     isSystem: true,
     systemAttribute: 'updated_at',
-    systemSortOrder: 101,
+    systemSortOrder: 'a8',
     dbColumn: 'updatedAt',
     nullable: false,
     capabilities: {

@@ -16,6 +16,7 @@ import { DisplayRichText } from './display-rich-text'
 import { DisplayFile } from './display-file'
 import { DisplayName } from './display-name'
 import { DisplayRelationship } from './display-relationship'
+import { DisplayActor } from './display-actor'
 import { usePropertyContext } from '../property-provider'
 import { useDisplayOnlyContext } from '../display-only-provider'
 import { FieldType } from '@auxx/database/enums'
@@ -89,6 +90,8 @@ export function DisplayField() {
       return <DisplayName />
     case FieldType.RELATIONSHIP:
       return <DisplayRelationship />
+    case FieldType.ACTOR:
+      return <DisplayActor />
     default:
       return <DisplayText />
   }

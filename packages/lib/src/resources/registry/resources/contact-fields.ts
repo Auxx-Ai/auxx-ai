@@ -20,7 +20,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.TEXT,
     isSystem: true,
     systemAttribute: 'id',
-    systemSortOrder: -1,
+    systemSortOrder: 'a0',
     showInPanel: false, // Never shown in property panel
     dbColumn: 'id',
     nullable: false,
@@ -86,7 +86,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.NAME,
     isSystem: true,
     systemAttribute: 'full_name',
-    systemSortOrder: 10,
+    systemSortOrder: 'a1',
     dbColumn: undefined, // Not a real column
     sourceFields: ['firstName', 'lastName'], // Read from these fields
     targetFields: ['firstName', 'lastName'], // Write to these fields
@@ -111,7 +111,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.EMAIL,
     isSystem: true,
     systemAttribute: 'primary_email',
-    systemSortOrder: 20,
+    systemSortOrder: 'a2',
     dbColumn: 'email',
     nullable: false,
     isIdentifier: true,
@@ -137,7 +137,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.PHONE_INTL,
     isSystem: true,
     systemAttribute: 'phone',
-    systemSortOrder: 30,
+    systemSortOrder: 'a3',
     dbColumn: 'phone',
     nullable: true,
     capabilities: {
@@ -158,7 +158,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.SINGLE_SELECT,
     isSystem: true,
     systemAttribute: 'contact_status',
-    systemSortOrder: 40,
+    systemSortOrder: 'a4',
     dbColumn: 'status',
     nullable: false,
     options: { options: ContactStatus.values },
@@ -181,7 +181,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.MULTI_SELECT,
     isSystem: true,
     systemAttribute: 'customer_groups',
-    systemSortOrder: 50,
+    systemSortOrder: 'a5',
     dynamicOptionsKey: 'contactGroups', // Maps to DYNAMIC_OPTIONS_REGISTRY
     dbColumn: 'customerGroups',
     nullable: true,
@@ -225,7 +225,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.TEXT,
     isSystem: true,
     systemAttribute: 'notes',
-    systemSortOrder: 70,
+    systemSortOrder: 'a6',
     dbColumn: 'notes',
     nullable: true,
     capabilities: {
@@ -246,7 +246,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.DATETIME,
     isSystem: true,
     systemAttribute: 'created_at',
-    systemSortOrder: 100, // System timestamps at bottom of system fields
+    systemSortOrder: 'a8',
     dbColumn: 'createdAt',
     nullable: false,
     capabilities: {
@@ -267,7 +267,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.DATETIME,
     isSystem: true,
     systemAttribute: 'updated_at',
-    systemSortOrder: 101,
+    systemSortOrder: 'a9',
     dbColumn: 'updatedAt',
     nullable: false,
     capabilities: {
@@ -289,7 +289,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.RELATIONSHIP,
     isSystem: true,
     systemAttribute: 'contact_tickets',
-    systemSortOrder: 80,
+    systemSortOrder: 'a7',
     showInPanel: false, // Relationship reverse-field
     // NO dbColumn - computed from ticket.contactId
     capabilities: {

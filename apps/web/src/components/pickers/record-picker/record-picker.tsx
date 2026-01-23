@@ -1,4 +1,4 @@
-// apps/web/src/components/pickers/record-picker-popover.tsx
+// apps/web/src/components/pickers/record-picker/record-picker.tsx
 
 'use client'
 
@@ -7,14 +7,14 @@ import { Link2 } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
-import { RecordPicker, type RecordPickerProps } from './record-picker'
+import { RecordPickerContent, type RecordPickerContentProps } from './record-picker-content'
 import type { RecordId } from '@auxx/types/resource'
 
 /**
- * Props for RecordPickerPopover component
+ * Props for RecordPicker component
  */
-export interface RecordPickerPopoverProps
-  extends Omit<RecordPickerProps, 'onCaptureChange' | 'className'> {
+export interface RecordPickerProps
+  extends Omit<RecordPickerContentProps, 'onCaptureChange' | 'className'> {
   /** Custom trigger element (if not provided, uses default button) */
   children?: ReactNode
 
@@ -44,7 +44,7 @@ export interface RecordPickerPopoverProps
 }
 
 /**
- * RecordPickerPopover - A popover wrapper around RecordPicker.
+ * RecordPicker - A popover wrapper around RecordPickerContent.
  * Provides a complete dropdown experience for selecting records.
  *
  * Features:
@@ -53,7 +53,7 @@ export interface RecordPickerPopoverProps
  * - Controlled or uncontrolled open state
  * - Auto-close on single select
  */
-export function RecordPickerPopover({
+export function RecordPicker({
   children,
   open,
   onOpenChange,
@@ -68,7 +68,7 @@ export function RecordPickerPopover({
   multi = true,
   onSelectSingle,
   ...pickerProps
-}: RecordPickerPopoverProps) {
+}: RecordPickerProps) {
   // Internal open state (for uncontrolled mode)
   const [internalOpen, setInternalOpen] = useState(false)
 
@@ -135,7 +135,7 @@ export function RecordPickerPopover({
         align={align}
         side={side}
         sideOffset={sideOffset}>
-        <RecordPicker
+        <RecordPickerContent
           value={value}
           onChange={onChange}
           multi={multi}

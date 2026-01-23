@@ -11,6 +11,7 @@
     "./ai-features/generator": "./src/ai-features/generator/index.ts",
     "./actions": "./src/actions/index.ts",
     "./actions/types": "./src/actions/types.ts",
+    "./actors": "./src/actors/index.ts",
     "./ai/providers/types": "./src/ai/providers/types.ts",
     "./ai/providers/openai": "./src/ai/providers/openai/index.ts",
     "./ai/providers/anthropic": "./src/ai/providers/anthropic/index.ts",

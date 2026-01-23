@@ -16,7 +16,7 @@ import {
   type RelationshipConfig,
 } from '@auxx/types/custom-field'
 import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
-import { RecordPicker } from '~/components/pickers/record-picker'
+import { RecordPickerContent } from '~/components/pickers/record-picker'
 import { isSingleRelationship } from '@auxx/utils'
 
 /**
@@ -173,7 +173,7 @@ export function RelationshipInputField() {
 
   return (
     <div className="">
-      <RecordPicker
+      <RecordPickerContent
         value={localRecordIds}
         onChange={handleChange}
         entityDefinitionId={relatedEntityDefinitionId}

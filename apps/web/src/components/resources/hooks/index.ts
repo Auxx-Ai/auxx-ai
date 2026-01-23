@@ -30,3 +30,13 @@ export { useFieldValue, useResourceFieldValues } from './use-field-values'
 
 // Record hydration hook
 export { useRecordHydration } from './use-record-hydration'
+
+// Actor hooks
+export {
+  useActor,
+  useActors,
+  useAvailableActors,
+  useGroupMembers,
+  useActorLoading,
+  useActorInitialized,
+} from './use-actor'

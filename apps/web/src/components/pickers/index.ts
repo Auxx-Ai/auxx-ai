@@ -13,11 +13,8 @@ export type {
 export { MultiSelectPicker } from './multi-select-picker'
 export type { MultiSelectPickerProps } from './multi-select-picker'
 
-export { RecordPicker } from './record-picker'
-export type { RecordPickerProps } from './record-picker'
-
-export { RecordPickerPopover } from './record-picker-popover'
-export type { RecordPickerPopoverProps } from './record-picker-popover'
+export { RecordPicker, RecordPickerContent, RecordItem } from './record-picker'
+export type { RecordPickerProps, RecordPickerContentProps, RecordItemProps } from './record-picker'
 
 export { ResourcePicker, ResourcePickerContent, ResourcePickerInnerContent, FieldItem } from './resource-picker'
 export type {
@@ -29,3 +26,6 @@ export type {
   FieldItemProps,
   ExcludeFilter,
 } from './resource-picker'
+
+export { ActorPicker, ActorPickerContent, ActorItem } from './actor-picker'
+export type { ActorPickerProps, ActorPickerContentProps, ActorItemProps } from './actor-picker'

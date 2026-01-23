@@ -29,6 +29,9 @@ export {
   // File options
   fileOptionsSchema,
   type FileOptions,
+  // Actor options
+  actorOptionsSchema,
+  type ActorOptions,
   // Display options (flat structure for NUMBER, DATE, CHECKBOX, etc.)
   displayOptionsSchema,
   type DisplayOptions,

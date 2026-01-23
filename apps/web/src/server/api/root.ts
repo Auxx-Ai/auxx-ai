@@ -69,6 +69,7 @@ import { fieldValueRouter } from './routers/fieldValue'
 import { taskRouter } from './routers/task'
 import { entityGroupRouter } from './routers/entityGroup'
 import { resourceAccessRouter } from './routers/resourceAccess'
+import { actorRouter } from './routers/actor'
 
 /**
  * This is the primary router for your server.
@@ -76,6 +77,7 @@ import { resourceAccessRouter } from './routers/resourceAccess'
  * All routers added in /api/routers should be manually added here.
  */
 export const appRouter = createTRPCRouter({
+  actor: actorRouter,
   admin: adminRouter,
   aiFeature: aiFeatureRouter,
   aiIntegration: aiIntegrationRouter,

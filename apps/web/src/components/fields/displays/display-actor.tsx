@@ -1,0 +1,57 @@
+// apps/web/src/components/fields/displays/display-actor.tsx
+
+import { useMemo } from 'react'
+import type { ActorId } from '@auxx/types/actor'
+import { ActorBadge } from '~/components/resources/ui/actor-badge'
+import { useActors } from '~/components/resources/hooks/use-actor'
+import { useFieldContext } from './display-field'
+import DisplayWrapper from './display-wrapper'
+import { ItemsListView, type ItemsListItem } from '~/components/ui/items-list-view'
+
+/** Actor item for ItemsListView */
+interface ActorItem extends ItemsListItem {
+  actorId: ActorId
+}
+
+/**
+ * Display component for ACTOR field type.
+ * Renders actor(s) using ActorBadge component.
+ * Supports both single ActorId and array of ActorIds.
+ */
+export function DisplayActor() {
+  const { value } = useFieldContext()
+
+  // Normalize value to array of ActorIds
+  const actorIds = useMemo<ActorId[]>(() => {
+    if (!value) return []
+    if (Array.isArray(value)) return value as ActorId[]
+    return [value as ActorId]
+  }, [value])
+
+  // Hydrate actors via store for copy text
+  const actors = useActors(actorIds)
+
+  // Build actor items for ItemsListView
+  const actorItems = useMemo<ActorItem[]>(() => {
+    return actorIds.map((actorId) => ({
+      id: actorId,
+      actorId,
+    }))
+  }, [actorIds])
+
+  // Build display names for copy value
+  const copyText = actorIds
+    .map((id) => actors.get(id)?.name ?? '')
+    .filter(Boolean)
+    .join(', ')
+
+  return (
+    <DisplayWrapper copyValue={copyText || null}>
+      <ItemsListView
+        items={actorItems}
+        emptyContent={<span className="text-muted-foreground">-</span>}
+        renderItem={(item) => <ActorBadge actorId={item.actorId} />}
+      />
+    </DisplayWrapper>
+  )
+}

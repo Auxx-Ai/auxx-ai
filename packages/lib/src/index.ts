@@ -28,3 +28,7 @@ export type {
 // Admin exports
 export { AdminService } from './admin'
 export type { OrganizationWithMetrics, OrganizationDetails } from './admin'
+
+// Actor exports
+export { ActorService, GroupMemberService } from './actors'
+export type { ListActorsOptions, SearchActorsOptions } from './actors'

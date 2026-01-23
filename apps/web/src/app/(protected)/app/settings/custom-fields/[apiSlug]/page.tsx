@@ -38,7 +38,7 @@ function CustomFieldsDetailPage() {
           { title: 'Loading...' },
         ]}>
         <div className="flex items-center justify-center py-12">
-          <Spinner size="lg" />
+          <Spinner />
         </div>
       </SettingsPage>
     )
