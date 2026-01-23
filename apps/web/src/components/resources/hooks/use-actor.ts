@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react'
 import { useShallow } from 'zustand/shallow'
 import { useActorStore, getActorStoreState } from '../store/actor-store'
-import type { Actor, ActorId, ActorType } from '@auxx/types/actor'
+import type { Actor, ActorId } from '@auxx/types/actor'
 import { parseActorId } from '@auxx/types/actor'
 import type { GroupMember } from '@auxx/types/groups'
 import { api } from '~/trpc/react'
@@ -110,8 +110,8 @@ export function useActors(actorIds: ActorId[]): Map<ActorId, Actor> {
 // ============================================================================
 
 interface UseAvailableActorsOptions {
-  /** Filter to specific types */
-  types?: ActorType[]
+  /** Filter to specific target: 'user', 'group', or 'both' */
+  target?: 'user' | 'group' | 'both'
   /** Filter users by role */
   roles?: ('OWNER' | 'ADMIN' | 'USER')[]
   /** Filter to specific group IDs */
@@ -123,19 +123,19 @@ interface UseAvailableActorsOptions {
  * Uses useShallow to prevent infinite loops from new array references.
  *
  * @example
- * const actors = useAvailableActors({ types: ['user'] })
- * const actors = useAvailableActors({ types: ['user', 'group'], roles: ['ADMIN'] })
+ * const actors = useAvailableActors({ target: 'user' })
+ * const actors = useAvailableActors({ target: 'both', roles: ['ADMIN'] })
  */
 export function useAvailableActors(options: UseAvailableActorsOptions = {}): Actor[] {
-  const { types, roles, groupIds } = options
+  const { target, roles, groupIds } = options
 
   return useActorStore(
     useShallow((state) => {
       let actors = Array.from(state.actors.values())
 
-      // Filter by type
-      if (types?.length) {
-        actors = actors.filter((a) => types.includes(a.type))
+      // Filter by target
+      if (target && target !== 'both') {
+        actors = actors.filter((a) => a.type === target)
       }
 
       // Filter by role (users only)

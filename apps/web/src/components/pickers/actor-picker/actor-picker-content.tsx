@@ -13,13 +13,10 @@ import {
   CommandGroup,
 } from '@auxx/ui/components/command'
 import { cn } from '@auxx/ui/lib/utils'
-import type { Actor, ActorId, ActorType } from '@auxx/types/actor'
+import type { Actor, ActorId } from '@auxx/types/actor'
 import { useAvailableActors, useActors } from '~/components/resources/hooks/use-actor'
 import { api } from '~/trpc/react'
 import { ActorItem } from './actor-item'
-
-/** Stable default for actor types to prevent re-renders */
-const DEFAULT_ACTOR_TYPES: ActorType[] = ['user', 'group']
 
 /** Stable empty array for excludeIds to prevent re-renders */
 const EMPTY_EXCLUDE_IDS: ActorId[] = []
@@ -34,8 +31,8 @@ export interface ActorPickerContentProps {
   /** Called when selection changes */
   onChange: (selected: ActorId[]) => void
 
-  /** Actor types to show: 'user', 'group', or both */
-  types?: ActorType[]
+  /** Actor target: 'user', 'group', or 'both' (default: 'both') */
+  target?: 'user' | 'group' | 'both'
 
   /** Filter by roles (for users) */
   roles?: string[]
@@ -78,7 +75,7 @@ export interface ActorPickerContentProps {
 export function ActorPickerContent({
   value,
   onChange,
-  types = DEFAULT_ACTOR_TYPES,
+  target = 'both',
   roles,
   multi = true,
   onSelectSingle,
@@ -101,11 +98,11 @@ export function ActorPickerContent({
   const [initialSelectedIds] = useState<ActorId[]>(() => value)
 
   // Get actors from store (preloaded)
-  const storeActors = useAvailableActors({ types, roles: roles as any })
+  const storeActors = useAvailableActors({ target, roles: roles as any })
 
   // Search query for typeahead (when search is active)
   const { data: searchResults, isLoading: isSearching } = api.actor.search.useQuery(
-    { query: search, types, roles: roles as any, limit: 20 },
+    { query: search, target, roles: roles as any, limit: 20 },
     { enabled: search.length >= 2, placeholderData: keepPreviousData }
   )
 
@@ -197,10 +194,10 @@ export function ActorPickerContent({
 
   const isLoading = externalLoading || isSearching
   const hasSelectedSection = filteredSelectedItems.length > 0
-  const hasUsersSection = types.includes('user') && groupedAvailable.users.length > 0
-  const hasGroupsSection = types.includes('group') && groupedAvailable.groups.length > 0
+  const hasUsersSection = (target === 'user' || target === 'both') && groupedAvailable.users.length > 0
+  const hasGroupsSection = (target === 'group' || target === 'both') && groupedAvailable.groups.length > 0
   const hasResultsSection = hasUsersSection || hasGroupsSection
-  const showGroupHeadings = types.length > 1
+  const showGroupHeadings = target === 'both'
 
   return (
     <Command shouldFilter={false} className={cn('rounded-lg', className)}>

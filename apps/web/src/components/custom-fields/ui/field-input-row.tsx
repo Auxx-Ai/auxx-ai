@@ -8,8 +8,47 @@ import {
   isMultiRelationship,
   type RecordId,
 } from '@auxx/lib/field-values/client'
-import { type RelationshipConfig } from '@auxx/types/custom-field'
+import { type RelationshipConfig, type ActorOptions } from '@auxx/types/custom-field'
 import type { ResourceField } from '@auxx/lib/resources/client'
+import { isActorId, toActorId, type ActorId } from '@auxx/types/actor'
+
+/**
+ * Extract ActorIds from various value formats.
+ * Handles: ActorId string, { actorType, id, actorId }, array of either
+ */
+function extractActorIds(value: unknown): ActorId[] {
+  if (!value) return []
+
+  if (Array.isArray(value)) {
+    return value.map(extractSingleActorId).filter((id): id is ActorId => id !== null)
+  }
+
+  const actorId = extractSingleActorId(value)
+  return actorId ? [actorId] : []
+}
+
+/**
+ * Extract single ActorId from value
+ */
+function extractSingleActorId(val: unknown): ActorId | null {
+  if (!val) return null
+
+  if (typeof val === 'string' && isActorId(val)) {
+    return val as ActorId
+  }
+
+  if (typeof val === 'object' && val !== null) {
+    const obj = val as { actorType?: 'user' | 'group'; id?: string; actorId?: ActorId }
+    if (obj.actorId && isActorId(obj.actorId)) {
+      return obj.actorId
+    }
+    if (obj.actorType && obj.id) {
+      return toActorId(obj.actorType, obj.id)
+    }
+  }
+
+  return null
+}
 
 /**
  * Props for FieldInputRow
@@ -47,10 +86,13 @@ export function FieldInputRow({
   const isRequired = field.required ?? field.capabilities?.required ?? false
   const fieldType = field.fieldType ?? 'TEXT'
   const relationshipConfig = field.options?.relationship as RelationshipConfig | undefined
+  const actorConfig = field.options?.actor as ActorOptions | undefined
 
-  // For RELATIONSHIP: pass RecordId[] directly to FieldInputAdapter
-  // FieldInputAdapter will pass it through to MultiRelationInput (no double conversion)
-  const normalizedValue = fieldType === 'RELATIONSHIP' ? extractRelationshipRecordIds(value) : value
+  // Normalize value for different field types
+  const normalizedValue =
+    fieldType === 'RELATIONSHIP' ? extractRelationshipRecordIds(value) :
+    fieldType === 'ACTOR' ? extractActorIds(value) :
+    value
 
   // Determine if relationship is multi-select using helper
   const isMulti = isMultiRelationship(relationshipConfig?.relationshipType)
@@ -58,12 +100,18 @@ export function FieldInputRow({
   /**
    * Handle value changes from FieldInputAdapter
    * For relationships: pass RecordId[] directly (converter handles wrapping)
+   * For actors: pass ActorId[] directly
    */
   const handleChange = (newValue: unknown) => {
     if (fieldType === 'RELATIONSHIP') {
       // Pass RecordId[] directly - converter handles wrapping
       const recordIds = newValue as RecordId[]
       onChange(field.id!, isMulti ? recordIds : (recordIds[0] ?? null))
+    } else if (fieldType === 'ACTOR') {
+      // Pass ActorId[] - unwrap to single if not multi
+      const actorIds = newValue as ActorId[]
+      const isMultiActor = actorConfig?.multiple ?? false
+      onChange(field.id!, isMultiActor ? actorIds : (actorIds[0] ?? null))
     } else {
       onChange(field.id!, newValue)
     }

@@ -7,7 +7,6 @@ import type {
   Actor,
   UserActor,
   GroupActor,
-  ActorType,
   ActorContext,
 } from '@auxx/types/actor'
 import { toActorId, parseActorId } from '@auxx/types/actor'
@@ -18,8 +17,8 @@ import { toActorId, parseActorId } from '@auxx/types/actor'
 
 /** Options for listing actors */
 export interface ListActorsOptions {
-  /** Filter to specific types */
-  types?: ActorType[]
+  /** Filter to specific target: 'user', 'group', or 'both' (default: 'both') */
+  target?: 'user' | 'group' | 'both'
   /** Filter users by role */
   roles?: ('OWNER' | 'ADMIN' | 'USER')[]
   /** Filter to specific group IDs */
@@ -60,15 +59,15 @@ export class ActorService {
    * Used for preloading and dropdown selection.
    */
   async listActors(options: ListActorsOptions = {}): Promise<Actor[]> {
-    const types = options.types ?? ['user', 'group']
+    const target = options.target ?? 'both'
     const results: Actor[] = []
 
-    if (types.includes('user')) {
+    if (target === 'user' || target === 'both') {
       const users = await this.listUsers(options.roles)
       results.push(...users)
     }
 
-    if (types.includes('group')) {
+    if (target === 'group' || target === 'both') {
       const groups = await this.listGroups(options)
       results.push(...groups)
     }
@@ -135,16 +134,16 @@ export class ActorService {
    * Search actors by name/email.
    */
   async searchActors(options: SearchActorsOptions): Promise<Actor[]> {
-    const { query, limit = 20, types = ['user', 'group'] } = options
+    const { query, limit = 20, target = 'both' } = options
     const results: Actor[] = []
     const searchPattern = `%${query}%`
 
-    if (types.includes('user')) {
+    if (target === 'user' || target === 'both') {
       const users = await this.searchUsers(searchPattern, options.roles, limit)
       results.push(...users)
     }
 
-    if (types.includes('group')) {
+    if (target === 'group' || target === 'both') {
       const groups = await this.searchGroups(searchPattern, options, limit)
       results.push(...groups)
     }

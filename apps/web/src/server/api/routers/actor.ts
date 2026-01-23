@@ -35,7 +35,7 @@ export const actorRouter = createTRPCRouter({
     .input(
       z
         .object({
-          types: z.array(z.enum(['user', 'group'])).optional(),
+          target: z.enum(['user', 'group', 'both']).optional(),
           roles: z.array(z.enum(['OWNER', 'ADMIN', 'USER'])).optional(),
           groupIds: z.array(z.string()).optional(),
         })
@@ -72,7 +72,7 @@ export const actorRouter = createTRPCRouter({
     .input(
       z.object({
         query: z.string().min(1),
-        types: z.array(z.enum(['user', 'group'])).optional(),
+        target: z.enum(['user', 'group', 'both']).optional(),
         roles: z.array(z.enum(['OWNER', 'ADMIN', 'USER'])).optional(),
         groupIds: z.array(z.string()).optional(),
         limit: z.number().min(1).max(50).optional(),

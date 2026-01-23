@@ -72,8 +72,10 @@ export function ActorBadge({ actorId, showIcon = true, className, variant }: Act
   // Parse type for fallback icon
   const { type } = parseActorId(actorId)
 
-  // Determine display name
-  const displayName = isNotFound ? 'Unknown' : (actor?.name ?? 'Unknown')
+  // Determine display name: name → email (for users) → 'Unknown'
+  const displayName = isNotFound
+    ? 'Unknown'
+    : actor?.name || (actor?.type === 'user' && actor?.email) || 'Unknown'
 
   // Show loading state when loading AND no cached data exists
   const showLoading = isLoading && !actor

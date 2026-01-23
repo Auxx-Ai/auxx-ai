@@ -39,13 +39,11 @@ export default async function MembersPage({}: Props) {
   const features = new FeaturePermissionService(db)
   const hasAccess = await features.hasAccess(defaultOrganizationId!, FeatureKey.TEAMMATES)
   const limit = await features.getLimit(defaultOrganizationId!, FeatureKey.TEAMMATES)
-  console.log(features, hasAccess, limit)
 
   // Get user's role in this organization
   const userMembership = members.find((member) => member.userId === session.user.id)
 
   if (!userMembership) {
-    console.log('no user membership')
     redirect('/app?error=membership_mismatch')
   }
 
@@ -89,7 +87,10 @@ export default async function MembersPage({}: Props) {
           </div>
         )
       }>
-      {!(hasAccess && (limit === '+' || (typeof limit === 'number' && limit > activeMemberCount))) && <UpgradeBanner />}
+      {!(
+        hasAccess &&
+        (limit === '+' || (typeof limit === 'number' && limit > activeMemberCount))
+      ) && <UpgradeBanner />}
       <div className="">
         <MemberList
           userId={session?.user?.id}

@@ -3,15 +3,14 @@
 'use client'
 
 import { useState, useEffect, type ReactNode } from 'react'
-import { User, Users, ChevronsUpDown } from 'lucide-react'
-import { Button } from '@auxx/ui/components/button'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
+import { ChevronDown, ChevronsUpDown } from 'lucide-react'
+import { Button, type ButtonProps } from '@auxx/ui/components/button'
+import { Popover, PopoverContentDialogAware, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
 import { ActorPickerContent, type ActorPickerContentProps } from './actor-picker-content'
-import { useActor } from '~/components/resources/hooks/use-actor'
+import { ActorBadge } from '~/components/resources/ui/actor-badge'
+import { ItemsListView } from '~/components/ui/items-list-view'
 import type { ActorId } from '@auxx/types/actor'
-import { parseActorId } from '@auxx/types/actor'
 
 /**
  * Props for ActorPicker component
@@ -44,6 +43,9 @@ export interface ActorPickerProps
 
   /** Additional className for trigger button */
   triggerClassName?: string
+
+  /** Button variant for the default trigger (default: 'outline') */
+  triggerVariant?: ButtonProps['variant']
 }
 
 /**
@@ -66,6 +68,7 @@ export function ActorPicker({
   sideOffset = 5,
   contentClassName,
   triggerClassName,
+  triggerVariant = 'outline',
   value,
   onChange,
   multi = true,
@@ -104,23 +107,35 @@ export function ActorPicker({
     }
   }, [open])
 
+  const hasValue = value.length > 0
+
   // Custom trigger or default button
   const triggerElement = children ? (
     children
   ) : (
-    <DefaultTrigger
-      value={value}
-      emptyLabel={emptyLabel}
-      multi={multi}
+    <Button
+      variant={triggerVariant}
+      type="button"
       disabled={disabled}
-      className={triggerClassName}
-    />
+      className={cn('justify-between', triggerClassName)}>
+      {hasValue ? (
+        <ItemsListView
+          items={value.map((id) => ({ id }))}
+          renderItem={(item) => <ActorBadge actorId={item.id as ActorId} />}
+        />
+      ) : (
+        <span className="text-primary-400 text-sm font-normal pointer-events-none">
+          {emptyLabel}
+        </span>
+      )}
+      <ChevronDown className="opacity-50" />
+    </Button>
   )
 
   return (
     <Popover open={isOpen} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>{triggerElement}</PopoverTrigger>
-      <PopoverContent
+      <PopoverContentDialogAware
         className={cn('w-72 p-0', contentClassName)}
         align={align}
         side={side}
@@ -133,77 +148,7 @@ export function ActorPicker({
           disabled={disabled}
           {...pickerProps}
         />
-      </PopoverContent>
+      </PopoverContentDialogAware>
     </Popover>
-  )
-}
-
-/**
- * Default trigger button showing current selection
- */
-function DefaultTrigger({
-  value,
-  emptyLabel,
-  multi,
-  disabled,
-  className,
-}: {
-  value: ActorId[]
-  emptyLabel: string
-  multi: boolean
-  disabled?: boolean
-  className?: string
-}) {
-  // For single select with a value, show the actor
-  if (!multi && value.length === 1) {
-    return (
-      <Button
-        variant="outline"
-        role="combobox"
-        disabled={disabled}
-        className={cn('justify-between', className)}>
-        <ActorInline actorId={value[0]!} />
-        <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
-      </Button>
-    )
-  }
-
-  // For multi select or empty, show label
-  const label =
-    value.length === 0
-      ? emptyLabel
-      : value.length === 1
-        ? '1 selected'
-        : `${value.length} selected`
-
-  return (
-    <Button
-      variant="outline"
-      role="combobox"
-      disabled={disabled}
-      className={cn('justify-between', className)}>
-      <span className={value.length === 0 ? 'text-muted-foreground' : ''}>{label}</span>
-      <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
-    </Button>
-  )
-}
-
-/**
- * Inline display for single-select value in button
- */
-function ActorInline({ actorId }: { actorId: ActorId }) {
-  const { actor } = useActor({ actorId })
-  const { type } = parseActorId(actorId)
-
-  return (
-    <div className="flex items-center gap-2">
-      <Avatar className="size-5">
-        <AvatarImage src={actor?.avatarUrl ?? undefined} />
-        <AvatarFallback className="text-[10px]">
-          {type === 'user' ? <User className="size-3" /> : <Users className="size-3" />}
-        </AvatarFallback>
-      </Avatar>
-      <span>{actor?.name ?? 'Loading...'}</span>
-    </div>
   )
 }

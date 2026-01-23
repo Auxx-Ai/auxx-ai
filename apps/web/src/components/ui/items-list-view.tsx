@@ -19,17 +19,26 @@ export interface ItemsListItem {
 export type ItemRenderer<T> = (item: T, index: number) => React.ReactNode
 
 /**
+ * Item value for ItemsListView - can be an object with id or a primitive (string/number)
+ */
+export type ItemsListValue<T extends ItemsListItem> = T | string | number
+
+/**
  * Props for ItemsListView (simple view, no table cell features)
  */
 export interface ItemsListViewProps<T extends ItemsListItem> {
-  /** Array of items to render */
-  items: T[]
+  /** Array of items to render (objects with id, or primitives like strings) */
+  items: ItemsListValue<T>[]
   /** Render function for each item */
-  renderItem: ItemRenderer<T>
+  renderItem: (item: ItemsListValue<T>, index: number) => React.ReactNode
   /** Content to show when items is empty */
   emptyContent?: React.ReactNode
   /** Additional className for container */
   className?: string
+  /** Maximum items to display before showing "more" button. Undefined = unlimited */
+  maxDisplay?: number
+  /** Callback when "more" button is clicked */
+  onShowMore?: () => void
 }
 
 /**
@@ -59,27 +68,55 @@ export interface ItemsCellViewProps<T extends ItemsListItem> {
 }
 
 /**
+ * Get key from item - handles both objects with id and primitives
+ */
+function getItemKey<T extends ItemsListItem>(item: ItemsListValue<T>): string {
+  return typeof item === 'object' ? item.id : String(item)
+}
+
+/**
  * ItemsListView - Simple view for rendering a list of items as badges
  * Use for non-table contexts (drawers, forms, etc.)
+ *
+ * Supports both object items (with id property) and primitives (strings/numbers).
+ *
+ * @example Object items
+ * <ItemsListView items={users} renderItem={(user) => <UserBadge user={user} />} />
+ *
+ * @example Primitive items (e.g., ActorId strings)
+ * <ItemsListView items={actorIds} renderItem={(id) => <ActorBadge actorId={id} />} />
  */
 export function ItemsListView<T extends ItemsListItem>({
   items,
   renderItem,
   emptyContent = null,
   className,
+  maxDisplay,
+  onShowMore,
 }: ItemsListViewProps<T>) {
   if (items.length === 0) {
     return emptyContent
   }
 
+  const displayItems = maxDisplay != null ? items.slice(0, maxDisplay) : items
+  const remainingCount = maxDisplay != null ? items.length - maxDisplay : 0
+
   return (
     <div className={cn('relative w-full flex items-center', className)}>
       <div className="flex items-center gap-1 py-0.5">
-        {items.map((item, index) => (
-          <div key={item.id} className="shrink-0">
+        {displayItems.map((item, index) => (
+          <div key={getItemKey(item)} className="shrink-0">
             {renderItem(item, index)}
           </div>
         ))}
+        {remainingCount > 0 && (
+          <button
+            type="button"
+            onClick={onShowMore}
+            className="shrink-0 text-xs text-muted-foreground hover:text-foreground transition-colors">
+            +{remainingCount} more
+          </button>
+        )}
       </div>
     </div>
   )

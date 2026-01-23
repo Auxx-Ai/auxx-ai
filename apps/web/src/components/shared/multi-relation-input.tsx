@@ -9,10 +9,9 @@ import { Button } from '@auxx/ui/components/button'
 import { ChevronDown, X } from 'lucide-react'
 import { cn } from '@auxx/ui/lib/utils'
 import { Badge } from '@auxx/ui/components/badge'
-import { Skeleton } from '@auxx/ui/components/skeleton'
-import { useRelationship } from '~/components/resources'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
-import { toRecordId, getInstanceId, type RecordId } from '@auxx/lib/resources/client'
+import { type RecordId } from '@auxx/lib/resources/client'
+import { ResourceBadge } from '../resources/ui'
 
 /**
  * Props for MultiRelationInput
@@ -84,9 +83,6 @@ export function MultiRelationInput({
     return Array.isArray(entityDefinitionId) ? entityDefinitionId[0] : entityDefinitionId
   }, [entityDefinitionId])
 
-  // Get hydrated items for selected ResourceIds from the store
-  const { items: selectedItems, isLoading: isLoadingSelected } = useRelationship(value)
-
   // Search for items when popover is open
   const { data: searchResults, isLoading: isSearching } = api.record.search.useQuery(
     {
@@ -106,7 +102,7 @@ export function MultiRelationInput({
       .filter((item) => !excludeIds.includes(item.id))
       .map((item) => ({
         label: item.displayName,
-        value: item.id,
+        value: item.recordId,
       }))
   }, [searchResults, excludeIds])
 
@@ -115,10 +111,7 @@ export function MultiRelationInput({
    * Convert string IDs back to RecordId[]
    */
   const handleSelectionChange = useCallback(
-    (ids: string[]) => {
-      if (!tableId) return
-
-      const recordIds = ids.map((id) => toRecordId(tableId, id))
+    (recordIds: string[]) => {
       onChange(recordIds)
     },
     [tableId, onChange]
@@ -144,8 +137,8 @@ export function MultiRelationInput({
   )
 
   // Convert value to string[] for MultiSelectPicker (extract instance IDs)
-  const selectedIds = useMemo(() => value.map(getInstanceId), [value])
-
+  // const selectedIds = useMemo(() => value.map(getInstanceId), [value])
+  const selectedIds = value
   const hasValue = value.length > 0
 
   /**
@@ -160,27 +153,13 @@ export function MultiRelationInput({
       )
     }
 
-    if (isLoadingSelected) {
-      return (
-        <div className="flex gap-1 flex-1">
-          {value.slice(0, maxDisplayItems).map((_, i) => (
-            <Skeleton key={i} className="h-[15.5px] w-24 rounded-full" />
-          ))}
-        </div>
-      )
-    }
-
-    const displayItems = selectedItems.slice(0, maxDisplayItems)
+    const displayItems = value.slice(0, maxDisplayItems)
     const remainingCount = value.length - maxDisplayItems
 
     return (
       <div className="flex flex-wrap gap-1 flex-1 py-0.5">
-        {displayItems.map((item, i) => (
-          <Badge key={item?.id ?? i} variant="outline" className="text-xs">
-            <div className="truncate">
-              {item?.displayName ?? getInstanceId(value[i]).slice(-6) ?? '?'}
-            </div>
-          </Badge>
+        {displayItems.map((recordId) => (
+          <ResourceBadge key={recordId} recordId={recordId} />
         ))}
         {remainingCount > 0 && (
           <Badge variant="outline" className="text-xs">

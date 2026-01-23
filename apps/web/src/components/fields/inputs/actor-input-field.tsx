@@ -3,9 +3,8 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { ActorTarget } from '@auxx/database/enums'
 import type { ActorFieldOptions } from '@auxx/types/field'
-import type { ActorId, ActorType } from '@auxx/types/actor'
+import type { ActorId } from '@auxx/types/actor'
 import { isActorId, toActorId } from '@auxx/types/actor'
 import { ActorPickerContent } from '~/components/pickers/actor-picker'
 import { usePropertyContext } from '../property-provider'
@@ -58,14 +57,6 @@ export function ActorInputField() {
   const { value, field, commitValue, onBeforeClose } = usePropertyContext()
   const nav = useFieldNavigationOptional()
   const options = field.options as ActorFieldOptions | undefined
-
-  // Determine which actor types to show based on field options
-  const types: ActorType[] = useMemo(() => {
-    if (!options?.target) return ['user', 'group']
-    if (options.target === ActorTarget.user) return ['user']
-    if (options.target === ActorTarget.group) return ['group']
-    return ['user', 'group']
-  }, [options?.target])
 
   // Normalize value to array for picker
   // Value can be ActorId string, object { actorType, id, actorId }, or array
@@ -141,7 +132,7 @@ export function ActorInputField() {
     <ActorPickerContent
       value={localActorIds}
       onChange={handleChange}
-      types={types}
+      target={options?.target}
       multi={false}
       onCaptureChange={handleCaptureChange}
       placeholder="Search..."

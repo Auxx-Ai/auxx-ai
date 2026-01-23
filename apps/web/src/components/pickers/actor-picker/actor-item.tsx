@@ -51,8 +51,13 @@ export function ActorItem({ actor, isSelected, onToggle, multi = true }: ActorIt
         />
       )}
       <div className="flex items-center gap-1.5 flex-1 min-w-0">
-        <span className="truncate">{actor.name}</span>
-        {actor.type === 'user' && actor.email && (
+        <span className="truncate">
+          {actor.name ||
+            (actor.type === 'user' && actor.email) || (
+              <em className="text-muted-foreground">Unknown</em>
+            )}
+        </span>
+        {actor.type === 'user' && actor.name && actor.email && (
           <span title={actor.email}>
             <Mail className="size-3.5 text-muted-foreground shrink-0" />
           </span>

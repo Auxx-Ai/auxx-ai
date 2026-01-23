@@ -5,10 +5,18 @@ import { useState, useCallback, useMemo } from 'react'
 import { FieldType } from '@auxx/database/enums'
 import type { FieldOptions } from '@auxx/lib/field-values/client'
 import { isMultiRelationship } from '@auxx/lib/field-values/client'
-import { getRelatedEntityDefinitionId, type SelectOption, type RelationshipConfig } from '@auxx/types/custom-field'
+import {
+  getRelatedEntityDefinitionId,
+  type SelectOption,
+  type RelationshipConfig,
+  type ActorOptions,
+} from '@auxx/types/custom-field'
 import type { RecordId } from '@auxx/types/resource'
+import type { ActorId } from '@auxx/types/actor'
 import { toRecordId } from '@auxx/lib/resources/client'
+import { cn } from '@auxx/ui/lib/utils'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
+import { ActorPicker } from '~/components/pickers/actor-picker/actor-picker'
 import { SelectFieldInput, getSelectConfig } from './select-input-field'
 import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
 import {
@@ -169,6 +177,31 @@ export function FieldInputAdapter({
             />
           )}
         </>
+      )
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // ACTOR - uses ActorPicker
+    // Value: ActorId[] (array of actor identifiers like "user:xxx" or "group:xxx")
+    // ─────────────────────────────────────────────────────────────────
+    case FieldType.ACTOR: {
+      const actorOpts = fieldOptions?.actor as ActorOptions | undefined
+
+      // Value is already ActorId[] from caller
+      const actorIds = (value as ActorId[]) || []
+
+      return (
+        <ActorPicker
+          value={actorIds}
+          onChange={onChange as (selected: ActorId[]) => void}
+          target={actorOpts?.target}
+          roles={actorOpts?.roles}
+          multi={actorOpts?.multiple}
+          emptyLabel={placeholder}
+          disabled={disabled}
+          triggerVariant="transparent"
+          triggerClassName={cn('w-full ps-0 pe-1', className)}
+        />
       )
     }
 
