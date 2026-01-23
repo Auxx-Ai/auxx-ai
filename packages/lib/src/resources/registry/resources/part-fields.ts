@@ -4,6 +4,7 @@ import { FieldType } from '@auxx/database/enums'
 import { BaseType } from '../../types'
 import { toFieldId } from '@auxx/types/field'
 import type { ResourceField } from '../field-types'
+import { CREATED_BY_FIELD } from '../common-fields'
 
 /**
  * Field definitions for the Part resource
@@ -227,35 +228,5 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     description: 'Automatically updated when part is modified',
   },
 
-  createdBy: {
-    id: toFieldId('createdBy'),
-    key: 'createdBy',
-    label: 'Created By',
-    type: BaseType.RELATION,
-    fieldType: FieldType.RELATIONSHIP,
-    isSystem: true,
-    systemAttribute: 'created_by_id',
-    showInPanel: false, // Internal tracking field
-    dbColumn: 'createdById',
-    nullable: false,
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    relationship: {
-      inverseResourceFieldId: null, // No inverse for this relationship
-      relationshipType: 'belongs_to',
-      isInverse: false,
-    },
-    relationshipConfig: {
-      relatedEntityType: 'user',
-      relationshipType: 'belongs_to',
-      inverseName: 'Created Parts',
-      inverseSystemAttribute: 'user_created_parts',
-    },
-    description: 'User who created this part',
-  },
+  createdBy: CREATED_BY_FIELD,
 }

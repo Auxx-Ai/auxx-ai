@@ -3,7 +3,7 @@
 'use client'
 
 import { useState, useMemo, useEffect, useCallback } from 'react'
-import { Loader2 } from 'lucide-react'
+import { keepPreviousData } from '@tanstack/react-query'
 import {
   Command,
   CommandEmpty,
@@ -106,7 +106,7 @@ export function ActorPickerContent({
   // Search query for typeahead (when search is active)
   const { data: searchResults, isLoading: isSearching } = api.actor.search.useQuery(
     { query: search, types, roles: roles as any, limit: 20 },
-    { enabled: search.length >= 2 }
+    { enabled: search.length >= 2, placeholderData: keepPreviousData }
   )
 
   // Hydrate selected items
@@ -209,64 +209,57 @@ export function ActorPickerContent({
         value={search}
         onValueChange={setSearch}
         disabled={disabled}
+        loading={isLoading}
       />
       <CommandList>
-        {isLoading ? (
-          <div className="flex items-center justify-center py-6">
-            <Loader2 className="size-4 animate-spin" />
-          </div>
-        ) : (
-          <>
-            <CommandEmpty>No results found</CommandEmpty>
+        <CommandEmpty>No results found</CommandEmpty>
 
-            {/* Selected Items Section */}
-            {hasSelectedSection && (
-              <CommandGroup aria-label="Selected">
-                {filteredSelectedItems.map((actor) => (
-                  <ActorItem
-                    key={actor.actorId}
-                    actor={actor}
-                    isSelected={isSelected(actor.actorId)}
-                    onToggle={handleToggle}
-                    multi={multi}
-                  />
-                ))}
-              </CommandGroup>
-            )}
+        {/* Selected Items Section */}
+        {hasSelectedSection && (
+          <CommandGroup aria-label="Selected">
+            {filteredSelectedItems.map((actor) => (
+              <ActorItem
+                key={actor.actorId}
+                actor={actor}
+                isSelected={isSelected(actor.actorId)}
+                onToggle={handleToggle}
+                multi={multi}
+              />
+            ))}
+          </CommandGroup>
+        )}
 
-            {/* Separator between sections */}
-            {hasSelectedSection && hasResultsSection && <CommandSeparator />}
+        {/* Separator between sections */}
+        {hasSelectedSection && hasResultsSection && <CommandSeparator />}
 
-            {/* Users Section */}
-            {hasUsersSection && (
-              <CommandGroup heading={showGroupHeadings ? 'Users' : undefined} aria-label="Users">
-                {groupedAvailable.users.map((actor) => (
-                  <ActorItem
-                    key={actor.actorId}
-                    actor={actor}
-                    isSelected={isSelected(actor.actorId)}
-                    onToggle={handleToggle}
-                    multi={multi}
-                  />
-                ))}
-              </CommandGroup>
-            )}
+        {/* Users Section */}
+        {hasUsersSection && (
+          <CommandGroup heading={showGroupHeadings ? 'Users' : undefined} aria-label="Users">
+            {groupedAvailable.users.map((actor) => (
+              <ActorItem
+                key={actor.actorId}
+                actor={actor}
+                isSelected={isSelected(actor.actorId)}
+                onToggle={handleToggle}
+                multi={multi}
+              />
+            ))}
+          </CommandGroup>
+        )}
 
-            {/* Groups Section */}
-            {hasGroupsSection && (
-              <CommandGroup heading={showGroupHeadings ? 'Groups' : undefined} aria-label="Groups">
-                {groupedAvailable.groups.map((actor) => (
-                  <ActorItem
-                    key={actor.actorId}
-                    actor={actor}
-                    isSelected={isSelected(actor.actorId)}
-                    onToggle={handleToggle}
-                    multi={multi}
-                  />
-                ))}
-              </CommandGroup>
-            )}
-          </>
+        {/* Groups Section */}
+        {hasGroupsSection && (
+          <CommandGroup heading={showGroupHeadings ? 'Groups' : undefined} aria-label="Groups">
+            {groupedAvailable.groups.map((actor) => (
+              <ActorItem
+                key={actor.actorId}
+                actor={actor}
+                isSelected={isSelected(actor.actorId)}
+                onToggle={handleToggle}
+                multi={multi}
+              />
+            ))}
+          </CommandGroup>
         )}
       </CommandList>
     </Command>

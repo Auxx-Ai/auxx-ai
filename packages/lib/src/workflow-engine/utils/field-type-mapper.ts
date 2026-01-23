@@ -48,6 +48,8 @@ export function mapFieldTypeToBaseType(fieldType: FieldType | string): BaseType 
       return BaseType.FILE
     case FieldTypeEnum.RELATIONSHIP:
       return BaseType.RELATION
+    case FieldTypeEnum.ACTOR:
+      return BaseType.ACTOR
     default:
       console.warn(`Unknown FieldType: ${fieldType}, defaulting to STRING`)
       return BaseType.STRING
@@ -93,6 +95,8 @@ export function mapBaseTypeToFieldType(baseType: BaseType): FieldType {
       return FieldTypeEnum.FILE
     case BaseType.RELATION:
       return FieldTypeEnum.RELATIONSHIP
+    case BaseType.ACTOR:
+      return FieldTypeEnum.ACTOR
     case BaseType.TAGS:
       return FieldTypeEnum.TAGS
     default:

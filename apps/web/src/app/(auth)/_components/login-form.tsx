@@ -514,7 +514,14 @@ export default function LoginForm({
             <span>
               Don&apos;t have an account?{' '}
               <Button variant="link" className="h-auto p-0" asChild>
-                <Link href="/signup">Sign up</Link>
+                <Link
+                  href={
+                    redirectToPath !== defaultRedirectPath
+                      ? `/signup?callbackUrl=${encodeURIComponent(redirectToPath)}`
+                      : '/signup'
+                  }>
+                  Sign up
+                </Link>
               </Button>
             </span>
             {step !== 'password' && (

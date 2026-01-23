@@ -389,3 +389,21 @@ export function canFieldBeUnique(
   }
   return UNIQUEABLE_FIELD_TYPES.has(type)
 }
+
+// =============================================================================
+// CREATED BY FIELD CONFIG (shared across packages)
+// =============================================================================
+
+/**
+ * Configuration for the createdBy system field.
+ * Used by both packages/lib (field definitions) and packages/services (auto-creation).
+ */
+export const CREATED_BY_FIELD_CONFIG = {
+  name: 'Created By',
+  systemAttribute: 'created_by_id',
+  dbColumn: 'createdById',
+  actorOptions: {
+    target: 'user' as const,
+    multiple: false,
+  },
+} as const

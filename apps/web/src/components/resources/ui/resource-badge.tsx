@@ -25,7 +25,7 @@ import { useResourceLink, type GetResourceLinkOptions } from '../utils/get-resou
  * Variants for the ResourceBadge component
  */
 export const resourceBadgeVariants = cva(
-  'flex text-sm items-center h-4.5 gap-1.5 rounded-[5px] ring-1 ps-0.5 pe-1.5 py-0',
+  'flex text-sm items-center h-5 gap-1.5 rounded-[5px] ring-1 ps-0.5 pe-1.5 py-0',
   {
     variants: {
       variant: {

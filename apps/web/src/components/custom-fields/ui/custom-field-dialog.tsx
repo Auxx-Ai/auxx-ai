@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, ChevronsUpDown } from 'lucide-react'
 
 import {
   Dialog,
@@ -28,14 +28,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@auxx/ui/components/form'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuGroup,
-  DropdownMenuLabel,
-} from '@auxx/ui/components/dropdown-menu'
+import { ComboPicker, type OptionGroup } from '~/components/pickers/combo-picker'
 import {
   Select,
   SelectContent,
@@ -210,6 +203,8 @@ export function CustomFieldDialog({
   const [actorOptions, setActorOptions] = useState<ActorFieldOptions>(getDefaultActorOptions())
   // State for inverse field name in edit mode
   const [inverseName, setInverseName] = useState('')
+  // State for field type picker open
+  const [typePickerOpen, setTypePickerOpen] = useState(false)
 
   // Fetch inverse field for edit mode to get initial label
   const inverseResourceFieldId = editingField?.options?.relationship?.inverseResourceFieldId
@@ -413,6 +408,34 @@ export function CustomFieldDialog({
 
   // Get selected field type option for display
   const selectedTypeOption = fieldTypeOptions[selectedType]
+
+  // Transform FIELD_TYPE_GROUPS to OptionGroup[] for ComboPicker
+  const fieldTypeGroups: OptionGroup[] = useMemo(() => {
+    return Object.entries(FIELD_TYPE_GROUPS).map(([groupName, types]) => ({
+      label: groupName,
+      options: types
+        .map((type) => {
+          const opt = fieldTypeOptions[type]
+          if (!opt) return null
+          return {
+            value: type,
+            label: opt.label,
+            iconId: opt.iconId,
+          }
+        })
+        .filter((o): o is NonNullable<typeof o> => o !== null),
+    }))
+  }, [])
+
+  // Get selected type as Option for ComboPicker
+  const selectedTypeAsOption = useMemo(() => {
+    if (!selectedTypeOption) return null
+    return {
+      value: selectedType,
+      label: selectedTypeOption.label,
+      iconId: selectedTypeOption.iconId,
+    }
+  }, [selectedType, selectedTypeOption])
 
   // Clear default value, reset isUnique, and reset displayOptions when type changes (in create mode only)
   useEffect(() => {
@@ -741,48 +764,37 @@ export function CustomFieldDialog({
                 {!isEditing && (
                   <Field>
                     <FieldLabel>Field Type</FieldLabel>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="outline" className="w-full justify-between">
-                          <span className="flex items-center gap-2">
-                            {selectedTypeOption && (
-                              <EntityIcon
-                                iconId={selectedTypeOption.iconId}
-                                variant="default"
-                                size="default"
-                              />
-                            )}
-                            {selectedTypeOption?.label || 'Select type'}
-                          </span>
-                          <ChevronDown className="size-4 opacity-50" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent className="w-[220px]" align="start">
-                        {Object.entries(FIELD_TYPE_GROUPS).map(([groupName, types]) => (
-                          <DropdownMenuGroup key={groupName}>
-                            <DropdownMenuLabel className="text-xs text-muted-foreground">
-                              {groupName}
-                            </DropdownMenuLabel>
-                            {types.map((type) => {
-                              const option = fieldTypeOptions[type]
-                              if (!option) return null
-                              return (
-                                <DropdownMenuItem
-                                  key={type}
-                                  onClick={() => {
-                                    form.setValue('type', type)
-                                    form.setValue('fieldType', type)
-                                  }}
-                                  className="flex items-start gap-2 ps-1">
-                                  <EntityIcon iconId={option.iconId} variant="full" size="sm" />
-                                  <span className="font-medium">{option.label}</span>
-                                </DropdownMenuItem>
-                              )
-                            })}
-                          </DropdownMenuGroup>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <ComboPicker
+                      groups={fieldTypeGroups}
+                      selected={selectedTypeAsOption}
+                      multi={false}
+                      className="w-[var(--radix-popover-trigger-width)]!"
+                      open={typePickerOpen}
+                      onOpen={() => setTypePickerOpen(true)}
+                      onClose={() => setTypePickerOpen(false)}
+                      onChange={(opt) => {
+                        if (opt && !Array.isArray(opt)) {
+                          form.setValue('type', opt.value as FieldTypeType)
+                          form.setValue('fieldType', opt.value as FieldTypeType)
+                        }
+                        setTypePickerOpen(false)
+                      }}
+                      showSearch={true}
+                      searchPlaceholder="Search field types...">
+                      <Button variant="outline" className="w-full justify-between">
+                        <span className="flex items-center gap-2">
+                          {selectedTypeOption && (
+                            <EntityIcon
+                              iconId={selectedTypeOption.iconId}
+                              variant="default"
+                              size="default"
+                            />
+                          )}
+                          {selectedTypeOption?.label || 'Select type'}
+                        </span>
+                        <ChevronsUpDown className="size-4 opacity-50" />
+                      </Button>
+                    </ComboPicker>
                   </Field>
                 )}
 

@@ -71,7 +71,7 @@ async function getLastFieldSortOrder(
 
   // Only filter by entityDefinitionId for custom entities (consistent with get-fields.ts)
   // System entities (contact, ticket, etc.) have entityDefinitionId = NULL in the database
-  if (modelType === ModelTypes.ENTITY) {
+  if (entityDefinitionId) {
     conditions.push(eq(schema.CustomField.entityDefinitionId, entityDefinitionId!))
   }
 
@@ -79,7 +79,7 @@ async function getLastFieldSortOrder(
     .select({ sortOrder: schema.CustomField.sortOrder })
     .from(schema.CustomField)
     .where(and(...conditions))
-    .orderBy(desc(schema.CustomField.sortOrder))
+    .orderBy(desc(schema.CustomField.sortOrder).nullsLast())
     .limit(1)
 }
 
@@ -167,9 +167,10 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
 
   // Handle CALC type validation
   if (type === FieldTypeEnum.CALC) {
-    const calcOptions = options && !Array.isArray(options) && 'calc' in options
-      ? (options as { calc: CalcOptions }).calc
-      : undefined
+    const calcOptions =
+      options && !Array.isArray(options) && 'calc' in options
+        ? (options as { calc: CalcOptions }).calc
+        : undefined
 
     if (!calcOptions?.expression) {
       return err({
@@ -289,6 +290,7 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
     getLastFieldSortOrder(organizationId, dbModelType, entityDefinitionId, db),
     'get-last-field-sort-order'
   )
+  // console.log('Last field result:', lastFieldResult)
 
   if (lastFieldResult.isErr()) {
     return lastFieldResult
@@ -296,6 +298,7 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
 
   const lastSortOrder = lastFieldResult.value[0]?.sortOrder ?? null
   const newSortOrder = generateKeyBetween(lastSortOrder, null)
+  console.log('New sort order:', lastSortOrder, newSortOrder, lastFieldResult.value[0])
 
   // Determine capability flags based on field type
   // CALC fields are computed and should not be manually creatable or updatable
@@ -404,9 +407,7 @@ async function createRelationshipFieldWithInverse(
     })
 
     if (!relatedDef) {
-      throw new Error(
-        `Related EntityDefinition not found for ID: ${relatedEntityDefinitionId}`
-      )
+      throw new Error(`Related EntityDefinition not found for ID: ${relatedEntityDefinitionId}`)
     }
 
     // Inverse field uses the related entity's modelType and entityDefinitionId
@@ -475,7 +476,10 @@ async function createRelationshipFieldWithInverse(
           icon: inverseIcon,
           isCustom: true,
           relationship: {
-            inverseResourceFieldId: toResourceFieldId(inverseRelatedEntityDefinitionId, primaryField.id),
+            inverseResourceFieldId: toResourceFieldId(
+              inverseRelatedEntityDefinitionId,
+              primaryField.id
+            ),
             relationshipType: inverseCardinality,
             isInverse: true,
           } as RelationshipConfig,

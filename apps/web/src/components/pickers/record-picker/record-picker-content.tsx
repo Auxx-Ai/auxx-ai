@@ -3,7 +3,8 @@
 'use client'
 
 import { useState, useMemo, useEffect, useCallback } from 'react'
-import { Plus, Loader2 } from 'lucide-react'
+import { keepPreviousData } from '@tanstack/react-query'
+import { Plus } from 'lucide-react'
 import {
   Command,
   CommandEmpty,
@@ -141,6 +142,7 @@ export function RecordPickerContent({
   const { data: searchResults, isLoading: isSearching } = api.record.search.useQuery(searchParams, {
     enabled: true,
     staleTime: 30_000,
+    placeholderData: keepPreviousData,
   })
 
   // Hydrate selected items
@@ -250,65 +252,58 @@ export function RecordPickerContent({
         value={search}
         onValueChange={setSearch}
         disabled={disabled}
+        loading={isLoading}
       />
       <CommandList>
-        {isLoading ? (
-          <div className="flex items-center justify-center py-6">
-            <Loader2 className="size-4 animate-spin" />
-          </div>
-        ) : (
+        <CommandEmpty>No results found</CommandEmpty>
+
+        {/* Selected Items Section */}
+        {hasSelectedSection && (
+          <CommandGroup aria-label="Selected Items">
+            {filteredSelectedItems.map((item) => {
+              return (
+                <RecordItem
+                  key={item.recordId}
+                  item={item}
+                  isSelected={isSelected(item.recordId)}
+                  onToggle={handleToggle}
+                  showEntityType={showEntityType}
+                />
+              )
+            })}
+          </CommandGroup>
+        )}
+
+        {/* Separator between sections */}
+        {hasSelectedSection && hasResultsSection && <CommandSeparator />}
+
+        {/* Available Items Section */}
+        {hasResultsSection && (
+          <CommandGroup aria-label="Available Items">
+            {availableItems.map((item) => {
+              return (
+                <RecordItem
+                  key={item.recordId}
+                  item={item}
+                  isSelected={isSelected(item.recordId)}
+                  onToggle={handleToggle}
+                  showEntityType={showEntityType}
+                />
+              )
+            })}
+          </CommandGroup>
+        )}
+
+        {/* Create Option */}
+        {canCreate && onCreate && (
           <>
-            <CommandEmpty>No results found</CommandEmpty>
-
-            {/* Selected Items Section */}
-            {hasSelectedSection && (
-              <CommandGroup aria-label="Selected Items">
-                {filteredSelectedItems.map((item) => {
-                  return (
-                    <RecordItem
-                      key={item.recordId}
-                      item={item}
-                      isSelected={isSelected(item.recordId)}
-                      onToggle={handleToggle}
-                      showEntityType={showEntityType}
-                    />
-                  )
-                })}
-              </CommandGroup>
-            )}
-
-            {/* Separator between sections */}
-            {hasSelectedSection && hasResultsSection && <CommandSeparator />}
-
-            {/* Available Items Section */}
-            {hasResultsSection && (
-              <CommandGroup aria-label="Available Items">
-                {availableItems.map((item) => {
-                  return (
-                    <RecordItem
-                      key={item.recordId}
-                      item={item}
-                      isSelected={isSelected(item.recordId)}
-                      onToggle={handleToggle}
-                      showEntityType={showEntityType}
-                    />
-                  )
-                })}
-              </CommandGroup>
-            )}
-
-            {/* Create Option */}
-            {canCreate && onCreate && (
-              <>
-                {(hasSelectedSection || hasResultsSection) && <CommandSeparator />}
-                <CommandGroup aria-label="Create">
-                  <CommandItem onSelect={onCreate} disabled={disabled}>
-                    <Plus />
-                    {createLabel || `Create ${relatedResource?.label ?? 'Item'}`}
-                  </CommandItem>
-                </CommandGroup>
-              </>
-            )}
+            {(hasSelectedSection || hasResultsSection) && <CommandSeparator />}
+            <CommandGroup aria-label="Create">
+              <CommandItem onSelect={onCreate} disabled={disabled}>
+                <Plus />
+                {createLabel || `Create ${relatedResource?.label ?? 'Item'}`}
+              </CommandItem>
+            </CommandGroup>
           </>
         )}
       </CommandList>

@@ -1,8 +1,8 @@
+// apps/web/src/app/(public)/accept-invitation/page.tsx
 'use client'
 
 import { useEffect, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-// import { useSession } from 'next-auth/react' // Or your auth hook
 import { api } from '~/trpc/react'
 import { Button } from '@auxx/ui/components/button'
 import { Loader2 } from 'lucide-react'
@@ -13,18 +13,16 @@ export default function AcceptInvitationPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const token = searchParams.get('token')
-  const { data: session } = useSession() // Use your auth hook
+  const { data: session, isPending: isSessionLoading } = useSession()
 
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [processed, setProcessed] = useState(false) // Prevent multiple calls
 
   const acceptMutation = api.member.acceptInvitation.useMutation({
-    onSuccess: (data) => {
-      // Success! Redirect to the app dashboard or specific org page
-      // Assumes session context/default org updates automatically or is refreshed
-      router.push('/app') // Adjust redirect as needed
-      // Maybe show a success toast *before* redirecting if preferred
+    onSuccess: () => {
+      // Success! Redirect to the app dashboard
+      router.push('/app')
     },
     onError: (err) => {
       setError(err.message || 'Failed to accept invitation.')
@@ -34,13 +32,14 @@ export default function AcceptInvitationPage() {
   })
 
   useEffect(() => {
-    if (processed) return // Don't process again
+    // Prevent duplicate calls (React StrictMode can double-invoke effects)
+    if (processed || acceptMutation.isPending) return
 
-    // if (sessionStatus === 'loading') {
-    //   // Still waiting for session info
-    //   setIsLoading(true)
-    //   return
-    // }
+    // Still waiting for session info
+    if (isSessionLoading) {
+      setIsLoading(true)
+      return
+    }
 
     if (!token) {
       setError('Invalid invitation link: No token provided.')
@@ -49,24 +48,21 @@ export default function AcceptInvitationPage() {
       return
     }
 
-    // if (sessionStatus === 'unauthenticated') {
-    //   // User not logged in, redirect to login, preserving the token
-    //   const loginUrl = `/login?callbackUrl=${encodeURIComponent(
-    //     `/accept-invitation?token=${token}`
-    //   )}`
-    //   router.push(loginUrl)
-    //   // No need to set loading false here, redirect happens
-    //   return // Stop further processing
-    // }
+    // User not logged in, redirect to login, preserving the token
+    if (!session) {
+      const loginUrl = `/login?callbackUrl=${encodeURIComponent(
+        `/accept-invitation?token=${token}`
+      )}`
+      router.push(loginUrl)
+      return // Stop further processing
+    }
 
-    // if (sessionStatus === 'authenticated') {
-    //   // User is logged in, token exists, session loaded, not yet processed
-    //   setIsLoading(true)
-    //   setError(null)
-    //   setProcessed(true) // Mark as processed to prevent re-trigger
-    //   acceptMutation.mutate({ token })
-    // }
-  }, [token, router, processed, acceptMutation]) // Add dependencies
+    // User is logged in, token exists, session loaded, not yet processed
+    setIsLoading(true)
+    setError(null)
+    setProcessed(true) // Mark as processed to prevent re-trigger
+    acceptMutation.mutate({ token })
+  }, [token, router, processed, acceptMutation, session, isSessionLoading])
 
   // Render different states
   if (isLoading && !error) {

@@ -179,12 +179,15 @@ export function SignUpForm() {
     setIsLoading(true)
     setError('')
 
+    // Get callbackUrl from URL params (e.g., from invitation flow)
+    const callbackUrl = new URLSearchParams(window.location.search).get('callbackUrl')
+
     try {
       const { data: _data, error } = await client.signUp.email({
         email: values.email,
         password: values.password,
         name: '',
-        callbackURL: '/app',
+        callbackURL: callbackUrl || '/app',
       })
 
       if (error) {
@@ -200,6 +203,11 @@ export function SignUpForm() {
         })
         const loginUrl = new URLSearchParams()
         loginUrl.set('email', values.email)
+        // Preserve callbackUrl if present (e.g., from invitation flow)
+        const callbackUrl = new URLSearchParams(window.location.search).get('callbackUrl')
+        if (callbackUrl) {
+          loginUrl.set('callbackUrl', callbackUrl)
+        }
         router.push(`/login?${loginUrl.toString()}`)
       }
     } catch (error: any) {

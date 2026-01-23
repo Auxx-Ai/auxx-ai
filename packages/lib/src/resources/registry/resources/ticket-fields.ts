@@ -5,6 +5,7 @@ import { BaseType } from '../../types'
 import { toFieldId, type ResourceFieldId } from '@auxx/types/field'
 import type { ResourceField } from '../field-types'
 import { TicketType, TicketStatus, TicketPriority } from '../enum-values'
+import { CREATED_BY_FIELD } from '../common-fields'
 
 /**
  * Field definitions for the Ticket resource
@@ -214,8 +215,8 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
     id: toFieldId('assignee'),
     key: 'assignee',
     label: 'Assignee',
-    type: BaseType.RELATION,
-    fieldType: FieldType.RELATIONSHIP,
+    type: BaseType.ACTOR,
+    fieldType: FieldType.ACTOR,
     isSystem: true,
     systemAttribute: 'assigned_to_id',
     systemSortOrder: 'a8',
@@ -229,16 +230,11 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    relationship: {
-      inverseResourceFieldId: 'user:assignedTickets' as ResourceFieldId,
-      relationshipType: 'belongs_to',
-      isInverse: false,
-    },
-    relationshipConfig: {
-      relatedEntityType: 'user',
-      relationshipType: 'belongs_to',
-      inverseName: 'Assigned Tickets',
-      inverseSystemAttribute: 'user_assigned_tickets',
+    options: {
+      actor: {
+        target: 'user',
+        multiple: false,
+      },
     },
     placeholder: 'Select an assignee',
     description: 'Team member assigned to this ticket',
@@ -360,4 +356,6 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
     },
     description: 'Automatically updated when ticket is modified',
   },
+
+  createdBy: CREATED_BY_FIELD,
 }

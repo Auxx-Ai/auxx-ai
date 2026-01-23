@@ -28,6 +28,7 @@ export enum BaseType {
   ENUM = 'enum',
   JSON = 'json',
   RELATION = 'relation',
+  ACTOR = 'actor',
   SECRET = 'secret',
   ANY = 'any',
   NULL = 'null',

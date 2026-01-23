@@ -39,6 +39,7 @@ export default async function MembersPage({}: Props) {
   const features = new FeaturePermissionService(db)
   const hasAccess = await features.hasAccess(defaultOrganizationId!, FeatureKey.TEAMMATES)
   const limit = await features.getLimit(defaultOrganizationId!, FeatureKey.TEAMMATES)
+  console.log(features, hasAccess, limit)
 
   // Get user's role in this organization
   const userMembership = members.find((member) => member.userId === session.user.id)
@@ -62,7 +63,7 @@ export default async function MembersPage({}: Props) {
       description="Members of your organization"
       breadcrumbs={[{ title: 'Settings', href: '/settings' }, { title: 'Members' }]}
       button={
-        hasAccess && limit > activeMemberCount ? (
+        hasAccess && (limit === '+' || (typeof limit === 'number' && limit > activeMemberCount)) ? (
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" asChild>
               <Link href="/app/settings/members">
@@ -88,7 +89,7 @@ export default async function MembersPage({}: Props) {
           </div>
         )
       }>
-      {!(hasAccess && limit > activeMemberCount) && <UpgradeBanner />}
+      {!(hasAccess && (limit === '+' || (typeof limit === 'number' && limit > activeMemberCount))) && <UpgradeBanner />}
       <div className="">
         <MemberList
           userId={session?.user?.id}

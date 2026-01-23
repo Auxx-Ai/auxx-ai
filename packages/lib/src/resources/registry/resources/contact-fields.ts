@@ -6,6 +6,7 @@ import { toFieldId, type ResourceFieldId } from '@auxx/types/field'
 
 import type { ResourceField } from '../field-types'
 import { ContactStatus } from '../enum-values'
+import { CREATED_BY_FIELD } from '../common-fields'
 
 /**
  * Field definitions for the Contact resource
@@ -306,4 +307,6 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     },
     description: 'All tickets associated with this contact',
   },
+
+  createdBy: CREATED_BY_FIELD,
 }

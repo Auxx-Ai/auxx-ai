@@ -3,7 +3,7 @@
 import { database, schema, type Database } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { type TypedFieldValue, type TypedFieldValueInput, getValueType } from '@auxx/types'
 import { getFieldWithDefinition, type FieldWithDefinition } from '@auxx/services'
 import { formatToDisplayValue } from './formatter'
@@ -638,6 +638,28 @@ export async function maybeUpdateDisplayValue(
         eq(schema.EntityInstance.organizationId, ctx.organizationId)
       )
     )
+
+  // Update searchText when primary or secondary display field changes
+  if (column === 'displayName' || column === 'secondaryDisplayValue') {
+    await updateSearchText(ctx.db, entityInstanceId, ctx.organizationId)
+  }
+}
+
+/**
+ * Update searchText on EntityInstance by concatenating displayName and secondaryDisplayValue.
+ * Called when primary or secondary display field values change.
+ */
+export async function updateSearchText(
+  db: Database,
+  entityInstanceId: string,
+  organizationId: string
+): Promise<void> {
+  await db.execute(sql`
+    UPDATE "EntityInstance"
+    SET "searchText" = TRIM(CONCAT_WS(' ', "displayName", "secondaryDisplayValue"))
+    WHERE id = ${entityInstanceId}
+      AND "organizationId" = ${organizationId}
+  `)
 }
 
 // =============================================================================

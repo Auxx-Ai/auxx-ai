@@ -93,16 +93,16 @@ export class FeaturePermissionService {
         const limitsSource = plan?.featureLimits
 
         // Use trial plan if active, otherwise active plan
-        if (subscription.status === 'TRIALING' && !subscription.hasTrialEnded) {
+        if (subscription.status === 'trialing' && !subscription.hasTrialEnded) {
           logger.info(`Using trial plan features for org ${organizationId}`)
           // Note: Ensure trial plan features are correctly defined in the Plan model
           featureDefinitions = this.parseFeaturesFromJson(limitsSource)
-        } else if (subscription.status === 'ACTIVE') {
+        } else if (subscription.status === 'active') {
           logger.info(`Using active plan features for org ${organizationId}`)
           featureDefinitions = this.parseFeaturesFromJson(limitsSource)
         } else {
           logger.warn(
-            `Subscription for org ${organizationId} is not ACTIVE or TRIALING (status: ${subscription.status}). Falling back to default.`
+            `Subscription for org ${organizationId} is not active or trialing (status: ${subscription.status}). Falling back to default.`
           )
           // Fallback to default if status is CANCELED, PAST_DUE etc.
         }
@@ -309,7 +309,9 @@ export class FeaturePermissionService {
 
     definitions.forEach((def) => {
       if (def && typeof def.key === 'string') {
-        map.set(def.key, def.limit)
+        // Convert -1 to '+' for unlimited, matching customFeatureLimits behavior
+        const limit = def.limit === -1 ? '+' : def.limit
+        map.set(def.key, limit)
       } else {
         logger.warn('Invalid feature definition skipped', { definition: def })
       }

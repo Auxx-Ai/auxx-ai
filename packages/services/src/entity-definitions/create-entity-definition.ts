@@ -2,9 +2,12 @@
 
 import { database, EntityDefinition } from '@auxx/database'
 import { RESERVED_API_SLUGS } from '@auxx/config/client'
+import { FieldType } from '@auxx/database/enums'
+import { CREATED_BY_FIELD_CONFIG } from '@auxx/types/custom-field'
 import { ok, err } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import { checkSlugExists } from './check-slug-exists'
+import { createCustomField } from '../custom-fields/create-field'
 import type { EntityType, StandardType } from '@auxx/database/types'
 
 /** Parameters for creating an entity definition */
@@ -79,6 +82,20 @@ export async function createEntityDefinition(params: CreateEntityDefinitionParam
       entityDefinitionId: '',
     })
   }
+
+  // Auto-create createdBy field for custom entities
+  await createCustomField({
+    organizationId,
+    entityDefinitionId: created.id,
+    name: CREATED_BY_FIELD_CONFIG.name,
+    type: FieldType.ACTOR,
+    systemAttribute: CREATED_BY_FIELD_CONFIG.systemAttribute,
+    isCustom: false,
+    required: false,
+    options: {
+      actor: CREATED_BY_FIELD_CONFIG.actorOptions,
+    },
+  })
 
   return ok(created)
 }

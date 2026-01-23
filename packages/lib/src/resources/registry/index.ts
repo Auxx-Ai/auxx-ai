@@ -211,6 +211,9 @@ export { resolveNewSystemEntityDefId } from './entity-def-resolver'
 
 // Re-export entity instance system fields
 export { ENTITY_INSTANCE_FIELDS, getEntityInstanceFields } from './entity-instance-fields'
+
+// Re-export common fields (shared across all entity types)
+export { CREATED_BY_FIELD } from './common-fields'
 export { isSystemResource, isCustomResource, isSystemResourceId, isCustomResourceId } from './types'
 export type {
   Resource,

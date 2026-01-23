@@ -4,7 +4,16 @@
 import * as React from 'react'
 import { type DialogProps } from 'radix-ui'
 import { Command as CommandPrimitive } from 'cmdk'
-import { Search, X, ChevronLeft, ChevronRight, Check, Circle, GripVertical } from 'lucide-react'
+import {
+  Search,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  Check,
+  Circle,
+  GripVertical,
+  Loader2,
+} from 'lucide-react'
 import {
   DndContext,
   closestCenter,
@@ -31,6 +40,7 @@ import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { Switch } from '@auxx/ui/components/switch'
 import { radioGroupVariants } from './radio-group'
+import { Spinner } from './spinner'
 
 // --- Navigation Types ---
 
@@ -307,13 +317,22 @@ function CommandDialog({ children, ...props }: DialogProps & { children?: React.
   )
 }
 
+/**
+ * Props for CommandInput component
+ */
+interface CommandInputProps extends React.ComponentProps<typeof CommandPrimitive.Input> {
+  /** Show loading spinner instead of search icon */
+  loading?: boolean
+}
+
 function CommandInput({
   className,
   onValueChange,
   value,
   autoFocus,
+  loading = false,
   ...props
-}: React.ComponentProps<typeof CommandPrimitive.Input>) {
+}: CommandInputProps) {
   const resetInput = React.useCallback(() => {
     onValueChange?.('')
   }, [onValueChange])
@@ -321,7 +340,11 @@ function CommandInput({
     <div
       className="flex items-center border-b border-border/50 dark:border-[#323842]/80 ps-3 pe-1"
       cmdk-input-wrapper="">
-      <Search className="mr-2 size-4 shrink-0 opacity-50" />
+      {loading ? (
+        <Loader2 className="mr-2 size-4 shrink-0 opacity-50 animate-spin" />
+      ) : (
+        <Search className="mr-2 size-4 shrink-0 opacity-50" />
+      )}
       <CommandPrimitive.Input
         className={cn(
           'flex h-8 w-full rounded-md bg-transparent py-1 text-sm outline-hidden placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50',
@@ -332,6 +355,7 @@ function CommandInput({
         autoFocus={autoFocus}
         {...props}
       />
+
       {value && (
         <a
           onClick={resetInput}

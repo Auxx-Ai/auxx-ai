@@ -1,7 +1,7 @@
 // packages/lib/src/field-values/display-field-service.ts
 
 import { database, schema, type Database } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, sql } from 'drizzle-orm'
 import {
   batchUpdateDisplayValues,
   clearDisplayValues,
@@ -77,6 +77,11 @@ export class DisplayFieldService {
         column: config.instanceColumn,
       })
 
+      // Update searchText when primary or secondary is cleared
+      if (displayFieldType === 'primary' || displayFieldType === 'secondary') {
+        await this.updateSearchTextForEntityDefinition(entityDefinitionId)
+      }
+
       const count = await this.db
         .select({ id: schema.EntityInstance.id })
         .from(schema.EntityInstance)
@@ -151,7 +156,25 @@ export class DisplayFieldService {
       if (instances.length < BATCH_SIZE) break
     }
 
+    // Update searchText for all instances when primary or secondary display field changes
+    if (displayFieldType === 'primary' || displayFieldType === 'secondary') {
+      await this.updateSearchTextForEntityDefinition(entityDefinitionId)
+    }
+
     return { displayFieldType, processed, updated }
+  }
+
+  /**
+   * Update searchText for all instances of an entity definition.
+   * Called after batch recalculating primary or secondary display fields.
+   */
+  private async updateSearchTextForEntityDefinition(entityDefinitionId: string): Promise<void> {
+    await this.db.execute(sql`
+      UPDATE "EntityInstance"
+      SET "searchText" = TRIM(CONCAT_WS(' ', "displayName", "secondaryDisplayValue"))
+      WHERE "entityDefinitionId" = ${entityDefinitionId}
+        AND "organizationId" = ${this.organizationId}
+    `)
   }
 
   /**

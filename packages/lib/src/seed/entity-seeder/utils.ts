@@ -42,6 +42,11 @@ export function buildFieldOptions(field: ResourceField): FieldOptions {
     }
   }
 
+  // Handle ACTOR fields - copy actor options from field definition
+  if (fieldType === FieldTypeEnum.ACTOR && field.options?.actor) {
+    options.actor = field.options.actor
+  }
+
   return options
 }
 

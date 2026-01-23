@@ -13,6 +13,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { Badge } from '@auxx/ui/components/badge'
 import { cn } from '@auxx/ui/lib/utils'
+import { EntityIcon } from '@auxx/ui/components/icons'
 
 /**
  * Custom CommandItem that doesn't close the popover on selection in multi-select mode
@@ -45,11 +46,16 @@ function NonClosingCommandItem({
 
   return <CommandItem onSelect={handleSelect} {...props} />
 }
-export type Option = { value: string; label: string; color?: string; emoji?: string }
+/** Single option for the picker */
+export type Option = { value: string; label: string; color?: string; iconId?: string }
+
+/** Group of options with a label */
+export type OptionGroup = { label: string; options: Option[] }
 
 /**
  * Props for the ComboPicker component
- * @property options - Array of available options
+ * @property options - Array of available options (flat list)
+ * @property groups - Array of option groups (takes precedence over options if provided)
  * @property selected - Currently selected option(s)
  * @property searchPlaceholder - Placeholder text for search input
  * @property showSearch - Whether to show search input
@@ -64,7 +70,8 @@ export type Option = { value: string; label: string; color?: string; emoji?: str
  * @property popover - Whether to use popover UI
  */
 interface ComboPickerProps {
-  options: Option[]
+  options?: Option[]
+  groups?: OptionGroup[]
   selected: Option[] | Option | null
   searchPlaceholder?: string
   showSearch?: boolean
@@ -99,7 +106,8 @@ interface ComboPickerProps {
  * @param popover - Whether to use popover UI
  */
 export function ComboPicker({
-  options,
+  options = [],
+  groups,
   selected,
   searchPlaceholder = 'Search...',
   showSearch = true,
@@ -112,6 +120,7 @@ export function ComboPicker({
   multi = true,
   children,
   popover = true,
+  ...props
 }: ComboPickerProps) {
   const [searchQuery, setSearchQuery] = useState('')
   // Maintain internal state that updates when props change
@@ -122,11 +131,34 @@ export function ComboPicker({
     setInternalSelected(selected)
   }, [selected])
 
-  // Filter options by search
+  // Flatten all options (from groups or flat options)
+  const allOptions = useMemo(() => {
+    if (groups) {
+      return groups.flatMap((g) => g.options)
+    }
+    return options
+  }, [groups, options])
+
+  // Filter options by search (flat list)
   const filteredOptions = useMemo(() => {
-    if (!searchQuery) return options
-    return options.filter((opt) => opt.label.toLowerCase().includes(searchQuery.toLowerCase()))
-  }, [options, searchQuery])
+    if (!searchQuery) return allOptions
+    return allOptions.filter((opt) => opt.label.toLowerCase().includes(searchQuery.toLowerCase()))
+  }, [allOptions, searchQuery])
+
+  // Filter groups by search
+  const filteredGroups = useMemo(() => {
+    if (!groups) return null
+    if (!searchQuery) return groups
+
+    return groups
+      .map((group) => ({
+        ...group,
+        options: group.options.filter((opt) =>
+          opt.label.toLowerCase().includes(searchQuery.toLowerCase())
+        ),
+      }))
+      .filter((group) => group.options.length > 0)
+  }, [groups, searchQuery])
 
   // Toggle selection
   const toggleOption = (value: string) => {
@@ -138,14 +170,14 @@ export function ComboPicker({
       if (isSelected) {
         newSelected = arrSelected.filter((opt) => opt.value !== value)
       } else {
-        const found = options.find((opt) => opt.value === value)
+        const found = allOptions.find((opt) => opt.value === value)
         newSelected = found ? [...arrSelected, found] : [...arrSelected]
       }
 
       setInternalSelected(newSelected)
       onChange(newSelected)
     } else {
-      const found = options.find((opt) => opt.value === value) || null
+      const found = allOptions.find((opt) => opt.value === value) || null
       setInternalSelected(found)
       onChange(found)
     }
@@ -162,6 +194,27 @@ export function ComboPicker({
     }
   }
 
+  /** Render a single option item */
+  const renderOption = (opt: Option) => {
+    const selected = isOptionSelected(opt)
+    return (
+      <CommandItem
+        key={opt.value}
+        value={opt.label}
+        onSelect={() => {
+          toggleOption(opt.value)
+        }}
+        className={cn('flex items-center', selected ? 'font-medium' : '')}
+        disabled={disabled}>
+        {opt.iconId ? (
+          <EntityIcon iconId={opt.iconId} color={opt.color || 'gray'} size="sm" className="me-1" />
+        ) : null}
+        <span>{opt.label}</span>
+        <Check className={cn('ml-auto h-4 w-4', selected ? 'opacity-100' : 'opacity-0')} />
+      </CommandItem>
+    )
+  }
+
   const commandUI = (
     <Command>
       {showSearch && (
@@ -174,25 +227,16 @@ export function ComboPicker({
       )}
       <CommandList>
         <CommandEmpty>{searchQuery ? 'No options found.' : 'No options available.'}</CommandEmpty>
-        <CommandGroup>
-          {filteredOptions.map((opt) => {
-            const selected = isOptionSelected(opt)
-            return (
-              <CommandItem
-                key={opt.value}
-                value={opt.label}
-                onSelect={(e) => {
-                  toggleOption(opt.value)
-                }}
-                className={cn('flex items-center', selected ? 'font-medium' : '')}
-                disabled={disabled}>
-                {opt.emoji && <span className="mr-2">{opt.emoji}</span>}
-                <span>{opt.label}</span>
-                <Check className={cn('ml-auto h-4 w-4', selected ? 'opacity-100' : 'opacity-0')} />
-              </CommandItem>
-            )
-          })}
-        </CommandGroup>
+        {filteredGroups
+          ? filteredGroups.map((group, idx) => (
+              <React.Fragment key={group.label}>
+                {idx > 0 && <CommandSeparator />}
+                <CommandGroup heading={group.label}>
+                  {group.options.map((opt) => renderOption(opt))}
+                </CommandGroup>
+              </React.Fragment>
+            ))
+          : filteredOptions.map((opt) => renderOption(opt))}
       </CommandList>
     </Command>
   )
@@ -213,7 +257,7 @@ export function ComboPicker({
         }
       }}>
       <PopoverTrigger asChild>{children}</PopoverTrigger>
-      <PopoverContent className={cn('w-full min-w-[300px] p-0', className)}>
+      <PopoverContent className={cn('min-w-[300px] p-0', className)} {...props}>
         {commandUI}
       </PopoverContent>
     </Popover>

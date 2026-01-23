@@ -1,6 +1,6 @@
 // packages/lib/src/custom-fields/field-options.ts
 
-import type { CurrencyOptions, RelationshipConfig } from '@auxx/types/custom-field'
+import type { CurrencyOptions, RelationshipConfig, ActorOptions } from '@auxx/types/custom-field'
 import type { FieldType } from '@auxx/database/types'
 
 /**
@@ -82,6 +82,11 @@ export interface FieldOptions {
   // RELATIONSHIP (nested - uses RelationshipConfig from @auxx/types/custom-field)
   // ─────────────────────────────────────────────────────────────
   relationship?: RelationshipConfig
+
+  // ─────────────────────────────────────────────────────────────
+  // ACTOR (nested - uses ActorOptions from @auxx/types/custom-field)
+  // ─────────────────────────────────────────────────────────────
+  actor?: ActorOptions
 
   // ─────────────────────────────────────────────────────────────
   // SYSTEM FIELD OPTIONS (for seeder)
