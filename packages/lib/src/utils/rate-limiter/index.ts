@@ -41,6 +41,7 @@ export { PriorityQueue } from './priority-queue'
 export { RedisRateLimiter } from './redis-rate-limiter'
 export { MetricsCollector } from './metrics-collector'
 export { UniversalThrottler } from './universal-throttler'
+export { ConcurrencySemaphore } from './concurrency-semaphore'
 
 // Configuration
 export {

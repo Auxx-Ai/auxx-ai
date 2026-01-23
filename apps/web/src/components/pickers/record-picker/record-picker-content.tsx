@@ -268,6 +268,7 @@ export function RecordPickerContent({
                   isSelected={isSelected(item.recordId)}
                   onToggle={handleToggle}
                   showEntityType={showEntityType}
+                  multi={multi}
                 />
               )
             })}
@@ -288,6 +289,7 @@ export function RecordPickerContent({
                   isSelected={isSelected(item.recordId)}
                   onToggle={handleToggle}
                   showEntityType={showEntityType}
+                  multi={multi}
                 />
               )
             })}

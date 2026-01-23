@@ -1,8 +1,9 @@
 // packages/lib/src/tasks/types.ts
 
-import type { TaskEntity, TaskAssignmentEntity, TaskReferenceEntity } from '@auxx/database'
+import type { TaskEntity, TaskReferenceEntity } from '@auxx/database'
 import type { Deadline } from '@auxx/types/task'
 import type { RecordId } from '@auxx/types/resource'
+import type { ActorId } from '@auxx/types/actor'
 
 /**
  * Priority levels for tasks
@@ -26,7 +27,8 @@ export interface CreateTaskInput {
   description?: string
   deadline?: Deadline
   priority?: TaskPriority
-  assignedUserIds?: string[]
+  /** Actor IDs to assign (e.g., "user:abc123") */
+  assigneeActorIds?: ActorId[]
   referencedEntities?: EntityReference[]
 }
 
@@ -66,7 +68,8 @@ export interface UpdateTaskInput {
   archivedAt?: Date | string | null
 
   // Relation fields (full replacement)
-  assignedUserIds?: string[]
+  /** Actor IDs to assign (e.g., "user:abc123") */
+  assigneeActorIds?: ActorId[]
   referencedEntities?: EntityReference[]
 }
 
@@ -110,20 +113,9 @@ export interface GroupedTasksResponse {
  * Task with its related assignments and references
  */
 export interface TaskWithRelations extends TaskEntity {
-  assignments: TaskAssignmentWithUser[]
+  /** Assigned actor IDs (e.g., ["user:abc123", "user:xyz789"]) */
+  assignments: ActorId[]
   references: RecordId[]
-}
-
-/**
- * Task assignment with user information
- */
-export interface TaskAssignmentWithUser extends TaskAssignmentEntity {
-  assignedTo: {
-    id: string
-    name: string | null
-    email: string
-    image: string | null
-  }
 }
 
 /**

@@ -11,7 +11,6 @@ export type {
   TaskGroup,
   GroupedTasksResponse,
   TaskWithRelations,
-  TaskAssignmentWithUser,
   TaskReferenceWithEntity,
   TaskListResponse,
 } from './types'

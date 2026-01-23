@@ -5,6 +5,7 @@
 import { Check } from 'lucide-react'
 import { CommandItem } from '@auxx/ui/components/command'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
+import { Checkbox } from '@auxx/ui/components/checkbox'
 import { cn } from '@auxx/ui/lib/utils'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import {
@@ -23,13 +24,21 @@ export interface RecordItemProps {
   isSelected: boolean
   onToggle: (recordId: RecordId) => void
   showEntityType?: boolean
+  /** Multi-select mode shows checkbox, single-select shows circle check */
+  multi?: boolean
 }
 
 /**
  * Single item in the record picker list.
  * Displays avatar or entity icon with name and secondary info.
  */
-export function RecordItem({ item, isSelected, onToggle, showEntityType }: RecordItemProps) {
+export function RecordItem({
+  item,
+  isSelected,
+  onToggle,
+  showEntityType,
+  multi = true,
+}: RecordItemProps) {
   const { resource } = useResource(getDefinitionId(item.recordId))
   const iconColor = resource && isCustomResource(resource) ? resource.color : undefined
 
@@ -60,13 +69,21 @@ export function RecordItem({ item, isSelected, onToggle, showEntityType }: Recor
       <div className="flex flex-1 items-center gap-1 flex-row">
         <span className="truncate">{item.displayName}</span>
         {item.secondaryInfo && (
-          <span className="text-xs text-muted-foreground">{item.secondaryInfo}</span>
+          <span className="text-xs text-muted-foreground truncate">{item.secondaryInfo}</span>
         )}
         {showEntityType && resource && (
-          <span className="text-xs text-muted-foreground ml-auto">{resource.label}</span>
+          <span className="text-xs shrink-0 text-muted-foreground ml-auto">{resource.label}</span>
         )}
       </div>
-      <Check className={cn('size-4', isSelected ? 'opacity-100' : 'opacity-0')} />
+      {multi ? (
+        <Checkbox checked={isSelected} className="pointer-events-none" />
+      ) : (
+        isSelected && (
+          <div className="rounded-full size-4 bg-info flex items-center justify-center border border-blue-800">
+            <Check className="size-2.5! text-white" strokeWidth={4} />
+          </div>
+        )
+      )}
     </CommandItem>
   )
 }

@@ -14,12 +14,16 @@ import { CircuitBreaker } from './circuit-breaker'
 import { ExponentialBackoff } from './backoff-handler'
 import { PriorityQueue } from './priority-queue'
 import { MetricsCollector } from './metrics-collector'
+import { ConcurrencySemaphore } from './concurrency-semaphore'
 
 /** Default timeout for throttled operations in milliseconds */
 const DEFAULT_OPERATION_TIMEOUT_MS = 30000
 
 /** Maximum retries for queued requests */
 const MAX_QUEUE_RETRIES = 3
+
+/** Default max concurrent if not specified but concurrency limiting is needed */
+const DEFAULT_MAX_CONCURRENT = 10
 
 /**
  * Universal throttler for rate limiting API calls across all providers
@@ -28,6 +32,7 @@ export class UniversalThrottler {
   private limiters: Map<string, RedisRateLimiter> = new Map()
   private queues: Map<string, PriorityQueue> = new Map()
   private circuitBreakers: Map<string, CircuitBreaker> = new Map()
+  private concurrencySemaphore: ConcurrencySemaphore
   private metrics: MetricsCollector
   private processingQueues: Set<string> = new Set()
   private coalescedRequests: Map<string, Promise<any>> = new Map()
@@ -40,6 +45,7 @@ export class UniversalThrottler {
    */
   constructor(private config: ThrottlerConfig = {}) {
     this.metrics = new MetricsCollector(config.metricsEnabled ?? false)
+    this.concurrencySemaphore = new ConcurrencySemaphore(true)
   }
 
   /**
@@ -49,6 +55,9 @@ export class UniversalThrottler {
     if (this.initialized) {
       return
     }
+
+    // Initialize concurrency semaphore
+    await this.concurrencySemaphore.init()
 
     // Initialize all existing limiters
     const initPromises: Promise<void>[] = []
@@ -156,7 +165,7 @@ export class UniversalThrottler {
   }
 
   /**
-   * Execute a function with rate limiting and circuit breaker protection
+   * Execute a function with rate limiting, concurrency limiting, and circuit breaker protection
    * @param context - Context identifier for rate limiting
    * @param fn - Function to execute
    * @param options - Execution options
@@ -193,18 +202,22 @@ export class UniversalThrottler {
       }
     )
 
+    // Get concurrency limit for this context
+    const contextConfig = this.getConfigForContext(context)
+    const maxConcurrent = contextConfig.maxConcurrent
+
     // Record circuit breaker state for metrics
     this.metrics.recordCircuitBreakerState(context, breaker.getState())
 
     return breaker.execute(async () => {
       return backoff.executeWithRetry(async () => {
-        // Build the rate limit key
+        // Build the rate limit key (used for both rate limiting and concurrency)
         const key = this.buildRateLimitKey(context, options)
         const cost = options?.cost ?? 1
 
         this.logger.debug('Attempting to acquire tokens', { context, key, cost })
 
-        // Try to acquire tokens
+        // Try to acquire tokens from rate limiter
         const acquired = await limiter.acquire(key, cost)
 
         this.logger.debug('Token acquisition result', { context, acquired, key })
@@ -225,6 +238,57 @@ export class UniversalThrottler {
             `Rate limit exceeded for ${context}. Available tokens: ${available}, required: ${cost}`,
             this.calculateRetryAfter(context)
           )
+        }
+
+        // Check concurrent request limit if configured
+        let concurrencyAcquired = false
+        const concurrencyKey = `${context}:${key}`
+
+        if (maxConcurrent && maxConcurrent > 0) {
+          this.logger.debug('Checking concurrency limit', {
+            context,
+            key: concurrencyKey,
+            maxConcurrent,
+          })
+
+          concurrencyAcquired = await this.concurrencySemaphore.tryAcquire(
+            concurrencyKey,
+            maxConcurrent
+          )
+
+          if (!concurrencyAcquired) {
+            // If queuing is enabled, wait for a slot
+            if (options?.queue) {
+              this.logger.debug('Waiting for concurrency slot', { context, key: concurrencyKey })
+              const timeout = options?.timeout ?? DEFAULT_OPERATION_TIMEOUT_MS
+              try {
+                await this.concurrencySemaphore.acquire(concurrencyKey, maxConcurrent, timeout)
+                concurrencyAcquired = true
+              } catch (error) {
+                this.logger.warn('Concurrency wait timed out', {
+                  context,
+                  key: concurrencyKey,
+                  maxConcurrent,
+                })
+                throw new RateLimitError(
+                  `Concurrency limit exceeded for ${context}. Max concurrent: ${maxConcurrent}`,
+                  1000 // Retry after 1 second
+                )
+              }
+            } else {
+              const currentCount = await this.concurrencySemaphore.getCount(concurrencyKey)
+              throw new RateLimitError(
+                `Concurrency limit exceeded for ${context}. Current: ${currentCount}, Max: ${maxConcurrent}`,
+                1000 // Retry after 1 second
+              )
+            }
+          }
+
+          this.logger.debug('Concurrency slot acquired', {
+            context,
+            key: concurrencyKey,
+            maxConcurrent,
+          })
         }
 
         // Record available tokens
@@ -257,6 +321,12 @@ export class UniversalThrottler {
           // Record failure
           this.metrics.recordFailure(context, error)
           throw error
+        } finally {
+          // Always release concurrency slot if acquired
+          if (concurrencyAcquired && maxConcurrent && maxConcurrent > 0) {
+            await this.concurrencySemaphore.release(concurrencyKey)
+            this.logger.debug('Concurrency slot released', { context, key: concurrencyKey })
+          }
         }
       }, (error) => this.isRetryableError(error))
     })
@@ -601,6 +671,7 @@ export class UniversalThrottler {
       coalescedRequests: this.coalescedRequests.size,
       queueStats: {},
       circuitBreakerStats: {},
+      concurrencyStats: this.concurrencySemaphore.getStats(),
     }
 
     // Add queue statistics
@@ -631,6 +702,9 @@ export class UniversalThrottler {
     for (const breaker of Array.from(this.circuitBreakers.values())) {
       breaker.reset()
     }
+
+    // Shutdown concurrency semaphore
+    await this.concurrencySemaphore.shutdown()
 
     // Report final metrics
     if (this.metrics.isEnabled()) {

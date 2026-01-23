@@ -11,8 +11,10 @@ import {
 } from '../hooks/use-task-effective-state'
 import { formatTaskDeadline } from '../utils/group-tasks-by-period'
 import type { TaskWithRelations } from '@auxx/lib/tasks'
+import type { ActorId } from '@auxx/types/actor'
 import { ResourceBadge, resourceBadgeVariants } from '~/components/resources/ui/resource-badge'
-import { Badge } from '@auxx/ui/components/badge'
+import { ActorBadge } from '~/components/resources/ui/actor-badge'
+import { ItemsListView } from '~/components/ui/items-list-view'
 import { Separator } from '@auxx/ui/components/separator'
 
 /**
@@ -101,16 +103,11 @@ export function TaskItem({ task, onClick, showEntityReferences = false }: TaskIt
                 <div className="flex items-center gap-1">
                   {hasReferences && <Separator orientation="vertical" className="h-4" />}
                   <span className="text-xs text-muted-foreground">Assigned:</span>
-                  {task.assignments.slice(0, 2).map((assignment) => (
-                    <Badge key={assignment.id} variant="pill" size="sm">
-                      {assignment.assignedTo?.name || assignment.assignedTo?.email}
-                    </Badge>
-                  ))}
-                  {task.assignments.length > 2 && (
-                    <Badge variant="pill" size="sm">
-                      +{task.assignments.length - 2}
-                    </Badge>
-                  )}
+                  <ItemsListView
+                    items={task.assignments}
+                    renderItem={(actorId) => <ActorBadge actorId={actorId as ActorId} />}
+                    maxDisplay={2}
+                  />
                 </div>
               )}
             </div>

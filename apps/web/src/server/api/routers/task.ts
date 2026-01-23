@@ -4,6 +4,12 @@ import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { createTaskService, type TaskPriority } from '@auxx/lib/tasks'
 import { recordIdSchema } from '@auxx/types/resource'
+import { isActorId, type ActorId } from '@auxx/types/actor'
+
+/**
+ * Schema for ActorId validation (e.g., "user:abc123" or "group:xyz789")
+ */
+const actorIdSchema = z.string().refine(isActorId, 'Invalid ActorId format') as z.ZodType<ActorId>
 
 /**
  * Schema for relative date (days, weeks, months, years offset)
@@ -42,7 +48,7 @@ export const taskRouter = createTRPCRouter({
         description: z.string().optional(),
         deadline: absoluteDateSchema.optional(),
         priority: prioritySchema.optional(),
-        assignedUserIds: z.array(z.string()).optional(),
+        assigneeActorIds: z.array(actorIdSchema).optional(),
         referencedEntities: z.array(recordIdSchema).optional(),
       })
     )
@@ -91,7 +97,7 @@ export const taskRouter = createTRPCRouter({
         // Archive field
         archivedAt: z.string().datetime().optional().nullable(),
         // Relations
-        assignedUserIds: z.array(z.string()).optional(),
+        assigneeActorIds: z.array(actorIdSchema).optional(),
         referencedEntities: z.array(recordIdSchema).optional(),
       })
     )
@@ -108,7 +114,7 @@ export const taskRouter = createTRPCRouter({
           completedAt: input.completedAt,
           completedById: input.completedById,
           archivedAt: input.archivedAt,
-          assignedUserIds: input.assignedUserIds,
+          assigneeActorIds: input.assigneeActorIds,
           referencedEntities: input.referencedEntities,
         },
         organizationId,

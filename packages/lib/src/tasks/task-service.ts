@@ -16,6 +16,7 @@ import { pickDefined, hasDefinedProps } from '../utils/pick-defined'
 import type { Deadline, RelativeDate } from '@auxx/types/task'
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '../field-values/relationship-field'
+import { type ActorId, toActorId, getActorType, getActorRawId } from '@auxx/types/actor'
 
 /**
  * Convert a relative or absolute deadline to a concrete Date
@@ -101,10 +102,15 @@ export class TaskService {
     organizationId: string,
     userId: string
   ): Promise<TaskEntity> {
-    const { title, description, deadline, priority, assignedUserIds, referencedEntities } = input
+    const { title, description, deadline, priority, assigneeActorIds, referencedEntities } = input
 
     const resolvedDeadline = deadline ? resolveDeadline(deadline) : null
     const searchText = generateSearchText(title, description)
+
+    // Extract user IDs from ActorIds (filter out groups for now)
+    const assignedUserIds = assigneeActorIds
+      ?.filter((id) => getActorType(id) === 'user')
+      .map((id) => getActorRawId(id))
 
     return await this.db.transaction(async (tx: Transaction) => {
       // Insert the task
@@ -172,15 +178,14 @@ export class TaskService {
       return null
     }
 
-    // Get assignments
-    const assignments = await this.db.query.TaskAssignment.findMany({
+    // Get assignments - only need user IDs to convert to ActorId
+    const assignmentRows = await this.db.query.TaskAssignment.findMany({
       where: (a, { eq, and, isNull }) => and(eq(a.taskId, taskId), isNull(a.unassignedAt)),
-      with: {
-        assignedTo: {
-          columns: { id: true, name: true, email: true, image: true },
-        },
-      },
+      columns: { assignedToUserId: true },
     })
+
+    // Convert to ActorId[]
+    const assignments = assignmentRows.map((a) => toActorId('user', a.assignedToUserId))
 
     // Get references - load only IDs
     const referenceRows = await this.db.query.TaskReference.findMany({
@@ -198,7 +203,7 @@ export class TaskService {
 
     return {
       ...task,
-      assignments: assignments as any,
+      assignments,
       references,
     }
   }
@@ -228,7 +233,7 @@ export class TaskService {
       completedAt,
       completedById,
       archivedAt,
-      assignedUserIds,
+      assigneeActorIds,
       referencedEntities,
     } = input
 
@@ -288,8 +293,8 @@ export class TaskService {
       }
 
       // Sync assignments if provided
-      if (assignedUserIds !== undefined) {
-        await this.syncAssignments(tx, id, organizationId, userId, assignedUserIds)
+      if (assigneeActorIds !== undefined) {
+        await this.syncAssignments(tx, id, organizationId, userId, assigneeActorIds)
       }
 
       // Sync references if provided
@@ -309,8 +314,13 @@ export class TaskService {
     taskId: string,
     organizationId: string,
     userId: string,
-    assignedUserIds: string[]
+    assigneeActorIds: ActorId[]
   ): Promise<void> {
+    // Extract user IDs from ActorIds (filter out groups for now)
+    const assignedUserIds = assigneeActorIds
+      .filter((id) => getActorType(id) === 'user')
+      .map((id) => getActorRawId(id))
+
     const currentAssignments = await tx.query.TaskAssignment.findMany({
       where: (a, { eq, and, isNull }) => and(eq(a.taskId, taskId), isNull(a.unassignedAt)),
     })
@@ -518,14 +528,14 @@ export class TaskService {
     // Load relations for each task
     const tasksWithRelations: TaskWithRelations[] = await Promise.all(
       filteredTasks.map(async (task) => {
-        const assignments = await this.db.query.TaskAssignment.findMany({
+        // Get assignments - only need user IDs to convert to ActorId
+        const assignmentRows = await this.db.query.TaskAssignment.findMany({
           where: (a, { eq, and, isNull }) => and(eq(a.taskId, task.id), isNull(a.unassignedAt)),
-          with: {
-            assignedTo: {
-              columns: { id: true, name: true, email: true, image: true },
-            },
-          },
+          columns: { assignedToUserId: true },
         })
+
+        // Convert to ActorId[]
+        const assignments = assignmentRows.map((a) => toActorId('user', a.assignedToUserId))
 
         // Load only IDs
         const referenceRows = await this.db.query.TaskReference.findMany({
@@ -543,7 +553,7 @@ export class TaskService {
 
         return {
           ...task,
-          assignments: assignments as any,
+          assignments,
           references,
         }
       })
@@ -630,14 +640,14 @@ export class TaskService {
     const loadRelations = async (tasks: TaskEntity[]): Promise<TaskWithRelations[]> => {
       return Promise.all(
         tasks.map(async (task) => {
-          const assignments = await this.db.query.TaskAssignment.findMany({
+          // Get assignments - only need user IDs to convert to ActorId
+          const assignmentRows = await this.db.query.TaskAssignment.findMany({
             where: (a, { eq, and, isNull }) => and(eq(a.taskId, task.id), isNull(a.unassignedAt)),
-            with: {
-              assignedTo: {
-                columns: { id: true, name: true, email: true, image: true },
-              },
-            },
+            columns: { assignedToUserId: true },
           })
+
+          // Convert to ActorId[]
+          const assignments = assignmentRows.map((a) => toActorId('user', a.assignedToUserId))
 
           // Load only IDs
           const referenceRows = await this.db.query.TaskReference.findMany({
@@ -655,7 +665,7 @@ export class TaskService {
 
           return {
             ...task,
-            assignments: assignments as any,
+            assignments,
             references,
           }
         })

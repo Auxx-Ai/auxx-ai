@@ -30,6 +30,7 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { ThreadTag } from './thread-tag'
 import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button'
+import { toRecordId } from '@auxx/types/resource'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 
 /**
@@ -141,7 +142,7 @@ export function ThreadHeader({
                 allowMultiple={true}
               />
             </Popover>
-            <ManualTriggerButton resourceType="thread" resourceId={thread.id}>
+            <ManualTriggerButton recordId={toRecordId('thread', thread.id)}>
               <Tooltip content="Run workflow">
                 <Button
                   variant="ghost"

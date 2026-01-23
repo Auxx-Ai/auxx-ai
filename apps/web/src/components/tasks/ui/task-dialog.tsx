@@ -23,8 +23,9 @@ import { MentionNode } from '~/components/editor/extensions/mention-node'
 import { createMentionExtension } from '~/components/editor/extensions/mention-extension'
 import { type MentionItem } from '~/components/editor/mention-popover'
 import { DateTimePicker } from '~/components/pickers/date-time-picker'
-import { AssigneePicker, type TeamMember } from '~/components/pickers/assignee-picker'
+import { ActorPicker } from '~/components/pickers/actor-picker/actor-picker'
 import { RecordPicker } from '~/components/pickers/record-picker'
+import type { ActorId } from '@auxx/types/actor'
 import { formatTaskDeadlineDisplay } from '../utils/group-tasks-by-period'
 import { useTaskMutations } from '../hooks/use-task-mutations'
 import { api } from '~/trpc/react'
@@ -77,7 +78,7 @@ export function TaskDialog({
   // Form state
   const [deadline, setDeadline] = useState<Date | undefined>(undefined)
   const [deadlineManuallySet, setDeadlineManuallySet] = useState(false)
-  const [assignedUserIds, setAssignedUserIds] = useState<string[]>([])
+  const [assigneeActorIds, setAssigneeActorIds] = useState<ActorId[]>([])
   const [linkedRecords, setLinkedRecords] = useState<RecordId[]>([])
   const [createMore, setCreateMore] = useState(false)
 
@@ -201,9 +202,8 @@ export function TaskDialog({
         editor?.commands.setContent(content)
         setDeadline(task.deadline ? new Date(task.deadline) : undefined)
         setDeadlineManuallySet(!!task.deadline)
-        setAssignedUserIds(
-          (task.assignments?.map((a) => a.assignedTo?.id).filter(Boolean) as string[]) ?? []
-        )
+        // task.assignments is now ActorId[]
+        setAssigneeActorIds(task.assignments ?? [])
         // Load existing linked records from task references (already RecordId[])
         setLinkedRecords(task.references ?? [])
       } else {
@@ -211,7 +211,7 @@ export function TaskDialog({
         editor?.commands.clearContent()
         setDeadline(undefined)
         setDeadlineManuallySet(false)
-        setAssignedUserIds([])
+        setAssigneeActorIds([])
         // Initialize with default referenced entity if provided
         setLinkedRecords(defaultReferencedEntity ? [defaultReferencedEntity] : [])
       }
@@ -245,7 +245,7 @@ export function TaskDialog({
     editor?.commands.clearContent()
     setDeadline(undefined)
     setDeadlineManuallySet(false)
-    setAssignedUserIds([])
+    setAssigneeActorIds([])
     setLinkedRecords(defaultReferencedEntity ? [defaultReferencedEntity] : [])
     setTimeout(() => editor?.commands.focus(), 100)
   }, [editor, defaultReferencedEntity])
@@ -271,7 +271,7 @@ export function TaskDialog({
         title,
         description,
         deadline: deadline ? { type: 'static', value: deadline.toISOString() } : undefined,
-        assignedUserIds,
+        assigneeActorIds,
         referencedEntities: linkedRecords.length > 0 ? linkedRecords : undefined,
       }
       createTask.mutate(input)
@@ -282,7 +282,7 @@ export function TaskDialog({
         title,
         description,
         deadline: deadline ? { type: 'static', value: deadline.toISOString() } : null,
-        assignedUserIds,
+        assigneeActorIds,
         referencedEntities: linkedRecords,
       }
       updateTask.mutate(input)
@@ -299,7 +299,7 @@ export function TaskDialog({
     mode,
     task,
     deadline,
-    assignedUserIds,
+    assigneeActorIds,
     linkedRecords,
     createTask,
     updateTask,
@@ -314,13 +314,6 @@ export function TaskDialog({
   const handleCancel = useCallback(() => {
     onOpenChange(false)
   }, [onOpenChange])
-
-  /**
-   * Handle assignee change
-   */
-  const handleAssigneeChange = useCallback((members: TeamMember[]) => {
-    setAssignedUserIds(members.map((m) => m.id))
-  }, [])
 
   // Update handleSaveRef with current handleSave function
   handleSaveRef.current = handleSave
@@ -371,17 +364,17 @@ export function TaskDialog({
               )}
 
               {/* Assignee Picker */}
-              <AssigneePicker
-                selected={assignedUserIds}
-                onChange={handleAssigneeChange}
-                allowMultiple
-                placeholder="Assignee"
-                size="sm">
+              <ActorPicker
+                value={assigneeActorIds}
+                onChange={setAssigneeActorIds}
+                multi
+                target="user"
+                emptyLabel="Assignee">
                 <Button variant="ghost" size="sm">
                   <User />
-                  {assignedUserIds.length > 0 ? `${assignedUserIds.length} assigned` : 'Assignee'}
+                  {assigneeActorIds.length > 0 ? `${assigneeActorIds.length} assigned` : 'Assignee'}
                 </Button>
-              </AssigneePicker>
+              </ActorPicker>
 
               {/* Record Linking */}
               <RecordPicker
