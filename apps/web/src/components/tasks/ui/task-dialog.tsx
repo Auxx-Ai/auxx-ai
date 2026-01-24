@@ -102,7 +102,7 @@ export function TaskDialog({
   }, [task])
 
   // Initialize mention editor using the inline-picker system
-  const { editor, suggestionState, insertMention, closePicker } = useMentionEditor({
+  const mentionEditor = useMentionEditor({
     initialContent,
     placeholder: 'What needs to be done? Use @ to assign members...',
     editable: true,
@@ -119,6 +119,7 @@ export function TaskDialog({
       }),
     ],
   })
+  const { editor, suggestionState, insertMention, closePicker } = mentionEditor
 
   /**
    * Handle editor text change - auto-set deadline if not manually set
@@ -154,25 +155,28 @@ export function TaskDialog({
     if (open) {
       if (task) {
         // Edit mode: populate from existing task
-        const content = `<p>${task.title}</p>`
-        editor?.commands.setContent(content)
         setDeadline(task.deadline ? new Date(task.deadline) : undefined)
         setDeadlineManuallySet(!!task.deadline)
-        // task.assignments is now ActorId[]
         setAssigneeActorIds(task.assignments ?? [])
-        // Load existing linked records from task references (already RecordId[])
         setLinkedRecords(task.references ?? [])
       } else {
-        // Create mode: start fresh or with default entity reference
-        editor?.commands.clearContent()
+        // Create mode: start fresh
         setDeadline(undefined)
         setDeadlineManuallySet(false)
         setAssigneeActorIds([])
-        // Initialize with default referenced entity if provided
         setLinkedRecords(defaultReferencedEntity ? [defaultReferencedEntity] : [])
       }
-      setTimeout(() => editor?.commands.focus(), 100)
+      // Defer editor operations until after dialog animation settles
+      setTimeout(() => {
+        if (task) {
+          mentionEditor.setContent(`<p>${task.title}</p>`)
+        } else {
+          editor?.commands.clearContent()
+        }
+        editor?.commands.focus()
+      }, 50)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task, open, editor, defaultReferencedEntity])
 
   /**

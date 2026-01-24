@@ -12,10 +12,11 @@ import {
 import { formatTaskDeadline } from '../utils/group-tasks-by-period'
 import type { TaskWithRelations } from '@auxx/lib/tasks'
 import type { ActorId } from '@auxx/types/actor'
-import { RecordBadge, recordBadgeVariants } from '~/components/resources/ui/record-badge'
+import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { ActorBadge } from '~/components/resources/ui/actor-badge'
 import { ItemsListView } from '~/components/ui/items-list-view'
 import { Separator } from '@auxx/ui/components/separator'
+import { ParsedText } from '~/components/editor/parsed-text'
 
 /**
  * Props for TaskItem component
@@ -81,35 +82,33 @@ export function TaskItem({ task, onClick, showEntityReferences = false }: TaskIt
                 'text-sm text-primary-600 dark:text-primary-400',
                 isCompleted && 'line-through'
               )}>
-              {task.title}
+              <ParsedText>{task.title}</ParsedText>
             </div>
-            <div className="flex flex-wrap gap-2 mt-1">
+            <div className="flex flex-wrap gap-2 mt-1 items-center">
               {/* Entity References (shown in global mode) */}
               {hasReferences && (
-                <div className="flex items-center gap-1 flex-wrap">
-                  {task.references.slice(0, 3).map((recordId) => (
-                    <RecordBadge key={recordId} recordId={recordId} showIcon variant="default" />
-                  ))}
-                  {task.references.length > 3 && (
-                    <div className={cn(recordBadgeVariants({ variant: 'default' }), 'text-xs')}>
-                      +{task.references.length - 3} more
-                    </div>
+                <ItemsListView
+                  className="w-auto"
+                  items={task.references}
+                  renderItem={(recordId) => (
+                    <RecordBadge recordId={recordId as string} showIcon variant="default" />
                   )}
-                </div>
+                  maxDisplay={3}
+                />
               )}
 
               {/* Assignees (shown when there are assignees) */}
-              {hasAssignments && (
-                <div className="flex items-center gap-1">
-                  {hasReferences && <Separator orientation="vertical" className="h-4" />}
-                  <span className="text-xs text-muted-foreground">Assigned:</span>
-                  <ItemsListView
-                    items={task.assignments}
-                    renderItem={(actorId) => <ActorBadge actorId={actorId as ActorId} />}
-                    maxDisplay={2}
-                  />
-                </div>
-              )}
+              {hasAssignments && hasReferences ? (
+                <Separator orientation="vertical" className="h-4" />
+              ) : null}
+              {hasAssignments ? (
+                <ItemsListView
+                  className="w-auto"
+                  items={task.assignments}
+                  renderItem={(actorId) => <ActorBadge actorId={actorId as ActorId} />}
+                  maxDisplay={2}
+                />
+              ) : null}
             </div>
           </div>
 

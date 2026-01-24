@@ -8,11 +8,40 @@ import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import { createInlinePickerExtension } from '../core/inline-picker-extension'
 import { createInlineNode } from '../core/inline-node'
+import { escapeHtml } from '~/lib/sanitize'
 import type {
   InlinePickerState,
   UseInlinePickerOptions,
   UseInlinePickerReturn,
 } from '../types'
+
+/**
+ * Preprocesses content by converting pattern matches to HTML spans.
+ * This allows setContent and initialContent to recognize serialized patterns like @[id] or {id}.
+ *
+ * @param content - Raw HTML/text content
+ * @param type - Node type (e.g., 'mention', 'record-link')
+ * @param pastePattern - Pattern configuration from the picker
+ * @returns Content with patterns converted to span elements
+ */
+function preprocessContent(
+  content: string,
+  type: string,
+  pastePattern?: { pattern: RegExp; getId: (match: RegExpMatchArray) => string }
+): string {
+  if (!pastePattern || typeof content !== 'string') return content
+
+  const { pattern, getId } = pastePattern
+  const globalPattern = new RegExp(pattern.source, 'g')
+
+  return content.replace(globalPattern, (fullMatch, ...captureGroups) => {
+    // Reconstruct match array for getId function (remove offset and input args)
+    const matchArray = [fullMatch, ...captureGroups.slice(0, -2)] as RegExpMatchArray
+    const id = getId(matchArray)
+    // Empty span - React NodeView replaces content with badge component
+    return `<span data-type="${type}" data-id="${escapeHtml(id)}"></span>`
+  })
+}
 
 /** Initial closed state */
 const initialState: InlinePickerState = {
@@ -96,6 +125,15 @@ export function useInlinePicker({
     [type, serialize, renderBadge, pastePattern, inputRules]
   )
 
+  // Preprocess initialContent to convert patterns to spans
+  const processedInitialContent = useMemo(
+    () =>
+      typeof initialContent === 'string'
+        ? preprocessContent(initialContent, type, pastePattern)
+        : initialContent,
+    [initialContent, type, pastePattern]
+  )
+
   // Build editor with all configuration handled internally
   const editor = useEditor({
     extensions: [
@@ -116,7 +154,7 @@ export function useInlinePicker({
         : []),
       ...extensions,
     ],
-    content: initialContent,
+    content: processedInitialContent,
     editable,
     immediatelyRender,
     shouldRerenderOnTransaction: false,
@@ -177,13 +215,17 @@ export function useInlinePicker({
     return editor?.getJSON()
   }, [editor])
 
-  // Set content programmatically
+  // Set content programmatically (with pattern preprocessing)
   const setContent = useCallback(
     (content: string | JSONContent) => {
       if (!editor) return
-      editor.commands.setContent(content)
+      const processed =
+        typeof content === 'string'
+          ? preprocessContent(content, type, pastePattern)
+          : content
+      editor.commands.setContent(processed)
     },
-    [editor]
+    [editor, type, pastePattern]
   )
 
   return {

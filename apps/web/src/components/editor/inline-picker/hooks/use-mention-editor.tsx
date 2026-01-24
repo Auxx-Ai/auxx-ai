@@ -36,11 +36,30 @@ interface UseMentionEditorOptions {
  * @returns Editor instance and mention-specific controls
  */
 export function useMentionEditor(options: UseMentionEditorOptions = {}) {
-  const { initialContent = '', placeholder, onUpdate, onJsonUpdate, editable = true, extensions = [], className } = options
+  const {
+    initialContent = '',
+    placeholder,
+    onUpdate,
+    onJsonUpdate,
+    editable = true,
+    extensions = [],
+    className,
+  } = options
 
   // Render badge using ActorBadge component with selection styling
   // ActorBadge handles looking up actor info by id
-  const renderBadge = useCallback(({ id, selected }: { id: string; selected: boolean }) => (<ActorBadge actorId={id as ActorId} className={cn('transition-all', selected && 'ring-2 ring-primary ring-offset-1')} />),[])
+  const renderBadge = useCallback(
+    ({ id, selected }: { id: string; selected: boolean }) => (
+      <ActorBadge
+        actorId={id as ActorId}
+        className={cn(
+          'transition-all inline-flex',
+          selected && 'ring-2 ring-primary ring-offset-1'
+        )}
+      />
+    ),
+    []
+  )
 
   const picker = useInlinePicker({
     type: 'mention',

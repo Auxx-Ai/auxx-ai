@@ -56,7 +56,7 @@ export function useRecordLinkEditor(options: UseRecordLinkEditorOptions = {}) {
     type: 'record-link',
     trigger: '#',
     renderBadge,
-    serialize: (id) => `#[${id}]`,
+    serialize: (id) => `{${id}}`,
     initialContent,
     placeholder,
     editable,
@@ -64,10 +64,10 @@ export function useRecordLinkEditor(options: UseRecordLinkEditorOptions = {}) {
     editorClassName: className,
     onUpdate: onUpdate ? (editor) => onUpdate(editor.getHTML(), editor) : undefined,
     onJsonUpdate,
-    // Paste pattern: #[id] format
+    // Paste/load pattern: support both #[id] and {id} formats
     pastePattern: {
-      pattern: /#\[([^\]]+)\]/,
-      getId: (match) => match[1]!,
+      pattern: /(?:#\[([^\]]+)\]|\{([^\}]+)\})/,
+      getId: (match) => match[1] ?? match[2]!,
     },
   })
 

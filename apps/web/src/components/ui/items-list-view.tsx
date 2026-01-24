@@ -103,7 +103,7 @@ export function ItemsListView<T extends ItemsListItem>({
 
   return (
     <div className={cn('relative w-full flex items-center', className)}>
-      <div className="flex items-center gap-1 py-0.5">
+      <div className="flex items-center gap-1 py-0.5 shrink-0">
         {displayItems.map((item, index) => (
           <div key={getItemKey(item)} className="shrink-0">
             {renderItem(item, index)}

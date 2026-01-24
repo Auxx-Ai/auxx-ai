@@ -24,6 +24,7 @@ export const actorBadgeVariants = cva(
       variant: {
         default:
           'cursor-default ring-neutral-300 bg-neutral-100 text-neutral-600 dark:text-neutral-100 dark:bg-neutral-800 dark:ring-neutral-800',
+        text: 'cursor-default h-4 ring-0 ps-0 pe-0 ',
         link: 'cursor-pointer ring-transparent hover:ring-neutral-300 bg-neutral-100 text-neutral-600 dark:text-neutral-100 dark:bg-neutral-800 dark:ring-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 [&_[data-slot=actor-display]]:underline hover:[&_[data-slot=actor-display]]:no-underline',
       },
     },

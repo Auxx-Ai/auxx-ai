@@ -4,6 +4,24 @@
 import DOMPurify from 'dompurify'
 
 /**
+ * Escapes special HTML characters to prevent XSS and malformed HTML.
+ * Use for inserting untrusted text into HTML attributes or content.
+ */
+export function escapeHtml(str: string): string {
+  if (typeof document === 'undefined') {
+    // SSR fallback - escape manually
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+  }
+  const div = document.createElement('div')
+  div.textContent = str
+  return div.innerHTML
+}
+
+/**
  * DOMPurify configuration for general HTML content
  * Allows basic formatting while stripping dangerous elements
  */
