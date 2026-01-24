@@ -55,8 +55,9 @@ export interface CreateCustomFieldInput {
 }
 
 /**
- * Get the last field by sortOrder for a scope (org/modelType/entityDefId)
- * Returns the field with highest sortOrder (lexicographically)
+ * Get the last field by sortOrder for a scope.
+ * If entityDefinitionId is provided, filter by that (works for both system and custom entities).
+ * Otherwise, fall back to filtering by modelType.
  */
 async function getLastFieldSortOrder(
   organizationId: string,
@@ -64,22 +65,20 @@ async function getLastFieldSortOrder(
   entityDefinitionId?: string | null,
   db: Database | Transaction = database
 ) {
-  const conditions = [
-    eq(schema.CustomField.organizationId, organizationId),
-    eq(schema.CustomField.modelType, modelType as any),
-  ]
+  const conditions = [eq(schema.CustomField.organizationId, organizationId)]
 
-  // Only filter by entityDefinitionId for custom entities (consistent with get-fields.ts)
-  // System entities (contact, ticket, etc.) have entityDefinitionId = NULL in the database
+  // Prefer entityDefinitionId if available, otherwise use modelType
   if (entityDefinitionId) {
-    conditions.push(eq(schema.CustomField.entityDefinitionId, entityDefinitionId!))
+    conditions.push(eq(schema.CustomField.entityDefinitionId, entityDefinitionId))
+  } else {
+    conditions.push(eq(schema.CustomField.modelType, modelType as any))
   }
 
   return db
     .select({ sortOrder: schema.CustomField.sortOrder })
     .from(schema.CustomField)
     .where(and(...conditions))
-    .orderBy(desc(schema.CustomField.sortOrder).nullsLast())
+    .orderBy(desc(schema.CustomField.sortOrder))
     .limit(1)
 }
 
@@ -117,14 +116,15 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
   const dbModelType = modelType
 
   // Check for existing field with same name
-  // Only filter by entityDefinitionId for custom entities (consistent with get-fields.ts)
+  // Prefer entityDefinitionId if available, otherwise use modelType
   const duplicateConditions = [
     eq(schema.CustomField.name, name),
     eq(schema.CustomField.organizationId, organizationId),
-    eq(schema.CustomField.modelType, dbModelType as any),
   ]
-  if (dbModelType === ModelTypes.ENTITY) {
-    duplicateConditions.push(eq(schema.CustomField.entityDefinitionId, entityDefinitionId!))
+  if (entityDefinitionId) {
+    duplicateConditions.push(eq(schema.CustomField.entityDefinitionId, entityDefinitionId))
+  } else {
+    duplicateConditions.push(eq(schema.CustomField.modelType, dbModelType as any))
   }
   const existingField = await db.query.CustomField.findFirst({
     where: and(...duplicateConditions),
@@ -298,7 +298,6 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
 
   const lastSortOrder = lastFieldResult.value[0]?.sortOrder ?? null
   const newSortOrder = generateKeyBetween(lastSortOrder, null)
-  console.log('New sort order:', lastSortOrder, newSortOrder, lastFieldResult.value[0])
 
   // Determine capability flags based on field type
   // CALC fields are computed and should not be manually creatable or updatable

@@ -18,7 +18,7 @@ export const CREATED_BY_FIELD: ResourceField = {
   fieldType: FieldType.ACTOR,
   isSystem: true,
   systemAttribute: CREATED_BY_FIELD_CONFIG.systemAttribute,
-  systemSortOrder: 'zz0',
+  systemSortOrder: 'az',
   dbColumn: CREATED_BY_FIELD_CONFIG.dbColumn,
   nullable: true,
   capabilities: {

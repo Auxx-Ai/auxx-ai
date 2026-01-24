@@ -3,7 +3,7 @@
 import type { JSONContent } from '@tiptap/core'
 
 /**
- * Convert TipTap JSON content to formula string with {fieldKey} placeholders.
+ * Convert TipTap JSON content to formula string with {fieldId} placeholders.
  */
 export function formulaToString(content: JSONContent): string {
   if (!content) return ''
@@ -13,8 +13,8 @@ export function formulaToString(content: JSONContent): string {
       return node.text || ''
     }
 
-    if (node.type === 'field-node') {
-      return `{${node.attrs?.fieldKey || ''}}`
+    if (node.type === 'field') {
+      return `{${node.attrs?.id || ''}}`
     }
 
     if (node.type === 'paragraph') {
@@ -36,7 +36,7 @@ export function formulaToString(content: JSONContent): string {
 }
 
 /**
- * Convert formula string with {fieldKey} to TipTap JSON content.
+ * Convert formula string with {fieldId} to TipTap JSON content.
  */
 export function stringToFormula(text: string): JSONContent {
   if (!text) {
@@ -58,8 +58,8 @@ export function stringToFormula(text: string): JSONContent {
     }
 
     // Add the field node
-    const fieldKey = match[1]
-    content.push({ type: 'field-node', attrs: { fieldKey } })
+    const id = match[1]
+    content.push({ type: 'field', attrs: { id } })
 
     lastIndex = match.index + match[0].length
   }
@@ -79,14 +79,14 @@ export function stringToFormula(text: string): JSONContent {
 }
 
 /**
- * Extract all field keys from TipTap content.
+ * Extract all field IDs from TipTap content.
  */
-export function extractFieldKeys(content: JSONContent): string[] {
-  const fieldKeys: string[] = []
+export function extractFieldIds(content: JSONContent): string[] {
+  const fieldIds: string[] = []
 
   function traverse(node: JSONContent) {
-    if (node.type === 'field-node' && node.attrs?.fieldKey) {
-      fieldKeys.push(node.attrs.fieldKey)
+    if (node.type === 'field' && node.attrs?.id) {
+      fieldIds.push(node.attrs.id)
     }
 
     if (node.content) {
@@ -95,25 +95,25 @@ export function extractFieldKeys(content: JSONContent): string[] {
   }
 
   traverse(content)
-  return [...new Set(fieldKeys)]
+  return [...new Set(fieldIds)]
 }
 
 /**
- * Extract field keys from formula string.
+ * Extract field IDs from formula string.
  */
-export function extractFieldKeysFromString(text: string): string[] {
+export function extractFieldIdsFromString(text: string): string[] {
   if (!text) return []
 
-  const fieldKeys: string[] = []
+  const fieldIds: string[] = []
   const fieldPattern = /\{([^{}]+)\}/g
   let match
 
   while ((match = fieldPattern.exec(text)) !== null) {
-    const fieldKey = match[1].trim()
-    if (fieldKey) {
-      fieldKeys.push(fieldKey)
+    const fieldId = match[1].trim()
+    if (fieldId) {
+      fieldIds.push(fieldId)
     }
   }
 
-  return [...new Set(fieldKeys)]
+  return [...new Set(fieldIds)]
 }

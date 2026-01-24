@@ -166,15 +166,18 @@ export function TaskDialog({
         setAssigneeActorIds([])
         setLinkedRecords(defaultReferencedEntity ? [defaultReferencedEntity] : [])
       }
-      // Defer editor operations until after dialog animation settles
-      setTimeout(() => {
-        if (task) {
-          mentionEditor.setContent(`<p>${task.title}</p>`)
-        } else {
-          editor?.commands.clearContent()
-        }
-        editor?.commands.focus()
-      }, 50)
+      // Defer editor operations using double requestAnimationFrame to ensure
+      // we're outside React's render cycle and avoid flushSync errors
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (task) {
+            mentionEditor.setContent(`<p>${task.title}</p>`)
+          } else {
+            editor?.commands.clearContent()
+          }
+          editor?.commands.focus()
+        })
+      })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task, open, editor, defaultReferencedEntity])
@@ -207,7 +210,12 @@ export function TaskDialog({
     setDeadlineManuallySet(false)
     setAssigneeActorIds([])
     setLinkedRecords(defaultReferencedEntity ? [defaultReferencedEntity] : [])
-    setTimeout(() => editor?.commands.focus(), 100)
+    // Use double requestAnimationFrame to avoid flushSync errors
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        editor?.commands.focus()
+      })
+    })
   }, [editor, defaultReferencedEntity])
 
   /**

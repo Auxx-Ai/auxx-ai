@@ -189,7 +189,7 @@ export function sortFieldsForDisplay(fields: ResourceField[]): ResourceField[] {
 
   const systemFields = deduped
     .filter((f) => f.isSystem && f.key !== 'id' && f.showInPanel !== false)
-    .sort((a, b) => (a.systemSortOrder ?? 999) - (b.systemSortOrder ?? 999))
+    .sort((a, b) => (a.systemSortOrder ?? '').localeCompare(b.systemSortOrder ?? ''))
 
   const customFields = deduped
     .filter((f) => !f.isSystem && f.active !== false && f.showInPanel !== false)

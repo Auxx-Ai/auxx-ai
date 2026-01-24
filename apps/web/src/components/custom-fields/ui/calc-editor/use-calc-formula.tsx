@@ -1,14 +1,19 @@
-// apps/web/src/components/custom-fields/ui/calc-editor/use-calc-formula.ts
+// apps/web/src/components/custom-fields/ui/calc-editor/use-calc-formula.tsx
+
 'use client'
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { useEditor, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
-import { FieldNode } from './field-node'
-import { createFieldPickerExtension, type SuggestionState } from './field-picker-extension'
-import { formulaToString, stringToFormula, extractFieldKeys } from './formula-converters'
+import {
+  createInlinePickerExtension,
+  createInlineNode,
+  type InlinePickerState,
+} from '~/components/editor/inline-picker'
+import { formulaToString, stringToFormula, extractFieldIds } from './formula-converters'
 import { validateCalcExpression } from '@auxx/utils/calc-expression'
+import { FieldBadge } from './field-badge'
 
 /** Options for the useCalcFormula hook */
 export interface UseCalcFormulaOptions {
@@ -27,7 +32,7 @@ export interface UseCalcFormulaOptions {
 }
 
 /** Initial closed state for suggestion */
-const initialSuggestionState: SuggestionState = {
+const initialSuggestionState: InlinePickerState = {
   isOpen: false,
   query: '',
   range: null,
@@ -41,21 +46,24 @@ const initialSuggestionState: SuggestionState = {
 export function useCalcFormula({
   initialExpression = '',
   onExpressionChange,
-  entityDefinitionId,
-  currentFieldId,
   availableFields,
   placeholder = 'Type { to insert a field or function...',
 }: UseCalcFormulaOptions) {
   const [expression, setExpression] = useState(initialExpression)
-  const [suggestionState, setSuggestionState] = useState<SuggestionState>(initialSuggestionState)
+  const [suggestionState, setSuggestionState] = useState<InlinePickerState>(initialSuggestionState)
   const contentRef = useRef(initialExpression)
   const onChangeRef = useRef(onExpressionChange)
   const suggestionRangeRef = useRef<{ from: number; to: number } | null>(null)
+  const availableFieldsRef = useRef(availableFields)
 
-  // Update ref when callback changes
+  // Update refs when values change
   useEffect(() => {
     onChangeRef.current = onExpressionChange
   }, [onExpressionChange])
+
+  useEffect(() => {
+    availableFieldsRef.current = availableFields
+  }, [availableFields])
 
   // Track suggestion range for insertion
   useEffect(() => {
@@ -68,9 +76,40 @@ export function useCalcFormula({
   }, [initialExpression])
 
   // Memoize onStateChange callback
-  const handleSuggestionStateChange = useCallback((state: SuggestionState) => {
+  const handleSuggestionStateChange = useCallback((state: InlinePickerState) => {
     setSuggestionState(state)
   }, [])
+
+  // Create picker extension
+  const pickerExtension = useMemo(
+    () =>
+      createInlinePickerExtension({
+        type: 'field',
+        trigger: '{',
+        onStateChange: handleSuggestionStateChange,
+      }),
+    [handleSuggestionStateChange]
+  )
+
+  // Create field node with base factory
+  const fieldNode = useMemo(
+    () =>
+      createInlineNode(
+        {
+          type: 'field',
+          serialize: (id) => `{${id}}`,
+          pastePattern: {
+            pattern: /\{([^{}]+)\}/,
+            getId: (match) => match[1]!,
+          },
+          inputRules: [{ find: /\{([\w-]+)\}$/, getId: (match) => match[1]! }],
+        },
+        ({ id, selected }) => (
+          <FieldBadge id={id} selected={selected} availableFields={availableFieldsRef.current} />
+        )
+      ),
+    []
+  )
 
   // Build editor configuration
   const editorConfig = useMemo(
@@ -85,12 +124,8 @@ export function useCalcFormula({
           codeBlock: false,
           horizontalRule: false,
         }),
-        FieldNode,
-        createFieldPickerExtension({
-          entityDefinitionId,
-          currentFieldId,
-          onStateChange: handleSuggestionStateChange,
-        }),
+        fieldNode,
+        pickerExtension,
         Placeholder.configure({
           placeholder,
           showOnlyWhenEditable: true,
@@ -100,7 +135,7 @@ export function useCalcFormula({
       onUpdate: ({ editor }: { editor: Editor }) => {
         const json = editor.getJSON()
         const newExpression = formulaToString(json)
-        const sourceFields = extractFieldKeys(json)
+        const sourceFields = extractFieldIds(json)
 
         if (newExpression !== contentRef.current) {
           contentRef.current = newExpression
@@ -116,17 +151,10 @@ export function useCalcFormula({
       immediatelyRender: false,
       shouldRerenderOnTransaction: false,
     }),
-    [initialContent, entityDefinitionId, currentFieldId, placeholder, handleSuggestionStateChange]
+    [initialContent, fieldNode, pickerExtension, placeholder]
   )
 
   const editor = useEditor(editorConfig)
-
-  // Store available fields in editor storage for FieldNodeView
-  useEffect(() => {
-    if (editor) {
-      editor.storage.availableFields = availableFields
-    }
-  }, [editor, availableFields])
 
   // Validation result
   const validation = useMemo(() => {
@@ -157,7 +185,7 @@ export function useCalcFormula({
 
   /** Insert a field node at the suggestion trigger position */
   const insertField = useCallback(
-    (fieldKey: string) => {
+    (fieldId: string) => {
       if (!editor || !suggestionRangeRef.current) return
 
       const range = suggestionRangeRef.current
@@ -169,8 +197,8 @@ export function useCalcFormula({
         .focus()
         .deleteRange({ from: range.from, to: range.to })
         .insertContent({
-          type: 'field-node',
-          attrs: { fieldKey },
+          type: 'field',
+          attrs: { id: fieldId },
         })
         .run()
 
