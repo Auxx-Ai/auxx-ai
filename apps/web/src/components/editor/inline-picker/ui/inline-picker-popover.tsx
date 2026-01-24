@@ -55,18 +55,7 @@ export function InlinePickerPopover({
     // Use RAF to ensure content is fully rendered
     requestAnimationFrame(() => {
       const input = contentRef.current?.querySelector<HTMLInputElement>('[cmdk-input]')
-      console.log('[InlinePickerPopover] onOpenAutoFocus', {
-        foundInput: !!input,
-        hasContentRef: !!contentRef.current,
-        activeElement: document.activeElement?.tagName,
-      })
-      if (input) {
-        input.focus()
-        console.log('[InlinePickerPopover] Called input.focus()', {
-          nowActiveElement: document.activeElement?.tagName,
-          isSameAsInput: document.activeElement === input,
-        })
-      }
+      input?.focus()
     })
   }
 

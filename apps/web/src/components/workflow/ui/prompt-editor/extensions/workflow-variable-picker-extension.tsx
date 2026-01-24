@@ -101,6 +101,7 @@ interface VariableExplorerAdapterProps {
   isLoading?: boolean
   expectedTypes?: string[]
   query?: string
+  onClose?: () => void
 }
 
 interface VariableExplorerAdapterRef {
@@ -116,6 +117,7 @@ const VariableExplorerAdapter: React.FC<VarExplorerProps> = ({
   isLoading,
   expectedTypes,
   query = '',
+  onClose,
   ref,
 }) => {
   // No conversion needed - variables are already UnifiedVariable[]
@@ -217,6 +219,7 @@ const VariableExplorerAdapter: React.FC<VarExplorerProps> = ({
             className="max-h-[400px]"
             placeholder="Type in editor to filter..."
             allowedTypes={expectedTypes}
+            onClose={onClose}
           />
         </div>
       )}
@@ -325,6 +328,7 @@ export const createWorkflowVariablePickerExtension = (
               isLoading: false,
               expectedTypes,
               query: props.query || '',
+              onClose: () => popup?.[0]?.hide(),
               command: (variable: UnifiedVariable) => {
                 // Variables are managed by node updates, not manually added
 
@@ -343,6 +347,7 @@ export const createWorkflowVariablePickerExtension = (
               isLoading: false,
               expectedTypes,
               query: props.query || '',
+              onClose: () => popup?.[0]?.hide(),
               command: (variable: UnifiedVariable) => {
                 // Variables are managed by node updates, not manually added
 

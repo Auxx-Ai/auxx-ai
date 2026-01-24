@@ -161,6 +161,7 @@ export const VariablePicker = React.memo<VariablePickerProps>(
             placeholder={placeholder}
             maxHeight={popoverHeight}
             allowedTypes={allowedTypes}
+            onClose={() => onOpenChange(false)}
           />
         </PopoverContentDialogAware>
       </Popover>

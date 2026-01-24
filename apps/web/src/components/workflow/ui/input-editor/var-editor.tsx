@@ -381,6 +381,7 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
             allowedTypes={finalAllowedTypes}
             className="max-h-[400px]"
             placeholder="Type in editor to filter..."
+            onClose={closePicker}
           />
         </InlinePickerPopover>
 

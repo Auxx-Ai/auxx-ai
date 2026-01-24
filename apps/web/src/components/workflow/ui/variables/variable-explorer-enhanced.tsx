@@ -84,6 +84,7 @@ interface VariableExplorerEnhancedProps {
   placeholder?: string
   maxHeight?: number
   nodeId: string // Optional nodeId for context
+  onClose?: () => void // Callback to close the picker (e.g., when pressing Backspace with empty search at root)
 }
 
 /**
@@ -124,6 +125,7 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
   placeholder = 'Search variables...',
   maxHeight = CONSTANTS.DEFAULT_MAX_HEIGHT,
   nodeId,
+  onClose,
 }) => {
   // State
   const [search, setSearch] = useState('')
@@ -133,14 +135,6 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
   const commandRef = useRef<HTMLDivElement>(null)
 
   const { variables, groups, allVariables } = useAvailableVariables({ nodeId })
-
-  // Debug: log component mount
-  useEffect(() => {
-    console.log('[VariableExplorerEnhanced] Component mounted', {
-      activeElement: document.activeElement?.tagName,
-      activeElementId: document.activeElement?.id,
-    })
-  }, [])
 
   // Get nodes from React Flow store for loop context resolution
   const nodes = useStore((state) => state.nodes)
@@ -344,17 +338,9 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
 
   // Focus command root - reusable helper to restore focus after actions
   const focusCommandRoot = useCallback(() => {
-    console.log('[VariableExplorerEnhanced] focusCommandRoot called', new Error().stack)
     setTimeout(() => {
       const cmdRoot = commandRef.current?.querySelector(CONSTANTS.CMDK_ROOT_SELECTOR) as HTMLElement
-      console.log('[VariableExplorerEnhanced] focusCommandRoot setTimeout', {
-        foundCmdRoot: !!cmdRoot,
-        activeElementBefore: document.activeElement?.tagName,
-      })
       cmdRoot?.focus()
-      console.log('[VariableExplorerEnhanced] after cmdRoot.focus()', {
-        activeElementAfter: document.activeElement?.tagName,
-      })
     }, CONSTANTS.FOCUS_DELAY_MS)
   }, [])
 
@@ -432,7 +418,6 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
           setSelectedItemId(value)
         }}
         onKeyDown={(e) => {
-          console.log('Key down in command:', e.key)
           // Handle navigation keys regardless of which element has focus
           if (e.key === 'ArrowLeft' && navigationStack.length > 0) {
             e.preventDefault()
@@ -481,6 +466,20 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
 
                 focusCommandRoot()
               }
+            }
+          } else if (e.key === 'Backspace' && search === '') {
+            // Handle Backspace with empty search
+            if (navigationStack.length > 0) {
+              // Navigate back if in nested view
+              e.preventDefault()
+              e.stopPropagation()
+              navigateBack()
+              focusCommandRoot()
+            } else if (onClose) {
+              // Close popover if at root level
+              e.preventDefault()
+              e.stopPropagation()
+              onClose()
             }
           }
         }}>
