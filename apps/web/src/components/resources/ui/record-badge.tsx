@@ -1,4 +1,4 @@
-// apps/web/src/components/resources/ui/resource-badge.tsx
+// apps/web/src/components/resources/ui/record-badge.tsx
 'use client'
 
 // External libraries
@@ -19,19 +19,19 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 
 // Hook imports
 import { useRecord, useResource } from '~/components/resources'
-import { useResourceLink, type GetResourceLinkOptions } from '../utils/get-resource-link'
+import { useRecordLink, type GetRecordLinkOptions } from '../utils/get-record-link'
 
 /**
- * Variants for the ResourceBadge component
+ * Variants for the RecordBadge component
  */
-export const resourceBadgeVariants = cva(
+export const recordBadgeVariants = cva(
   'flex text-sm items-center h-5 gap-1.5 rounded-[5px] ring-1 ps-0.5 pe-1.5 py-0',
   {
     variants: {
       variant: {
         default:
           'cursor-default ring-neutral-300 bg-neutral-100 text-neutral-600 dark:text-neutral-100 dark:bg-neutral-800 dark:ring-neutral-800',
-        link: 'cursor-pointer ring-transparent hover:ring-neutral-300 bg-neutral-100 text-neutral-600 dark:text-neutral-100 dark:bg-neutral-800 dark:ring-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 [&_[data-slot=resource-display]]:underline hover:[&_[data-slot=resource-display]]:no-underline',
+        link: 'cursor-pointer ring-transparent hover:ring-neutral-300 bg-neutral-100 text-neutral-600 dark:text-neutral-100 dark:bg-neutral-800 dark:ring-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 [&_[data-slot=record-display]]:underline hover:[&_[data-slot=record-display]]:no-underline',
       },
     },
     defaultVariants: {
@@ -41,9 +41,9 @@ export const resourceBadgeVariants = cva(
 )
 
 /**
- * Props for the ResourceBadge component.
+ * Props for the RecordBadge component.
  */
-interface ResourceBadgeProps extends VariantProps<typeof resourceBadgeVariants> {
+interface RecordBadgeProps extends VariantProps<typeof recordBadgeVariants> {
   /** RecordId in format "entityDefinitionId:entityInstanceId" */
   recordId: RecordId
   /** Whether to show icon/avatar (default: true) */
@@ -51,7 +51,7 @@ interface ResourceBadgeProps extends VariantProps<typeof resourceBadgeVariants> 
   /** Additional CSS classes */
   className?: string
   /** Link configuration - if true uses default link, if object uses those options */
-  link?: boolean | GetResourceLinkOptions
+  link?: boolean | GetRecordLinkOptions
 }
 
 /**
@@ -62,35 +62,35 @@ interface ResourceBadgeProps extends VariantProps<typeof resourceBadgeVariants> 
  * @param showIcon - Whether to show icon/avatar (default: true)
  * @param className - Additional CSS classes
  * @param variant - Visual variant (default | link)
- * @param link - If true, wraps badge in Link; if object, uses those GetResourceLinkOptions
+ * @param link - If true, wraps badge in Link; if object, uses those GetRecordLinkOptions
  *
  * @example
  * // Basic usage with icon
- * <ResourceBadge recordId={toRecordId('contact', contactId)} />
+ * <RecordBadge recordId={toRecordId('contact', contactId)} />
  *
  * @example
  * // Without icon
- * <ResourceBadge recordId={recordId} showIcon={false} />
+ * <RecordBadge recordId={recordId} showIcon={false} />
  *
  * @example
  * // With custom styling
- * <ResourceBadge recordId={recordId} className="ring-blue-500" />
+ * <RecordBadge recordId={recordId} className="ring-blue-500" />
  *
  * @example
  * // As a link with default options
- * <ResourceBadge recordId={recordId} variant="link" link={true} />
+ * <RecordBadge recordId={recordId} variant="link" link={true} />
  *
  * @example
  * // As a link with custom options
- * <ResourceBadge recordId={recordId} variant="link" link={{ tab: 'activity', action: 'edit' }} />
+ * <RecordBadge recordId={recordId} variant="link" link={{ tab: 'activity', action: 'edit' }} />
  */
-export function ResourceBadge({
+export function RecordBadge({
   recordId,
   showIcon = true,
   className,
   variant,
   link,
-}: ResourceBadgeProps) {
+}: RecordBadgeProps) {
   // Fetch record data (displayName, avatarUrl)
   const { record, isLoading: isLoadingRecord, isNotFound } = useRecord({ recordId })
 
@@ -102,7 +102,7 @@ export function ResourceBadge({
 
   // Generate link if link prop is provided
   const linkOptions = typeof link === 'object' ? link : undefined
-  const href = useResourceLink(link ? recordId : null, linkOptions)
+  const href = useRecordLink(link ? recordId : null, linkOptions)
 
   // Determine display name
   const displayName = isNotFound ? 'Unknown' : (record?.displayName ?? 'Unknown')
@@ -118,10 +118,10 @@ export function ResourceBadge({
 
   return (
     <Comp
-      data-slot="resource-badge"
+      data-slot="record-badge"
       aria-busy={isLoading}
       {...(link && href ? { href } : {})}
-      className={cn(resourceBadgeVariants({ variant: effectiveVariant }), className)}>
+      className={cn(recordBadgeVariants({ variant: effectiveVariant }), className)}>
       {isLoading ? (
         <>
           {showIcon && <Skeleton className="size-4 rounded-full" />}
@@ -131,19 +131,19 @@ export function ResourceBadge({
         <>
           {/* Show Avatar if avatarUrl exists, else show EntityIcon if showIcon=true */}
           {record?.avatarUrl ? (
-            <Avatar className="size-4" data-slot="resource-icon">
+            <Avatar className="size-4" data-slot="record-icon">
               <AvatarImage src={record.avatarUrl} />
               <AvatarFallback className="text-[10px]">{displayName?.[0]}</AvatarFallback>
             </Avatar>
           ) : showIcon ? (
             <EntityIcon
-              data-slot="resource-icon"
+              data-slot="record-icon"
               iconId={resource?.icon || 'circle'}
               color={resource?.color || 'gray'}
               size="xs"
             />
           ) : null}
-          <span data-slot="resource-display">{displayName}</span>
+          <span data-slot="record-display">{displayName}</span>
         </>
       )}
     </Comp>

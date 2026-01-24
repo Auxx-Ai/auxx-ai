@@ -45,4 +45,4 @@ export {
 } from './store'
 
 // Utilities
-export { getResourceLink, useResourceLink, type GetResourceLinkOptions } from './utils'
+export { getRecordLink, useRecordLink, type GetRecordLinkOptions } from './utils'

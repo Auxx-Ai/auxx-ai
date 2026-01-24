@@ -12,7 +12,7 @@ import {
 import { formatTaskDeadline } from '../utils/group-tasks-by-period'
 import type { TaskWithRelations } from '@auxx/lib/tasks'
 import type { ActorId } from '@auxx/types/actor'
-import { ResourceBadge, resourceBadgeVariants } from '~/components/resources/ui/resource-badge'
+import { RecordBadge, recordBadgeVariants } from '~/components/resources/ui/record-badge'
 import { ActorBadge } from '~/components/resources/ui/actor-badge'
 import { ItemsListView } from '~/components/ui/items-list-view'
 import { Separator } from '@auxx/ui/components/separator'
@@ -88,10 +88,10 @@ export function TaskItem({ task, onClick, showEntityReferences = false }: TaskIt
               {hasReferences && (
                 <div className="flex items-center gap-1 flex-wrap">
                   {task.references.slice(0, 3).map((recordId) => (
-                    <ResourceBadge key={recordId} recordId={recordId} showIcon variant="default" />
+                    <RecordBadge key={recordId} recordId={recordId} showIcon variant="default" />
                   ))}
                   {task.references.length > 3 && (
-                    <div className={cn(resourceBadgeVariants({ variant: 'default' }), 'text-xs')}>
+                    <div className={cn(recordBadgeVariants({ variant: 'default' }), 'text-xs')}>
                       +{task.references.length - 3} more
                     </div>
                   )}

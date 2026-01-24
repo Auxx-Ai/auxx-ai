@@ -8,7 +8,7 @@ import { CopyableLinkCell } from '../components/copyable-link-cell'
 import { CellPadding, type CellConfig } from '../components/formatted-cell'
 import { TagsCellView } from '~/components/ui/tags-view'
 import { ItemsCellView } from '~/components/ui/items-list-view'
-import { ResourceBadge, ActorBadge } from '~/components/resources/ui'
+import { RecordBadge, ActorBadge } from '~/components/resources/ui'
 import { isActorId, toActorId, type ActorId } from '@auxx/types/actor'
 import {
   formatToRawValue,
@@ -33,7 +33,7 @@ type SelectOption = { label: string; value: string }
 
 /**
  * Relationship cell content - displays related entities with display names.
- * Uses ResourceBadge component which handles its own data fetching and loading states.
+ * Uses RecordBadge component which handles its own data fetching and loading states.
  * Extracts relatedEntityDefinitionId from TypedFieldValue to determine resource type.
  * Standardized format:
  * - System resources: store model type string (e.g., "contact", "ticket")
@@ -52,8 +52,8 @@ function RelationshipCellContent({ value }: { value: unknown }) {
   return (
     <ItemsCellView
       items={items}
-      isLoading={false} // ResourceBadge handles individual loading states
-      renderItem={(item) => <ResourceBadge recordId={item.recordId} link />}
+      isLoading={false} // RecordBadge handles individual loading states
+      renderItem={(item) => <RecordBadge recordId={item.recordId} link />}
     />
   )
 }

@@ -3,9 +3,7 @@
 'use client'
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
-import { useEditor, EditorContent } from '@tiptap/react'
-import StarterKit from '@tiptap/starter-kit'
-import Placeholder from '@tiptap/extension-placeholder'
+import { EditorContent } from '@tiptap/react'
 import { Calendar, Link2, User, X } from 'lucide-react'
 import {
   Dialog,
@@ -19,21 +17,19 @@ import { Button, buttonVariants } from '@auxx/ui/components/button'
 import { Switch } from '@auxx/ui/components/switch'
 import { Kbd } from '@auxx/ui/components/kbd'
 import { cn } from '@auxx/ui/lib/utils'
-import { MentionNode } from '~/components/editor/extensions/mention-node'
-import { createMentionExtension } from '~/components/editor/extensions/mention-extension'
-import { type MentionItem } from '~/components/editor/mention-popover'
+import { useMentionEditor, InlinePickerPopover } from '~/components/editor/inline-picker'
+import { ActorPickerContent } from '~/components/pickers/actor-picker/actor-picker-content'
 import { DateTimePicker } from '~/components/pickers/date-time-picker'
 import { ActorPicker } from '~/components/pickers/actor-picker/actor-picker'
 import { RecordPicker } from '~/components/pickers/record-picker'
 import type { ActorId } from '@auxx/types/actor'
 import { formatTaskDeadlineDisplay } from '../utils/group-tasks-by-period'
 import { useTaskMutations } from '../hooks/use-task-mutations'
-import { api } from '~/trpc/react'
 import { TextDateParser, DateLanguageModule } from '@auxx/lib/tasks/client'
 import type { TaskWithRelations, CreateTaskInput, UpdateTaskInput } from '@auxx/lib/tasks'
 import { SubmitOnEnter } from '~/components/global/comments/comment-composer'
 import { toastSuccess } from '@auxx/ui/components/toast'
-import { getInstanceId, getDefinitionId, type RecordId } from '@auxx/lib/field-values/client'
+import { type RecordId } from '@auxx/lib/field-values/client'
 
 /**
  * Props for TaskDialog component
@@ -86,6 +82,9 @@ export function TaskDialog({
   const { createTask, updateTask, isCreating, isUpdating } = useTaskMutations()
   const isSaving = isCreating || isUpdating
 
+  // Container ref for popover positioning
+  const containerRef = useRef<HTMLDivElement>(null)
+
   // Create parser and date module (memoized)
   const textDateParser = useMemo(() => new TextDateParser(), [])
   const dateModule = useMemo(() => {
@@ -93,37 +92,8 @@ export function TaskDialog({
     return new DateLanguageModule(timezone)
   }, [])
 
-  // Fetch team members for mentions
-  const { data: teamMembers } = api.user.teamMembers.useQuery(undefined, {
-    refetchOnWindowFocus: false,
-    staleTime: 5 * 60 * 1000,
-  })
-
-  /**
-   * Fetch mention items for the editor
-   */
-  const fetchMentionItems = useCallback(
-    async (query: string): Promise<MentionItem[]> => {
-      if (!teamMembers) return []
-
-      const filtered = teamMembers.filter((member) => {
-        if (!query) return true
-        const lowerQuery = query.toLowerCase()
-        return (
-          member.name?.toLowerCase().includes(lowerQuery) ||
-          member.email?.toLowerCase().includes(lowerQuery)
-        )
-      })
-
-      return filtered.map((member) => ({
-        id: member.id,
-        name: member.name || 'Unknown',
-        email: member.email || undefined,
-        avatar: (member as any).image || undefined,
-      }))
-    },
-    [teamMembers]
-  )
+  // Ref to track handleSave for SubmitOnEnter extension (updated after handleSave is defined)
+  const handleSaveRef = useRef<() => void>(() => {})
 
   // Build initial content from task
   const initialContent = useMemo(() => {
@@ -131,38 +101,24 @@ export function TaskDialog({
     return `<p>${task.title}</p>`
   }, [task])
 
-  // Ref to track handleSave for SubmitOnEnter extension (updated after handleSave is defined)
-  const handleSaveRef = useRef<() => void>(() => {})
-
-  // Initialize tiptap editor
-  const editor = useEditor(
-    {
-      extensions: [
-        StarterKit.configure({ heading: false, blockquote: false }),
-        MentionNode.configure({}),
-        createMentionExtension(fetchMentionItems),
-        Placeholder.configure({
-          placeholder: 'What needs to be done? Use @mention to notify team members...',
-        }),
-        SubmitOnEnter.configure({
-          isExpanded: () => false,
-          onSubmit: () => {
-            handleSaveRef.current()
-          },
-        }),
-      ],
-      content: initialContent,
-      editorProps: {
-        attributes: {
-          class: cn(
-            'prose prose-sm prose-p:my-0 focus:outline-hidden max-w-none',
-            'dark:prose-invert'
-          ),
+  // Initialize mention editor using the inline-picker system
+  const { editor, suggestionState, insertMention, closePicker } = useMentionEditor({
+    initialContent,
+    placeholder: 'What needs to be done? Use @ to assign members...',
+    editable: true,
+    className: cn(
+      'prose prose-sm prose-p:my-0 focus:outline-hidden max-w-none',
+      'dark:prose-invert'
+    ),
+    extensions: [
+      SubmitOnEnter.configure({
+        isExpanded: () => false,
+        onSubmit: () => {
+          handleSaveRef.current()
         },
-      },
-    },
-    [teamMembers, fetchMentionItems]
-  )
+      }),
+    ],
+  })
 
   /**
    * Handle editor text change - auto-set deadline if not manually set
@@ -318,9 +274,19 @@ export function TaskDialog({
   // Update handleSaveRef with current handleSave function
   handleSaveRef.current = handleSave
 
+  /**
+   * Handle Escape key - prevent dialog close when inside command picker
+   */
+  const handleEscapeKeyDown = useCallback((event: KeyboardEvent) => {
+    // If ESC is pressed from within a command picker, prevent dialog close
+    if (event.target instanceof HTMLElement && event.target.closest('[cmdk-root]')) {
+      event.preventDefault()
+    }
+  }, [])
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent position="tc" size="xl" innerClassName="p-0">
+      <DialogContent position="tc" size="xl" innerClassName="p-0" onEscapeKeyDown={handleEscapeKeyDown}>
         <DialogHeader className="border-b px-3 py-2 mb-0 h-10 ">
           <DialogTitle className="text-base font-medium">
             {mode === 'create' ? 'Create task' : 'Edit task'}
@@ -329,8 +295,31 @@ export function TaskDialog({
         </DialogHeader>
 
         {/* Editor Area */}
-        <div className="p-4">
+        <div ref={containerRef} className="p-4 relative">
           <EditorContent editor={editor} className="w-full bg-transparent text-sm outline-hidden" />
+
+          {/* Mention Picker Popover */}
+          <InlinePickerPopover
+            state={suggestionState}
+            containerRef={containerRef}
+            width={280}
+            onClose={closePicker}
+          >
+            <ActorPickerContent
+              value={[]}
+              onChange={() => {}}
+              target="user"
+              multi={false}
+              onSelectSingle={(actorId) => {
+                insertMention(actorId)
+                // Add to assignees if not already present
+                setAssigneeActorIds((prev) =>
+                  prev.includes(actorId) ? prev : [...prev, actorId]
+                )
+              }}
+              placeholder="Search team members..."
+            />
+          </InlinePickerPopover>
         </div>
 
         {/* Footer with pickers and actions (merged inline) */}

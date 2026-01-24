@@ -6,7 +6,7 @@ import { useRelationship } from '~/components/resources'
 import { extractRelationshipRecordIds } from '@auxx/lib/field-values/client'
 import DisplayWrapper from './display-wrapper'
 import { ItemsListView, type ItemsListItem } from '~/components/ui/items-list-view'
-import { ResourceBadge } from '~/components/resources/ui/resource-badge'
+import { RecordBadge } from '~/components/resources/ui/record-badge'
 import type { RecordId } from '@auxx/lib/resources/client'
 
 /** Relationship item for ItemsListView */
@@ -16,7 +16,7 @@ interface RelationshipItem extends ItemsListItem {
 
 /**
  * Display component for RELATIONSHIP field type
- * Renders related entities using ResourceBadge component
+ * Renders related entities using RecordBadge component
  * Extracts relatedEntityDefinitionId from TypedFieldValue for hydration
  */
 export function DisplayRelationship() {
@@ -44,7 +44,7 @@ export function DisplayRelationship() {
       <ItemsListView
         items={relationshipItems}
         emptyContent={<span className="text-muted-foreground">-</span>}
-        renderItem={(item) => <ResourceBadge recordId={item.recordId} />}
+        renderItem={(item) => <RecordBadge recordId={item.recordId} />}
       />
     </DisplayWrapper>
   )

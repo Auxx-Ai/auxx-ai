@@ -1,4 +1,4 @@
-// apps/web/src/components/resources/utils/get-resource-link.ts
+// apps/web/src/components/resources/utils/get-record-link.ts
 
 'use client'
 
@@ -8,9 +8,9 @@ import { parseRecordId, getDefinitionId, isSystemResource } from '@auxx/lib/reso
 import { useResourceStore } from '../store/resource-store'
 
 /**
- * Options for generating resource links
+ * Options for generating record links
  */
-export interface GetResourceLinkOptions {
+export interface GetRecordLinkOptions {
   /**
    * Which tab to open (e.g., 'overview', 'activity', 'relationships', 'history')
    * Will be appended as a query parameter: ?tab=overview
@@ -61,7 +61,7 @@ export interface GetResourceLinkOptions {
 }
 
 /**
- * Pure function to generate a link to a resource detail page
+ * Pure function to generate a link to a record detail page
  *
  * @param recordId - RecordId in format "entityDefinitionId:entityInstanceId"
  * @param resource - The resource object (system or custom)
@@ -70,12 +70,12 @@ export interface GetResourceLinkOptions {
  *
  * @example
  * // Basic usage
- * const link = getResourceLink('contact:abc123', contactResource)
+ * const link = getRecordLink('contact:abc123', contactResource)
  * // Returns: '/app/contacts/abc123'
  *
  * @example
  * // With options
- * const link = getResourceLink('contact:abc123', contactResource, {
+ * const link = getRecordLink('contact:abc123', contactResource, {
  *   tab: 'activity',
  *   action: 'edit',
  *   query: { filter: 'recent' }
@@ -84,15 +84,15 @@ export interface GetResourceLinkOptions {
  *
  * @example
  * // Custom resource
- * const link = getResourceLink('cm123:inst456', customResource, {
+ * const link = getRecordLink('cm123:inst456', customResource, {
  *   tab: 'overview'
  * })
  * // Returns: '/app/custom/companies/inst456?tab=overview'
  */
-export function getResourceLink(
+export function getRecordLink(
   recordId: RecordId,
   resource: Resource,
-  options: GetResourceLinkOptions = {}
+  options: GetRecordLinkOptions = {}
 ): string {
   const { entityInstanceId } = parseRecordId(recordId)
 
@@ -156,7 +156,7 @@ export function getResourceLink(
 }
 
 /**
- * Hook to generate a link to a resource detail page
+ * Hook to generate a link to a record detail page
  * Automatically looks up the resource from the provider
  *
  * @param recordId - RecordId in format "entityDefinitionId:entityInstanceId"
@@ -165,12 +165,12 @@ export function getResourceLink(
  *
  * @example
  * // Basic usage
- * const link = useResourceLink('contact:abc123')
+ * const link = useRecordLink('contact:abc123')
  * // Returns: '/app/contacts/abc123'
  *
  * @example
  * // With options
- * const link = useResourceLink('contact:abc123', {
+ * const link = useRecordLink('contact:abc123', {
  *   tab: 'activity',
  *   action: 'edit',
  *   query: { filter: 'recent' }
@@ -179,7 +179,7 @@ export function getResourceLink(
  *
  * @example
  * // Absolute URL
- * const link = useResourceLink('contact:abc123', {
+ * const link = useRecordLink('contact:abc123', {
  *   absolute: true,
  *   baseUrl: 'https://app.auxx.ai'
  * })
@@ -187,14 +187,14 @@ export function getResourceLink(
  *
  * @example
  * // Custom resource
- * const link = useResourceLink('cm123:inst456', {
+ * const link = useRecordLink('cm123:inst456', {
  *   tab: 'overview'
  * })
  * // Returns: '/app/custom/companies/inst456?tab=overview'
  */
-export function useResourceLink(
+export function useRecordLink(
   recordId: RecordId | null | undefined,
-  options: GetResourceLinkOptions = {}
+  options: GetRecordLinkOptions = {}
 ): string | null {
   const getResourceById = useResourceStore((s) => s.getResourceById)
 
@@ -211,6 +211,6 @@ export function useResourceLink(
     }
 
     // Use the pure function
-    return getResourceLink(recordId, resource, options)
+    return getRecordLink(recordId, resource, options)
   }, [recordId, getResourceById, options])
 }

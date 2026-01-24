@@ -194,8 +194,10 @@ export function ActorPickerContent({
 
   const isLoading = externalLoading || isSearching
   const hasSelectedSection = filteredSelectedItems.length > 0
-  const hasUsersSection = (target === 'user' || target === 'both') && groupedAvailable.users.length > 0
-  const hasGroupsSection = (target === 'group' || target === 'both') && groupedAvailable.groups.length > 0
+  const hasUsersSection =
+    (target === 'user' || target === 'both') && groupedAvailable.users.length > 0
+  const hasGroupsSection =
+    (target === 'group' || target === 'both') && groupedAvailable.groups.length > 0
   const hasResultsSection = hasUsersSection || hasGroupsSection
   const showGroupHeadings = target === 'both'
 
@@ -207,6 +209,7 @@ export function ActorPickerContent({
         onValueChange={setSearch}
         disabled={disabled}
         loading={isLoading}
+        autoFocus
       />
       <CommandList>
         <CommandEmpty>No results found</CommandEmpty>

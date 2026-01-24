@@ -11,7 +11,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Badge } from '@auxx/ui/components/badge'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
 import { type RecordId } from '@auxx/lib/resources/client'
-import { ResourceBadge } from '../resources/ui'
+import { RecordBadge } from '../resources/ui'
 
 /**
  * Props for MultiRelationInput
@@ -159,7 +159,7 @@ export function MultiRelationInput({
     return (
       <div className="flex flex-wrap gap-1 flex-1 py-0.5">
         {displayItems.map((recordId) => (
-          <ResourceBadge key={recordId} recordId={recordId} />
+          <RecordBadge key={recordId} recordId={recordId} />
         ))}
         {remainingCount > 0 && (
           <Badge variant="outline" className="text-xs">

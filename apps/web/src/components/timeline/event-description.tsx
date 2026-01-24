@@ -10,7 +10,7 @@ import {
   type TimelineEventBase,
 } from '@auxx/lib/timeline/client'
 import { StatusBadge } from './status-badge'
-import { ResourceBadge } from '~/components/resources/ui/resource-badge'
+import { RecordBadge } from '~/components/resources/ui/record-badge'
 import type { RecordId } from '@auxx/lib/resources/client'
 
 /**
@@ -80,7 +80,7 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
           )}
           {event.relatedRecordId && (
             <div className="mt-1 flex">
-              <ResourceBadge
+              <RecordBadge
                 recordId={event.relatedRecordId as RecordId}
                 showIcon
                 variant="link"
@@ -259,7 +259,7 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
           {' for'}
           {event.relatedRecordId && (
             <div className="flex-inline">
-              <ResourceBadge
+              <RecordBadge
                 recordId={event.relatedRecordId as RecordId}
                 showIcon
                 variant="link"

@@ -221,7 +221,7 @@ export class ConcurrencySemaphore {
     const redisKey = `concurrency:${key}`
 
     // Increment and check atomically
-    const newCount = await this.withTimeout(this.redis.incr(redisKey))
+    const newCount = (await this.withTimeout(this.redis.incr(redisKey))) as number
 
     // Set TTL on the key (cleanup stale entries)
     await this.withTimeout(this.redis.expire(redisKey, REDIS_KEY_TTL_SECONDS))
@@ -254,7 +254,7 @@ export class ConcurrencySemaphore {
     }
 
     const redisKey = `concurrency:${key}`
-    const newCount = await this.withTimeout(this.redis.decr(redisKey))
+    const newCount = (await this.withTimeout(this.redis.decr(redisKey))) as number
 
     // Don't let count go negative
     if (newCount < 0) {
@@ -347,12 +347,12 @@ export class ConcurrencySemaphore {
    */
   getStats(): { localKeys: number; totalWaiters: number; keys: Record<string, number> } {
     const keys: Record<string, number> = {}
-    for (const [key, count] of this.localCounts.entries()) {
+    for (const [key, count] of Array.from(this.localCounts.entries())) {
       keys[key] = count
     }
 
     let totalWaiters = 0
-    for (const waiters of this.waiters.values()) {
+    for (const waiters of Array.from(this.waiters.values())) {
       totalWaiters += waiters.length
     }
 
@@ -396,7 +396,7 @@ export class ConcurrencySemaphore {
    */
   async shutdown(): Promise<void> {
     // Reject all waiters
-    for (const [key, keyWaiters] of this.waiters.entries()) {
+    for (const [, keyWaiters] of Array.from(this.waiters.entries())) {
       for (const waiter of keyWaiters) {
         waiter.reject(new Error('Semaphore shutdown'))
       }
