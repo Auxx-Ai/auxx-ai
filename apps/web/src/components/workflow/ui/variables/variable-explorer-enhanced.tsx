@@ -397,7 +397,6 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
     },
     [groups, allVariables]
   )
-
   // Focus command root after mount to enable keyboard navigation
   useEffect(() => {
     focusCommandRoot()
@@ -474,7 +473,12 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
           }
         }}>
         {/* Search and Filters */}
-        <CommandInput placeholder={placeholder} value={search} onValueChange={setSearch} />
+        <CommandInput
+          placeholder={placeholder}
+          value={search}
+          onValueChange={setSearch}
+          autoFocus
+        />
 
         {search ? (
           <div className="h-9 bg-neutral-50 dark:bg-primary-500/50 flex items-center px-1 border-b shrink-0 backdrop-blur-sm">

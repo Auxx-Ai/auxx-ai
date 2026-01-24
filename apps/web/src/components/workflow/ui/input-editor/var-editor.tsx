@@ -1,11 +1,13 @@
-import React, { useCallback, useEffect, useState } from 'react'
+// apps/web/src/components/workflow/ui/input-editor/var-editor.tsx
+
+import React, { useCallback, useEffect, useState, useRef } from 'react'
 
 import { cn } from '@auxx/ui/lib/utils'
 import { cva, type VariantProps } from 'class-variance-authority'
 
 import { EditorContent } from '@tiptap/react'
 import { type VarEditorProps } from './types'
-import { useTiptapTags } from './use-tiptap-tags'
+import { useWorkflowVariableEditor } from './hooks/use-workflow-variable-editor'
 import { Button } from '@auxx/ui/components/button'
 import { ChevronsLeftRightEllipsis, X } from 'lucide-react'
 import { Tooltip, TooltipExplanation } from '~/components/global/tooltip'
@@ -13,6 +15,8 @@ import { VariablePicker } from '~/components/workflow/ui/variables/variable-pick
 import { VAR_MODE, BaseType, type UnifiedVariable } from '~/components/workflow/types'
 import { containsVariableReference } from '~/components/workflow/utils/variable-utils'
 import { getDefaultValueForType } from '@auxx/lib/workflow-engine/client'
+import { InlinePickerPopover } from '~/components/editor/inline-picker'
+import { VariableExplorerEnhanced } from '../variables/variable-explorer-enhanced'
 
 import VariableTag from '../variables/variable-tag'
 import { VarTypeIcon } from '../../utils'
@@ -146,6 +150,8 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
     defaultIsConstantMode = false,
     hideClearButton = false,
   }) => {
+    const containerRef = useRef<HTMLDivElement>(null)
+
     // Determine if controlled
     const isControlled = controlledIsConstantMode !== undefined
 
@@ -164,13 +170,27 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
 
     // Merge varType and allowedTypes for comprehensive filtering
     const finalAllowedTypes = allowedTypes.length > 0 ? allowedTypes : expectedTypes
-    const { editor, stringContent, setContent, flushPendingChanges, isFocused } = useTiptapTags({
+
+    const {
+      editor,
+      suggestionState,
+      insertVariable,
+      closePicker,
+      getStringContent,
+      setContent,
+      flushPendingChanges,
+      isFocused,
+    } = useWorkflowVariableEditor({
       initialContent: isConstantMode ? '' : value,
       onContentChange: isConstantMode ? undefined : (content) => onChange?.(content, false),
       expectedTypes: finalAllowedTypes,
-      editorOptions: { placeholder },
+      placeholder,
       nodeId,
+      editable: !disabled && !readOnly,
     })
+
+    // Get string content for comparison
+    const stringContent = getStringContent()
 
     // Handle ConstantInput changes
     const handleConstantInputChange = useCallback(
@@ -207,7 +227,7 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
         // Clear variable editor and set empty value
         setTimeout(() => {
           setContent('')
-          onChange?.(undefined, false)
+          onChange?.('', false)
         }, 0)
       } else {
         // Switching from variable to constant mode
@@ -242,12 +262,12 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
     const handleClearContent = useCallback(() => {
       if (isConstantMode) {
         setConstantValue('')
-        onChange?.(undefined, true)
+        onChange?.('', true)
       } else {
         // Defer the content update to avoid flushSync during render
         setTimeout(() => {
           setContent('')
-          onChange?.(undefined, false)
+          onChange?.('', false)
         }, 0)
       }
     }, [isConstantMode, setContent, onChange])
@@ -290,6 +310,7 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
 
     return (
       <div
+        ref={containerRef}
         className={cn(
           'group/editor input-editor-wrapper relative flex items-start gap-0.5 flex-1 shrink-0 items-stretch',
           showReadOnlyOverlay && 'opacity-50 cursor-not-allowed',
@@ -347,6 +368,21 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
             className="input-editor-field flex-1 w-full pt-[6.5px] pb-[4px] focus:outline-none focus:ring-0 h-full [&>*:first-child]:focus:outline-none"
           />
         )}
+
+        {/* Variable picker popover for rich mode */}
+        <InlinePickerPopover
+          state={suggestionState}
+          containerRef={containerRef}
+          onClose={closePicker}
+          width={400}>
+          <VariableExplorerEnhanced
+            nodeId={nodeId}
+            onVariableSelect={(variable) => insertVariable(variable.id)}
+            allowedTypes={finalAllowedTypes}
+            className="max-h-[400px]"
+            placeholder="Type in editor to filter..."
+          />
+        </InlinePickerPopover>
 
         {!readOnly &&
           !hideClearButton &&

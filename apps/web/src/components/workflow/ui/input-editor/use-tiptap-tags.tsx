@@ -1,3 +1,14 @@
+/**
+ * @deprecated This hook uses the old Tippy.js-based workflow-variable-picker-extension.
+ * Use useWorkflowVariableEditor from ./hooks/use-workflow-variable-editor instead,
+ * which provides:
+ * - Cleaner React-driven UI with InlinePickerPopover
+ * - No synthetic keyboard events
+ * - Better separation of concerns
+ *
+ * This file is kept for backwards compatibility with var-editor.tsx.
+ */
+
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'

@@ -190,6 +190,7 @@ export function WorkflowFormDialog(props: WorkflowFormDialogProps) {
                   placeholder="Enter workflow name"
                   disabled={isPending}
                   required
+                  autoFocus
                 />
               </InputGroup>
             </div>

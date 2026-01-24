@@ -1,5 +1,13 @@
 // apps/web/src/components/workflow/prompt-editor/extensions/workflow-variable-picker-extension.tsx
 
+/**
+ * @deprecated This extension uses Tippy.js for positioning and synthetic keyboard events.
+ * Use useWorkflowVariableEditor from ~/components/workflow/ui/input-editor/hooks instead,
+ * which provides a cleaner React-driven UI with InlinePickerPopover.
+ *
+ * This file is kept for backwards compatibility with var-editor.tsx and use-tiptap-tags.tsx.
+ */
+
 import { Extension } from '@tiptap/core'
 import { ReactRenderer } from '@tiptap/react'
 import Suggestion from '@tiptap/suggestion'

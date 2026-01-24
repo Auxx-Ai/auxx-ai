@@ -12,7 +12,8 @@ export { default as PromptEditorContent } from './prompt-editor-content'
 export { default as PromptEditorWrapper } from './prompt-editor-wrapper'
 export { default as TiptapPromptEditor } from './tiptap-prompt-editor'
 
-// Extensions
+// Extensions (DEPRECATED - use useWorkflowVariableEditor from input-editor/hooks instead)
+// These exports are kept for backwards compatibility with var-editor.tsx
 export {
   WorkflowVariablePickerExtension,
   createWorkflowVariablePickerExtension,

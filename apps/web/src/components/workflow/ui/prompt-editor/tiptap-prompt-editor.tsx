@@ -1,21 +1,20 @@
-// apps/web/src/components/workflow/prompt-editor/tiptap-prompt-editor.tsx
+// apps/web/src/components/workflow/ui/prompt-editor/tiptap-prompt-editor.tsx
 
 'use client'
 
-import React, { useEffect } from 'react'
+import React, { useRef, useCallback, useEffect } from 'react'
 import { EditorContent } from '@tiptap/react'
 import { cn } from '@auxx/ui/lib/utils'
 import { usePromptEditorContext } from './prompt-editor-context'
-import { PluginKey } from '@tiptap/pm/state'
+import { InlinePickerPopover } from '~/components/editor/inline-picker'
+import { VariableExplorerEnhanced } from '../variables/variable-explorer-enhanced'
+import { useWorkflowVariableEditor } from '../input-editor/hooks/use-workflow-variable-editor'
 import './tiptap-prompt-editor.css'
-import { useTiptapTags } from '../input-editor/use-tiptap-tags'
-
-// Plugin key for the workflow variable picker suggestion
-const suggestionPluginKey = new PluginKey('workflow-variable-picker-suggestion')
 
 /**
- * Core TiptapPromptEditor component
- * Uses context instead of props to eliminate prop drilling
+ * Core TiptapPromptEditor component.
+ * Uses context instead of props to eliminate prop drilling.
+ * Uses the new inline-picker system for React-driven variable picker UI.
  */
 const TiptapPromptEditor: React.FC = () => {
   const {
@@ -33,46 +32,40 @@ const TiptapPromptEditor: React.FC = () => {
     nodeId,
   } = usePromptEditorContext()
 
-  // Helper to determine if content is JSON
-  const isJsonContent = (content: string): boolean => {
-    if (!content || typeof content !== 'string') return false
-    try {
-      const parsed = JSON.parse(content)
-      return parsed && typeof parsed === 'object' && parsed.type
-    } catch {
-      return false
-    }
-  }
+  const containerRef = useRef<HTMLDivElement>(null)
 
-  // Ref to track the latest content for blur handler
-  // Initialize with the current value
-  const latestContentRef = React.useRef<string>(value || '')
+  // Multi-line editor needs different className (no whitespace-nowrap)
+  const editorClassName = cn(
+    'prose prose-sm max-w-none focus:outline-none flex-1',
+    compact ? 'text-[13px] leading-5' : 'text-sm leading-5',
+    'text-primary-500',
+    'prose-p:my-0 prose-ul:my-1 prose-li:my-0',
+    className,
+    inputClassName
+  )
 
-  const { editor, isFocused, setContent } = useTiptapTags({
-    editorOptions: {
-      className: cn(
-        'prose prose-sm max-w-none focus:outline-none flex-1',
-        // Compact mode styling
-        compact ? 'text-[13px] leading-5' : 'text-sm leading-5',
-        // Text color
-        'text-primary-500',
-        // Remove default prose margins for workflow context
-        'prose-p:my-0 prose-ul:my-1 prose-li:my-0',
-        className,
-        inputClassName
-      ),
-      placeholder,
-    },
+  const {
+    editor,
+    suggestionState,
+    insertVariable,
+    closePicker,
+    isFocused,
+    setContent,
+    flushPendingChanges,
+  } = useWorkflowVariableEditor({
     initialContent: value,
+    placeholder,
+    className: editorClassName,
+    nodeId,
     onContentChange: onChange,
     onBlur,
-    nodeId,
+    editable,
   })
 
+  // Update context focus state when isFocused changes
   useEffect(() => {
-    // Update the editor's focus state when isFocused changes
     setFocused(isFocused)
-  }, [isFocused])
+  }, [isFocused, setFocused])
 
   // Store editor reference in context for external access
   useEffect(() => {
@@ -84,54 +77,63 @@ const TiptapPromptEditor: React.FC = () => {
     if (editor) {
       const textContent = editor.getText()
       setCharacterCount(textContent.length)
-
-      // If initial value was HTML, convert to JSON format for future saves
-      if (value && !isJsonContent(value)) {
-        const jsonContent = JSON.stringify(editor.getJSON())
-        latestContentRef.current = jsonContent
-      }
     }
-  }, [editor, editorRef, setCharacterCount, value])
+  }, [editor, editorRef, setCharacterCount])
 
-  // Clean up editor on unmount
+  // Handle component unmount - flush any pending changes
   useEffect(() => {
     return () => {
-      editor?.destroy()
+      flushPendingChanges()
     }
-  }, [editor])
-
-  // Update nodeId in editor storage when it changes
-  useEffect(() => {
-    if (editor && nodeId !== undefined) {
-      editor.storage.nodeId = nodeId
-    }
-  }, [editor, nodeId])
+  }, [flushPendingChanges])
 
   // Sync external value changes to editor (e.g., from Apply button in generate dialog)
   useEffect(() => {
     if (editor && value !== undefined) {
-      // Only update if the value is different from what the editor has
-      // This prevents resetting the editor when the user is typing
       setContent(value)
     }
   }, [value, editor, setContent])
 
+  /**
+   * Handle Escape key - prevent parent dialog close when inside command picker
+   */
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Escape' && e.target instanceof HTMLElement && e.target.closest('[cmdk-root]')) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+  }, [])
+
   const showReadOnlyOverlay = !editable
 
   return (
-    <div className="relative flex-1 min-h-0 flex">
+    <div
+      ref={containerRef}
+      className="relative flex-1 min-h-0 flex"
+      onKeyDown={handleKeyDown}>
       <EditorContent
         editor={editor}
         className={cn(
-          // Base container styling
           'min-h-[56px] w-full flex-1 flex',
-          // Match existing editor styling
           compact ? 'text-[13px] leading-5' : 'text-sm leading-6',
-          // Focus and interaction states
           'outline-none ring-0 focus-within:outline-none',
           className
         )}
       />
+
+      {/* Variable picker popover */}
+      <InlinePickerPopover
+        state={suggestionState}
+        containerRef={containerRef}
+        onClose={closePicker}
+        width={400}>
+        <VariableExplorerEnhanced
+          nodeId={nodeId}
+          onVariableSelect={(variable) => insertVariable(variable.id)}
+          className="max-h-[400px]"
+          placeholder="Type in editor to filter..."
+        />
+      </InlinePickerPopover>
 
       {showReadOnlyOverlay && <div className="absolute inset-0 z-10" />}
     </div>
