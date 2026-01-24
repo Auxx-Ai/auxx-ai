@@ -138,8 +138,8 @@ export interface UseInlinePickerReturn {
 export interface InlinePickerPopoverProps {
   /** Current suggestion state */
   state: InlinePickerState
-  /** Reference to the container element for relative positioning */
-  containerRef: React.RefObject<HTMLElement | null>
+  /** @deprecated No longer used - popover uses fixed positioning via portal */
+  containerRef?: React.RefObject<HTMLElement | null>
   /** Picker content to render */
   children: React.ReactNode
   /** Additional class names */

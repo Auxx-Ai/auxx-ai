@@ -211,7 +211,9 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
       if (field.type === BaseType.RELATION) {
         if (field.relationship) {
           // Primary path: Use getRelatedEntityDefinitionId helper - cast to BaseType for type safety
-          const relatedEntityId = getRelatedEntityDefinitionId(field.relationship as RelationshipConfig)
+          const relatedEntityId = getRelatedEntityDefinitionId(
+            field.relationship as RelationshipConfig
+          )
           if (relatedEntityId) {
             allowedTypes.push(relatedEntityId as BaseType)
           }
@@ -226,7 +228,6 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
         // For non-relation fields, allow matching type
         allowedTypes.push(field.type)
       }
-      console.log('Allowed types for field', field.key, ':', allowedTypes)
 
       return (
         <VarEditorFieldRow

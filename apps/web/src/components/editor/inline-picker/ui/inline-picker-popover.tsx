@@ -2,60 +2,82 @@
 
 'use client'
 
-import React, { useRef, useEffect, useState } from 'react'
+import React, { useRef } from 'react'
 import { cn } from '@auxx/ui/lib/utils'
+import {
+  Popover,
+  PopoverAnchor,
+  PopoverContentDialogAware,
+} from '@auxx/ui/components/popover'
 import type { InlinePickerPopoverProps } from '../types'
 
 /**
  * Positioned popover for inline picker content.
- * Calculates position relative to the container based on cursor position.
+ * Uses Radix Popover with virtual anchor to escape overflow constraints.
  *
  * Features:
- * - Auto-focuses the search input (cmdk-input) when opened
+ * - Renders via portal (body or dialog portal container)
+ * - Uses virtual ref for positioning (works inside CSS transforms)
+ * - Auto-focuses the command input when opened
  * - Handles Escape key to close the popover
  * - Prevents editor blur on mouse interactions
  */
 export function InlinePickerPopover({
   state,
-  containerRef,
   children,
   className,
   width = 280,
   onClose,
   autoFocus = true,
 }: InlinePickerPopoverProps) {
-  const [position, setPosition] = useState<{ top: number; left: number } | null>(null)
-  const popoverRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+  // Cache the last valid clientRect to prevent position jump on close
+  const lastRectRef = useRef<DOMRect>(new DOMRect())
 
-  // Calculate position when state changes
-  useEffect(() => {
-    if (state.isOpen && state.clientRect && containerRef.current) {
-      const containerRect = containerRef.current.getBoundingClientRect()
-      const cursorRect = state.clientRect
+  // Update cached rect when we have a valid one
+  if (state.clientRect) {
+    lastRectRef.current = state.clientRect
+  }
 
-      // Position below cursor, aligned to left of trigger
-      setPosition({
-        top: cursorRect.bottom - containerRect.top + 4, // 4px gap
-        left: Math.max(0, cursorRect.left - containerRect.left),
+  // Virtual anchor ref that returns cursor position
+  // Uses cached rect to maintain position during close animation
+  const virtualRef = useRef({
+    getBoundingClientRect: () => lastRectRef.current,
+  })
+
+  // Focus the command input when popover opens
+  const handleOpenAutoFocus = (e: Event) => {
+    // Prevent default focus behavior - we handle it manually
+    e.preventDefault()
+
+    if (!autoFocus) return
+
+    // Use RAF to ensure content is fully rendered
+    requestAnimationFrame(() => {
+      const input = contentRef.current?.querySelector<HTMLInputElement>('[cmdk-input]')
+      console.log('[InlinePickerPopover] onOpenAutoFocus', {
+        foundInput: !!input,
+        hasContentRef: !!contentRef.current,
+        activeElement: document.activeElement?.tagName,
       })
-    } else {
-      setPosition(null)
+      if (input) {
+        input.focus()
+        console.log('[InlinePickerPopover] Called input.focus()', {
+          nowActiveElement: document.activeElement?.tagName,
+          isSameAsInput: document.activeElement === input,
+        })
+      }
+    })
+  }
+
+  // Handle popover close
+  const handleOpenChange = (open: boolean) => {
+    if (!open) {
+      onClose?.()
     }
-  }, [state.isOpen, state.clientRect, containerRef])
+  }
 
-  // Auto-focus the command input when popover opens
-  // useEffect(() => {
-  //   if (state.isOpen && autoFocus && popoverRef.current) {
-  //     // Small delay to ensure content is rendered
-  //     const timer = setTimeout(() => {
-  //       const input = popoverRef.current?.querySelector<HTMLInputElement>('[cmdk-input]')
-  //       input?.focus()
-  //     }, 10)
-  //     return () => clearTimeout(timer)
-  //   }
-  // }, [state.isOpen, autoFocus])
-
-  // Handle keyboard events
+  // Handle escape key within content
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
       e.preventDefault()
@@ -64,23 +86,30 @@ export function InlinePickerPopover({
     }
   }
 
-  // Don't render if not open or no position
-  if (!state.isOpen || !position) return null
-
   return (
-    <div
-      ref={popoverRef}
-      className={cn('absolute z-50 rounded-md border bg-popover shadow-md', className)}
-      style={{
-        top: position.top,
-        left: position.left,
-        width: width === 'auto' ? 'auto' : width,
-        maxHeight: 300,
-        overflow: 'auto',
-      }}
-      onMouseDown={(e) => e.preventDefault()} // Prevent editor blur
-      onKeyDown={handleKeyDown}>
-      {children}
-    </div>
+    <Popover open={state.isOpen} onOpenChange={handleOpenChange}>
+      {/* Virtual anchor positioned at cursor - works inside CSS transforms */}
+      <PopoverAnchor virtualRef={virtualRef} />
+
+      <PopoverContentDialogAware
+        ref={contentRef}
+        className={cn('p-0 overflow-hidden', className)}
+        style={{ width: width === 'auto' ? 'auto' : width }}
+        side="bottom"
+        align="start"
+        sideOffset={4}
+        onOpenAutoFocus={handleOpenAutoFocus}
+        onCloseAutoFocus={(e) => {
+          // Prevent focus returning to trigger (there is no trigger)
+          e.preventDefault()
+        }}
+        onMouseDown={(e) => {
+          // Prevent editor blur when clicking in popover
+          e.preventDefault()
+        }}
+        onKeyDown={handleKeyDown}>
+        {children}
+      </PopoverContentDialogAware>
+    </Popover>
   )
 }

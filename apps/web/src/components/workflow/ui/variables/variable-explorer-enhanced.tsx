@@ -134,6 +134,14 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
 
   const { variables, groups, allVariables } = useAvailableVariables({ nodeId })
 
+  // Debug: log component mount
+  useEffect(() => {
+    console.log('[VariableExplorerEnhanced] Component mounted', {
+      activeElement: document.activeElement?.tagName,
+      activeElementId: document.activeElement?.id,
+    })
+  }, [])
+
   // Get nodes from React Flow store for loop context resolution
   const nodes = useStore((state) => state.nodes)
 
@@ -336,9 +344,17 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
 
   // Focus command root - reusable helper to restore focus after actions
   const focusCommandRoot = useCallback(() => {
+    console.log('[VariableExplorerEnhanced] focusCommandRoot called', new Error().stack)
     setTimeout(() => {
       const cmdRoot = commandRef.current?.querySelector(CONSTANTS.CMDK_ROOT_SELECTOR) as HTMLElement
+      console.log('[VariableExplorerEnhanced] focusCommandRoot setTimeout', {
+        foundCmdRoot: !!cmdRoot,
+        activeElementBefore: document.activeElement?.tagName,
+      })
       cmdRoot?.focus()
+      console.log('[VariableExplorerEnhanced] after cmdRoot.focus()', {
+        activeElementAfter: document.activeElement?.tagName,
+      })
     }, CONSTANTS.FOCUS_DELAY_MS)
   }, [])
 
@@ -397,11 +413,6 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
     },
     [groups, allVariables]
   )
-  // Focus command root after mount to enable keyboard navigation
-  useEffect(() => {
-    focusCommandRoot()
-  }, [focusCommandRoot])
-
   // Navigate to selected variable on mount or when selected changes
   useEffect(() => {
     if (!selected || hasManuallyNavigated) return
@@ -421,6 +432,7 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
           setSelectedItemId(value)
         }}
         onKeyDown={(e) => {
+          console.log('Key down in command:', e.key)
           // Handle navigation keys regardless of which element has focus
           if (e.key === 'ArrowLeft' && navigationStack.length > 0) {
             e.preventDefault()
