@@ -2,6 +2,7 @@
 
 import { CONTACT_HOOKS } from './contact-hooks'
 import { TICKET_HOOKS } from './ticket-hooks'
+import { COMMON_HOOKS } from './common-hooks'
 import type { SystemHook, SystemHookRegistry } from './types'
 
 /**
@@ -70,4 +71,14 @@ export function getHooksForAttribute(
 export function hasSystemHooks(entityType: string | null): boolean {
   if (!entityType) return false
   return entityType in HOOKS_BY_ENTITY_TYPE
+}
+
+/**
+ * Get common hooks that run for ALL entity types.
+ * These hooks are for system attributes shared across all entities (e.g., created_by_id).
+ *
+ * @returns Registry of common hooks keyed by systemAttribute
+ */
+export function getCommonHooks(): SystemHookRegistry {
+  return COMMON_HOOKS
 }

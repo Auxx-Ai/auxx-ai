@@ -52,6 +52,10 @@ export interface CreateCustomFieldInput {
   isUnique?: boolean
   /** System attribute identifier (e.g., 'full_name', 'primary_email') */
   systemAttribute?: string
+  /** Whether this field can be set during entity creation (default: true) */
+  isCreatable?: boolean
+  /** Whether this field can be modified after creation (default: true) */
+  isUpdatable?: boolean
 }
 
 /**
@@ -106,6 +110,8 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
     relationship,
     isUnique = false,
     systemAttribute,
+    isCreatable,
+    isUpdatable,
   } = input
 
   // Use provided transaction or default to global database
@@ -299,12 +305,17 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
   const lastSortOrder = lastFieldResult.value[0]?.sortOrder ?? null
   const newSortOrder = generateKeyBetween(lastSortOrder, null)
 
-  // Determine capability flags based on field type
+  // Determine capability flags based on field type and explicit inputs
   // CALC fields are computed and should not be manually creatable or updatable
+  // Explicit isCreatable/isUpdatable values override defaults
   const isCalcField = type === FieldTypeEnum.CALC
-  const capabilityFlags = isCalcField
-    ? { isCreatable: false, isUpdatable: false, isComputed: true }
-    : {}
+  const capabilityFlags = {
+    ...(isCalcField && { isComputed: true }),
+    ...(isCreatable !== undefined && { isCreatable }),
+    ...(isUpdatable !== undefined && { isUpdatable }),
+    ...(isCalcField && isCreatable === undefined && { isCreatable: false }),
+    ...(isCalcField && isUpdatable === undefined && { isUpdatable: false }),
+  }
 
   // Insert field using provided db context
   const insertResult = await fromDatabase(

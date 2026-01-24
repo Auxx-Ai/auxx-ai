@@ -84,8 +84,10 @@ export async function setValue(
   const fieldType = field.type as FieldType
 
   // 2. Convert raw value to typed input using formatter
+  const fieldOptions = field.options as { actor?: { multiple?: boolean } } | undefined
   const typedInput = formatToTypedInput(value, fieldType, {
     selectOptions: field.options as { id?: string; value: string; label: string }[] | undefined,
+    fieldOptions,
   })
 
   // Handle null/delete case
@@ -98,7 +100,7 @@ export async function setValue(
   // 3. Determine strategy and execute
   let result: TypedFieldValue[]
 
-  if (isMultiValueFieldType(fieldType)) {
+  if (isMultiValueFieldType(fieldType, fieldOptions)) {
     // Multi-value: DELETE all + INSERT all
     result = await setMultiValue(ctx, recordId, fieldId, fieldType, typedInput)
   } else {

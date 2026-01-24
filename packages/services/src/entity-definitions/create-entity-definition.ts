@@ -84,6 +84,7 @@ export async function createEntityDefinition(params: CreateEntityDefinitionParam
   }
 
   // Auto-create createdBy field for custom entities
+  // This field is auto-populated by the system and cannot be manually set or modified
   await createCustomField({
     organizationId,
     entityDefinitionId: created.id,
@@ -92,6 +93,8 @@ export async function createEntityDefinition(params: CreateEntityDefinitionParam
     systemAttribute: CREATED_BY_FIELD_CONFIG.systemAttribute,
     isCustom: false,
     required: false,
+    isCreatable: false,
+    isUpdatable: false,
     options: {
       actor: CREATED_BY_FIELD_CONFIG.actorOptions,
     },

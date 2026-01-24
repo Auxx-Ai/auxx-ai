@@ -317,24 +317,44 @@ export const typedFieldValueInputSchema = z.discriminatedUnion('type', [
 // UTILITY FUNCTIONS
 // =============================================================================
 
+/** Options for actor field type */
+export interface ActorFieldOptions {
+  multiple?: boolean
+  target?: 'user' | 'group' | 'both'
+}
+
 /**
  * Check if a field type supports multiple values.
  * Used for WRITE operations to determine DELETE+INSERT vs UPSERT strategy.
  * @param fieldType - The database field type
+ * @param options - Optional field options (for ACTOR fields with multiple: true)
  * @returns True if field can have multiple values
  */
-export function isMultiValueFieldType(fieldType: string): boolean {
-  return MULTI_VALUE_FIELD_TYPES.has(fieldType)
+export function isMultiValueFieldType(
+  fieldType: string,
+  options?: { actor?: ActorFieldOptions }
+): boolean {
+  if (MULTI_VALUE_FIELD_TYPES.has(fieldType)) return true
+  // ACTOR is conditionally multi-value based on options
+  if (fieldType === 'ACTOR' && options?.actor?.multiple) return true
+  return false
 }
 
 /**
  * Check if a field type should return values as an array.
  * Used for READ operations (getValue, batchGetValues, etc).
  * @param fieldType - The database field type
+ * @param options - Optional field options (for ACTOR fields with multiple: true)
  * @returns True if getValue/batchGetValues should return array
  */
-export function isArrayReturnFieldType(fieldType: string): boolean {
-  return ARRAY_RETURN_FIELD_TYPES.has(fieldType)
+export function isArrayReturnFieldType(
+  fieldType: string,
+  options?: { actor?: ActorFieldOptions }
+): boolean {
+  if (ARRAY_RETURN_FIELD_TYPES.has(fieldType)) return true
+  // ACTOR is conditionally array-return based on options
+  if (fieldType === 'ACTOR' && options?.actor?.multiple) return true
+  return false
 }
 
 /**

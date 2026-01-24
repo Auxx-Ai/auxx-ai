@@ -56,7 +56,8 @@ function extractActorId(val: unknown): ActorId | null {
 export function ActorInputField() {
   const { value, field, commitValue, onBeforeClose } = usePropertyContext()
   const nav = useFieldNavigationOptional()
-  const options = field.options as ActorFieldOptions | undefined
+  // Field options are stored as { actor: { multiple, target, ... } }
+  const options = (field.options as { actor?: ActorFieldOptions })?.actor
 
   // Normalize value to array for picker
   // Value can be ActorId string, object { actorType, id, actorId }, or array
@@ -91,6 +92,7 @@ export function ActorInputField() {
   }, [currentActorIds])
 
   // Register save handler for popover close - fire-and-forget
+  const isMultiple = options?.multiple ?? false
   useEffect(() => {
     onBeforeClose.current = () => {
       const current = localActorIdsRef.current
@@ -101,15 +103,19 @@ export function ActorInputField() {
         current.length !== original.length || current.some((id) => !original.includes(id))
 
       if (hasChanged) {
-        // For single-select (no multiple option currently), store as single value
-        // For future multi-select support, store as array
-        commitValue(current.length === 1 ? current[0] : current.length === 0 ? null : current)
+        if (isMultiple) {
+          // Multi-select: always pass array (even empty) for DELETE+INSERT strategy
+          commitValue(current.length === 0 ? null : current)
+        } else {
+          // Single-select: unwrap to single value
+          commitValue(current.length === 0 ? null : current[0])
+        }
       }
     }
     return () => {
       onBeforeClose.current = undefined
     }
-  }, [onBeforeClose, currentActorIds, commitValue])
+  }, [onBeforeClose, currentActorIds, commitValue, isMultiple])
 
   /**
    * Handle selection change from ActorPickerContent
@@ -133,7 +139,7 @@ export function ActorInputField() {
       value={localActorIds}
       onChange={handleChange}
       target={options?.target}
-      multi={false}
+      multi={options?.multiple ?? false}
       onCaptureChange={handleCaptureChange}
       placeholder="Search..."
     />

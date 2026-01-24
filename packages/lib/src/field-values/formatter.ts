@@ -1,10 +1,15 @@
 // packages/lib/src/field-values/formatter.ts
 
-import type { TypedFieldValue, TypedFieldValueInput } from '@auxx/types/field-value'
+import type { TypedFieldValue, TypedFieldValueInput, ActorFieldOptions } from '@auxx/types/field-value'
 import {
   isMultiValueFieldType as isMultiValueType,
   isArrayReturnFieldType as isArrayReturnType,
 } from '@auxx/types/field-value'
+
+/** Options for field type checking with actor support */
+export interface FieldTypeOptions {
+  actor?: ActorFieldOptions
+}
 import {
   converters,
   type FieldValueConverter,
@@ -47,12 +52,12 @@ function getConverter(fieldType: FieldType): FieldValueConverter {
 export function formatToTypedInput(
   value: unknown,
   fieldType: FieldType,
-  options?: ConverterOptions
+  options?: ConverterOptions & { fieldOptions?: FieldTypeOptions }
 ): TypedFieldValueInput | TypedFieldValueInput[] | null {
   const converter = getConverter(fieldType)
 
   // Handle arrays for multi-value field types
-  if (Array.isArray(value) && isMultiValueFieldType(fieldType)) {
+  if (Array.isArray(value) && isMultiValueFieldType(fieldType, options?.fieldOptions)) {
     const results: TypedFieldValueInput[] = []
     for (const item of value) {
       const converted = converter.toTypedInput(item, options)
@@ -65,7 +70,7 @@ export function formatToTypedInput(
 
   // Handle arrays for single-value fields that use array format (SINGLE_SELECT)
   // UI sends arrays for uniform handling, but these are single-value fields
-  if (Array.isArray(value) && isArrayReturnFieldType(fieldType)) {
+  if (Array.isArray(value) && isArrayReturnFieldType(fieldType, options?.fieldOptions)) {
     return value.length > 0 ? converter.toTypedInput(value[0], options) : null
   }
 
@@ -158,19 +163,21 @@ export function formatToDisplayValue(
 /**
  * Check if field type stores multiple values.
  * MULTI_SELECT, TAGS, FILE, and RELATIONSHIP can have multiple values.
+ * ACTOR can also have multiple values when options.actor.multiple is true.
  * Used for WRITE operations to determine DELETE+INSERT vs UPSERT strategy.
  */
-export function isMultiValueFieldType(fieldType: FieldType): boolean {
-  return isMultiValueType(fieldType)
+export function isMultiValueFieldType(fieldType: FieldType, options?: FieldTypeOptions): boolean {
+  return isMultiValueType(fieldType, options)
 }
 
 /**
  * Check if field type should return values as an array.
  * Includes SINGLE_SELECT for uniform handling with MULTI_SELECT in UI.
+ * ACTOR can also return arrays when options.actor.multiple is true.
  * Used for READ operations (getValue, batchGetValues, etc).
  */
-export function isArrayReturnFieldType(fieldType: FieldType): boolean {
-  return isArrayReturnType(fieldType)
+export function isArrayReturnFieldType(fieldType: FieldType, options?: FieldTypeOptions): boolean {
+  return isArrayReturnType(fieldType, options)
 }
 
 /**

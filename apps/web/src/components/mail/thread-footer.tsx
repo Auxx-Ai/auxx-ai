@@ -4,6 +4,7 @@
 import React from 'react'
 import CommentComposer from '../global/comments/comment-composer'
 import { useThreadData } from './thread-provider'
+import { toRecordId } from '@auxx/lib/field-values/client'
 
 /**
  * Footer component for thread details with comments section
@@ -18,8 +19,7 @@ export function ThreadFooter() {
         <div className="padding-[16px 14px 0px 6px] flex flex-[1_1_auto] flex-row px-5">
           <CommentComposer
             key={`composer-${thread.id}`} // Reset composer if thread changes
-            entityType="Thread"
-            entityId={thread.id}
+            recordId={toRecordId('Thread', thread.id)}
           />
         </div>
       </div>

@@ -5,8 +5,17 @@ import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 import { CommentService } from '@auxx/lib/comments'
 import { createScopedLogger } from '@auxx/logger'
 import { recordIdSchema } from '@auxx/types'
+import { toRecordId } from '@auxx/types/resource'
 
 const logger = createScopedLogger('comment-router')
+
+/**
+ * Transform comment to include recordId from entityType and entityId
+ */
+const withRecordId = <T extends { entityType: string; entityId: string }>(comment: T) => ({
+  ...comment,
+  recordId: toRecordId(comment.entityType, comment.entityId),
+})
 
 // New input schemas with typed attachments
 const fileAttachmentSchema = z.object({
@@ -58,7 +67,7 @@ export const commentRouter = createTRPCRouter({
         mentions: mentionedUserIds,
       })
 
-      return comment
+      return withRecordId(comment)
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Failed to create comment'
       logger.error('Error creating comment', { error, input })
@@ -150,7 +159,7 @@ export const commentRouter = createTRPCRouter({
         })
       }
 
-      return { comment }
+      return { comment: withRecordId(comment) }
     } catch (error: unknown) {
       logger.error('Error fetching comment', { error, input })
 
@@ -181,7 +190,7 @@ export const commentRouter = createTRPCRouter({
         // Use efficient single query from CommentService
         const comments = await commentService.getCommentsByRecordId(recordId)
 
-        return { comments }
+        return { comments: comments.map(withRecordId) }
       } catch (error: unknown) {
         logger.error('Error fetching comments', { error, input })
 

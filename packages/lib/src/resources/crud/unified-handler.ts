@@ -11,7 +11,7 @@ import { FieldValueService } from '../../field-values'
 import { publisher } from '../../events/publisher'
 import { invalidateSnapshots, getOrCreateSnapshot, getSnapshotChunk } from '../../snapshot'
 import { toRecordId, parseRecordId, type RecordId } from '../resource-id'
-import { getSystemHooks } from '../hooks'
+import { getSystemHooks, getCommonHooks } from '../hooks'
 import { RecordPickerService } from '../picker'
 import type { MergeEntitiesResult } from '../merge'
 import type { ConditionGroup } from '../../conditions'
@@ -742,13 +742,23 @@ export class UnifiedCrudHandler {
     values: Record<string, unknown>,
     existingInstance?: EntityInstanceEntity
   ): Promise<Record<string, unknown>> {
-    const hooks = getSystemHooks(entityDef.entityType)
+    // Get entity-specific hooks and common hooks (run for ALL entities)
+    const entityHooks = getSystemHooks(entityDef.entityType)
+    const commonHooks = getCommonHooks()
+
+    // Merge hooks: common hooks first, then entity-specific hooks
+    // Entity-specific hooks can override common behavior if needed
+    const mergedHooks: Record<string, typeof entityHooks[string]> = { ...commonHooks }
+    for (const [attr, fns] of Object.entries(entityHooks)) {
+      mergedHooks[attr] = [...(mergedHooks[attr] ?? []), ...fns]
+    }
+
     let processedValues = { ...values }
 
     // Get all fields for the entity (needed for looking up related fields in hooks)
     const allFields = await this.getCustomFieldsCached(entityDef.id)
 
-    for (const [systemAttribute, hookFns] of Object.entries(hooks)) {
+    for (const [systemAttribute, hookFns] of Object.entries(mergedHooks)) {
       // Find field with this systemAttribute
       const field = await this.getFieldBySystemAttribute(entityDef.id, systemAttribute)
       if (!field) continue

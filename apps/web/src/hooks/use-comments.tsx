@@ -122,6 +122,7 @@ export function useComments({
   initialComments,
   onCommentAdded,
 }: UseCommentsOptions) {
+  const utils = api.useUtils()
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
   const [replyingToId, setReplyingToId] = useState<string | null>(null)
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null)
@@ -166,13 +167,12 @@ export function useComments({
   // API mutations
   const createComment = api.comment.create.useMutation({
     onSuccess: () => {
+      // Invalidate all getByRecordId queries for this recordId
+      if (recordId) {
+        utils.comment.getByRecordId.invalidate({ recordId })
+      }
       if (onCommentAdded) {
         onCommentAdded()
-      }
-      if (isSingleCommentMode) {
-        refetchSingleComment()
-      } else {
-        refetchComments()
       }
       toastSuccess({ title: 'Comment added' })
     },
@@ -184,10 +184,9 @@ export function useComments({
   const createReply = api.comment.create.useMutation({
     onSuccess: () => {
       setReplyingToId(null)
-      if (isSingleCommentMode) {
-        refetchSingleComment()
-      } else {
-        refetchComments()
+      // Invalidate all getByRecordId queries for this recordId
+      if (recordId) {
+        utils.comment.getByRecordId.invalidate({ recordId })
       }
       toastSuccess({ title: 'Reply added' })
     },
@@ -279,6 +278,7 @@ export function useComments({
 
   // Action handlers
   const handleCreateComment = async (content: string, fileAttachments?: FileAttachment[]) => {
+    console.log('handleCreateComment', recordId)
     if (!content.trim() || !recordId) return
 
     await createComment.mutateAsync({ content, recordId, fileAttachments })

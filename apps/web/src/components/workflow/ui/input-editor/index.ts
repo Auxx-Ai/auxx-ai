@@ -16,6 +16,3 @@ export {
 
 // Badge adapter for inline-picker
 export { VariableTagBadge } from './variable-tag-badge'
-
-// Legacy hook (DEPRECATED - use useWorkflowVariableEditor instead)
-export { useTiptapTags } from './use-tiptap-tags'

@@ -19,7 +19,7 @@ export default function CustomFieldsPage() {
 
   // Get all resources (system + custom) from unified registry
   const { resources, isLoading } = useResources()
-  console.log('Resources:', resources)
+
   /** Navigate to entity fields page */
   function handleRowClick(slug: string) {
     router.push(`${BASE_URL}/${slug}`)

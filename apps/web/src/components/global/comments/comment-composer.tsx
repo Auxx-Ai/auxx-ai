@@ -3,27 +3,15 @@
 // apps/web/src/components/global/comments/comment-composer.tsx
 
 import React, { useRef, useState, useEffect, useCallback } from 'react'
-import { useEditor, EditorContent, type Editor } from '@tiptap/react'
-import StarterKit from '@tiptap/starter-kit'
+import { EditorContent } from '@tiptap/react'
+import type { Editor } from '@tiptap/core'
 import { Extension } from '@tiptap/core'
 
-import { createMentionExtension } from '~/components/editor/extensions/mention-extension'
-import { type MentionItem } from '~/components/editor/mention-popover'
+import { useMentionEditor, InlinePickerPopover } from '~/components/editor/inline-picker'
+import { ActorPickerContent } from '~/components/pickers/actor-picker/actor-picker-content'
 import { cn } from '@auxx/ui/lib/utils'
 import { Button } from '@auxx/ui/components/button'
-import {
-  AtSign,
-  Loader2,
-  Maximize2,
-  Minimize2,
-  Paperclip,
-  Smile,
-  Send,
-  File as FileIcon,
-  X,
-  CornerDownLeft,
-} from 'lucide-react'
-import { api } from '~/trpc/react'
+import { AtSign, Maximize2, Minimize2, Paperclip, Smile, Send, CornerDownLeft } from 'lucide-react'
 import {
   type UseCommentsOptions,
   useComments,
@@ -37,7 +25,6 @@ import { ENTITY_TYPES } from '@auxx/lib/files/types'
 import type { RecordId } from '@auxx/lib/field-values/client'
 
 import { EmojiPicker } from '~/components/pickers/emoji-picker'
-import { MentionNode } from '~/components/editor/extensions/mention-node'
 import { MetaIcon } from '~/constants/icons'
 
 // Frontend file type distinction
@@ -137,15 +124,12 @@ export const SubmitOnEnter = Extension.create<SubmitOnEnterOptions>({
   addKeyboardShortcuts() {
     return {
       Enter: ({ editor }) => {
-        // Prevent submit if suggestion popover is open (TipTap v2 Suggestion plugin sets a decoration)
-        // Check for an open suggestion popover by looking for an element in the DOM
-        if (typeof window !== 'undefined' && document.querySelector('.tippy-box')) {
-          return false // Let the suggestion handle Enter
-        }
-        // Defensive: also check for suggestion plugin state
-        const state = editor.state as any
-        if (state && state.suggestion && state.suggestion.active) {
-          return false
+        // Prevent submit if inline picker popover is open (Radix popover)
+        if (
+          typeof window !== 'undefined' &&
+          document.querySelector('[data-radix-popper-content-wrapper]')
+        ) {
+          return false // Let the picker handle Enter
         }
         if (!this.options.isExpanded(editor)) {
           this.options.onSubmit(editor)
@@ -184,6 +168,9 @@ const CommentComposer = ({
   // Store initial expanded value to restore after submission
   const initialExpanded = expanded
   const [isExpanded, setIsExpanded] = useState(expanded)
+  const isExpandedRef = useRef(isExpanded)
+  isExpandedRef.current = isExpanded
+  const handleSubmitRef = useRef<(editor: Editor | null) => void>(() => {})
   const [placeholderVisible, setPlaceholderVisible] = useState(isEmptyContent(initialContent))
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -214,78 +201,33 @@ const CommentComposer = ({
     isCreatingReply,
   } = useComments(commentOptions)
 
-  // Fetch team members for mentions
-  const { data: teamMembers, isLoading: isLoadingTeamMembers } = api.user.teamMembers.useQuery(
-    undefined,
-    {
-      refetchOnWindowFocus: false,
-      staleTime: 5 * 60 * 1000, // 5 minutes
-    }
-  )
-
-  // Transform team members to mention items
-  const fetchMentionItems = useCallback(
-    async (q: string): Promise<MentionItem[]> => {
-      // Return empty array while loading
-      if (isLoadingTeamMembers || !teamMembers) {
-        return []
-      }
-
-      // Filter team members based on query
-      const filteredMembers = teamMembers.filter((member) => {
-        if (!q) return true // Show all if no query
-        console.log('Filtering members:', member.name, q)
-        const lowerQuery: string = (
-          typeof q === 'string' ? q : (q as any).query || ''
-        ).toLowerCase()
-        return (
-          member.name?.toLowerCase().includes(lowerQuery) ||
-          member.email?.toLowerCase().includes(lowerQuery)
-        )
-      })
-
-      return filteredMembers.map((member) => ({
-        id: member.id,
-        name: member.name || 'Unknown',
-        email: member.email || undefined,
-        avatar: (member as any).image || undefined,
-      }))
+  // Initialize mention editor using the inline-picker system
+  const mentionEditor = useMentionEditor({
+    initialContent,
+    placeholder,
+    editable: true,
+    className: cn(
+      'prose prose-sm prose-headings:my-1 prose-ul:my-1 prose-p:my-0 prose-li:my-0',
+      'focus:outline-hidden max-w-none dark:prose-invert'
+    ),
+    onUpdate: (html) => {
+      setPlaceholderVisible(isEmptyContent(html))
     },
-    [teamMembers, isLoadingTeamMembers]
-  )
-
-  // Configure the editor
-  const editor = useEditor(
-    {
-      extensions: [
-        StarterKit.configure({ heading: { levels: [1, 2, 3] }, blockquote: false }),
-        // Add mention extension with the fetchMentionItems callback
-        MentionNode.configure({}),
-        createMentionExtension(fetchMentionItems),
-        SubmitOnEnter.configure({
-          isExpanded: () => {
-            return isExpanded
-          },
-          onSubmit: (editor) => {
-            handleSubmitRef.current(editor)
-          },
-        }),
-      ],
-      content: initialContent,
-      editorProps: {
-        attributes: {
-          class:
-            'prose prose-sm prose-headings:my-1 prose-ul:my-1 prose-p:my-0 prose-li:my-0 focus:outline-hidden max-w-none dark:prose-invert',
+    extensions: [
+      SubmitOnEnter.configure({
+        isExpanded: () => isExpandedRef.current,
+        onSubmit: (editor) => {
+          console.log('SubmitOnEnter onSubmit called', {
+            isExpanded: isExpandedRef.current,
+            hasEditor: !!editor,
+          })
+          handleSubmitRef.current(editor)
         },
-      },
-      onUpdate: ({ editor }) => {
-        const html = editor.getHTML()
-        setPlaceholderVisible(isEmptyContent(html))
-      },
-    },
-    // Re-create editor when teamMembers changes to ensure mention suggestion stays in sync
-    [teamMembers, fetchMentionItems]
-  )
+      }),
+    ],
+  })
+
+  const { editor, suggestionState, insertMention, closePicker } = mentionEditor
   const focusEditor = useCallback(() => {
     if (editor) {
       editor.commands.focus()
@@ -369,9 +311,11 @@ const CommentComposer = ({
 
   const handleSubmit = useCallback(
     async (editor: Editor | null) => {
+      console.log('handleSubmit called', { hasEditor: !!editor })
       if (editor && !isSubmitting) {
         const content = editor.getHTML()
         // showPlaceholder()
+        console.log('content', content)
         // console.log('content', content)
         if (isEmptyContent(content)) {
           return
@@ -416,16 +360,19 @@ const CommentComposer = ({
 
           // Submit the comment with typed attachments
           if (commentId) {
+            console.log('handleUpdateComment')
             // Always send fileAttachments for updates to handle removal of all attachments
             await handleUpdateComment(commentId, content, fileAttachments)
           } else if (parentId) {
             // Only send attachments if there are any for new replies
+            console.log('handleCreateReply')
             await handleCreateReply(
               content,
               parentId,
               fileAttachments.length > 0 ? fileAttachments : undefined
             )
           } else {
+            console.log('new comment')
             // Only send attachments if there are any for new comments
             await handleCreateComment(
               content,
@@ -460,8 +407,7 @@ const CommentComposer = ({
     ]
   )
 
-  // Create a ref to store the current handleSubmit function for editor extension
-  const handleSubmitRef = useRef(handleSubmit)
+  // Update the ref with current handleSubmit function
   handleSubmitRef.current = handleSubmit
 
   // Handle emoji selection
@@ -520,11 +466,11 @@ const CommentComposer = ({
           {/* Editor */}
           <div className="flex flex-1 flex-col overflow-auto leading-5">
             <div className="relative flex flex-1 flex-col">
-              {placeholderVisible && (
+              {/* {placeholderVisible && (
                 <div className="pointer-events-none absolute left-0 top-0 px-[12px] py-[8px] text-sm text-muted-foreground">
                   {placeholder}
                 </div>
-              )}
+              )} */}
               <EditorContent
                 editor={editor}
                 className={cn(
@@ -532,6 +478,18 @@ const CommentComposer = ({
                 )}
                 style={isExpanded ? { minHeight: expandHeight } : {}}
               />
+
+              {/* Mention Picker Popover */}
+              <InlinePickerPopover state={suggestionState} width={280} onClose={closePicker}>
+                <ActorPickerContent
+                  value={[]}
+                  onChange={() => {}}
+                  target="user"
+                  multi={false}
+                  onSelectSingle={(actorId) => insertMention(actorId)}
+                  placeholder="Search team members..."
+                />
+              </InlinePickerPopover>
             </div>
           </div>
 

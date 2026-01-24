@@ -104,24 +104,25 @@ export function Section({
       <div
         data-slot="section"
         className={cn('p-3 pb-4 group-data-[state=closed]:pb-0 border-b flex flex-col min-h-0')}>
-        <CollapsibleTrigger asChild disabled={!showCollapseTrigger}>
-          <div className={cn('flex items-center justify-between pb-2 cursor-default')}>
+        <div className={cn('flex items-center justify-between pb-2')}>
             <div className="flex items-center gap-1">
               <div
                 data-slot="section-title"
                 className={cn(titleClassName, 'flex items-center text-xs font-medium uppercase')}>
                 {icon && <span className="mr-1">{icon}</span>}
-                <span className="mr-1">{title}</span>
+                <CollapsibleTrigger
+                  disabled={!showCollapseTrigger}
+                  className={cn(showCollapseTrigger && 'cursor-pointer')}>
+                  <span className="mr-1">{title}</span>
+                </CollapsibleTrigger>
                 {isRequired && <span className="mr-1 text-xs font-semibold text-[#D92D20]">*</span>}
-                {description && (
-                  <span onClick={(e) => e.stopPropagation()}>
-                    <TooltipExplanation text={description} className="text-primary-400" />
-                  </span>
-                )}
+                {description && <TooltipExplanation text={description} className="text-primary-400" />}
               </div>
-              <div
+              <CollapsibleTrigger
+                disabled={!showCollapseTrigger}
                 className={cn(
                   'p-1 rounded hover:bg-muted transition-colors flex items-center',
+                  showCollapseTrigger && 'cursor-pointer',
                   !showCollapseTrigger && 'invisible'
                 )}>
                 <ChevronDown
@@ -132,10 +133,9 @@ export function Section({
                   className="size-4 group-data-[state=open]:hidden"
                   data-state="closed"
                 />
-              </div>
+              </CollapsibleTrigger>
             </div>
-            {/* Stop propagation to prevent collapse toggle when clicking actions or switch */}
-            <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-2">
+            <div className="flex items-center gap-2">
               {actions || null}
               {showEnable && (
                 <Switch
@@ -147,7 +147,6 @@ export function Section({
               )}
             </div>
           </div>
-        </CollapsibleTrigger>
         <CollapsibleContent data-slot="section-content" className="flex flex-col">
           {children}
         </CollapsibleContent>

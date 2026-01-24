@@ -127,7 +127,9 @@ function handleMutationSuccess(
   if (mutationVersion < currentVersion) return false // Stale
 
   if (result?.values && result.values.length > 0) {
-    const returnsArray = fieldType && isArrayReturnFieldType(fieldType)
+    // Static multi-value types (MULTI_SELECT, TAGS, etc.) always return arrays
+    // For ACTOR fields: if server returned multiple values, it's a multi-select actor field
+    const returnsArray = isArrayReturnFieldType(fieldType) || result.values.length > 1
     store.setValue(key, returnsArray ? result.values : result.values[0])
   } else if (fieldType && isArrayReturnFieldType(fieldType)) {
     store.setValue(key, [])

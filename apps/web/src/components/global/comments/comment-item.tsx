@@ -170,7 +170,7 @@ export function CommentItem({
             {isEditing && (
               <div className="mb-4 w-[400px]">
                 <CommentComposer
-                  resourceId={recordId!}
+                  recordId={recordId!}
                   commentId={comment.id}
                   initialContent={comment.content}
                   initialAttachments={comment.attachments || []}
@@ -318,7 +318,7 @@ export function CommentItem({
       {isReplying && !disableReplies && (
         <div className="ms-8 mt-2 mb-2 max-w-[400px]">
           <CommentComposer
-            resourceId={recordId!}
+            recordId={recordId!}
             parentId={comment.id}
             placeholder="Write a reply..."
             onSubmitted={() => setReplyingToId(null)}
