@@ -1,6 +1,6 @@
 // apps/web/src/components/resources/hooks/use-record.ts
 
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useLayoutEffect, useRef, useCallback } from 'react'
 import { useRecordStore, type RecordMeta } from '../store/record-store'
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 
@@ -55,7 +55,7 @@ export function useRecord<T extends RecordMeta = RecordMeta>({
     )
   )
 
-  // Subscribe to loading state (uses Set<RecordId> now)
+  // Subscribe to loading state
   const isLoading = useRecordStore(
     useCallback(
       (state) => (recordId ? state.loadingIds.has(recordId) || state.pendingFetchIds.has(recordId) : false),
@@ -68,17 +68,18 @@ export function useRecord<T extends RecordMeta = RecordMeta>({
     useCallback((state) => (recordId ? state.notFoundIds.has(recordId) : false), [recordId])
   )
 
-  // Track IDs we've already requested to prevent infinite loops
+  // Track IDs we've already requested to prevent duplicate requests
   const requestedRef = useRef<Set<RecordId>>(new Set())
 
-  // Get request action
+  // Get request action (stable reference from store)
   const requestRecord = useRecordStore((s) => s.requestRecord)
 
-  // Request fetch if not cached and not already requested
-  useEffect(() => {
+  // Request fetch in useLayoutEffect - runs synchronously before paint
+  // This prevents the flicker where the component renders with isLoading=false
+  useLayoutEffect(() => {
     if (!enabled || !recordId) return
-    if (record) return // Already have it
-    if (requestedRef.current.has(recordId)) return // Already requested
+    if (record) return
+    if (requestedRef.current.has(recordId)) return
 
     requestedRef.current.add(recordId)
     requestRecord(recordId)

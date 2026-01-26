@@ -42,7 +42,8 @@ export const CustomFieldCell = memo(function CustomFieldCell({
   }, [columnId])
 
   // Direct store subscription using FieldReference
-  const { value, isLoading } = useFieldValue(recordId, fieldRef)
+  // autoFetch ensures isLoading=true on first render (queues synchronously)
+  const { value, isLoading } = useFieldValue(recordId, fieldRef, { autoFetch: true })
 
   // Get target field metadata (last element for paths)
   const targetResourceFieldId = useMemo(() => {

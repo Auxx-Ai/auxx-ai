@@ -52,7 +52,8 @@ export const PrimaryFieldCell = memo(function PrimaryFieldCell({
   )
 
   // Direct store subscription - triggers re-render when value changes
-  const { value, isLoading } = useFieldValue(recordId, fieldId)
+  // autoFetch ensures isLoading=true on first render (queues synchronously)
+  const { value, isLoading } = useFieldValue(recordId, fieldId, { autoFetch: true })
 
   // Get field metadata
   const field = useField(resourceFieldId)

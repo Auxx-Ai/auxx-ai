@@ -65,6 +65,9 @@ interface CustomFieldValueState {
   /** Mutation version per key - incremented on each mutation initiation for race condition handling */
   mutationVersions: Record<FieldValueKey, number>
 
+  /** Keys currently being fetched (queued or in-flight) - for immediate loading state */
+  fetchingKeys: Record<FieldValueKey, true>
+
   // ─────────────────────────────────────────────────────────────────
   // SETTERS
   // ─────────────────────────────────────────────────────────────────
@@ -90,6 +93,9 @@ interface CustomFieldValueState {
   /** Clear loading state for a batch */
   finishLoading: (batchId: string) => void
 
+  /** Mark keys as being fetched (called when queued, cleared when values arrive) */
+  markFetching: (keys: FieldValueKey[]) => void
+
   // ─────────────────────────────────────────────────────────────────
   // INVALIDATION (crucial for correctness)
   // ─────────────────────────────────────────────────────────────────
@@ -113,8 +119,11 @@ interface CustomFieldValueState {
   // GETTERS (for imperative access)
   // ─────────────────────────────────────────────────────────────────
 
-  /** Check if a key is currently being fetched */
+  /** Check if a key is currently being fetched (legacy - checks loadingBatches) */
   isKeyLoading: (key: FieldValueKey) => boolean
+
+  /** Check if a key is being fetched (checks fetchingKeys - use this for loading state) */
+  isKeyFetching: (key: FieldValueKey) => boolean
 
   /** Check if a value exists in cache */
   hasValue: (key: FieldValueKey) => boolean
@@ -263,6 +272,7 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
     updatedAt: {},
     pendingUpdates: {},
     mutationVersions: {},
+    fetchingKeys: {},
 
     // ─── SETTERS ────────────────────────────────────────────────────
 
@@ -274,6 +284,12 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
         // First, apply the new values
         let newValues = { ...state.values }
         const newUpdatedAt = { ...state.updatedAt }
+
+        // Clear fetchingKeys for values that have arrived
+        const newFetchingKeys = { ...state.fetchingKeys }
+        for (const key of keys) {
+          delete newFetchingKeys[key]
+        }
 
         for (const { key, value } of entries) {
           newValues[key] = value
@@ -287,7 +303,7 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
           newUpdatedAt[calcKey as FieldValueKey] = now
         }
 
-        return { values: newValues, updatedAt: newUpdatedAt }
+        return { values: newValues, updatedAt: newUpdatedAt, fetchingKeys: newFetchingKeys }
       })
     },
 
@@ -370,6 +386,16 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
       })
     },
 
+    markFetching: (keys) => {
+      set((state) => {
+        const newFetchingKeys = { ...state.fetchingKeys }
+        for (const key of keys) {
+          newFetchingKeys[key] = true
+        }
+        return { fetchingKeys: newFetchingKeys }
+      })
+    },
+
     // ─── INVALIDATION ───────────────────────────────────────────────
 
     invalidateResource: (recordId) => {
@@ -446,6 +472,7 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
         updatedAt: {},
         pendingUpdates: {},
         mutationVersions: {},
+        fetchingKeys: {},
       })
     },
 
@@ -458,6 +485,8 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
       }
       return false
     },
+
+    isKeyFetching: (key) => key in get().fetchingKeys,
 
     hasValue: (key) => {
       return key in get().values

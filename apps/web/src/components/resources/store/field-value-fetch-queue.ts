@@ -81,8 +81,8 @@ class FieldValueFetchQueue {
     const key = buildFieldValueKey(recordId, fieldRef)
     const store = useFieldValueStore.getState()
 
-    // Skip if already in store or loading
-    if (key in store.values || store.isKeyLoading(key)) {
+    // Skip if already in store or already being fetched
+    if (key in store.values || store.isKeyFetching(key)) {
       return false
     }
 
@@ -94,6 +94,10 @@ class FieldValueFetchQueue {
     // Normalize fieldRef to ResourceFieldId or FieldPath for API
     const normalizedRef = normalizeFieldRef(recordId, fieldRef)
     this.pending.push({ recordId, fieldRef: normalizedRef, key })
+
+    // Mark as fetching immediately - this triggers skeleton in cells
+    store.markFetching([key])
+
     this.scheduleFlush()
     return true
   }
@@ -108,8 +112,8 @@ class FieldValueFetchQueue {
     for (const { recordId, fieldRef } of requests) {
       const key = buildFieldValueKey(recordId, fieldRef)
 
-      // Skip if already in store, loading, or pending
-      if (key in store.values || store.isKeyLoading(key)) continue
+      // Skip if already in store or already being fetched
+      if (key in store.values || store.isKeyFetching(key)) continue
       if (this.pending.some((e) => e.key === key)) continue
 
       // Normalize fieldRef to ResourceFieldId or FieldPath for API
@@ -119,6 +123,8 @@ class FieldValueFetchQueue {
     }
 
     if (queued.length > 0) {
+      // Mark as fetching immediately - this triggers skeleton in cells
+      store.markFetching(queued)
       this.scheduleFlush()
     }
 

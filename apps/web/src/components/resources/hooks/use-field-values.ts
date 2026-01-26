@@ -1,6 +1,6 @@
 // apps/web/src/components/resources/hooks/use-field-values.ts
 
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { fieldRefToKey, type FieldReference } from '@auxx/types/field'
 import type { RecordId } from '@auxx/lib/resources/client'
@@ -49,27 +49,40 @@ export function useFieldValue(
   const { autoFetch = false } = options
   const key = fieldRef ? buildFieldValueKey(recordId, fieldRef) : ('' as any)
 
-  const selector = useCallback(
-    (state: CustomFieldValueState) => {
-      if (!fieldRef) {
-        return { value: undefined, isLoading: false }
-      }
-      return {
-        value: state.values[key],
-        isLoading: state.isKeyLoading(key),
-      }
-    },
-    [key, fieldRef]
+  // Subscribe to value
+  const value = useFieldValueStore(
+    useCallback(
+      (state: CustomFieldValueState) => (fieldRef ? state.values[key] : undefined),
+      [key, fieldRef]
+    )
   )
 
-  const { value, isLoading } = useFieldValueStore(useShallow(selector))
+  // Subscribe to loading state
+  const isLoading = useFieldValueStore(
+    useCallback(
+      (state: CustomFieldValueState) => (fieldRef ? key in state.fetchingKeys : false),
+      [key, fieldRef]
+    )
+  )
 
-  // Auto-fetch if needed
+  // Track requested keys to prevent duplicate requests
+  const requestedRef = useRef<Set<string>>(new Set())
+
+  // Queue fetch in useLayoutEffect - runs synchronously before paint
+  // This prevents the flicker where the component renders with isLoading=false
+  useLayoutEffect(() => {
+    if (!autoFetch || !fieldRef) return
+    if (value !== undefined) return
+    if (requestedRef.current.has(key)) return
+
+    requestedRef.current.add(key)
+    fieldValueFetchQueue.queueFetch(recordId, fieldRef)
+  }, [autoFetch, fieldRef, value, key, recordId])
+
+  // Clear requested set when key changes
   useEffect(() => {
-    if (autoFetch && fieldRef && value === undefined && !isLoading) {
-      fieldValueFetchQueue.queueFetch(recordId, fieldRef)
-    }
-  }, [autoFetch, value, isLoading, recordId, fieldRef])
+    requestedRef.current.clear()
+  }, [key])
 
   return { value, isLoading }
 }

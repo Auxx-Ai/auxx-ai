@@ -1,6 +1,6 @@
 // apps/web/src/components/resources/hooks/use-actor.ts
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import { useShallow } from 'zustand/shallow'
 import { useActorStore, getActorStoreState } from '../store/actor-store'
 import type { Actor, ActorId } from '@auxx/types/actor'
@@ -42,7 +42,7 @@ export function useActor({ actorId, enabled = true }: UseActorOptions): UseActor
   // Subscribe to actor (primitive selector - returns same reference if actor unchanged)
   const actor = useActorStore((state) => (actorId ? state.actors.get(actorId) : undefined))
 
-  // Subscribe to loading state (primitive boolean - stable)
+  // Subscribe to loading state
   const isLoading = useActorStore((state) =>
     actorId ? state.loadingIds.has(actorId) || state.pendingIds.has(actorId) : false
   )
@@ -50,12 +50,15 @@ export function useActor({ actorId, enabled = true }: UseActorOptions): UseActor
   // Subscribe to not found state (primitive boolean - stable)
   const isNotFound = useActorStore((state) => (actorId ? state.notFoundIds.has(actorId) : false))
 
-  // Track requested IDs
+  // Track requested IDs to prevent duplicate requests
   const requestedRef = useRef<Set<ActorId>>(new Set())
+
+  // Get request action (stable reference from store)
   const requestActor = useActorStore((s) => s.requestActor)
 
-  // Request if not cached
-  useEffect(() => {
+  // Request fetch in useLayoutEffect - runs synchronously before paint
+  // This prevents the flicker where the component renders with isLoading=false
+  useLayoutEffect(() => {
     if (!enabled || !actorId) return
     if (actor) return
     if (requestedRef.current.has(actorId)) return
