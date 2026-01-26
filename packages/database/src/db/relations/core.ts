@@ -549,7 +549,6 @@ export const ticketRelations = relations(Ticket, ({ one, many }) => ({
     references: [shopify_customers.id],
   }),
   assignments: many(TicketAssignment),
-  comments: many(Comment),
 }))
 
 export const ticketRelationRelations = relations(TicketRelation, ({ one }) => ({

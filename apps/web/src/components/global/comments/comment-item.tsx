@@ -14,9 +14,14 @@ import { Tooltip } from '../tooltip'
 import CommentComposer from './comment-composer'
 import { Badge } from '@auxx/ui/components/badge'
 import { AttachmentDisplay } from '~/components/files/utils/attachment-display'
+import { useActor } from '~/components/resources/hooks/use-actor'
+import type { ActorId } from '@auxx/types/actor'
 
 import { cn } from '@auxx/ui/lib/utils'
 import type { RecordId } from '@auxx/lib/field-values/client'
+
+/** Helper to convert userId to ActorId format */
+const toUserActorId = (userId: string): ActorId => `user:${userId}` as ActorId
 
 interface CommentItemProps {
   comment?: CommentType
@@ -77,6 +82,16 @@ export function CommentItem({
   // const comment = initialComment || singleComment
   const comment = initialComment
 
+  // Use actor hooks to resolve creator and pinner info
+  const { actor: creator } = useActor({
+    actorId: comment?.createdById ? toUserActorId(comment.createdById) : null,
+    enabled: !!comment?.createdById,
+  })
+  const { actor: pinner } = useActor({
+    actorId: comment?.pinnedById ? toUserActorId(comment.pinnedById) : null,
+    enabled: !!comment?.pinnedById,
+  })
+
   // Show loading state if we're fetching and don't have a comment yet
   if (isFetchingComments && !comment) {
     return <CommentSkeleton />
@@ -120,7 +135,7 @@ export function CommentItem({
               {!comment.parentId && isFirstInGroup && (
                 <div className="col-start-2 text-[11px] font-semibold text-primary-400">
                   <div className="inline-block">
-                    <span className="">{comment?.createdBy?.name}</span>
+                    <span className="">{creator?.name}</span>
                   </div>
                 </div>
               )}
@@ -131,7 +146,7 @@ export function CommentItem({
                     <div className="flex items-center text-xs text-amber-600">
                       <Pin size={12} className="mr-1" />
                       <span>
-                        Pinned {comment?.pinnedBy?.name ? `by ${comment?.pinnedBy?.name}` : ''}
+                        Pinned {pinner?.name ? `by ${pinner.name}` : ''}
                       </span>
                     </div>
                   </Tooltip>
@@ -141,7 +156,7 @@ export function CommentItem({
                 {comment.parentId && (
                   <div className="flex items-center text-xs text-primary-400">
                     <Reply size={12} className="mr-1" />
-                    <span>{comment?.createdBy?.name} replied</span>
+                    <span>{creator?.name} replied</span>
                   </div>
                 )}
               </div>
@@ -151,11 +166,11 @@ export function CommentItem({
             {isFirstInGroup ? (
               <Avatar className="size-8">
                 <AvatarImage
-                  src={comment?.createdBy?.image || undefined}
-                  alt={comment?.createdBy?.name || ''}
+                  src={creator?.avatarUrl || undefined}
+                  alt={creator?.name || ''}
                 />
                 <AvatarFallback className="bg-primary-200 text-background">
-                  {getInitialsFromName(comment?.createdBy?.name || null)}
+                  {getInitialsFromName(creator?.name || null)}
                 </AvatarFallback>
               </Avatar>
             ) : (

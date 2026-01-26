@@ -57,7 +57,12 @@ export function formatToTypedInput(
   const converter = getConverter(fieldType)
 
   // Handle arrays for multi-value field types
-  if (Array.isArray(value) && isMultiValueFieldType(fieldType, options?.fieldOptions)) {
+  // For ACTOR: if caller sends an array, process as multi-value (options may not be available)
+  const isMultiValue =
+    isMultiValueFieldType(fieldType, options?.fieldOptions) ||
+    (fieldType === 'ACTOR' && Array.isArray(value))
+
+  if (Array.isArray(value) && isMultiValue) {
     const results: TypedFieldValueInput[] = []
     for (const item of value) {
       const converted = converter.toTypedInput(item, options)

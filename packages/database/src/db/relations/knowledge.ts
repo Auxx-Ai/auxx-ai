@@ -16,8 +16,6 @@ import {
   Snippet,
   SnippetFolder,
   TagsOnArticle,
-  Thread,
-  Ticket,
   User,
 } from '../schema'
 
@@ -147,14 +145,6 @@ export const commentRelations = relations(Comment, ({ one, many }) => ({
     fields: [Comment.pinnedById],
     references: [User.id],
     relationName: 'comment_pinnedById_user_id',
-  }),
-  thread: one(Thread, {
-    fields: [Comment.threadId],
-    references: [Thread.id],
-  }),
-  ticket: one(Ticket, {
-    fields: [Comment.ticketId],
-    references: [Ticket.id],
   }),
   mentions: many(CommentMention),
   reactions: many(CommentReaction),

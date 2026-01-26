@@ -528,23 +528,7 @@ export class ThreadQueryService {
               signature: true,
             },
           },
-          comments: {
-            where: (comments, { isNull }) => isNull(comments.deletedAt),
-            orderBy: (comments, { asc }) => [asc(comments.createdAt)],
-            with: {
-              createdBy: true,
-              mentions: {
-                with: {
-                  user: true,
-                },
-              },
-              reactions: {
-                with: {
-                  user: true,
-                },
-              },
-            },
-          },
+          // Comments are now fetched separately via CommentService/useComments hook
           ...(userId && {
             readStatusEntries: {
               where: (entries, { eq }) => eq(entries.userId, userId),
@@ -1148,6 +1132,7 @@ export class ThreadQueryService {
 
   /**
    * Fetches the latest non-deleted comment for each thread.
+   * Uses entityId + entityDefinitionId='thread' since direct FK was removed.
    */
   private async fetchLatestCommentsForThreads(orderedThreadIds: string[]): Promise<any[]> {
     if (orderedThreadIds.length === 0) {
@@ -1158,13 +1143,14 @@ export class ThreadQueryService {
 
     try {
       const pointerResult = await this.db.execute(sql`
-        SELECT DISTINCT ON (${schema.Comment.threadId})
-          ${schema.Comment.threadId} AS "threadId",
+        SELECT DISTINCT ON (${schema.Comment.entityId})
+          ${schema.Comment.entityId} AS "threadId",
           ${schema.Comment.id} AS "commentId"
         FROM ${schema.Comment}
-        WHERE ${inArray(schema.Comment.threadId, orderedThreadIds)}
+        WHERE ${inArray(schema.Comment.entityId, orderedThreadIds)}
+          AND ${schema.Comment.entityDefinitionId} = 'thread'
           AND ${schema.Comment.deletedAt} IS NULL
-        ORDER BY ${schema.Comment.threadId}, ${schema.Comment.createdAt} DESC
+        ORDER BY ${schema.Comment.entityId}, ${schema.Comment.createdAt} DESC
       `)
 
       latestCommentPointers =
@@ -1190,7 +1176,7 @@ export class ThreadQueryService {
         where: inArray(schema.Comment.id, uniqueCommentIds),
         columns: {
           id: true,
-          threadId: true,
+          entityId: true,
           content: true,
           createdAt: true,
         },
@@ -1208,7 +1194,7 @@ export class ThreadQueryService {
       return comments
         .map((comment) => ({
           ...comment,
-          threadId: comment.threadId ?? pointerMap.get(comment.id) ?? null,
+          threadId: comment.entityId ?? pointerMap.get(comment.id) ?? null,
         }))
         .filter((comment) => comment.threadId)
     } catch (error: unknown) {

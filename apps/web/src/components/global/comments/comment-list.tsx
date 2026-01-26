@@ -37,8 +37,7 @@ export function CommentList({
   // Group consecutive comments from the same sender
   // Type guard to ensure comments have the right structure
   const validComments = comments.filter(
-    (c): c is Comment =>
-      c && typeof c === 'object' && 'createdBy' in c && c.createdBy && 'id' in c.createdBy
+    (c): c is Comment => c && typeof c === 'object' && 'createdById' in c && !!c.createdById
   )
   // Cast to any to handle type mismatch between the two Comment types
   const groups = groupConsecutiveComments(validComments as any)
@@ -46,7 +45,7 @@ export function CommentList({
   return (
     <div className={className}>
       {groups.map((group) => (
-        <div key={`${group.sender.id}-${group.startIndex}`}>
+        <div key={`${group.senderId}-${group.startIndex}`}>
           {group.comments.map((comment, idx) => {
             const groupPosition = getGroupPosition(idx, group.comments.length)
             return (

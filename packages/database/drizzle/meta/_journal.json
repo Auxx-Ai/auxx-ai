@@ -484,6 +484,13 @@
       "when": 1769130059123,
       "tag": "0068_add_actor_fieldtype",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1769455180312,
+      "tag": "0069_rename_comments",
+      "breakpoints": true
     }
   ]
 }

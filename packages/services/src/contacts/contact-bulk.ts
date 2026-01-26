@@ -110,7 +110,7 @@ export async function bulkDeleteContacts(
     tx
       .delete(schema.Comment)
       .where(
-        and(inArray(schema.Comment.entityId, validIds), eq(schema.Comment.entityType, 'Contact'))
+        and(inArray(schema.Comment.entityId, validIds), eq(schema.Comment.entityDefinitionId, 'contact'))
       ),
   ])
 

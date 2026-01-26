@@ -8,6 +8,7 @@ import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 // Import custom hooks
 import { useConfirm } from '~/hooks/use-confirm'
 import { useThread } from './thread-provider'
+import { toRecordId } from '@auxx/lib/field-values/client'
 
 // Import components
 import { ThreadHeader } from './thread-header'
@@ -225,11 +226,7 @@ export default function ThreadDetails() {
 
           {/* Comments Section */}
           <div className="px-4 pb-6 pt-4 md:px-6 md:pb-10">
-            <CommentList
-              entityId={thread.id}
-              entityType="Thread"
-              initialComments={thread.comments} // Pass comments fetched with thread
-            />
+            <CommentList recordId={toRecordId('thread', thread.id)} />
           </div>
 
           <div className="grow"></div>

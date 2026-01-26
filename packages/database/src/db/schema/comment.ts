@@ -6,8 +6,6 @@ import { createId } from '@paralleldrive/cuid2'
 
 import { User } from './user'
 import { Organization } from './organization'
-import { Thread } from './thread'
-import { Ticket } from './ticket'
 
 /** Drizzle table for comment */
 export const Comment = pgTable(
@@ -21,16 +19,8 @@ export const Comment = pgTable(
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     updatedAt: timestamp({ precision: 3 }).notNull(),
     deletedAt: timestamp({ precision: 3 }),
-    threadId: text().references((): AnyPgColumn => Thread.id, {
-      onUpdate: 'cascade',
-      onDelete: 'cascade',
-    }),
-    ticketId: text().references((): AnyPgColumn => Ticket.id, {
-      onUpdate: 'cascade',
-      onDelete: 'cascade',
-    }),
     entityId: text().notNull(),
-    entityType: text().notNull(),
+    entityDefinitionId: text().notNull(),
     createdById: text()
       .notNull()
       .references((): AnyPgColumn => User.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
@@ -45,15 +35,13 @@ export const Comment = pgTable(
   (table) => [
     index('Comment_createdById_idx').using('btree', table.createdById.asc().nullsLast()),
     index('Comment_deletedAt_idx').using('btree', table.deletedAt.asc().nullsLast()),
-    index('Comment_entityId_entityType_idx').using(
+    index('Comment_entityId_entityDefinitionId_idx').using(
       'btree',
       table.entityId.asc().nullsLast(),
-      table.entityType.asc().nullsLast()
+      table.entityDefinitionId.asc().nullsLast()
     ),
     index('Comment_isPinned_idx').using('btree', table.isPinned.asc().nullsLast()),
     index('Comment_organizationId_idx').using('btree', table.organizationId.asc().nullsLast()),
     index('Comment_parentId_idx').using('btree', table.parentId.asc().nullsLast()),
-    index('Comment_threadId_idx').using('btree', table.threadId.asc().nullsLast()),
-    index('Comment_ticketId_idx').using('btree', table.ticketId.asc().nullsLast()),
   ]
 )

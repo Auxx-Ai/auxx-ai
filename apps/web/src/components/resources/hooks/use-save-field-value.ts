@@ -68,6 +68,7 @@ function prepareOptimisticUpdate(
 
   // Optimistic update to store (convert to TypedFieldValue format)
   const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
+
   store.setValueOptimistic(key, typedValue)
 
   // Relationship sync prep
@@ -130,7 +131,9 @@ function handleMutationSuccess(
     // Static multi-value types (MULTI_SELECT, TAGS, etc.) always return arrays
     // For ACTOR fields: if server returned multiple values, it's a multi-select actor field
     const returnsArray = isArrayReturnFieldType(fieldType) || result.values.length > 1
-    store.setValue(key, returnsArray ? result.values : result.values[0])
+    const valueToStore = returnsArray ? result.values : result.values[0]
+
+    store.setValue(key, valueToStore)
   } else if (fieldType && isArrayReturnFieldType(fieldType)) {
     store.setValue(key, [])
   } else {
@@ -250,7 +253,6 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
           },
         }
       )
-      console.log('[useSaveFieldValue] Fired mutation for')
     },
     [mutation, onSuccess, getFieldMetadata, syncInverseCache]
   )
@@ -287,7 +289,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
           inverseInfo: prep.inverseInfo,
         })
       }
-      console.log('[useSaveFieldValue] Fired async mutation for', { recordId, fieldId, value })
+
       // try {
       const result = await mutation.mutateAsync({ recordId, fieldId, value })
 
@@ -400,7 +402,6 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
         { recordIds, values: [{ fieldId, value }] },
         {
           onSuccess: () => {
-            console.log('BULK MUTATION')
             const currentStore = useFieldValueStore.getState()
             for (const { key, version } of keyVersions) {
               if (version >= currentStore.getMutationVersion(key)) {
@@ -459,7 +460,6 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
         { recordIds, values: apiValues },
         {
           onSuccess: () => {
-            console.log('saveBulkMultipleFields SUCCESS')
             const currentStore = useFieldValueStore.getState()
             for (const { key, version } of keyVersions) {
               if (version >= currentStore.getMutationVersion(key)) {

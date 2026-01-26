@@ -4,7 +4,7 @@
 
 import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@auxx/ui/lib/utils'
-import { User, Users } from 'lucide-react'
+import { User, Users, X } from 'lucide-react'
 
 import type { ActorId } from '@auxx/types/actor'
 import { parseActorId } from '@auxx/types/actor'
@@ -44,6 +44,8 @@ interface ActorBadgeProps extends VariantProps<typeof actorBadgeVariants> {
   showIcon?: boolean
   /** Additional CSS classes */
   className?: string
+  /** Optional callback to remove this actor. When provided, shows X icon. */
+  onRemove?: (actorId: ActorId) => void
 }
 
 /**
@@ -67,7 +69,7 @@ interface ActorBadgeProps extends VariantProps<typeof actorBadgeVariants> {
  * // Without icon
  * <ActorBadge actorId={actorId} showIcon={false} />
  */
-export function ActorBadge({ actorId, showIcon = true, className, variant }: ActorBadgeProps) {
+export function ActorBadge({ actorId, showIcon = true, className, variant, onRemove }: ActorBadgeProps) {
   const { actor, isLoading, isNotFound } = useActor({ actorId })
 
   // Parse type for fallback icon
@@ -102,6 +104,18 @@ export function ActorBadge({ actorId, showIcon = true, className, variant }: Act
             </Avatar>
           )}
           <span data-slot="actor-display">{displayName}</span>
+          {onRemove && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onRemove(actorId)
+              }}
+              className="ml-1 rounded-full p-0.5 hover:bg-muted-foreground/20"
+              aria-label={`Remove ${displayName}`}>
+              <X className="h-3 w-3" />
+            </button>
+          )}
         </>
       )}
     </div>

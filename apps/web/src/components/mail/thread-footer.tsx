@@ -19,7 +19,7 @@ export function ThreadFooter() {
         <div className="padding-[16px 14px 0px 6px] flex flex-[1_1_auto] flex-row px-5">
           <CommentComposer
             key={`composer-${thread.id}`} // Reset composer if thread changes
-            recordId={toRecordId('Thread', thread.id)}
+            recordId={toRecordId('thread', thread.id)}
           />
         </div>
       </div>

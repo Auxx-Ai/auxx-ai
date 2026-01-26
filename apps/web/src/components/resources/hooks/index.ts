@@ -40,3 +40,6 @@ export {
   useActorLoading,
   useActorInitialized,
 } from './use-actor'
+
+// Resource access hooks
+export { useResourceAccess } from './use-resource-access'

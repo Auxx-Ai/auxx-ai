@@ -10,12 +10,29 @@ import { toRecordId } from '@auxx/types/resource'
 const logger = createScopedLogger('comment-router')
 
 /**
- * Transform comment to include recordId from entityType and entityId
+ * Transform comment to include recordId and strip internal fields.
+ * Handles both old (entityType) and new (entityDefinitionId) column names for compatibility.
+ * Recursively transforms replies as well.
  */
-const withRecordId = <T extends { entityType: string; entityId: string }>(comment: T) => ({
-  ...comment,
-  recordId: toRecordId(comment.entityType, comment.entityId),
-})
+const transformCommentResponse = <
+  T extends {
+    entityDefinitionId?: string
+    entityType?: string
+    entityId: string
+    replies?: any[]
+  },
+>(
+  comment: T
+): Omit<T, 'entityDefinitionId' | 'entityType' | 'entityId'> & { recordId: string } => {
+  const { entityDefinitionId, entityType, entityId, replies, ...rest } = comment
+  const definitionId = entityDefinitionId || entityType || ''
+  return {
+    ...rest,
+    recordId: toRecordId(definitionId, entityId),
+    // Recursively transform replies
+    ...(replies && { replies: replies.map(transformCommentResponse) }),
+  } as any
+}
 
 // New input schemas with typed attachments
 const fileAttachmentSchema = z.object({
@@ -67,7 +84,7 @@ export const commentRouter = createTRPCRouter({
         mentions: mentionedUserIds,
       })
 
-      return withRecordId(comment)
+      return transformCommentResponse(comment)
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Failed to create comment'
       logger.error('Error creating comment', { error, input })
@@ -159,7 +176,7 @@ export const commentRouter = createTRPCRouter({
         })
       }
 
-      return { comment: withRecordId(comment) }
+      return { comment: transformCommentResponse(comment) }
     } catch (error: unknown) {
       logger.error('Error fetching comment', { error, input })
 
@@ -190,7 +207,7 @@ export const commentRouter = createTRPCRouter({
         // Use efficient single query from CommentService
         const comments = await commentService.getCommentsByRecordId(recordId)
 
-        return { comments: comments.map(withRecordId) }
+        return { comments: comments.map(transformCommentResponse) }
       } catch (error: unknown) {
         logger.error('Error fetching comments', { error, input })
 

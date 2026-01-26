@@ -8,3 +8,5 @@ export type { ActorPickerContentProps } from './actor-picker-content'
 
 export { ActorItem } from './actor-item'
 export type { ActorItemProps } from './actor-item'
+
+export { ActorFormField } from './actor-form-field'

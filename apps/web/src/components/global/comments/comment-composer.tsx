@@ -525,7 +525,11 @@ const CommentComposer = ({
                   variant="ghost"
                   size="icon"
                   className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground/80 outline-hidden transition-[color,box-shadow] hover:bg-gray-300 hover:text-foreground dark:hover:bg-gray-700"
-                  onClick={handleMentionClick}>
+                  onMouseDown={(e) => {
+                    // Prevent editor blur when clicking mention button
+                    e.preventDefault()
+                    handleMentionClick()
+                  }}>
                   <AtSign size={15} />
                 </Button>
               </div>

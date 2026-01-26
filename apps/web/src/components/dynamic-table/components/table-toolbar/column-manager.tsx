@@ -28,6 +28,7 @@ import {
   CommandBreadcrumb,
   useCommandNavigation,
   type NavigationItem,
+  CommandDescription,
 } from '@auxx/ui/components/command'
 import { SmartBreadcrumb, type BreadcrumbSegment } from '@auxx/ui/components/smart-breadcrumb'
 
@@ -203,9 +204,7 @@ function RootStack<TData = any>() {
       {/* Visible Columns Group - Sortable */}
       <CommandGroup heading="Visible Columns">
         {validVisibleColumns.length === 0 ? (
-          <div className="text-sm text-muted-foreground px-2 py-6 text-center">
-            No visible columns
-          </div>
+          <CommandDescription>No visible columns</CommandDescription>
         ) : (
           <CommandSortable items={validVisibleColumns.map((c) => c.id)} onReorder={handleReorder}>
             {validVisibleColumns.map((column) => {

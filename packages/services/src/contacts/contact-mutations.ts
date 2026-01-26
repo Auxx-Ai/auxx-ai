@@ -147,7 +147,7 @@ export async function deleteContactWithRelations(
       .where(
         and(
           eq(schema.Comment.entityId, contactId),
-          eq(schema.Comment.entityType, 'Contact'),
+          eq(schema.Comment.entityDefinitionId, 'contact'),
           eq(schema.Comment.organizationId, organizationId)
         )
       ),

@@ -12,12 +12,12 @@ export interface MutationOptions {
   returnData?: boolean | 'minimal' | 'full'
   include?: {
     messages?: boolean
-    comments?: boolean
     tags?: boolean
     labels?: boolean
     assignee?: boolean
     // Note: inbox removed - Thread.inboxId was removed in migration 0028
     integration?: boolean // Added to support provider-based type derivation
+    // Note: comments removed - fetched separately via CommentService
   }
 }
 
@@ -163,14 +163,7 @@ export class ThreadMutationService {
         ...(include?.tags && {
           tags: { with: { tag: true } }
         }),
-        ...(include?.comments && {
-          comments: {
-            where: (comments, { isNull }) => isNull(comments.deletedAt),
-            orderBy: (comments, { desc }) => [desc(comments.createdAt)],
-            limit: 1,
-            with: { createdBy: true }
-          }
-        })
+        // Comments removed - fetched separately via CommentService
       }
     })
 

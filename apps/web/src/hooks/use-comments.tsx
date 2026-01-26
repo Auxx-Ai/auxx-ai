@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { api } from '~/trpc/react'
 import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 import { formatCommentContent } from '~/lib/sanitize'
-import { parseRecordId, getDefinitionId, type RecordId } from '@auxx/lib/field-values/client'
+import type { RecordId } from '@auxx/lib/field-values/client'
 
 // System entity types
 export const SYSTEM_ENTITY_TYPES = ['Ticket', 'Thread', 'Contact'] as const
@@ -47,35 +47,9 @@ export interface UseCommentsOptions {
 }
 
 // Types for comments and related data
-export type CommentUser = {
-  id: string
-  name: string | null
-  image: string | null
-}
-
 export type AggregatedReactions = {
   likes: { count: number; userReacted: boolean }
   emojis: { [emoji: string]: { count: number; userReacted: boolean } }
-}
-
-export type CommentFile = {
-  id: string
-  mediaAsset: {
-    id: string
-    name: string | null
-    mimeType: string | null
-    size: bigint | null
-    currentVersion: {
-      id: string
-      storageLocation: {
-        id: string
-        provider: string
-        bucket: string | null
-        region: string | null
-        path: string
-      }
-    } | null
-  }
 }
 
 export type CommentMention = {
@@ -101,14 +75,14 @@ export type CommentAttachmentInfo = {
 export type Comment = {
   id: string
   content: string
+  recordId: string
   createdAt: Date
   updatedAt: Date
-  createdBy: CommentUser
+  createdById: string // User ID - use useActor to resolve user info
   isPinned: boolean
-  pinnedBy?: CommentUser | null
+  pinnedById?: string | null // User ID - use useActor to resolve user info
   pinnedAt?: Date | null
-  files: CommentFile[] // Keep for backward compatibility
-  attachments?: CommentAttachmentInfo[] // New attachment structure
+  attachments?: CommentAttachmentInfo[]
   mentions: CommentMention[]
   reactions: AggregatedReactions
   replies?: Comment[]

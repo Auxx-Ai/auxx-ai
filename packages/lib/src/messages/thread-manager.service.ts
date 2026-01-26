@@ -240,11 +240,16 @@ export class ThreadManagerService {
       })
       .where(eq(schema.Message.threadId, fromThreadId))
 
-    // Move all related data
+    // Move all related comments (update entityId since comments now use entityId + entityDefinitionId)
     await this.db
       .update(schema.Comment)
-      .set({ threadId: toThreadId })
-      .where(eq(schema.Comment.threadId, fromThreadId))
+      .set({ entityId: toThreadId })
+      .where(
+        and(
+          eq(schema.Comment.entityId, fromThreadId),
+          eq(schema.Comment.entityDefinitionId, 'thread')
+        )
+      )
 
     await this.db
       .update(schema.ThreadReadStatus)

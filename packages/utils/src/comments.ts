@@ -1,12 +1,5 @@
 // packages/lib/src/utils/comments.ts
 
-// Using the comment type structure from the frontend hooks
-export type CommentUser = {
-  id: string
-  name: string | null
-  image: string | null
-}
-
 // Generic comment type that works with any comment structure
 // as long as it has the minimum required fields for grouping
 export type Comment = {
@@ -14,9 +7,9 @@ export type Comment = {
   content: string
   createdAt: Date
   updatedAt: Date
-  createdBy: CommentUser
+  createdById: string
   isPinned: boolean
-  pinnedBy?: CommentUser | null
+  pinnedById?: string | null
   pinnedAt?: Date | null
   parentId?: string | null
   files?: any[] // Optional to support different comment structures
@@ -29,11 +22,7 @@ export type Comment = {
  * Represents a group of consecutive comments from the same sender
  */
 export interface CommentGroup {
-  sender: {
-    id: string
-    name: string | null
-    image: string | null
-  }
+  senderId: string
   comments: Comment[]
   startIndex: number // For maintaining original order
 }
@@ -46,38 +35,34 @@ export interface CommentGroup {
  */
 export function groupConsecutiveComments(comments: Comment[]): CommentGroup[] {
   const groups: CommentGroup[] = []
-  
+
   comments.forEach((comment, index) => {
     const lastGroup = groups[groups.length - 1]
-    
+
     // Conditions to start a new group:
     // 1. First comment
     // 2. Different sender
     // 3. Comment is pinned (pinned comments always start a new group for visibility)
     // 4. Comment is a reply (replies break grouping)
-    const shouldStartNewGroup = 
-      !lastGroup || 
-      lastGroup.sender.id !== comment.createdBy.id ||
+    const shouldStartNewGroup =
+      !lastGroup ||
+      lastGroup.senderId !== comment.createdById ||
       comment.isPinned ||
       comment.parentId !== null
-    
+
     if (shouldStartNewGroup) {
       // Start a new group
       groups.push({
-        sender: {
-          id: comment.createdBy.id,
-          name: comment.createdBy.name,
-          image: comment.createdBy.image
-        },
+        senderId: comment.createdById,
         comments: [comment],
-        startIndex: index
+        startIndex: index,
       })
     } else {
       // Add to existing group
       lastGroup.comments.push(comment)
     }
   })
-  
+
   return groups
 }
 

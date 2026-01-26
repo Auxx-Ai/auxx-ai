@@ -330,14 +330,14 @@ export function useWorkflowVariableEditor({
     if (!editor) return []
     return extractVarIds(editor.getJSON())
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editor, editor?.state.doc])
+  }, [editor?.state.doc])
 
   // Validate current content (memoized)
   const validation = useMemo(() => {
     const content = editor ? tiptapToString(editor.getJSON()) : ''
     return validateTagPattern(content)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editor, editor?.state.doc])
+  }, [editor?.state.doc])
 
   return {
     // Editor

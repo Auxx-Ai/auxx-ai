@@ -60,13 +60,8 @@ export interface FileAttachment {
 // Define comment attachment info for display (alias to GroupedAttachmentInfo)
 export type CommentAttachmentInfo = GroupedAttachmentInfo
 // Define comment with attachments interface
+// Note: createdBy/pinnedBy removed - frontend uses useActor hook to resolve user info
 export interface CommentWithAttachments extends Comment {
-  createdBy: {
-    id: string
-    name: string
-    email: string
-    image: string | null
-  }
   attachments: CommentAttachmentInfo[]
 }
 // Define interface for creating a comment
@@ -170,16 +165,6 @@ export class CommentService {
         mentions,
       } = data
 
-      // Determine FK values - only set for system entity types
-      let threadIdToSet: string | null = null
-      let ticketIdToSet: string | null = null
-      const normalizedEntityType = entityType.toLowerCase()
-      if (normalizedEntityType === 'thread') {
-        threadIdToSet = entityId
-      } else if (normalizedEntityType === 'ticket') {
-        ticketIdToSet = entityId
-      }
-      // For Contact and custom entities, no FK needed
       // Use transaction to ensure data consistency
       const result = await this.db.transaction(async (tx) => {
         // First create the comment
@@ -188,12 +173,10 @@ export class CommentService {
           .values({
             content,
             entityId,
-            entityType,
+            entityDefinitionId: entityType,
             createdById,
             organizationId,
             parentId,
-            threadId: threadIdToSet, // <<< Set direct Thread FK (or null) >>>
-            ticketId: ticketIdToSet, // <<< Set direct Ticket FK (or null) >>>
             updatedAt: new Date(),
           })
           .returning()
@@ -385,7 +368,7 @@ export class CommentService {
 
       let contactId: string | undefined
       if (comment) {
-        const normalizedType = comment.entityType.toLowerCase()
+        const normalizedType = comment.entityDefinitionId.toLowerCase()
         if (normalizedType === 'ticket') {
           const ticket = await this.db.query.Ticket.findFirst({
             where: eq(schema.Ticket.id, comment.entityId),
@@ -434,7 +417,7 @@ export class CommentService {
         .where(
           and(
             eq(schema.Comment.entityId, entityId),
-            eq(schema.Comment.entityType, entityType),
+            eq(schema.Comment.entityDefinitionId, entityType),
             eq(schema.Comment.organizationId, this.organizationId)
           )
         )
@@ -470,7 +453,7 @@ export class CommentService {
       // Publish event after deletion
       if (comment) {
         let contactId: string | undefined
-        const normalizedType = comment.entityType.toLowerCase()
+        const normalizedType = comment.entityDefinitionId.toLowerCase()
         if (normalizedType === 'ticket') {
           const ticket = await this.db.query.Ticket.findFirst({
             where: eq(schema.Ticket.id, comment.entityId),
@@ -535,17 +518,15 @@ export class CommentService {
       // Calculate skip value for pagination
       const skip = (page - 1) * limit
       // Get top-level comments
+      // Note: createdBy/pinnedBy removed - frontend uses useActor hook to resolve user info
       const comments = await this.db.query.Comment.findMany({
         where: and(
           eq(schema.Comment.entityId, entityId),
-          eq(schema.Comment.entityType, entityType),
+          eq(schema.Comment.entityDefinitionId, entityType),
           isNull(schema.Comment.parentId), // Only get top-level comments (replies are nested)
           isNull(schema.Comment.deletedAt) // Exclude soft-deleted comments
         ),
         with: {
-          createdBy: {
-            columns: { id: true, name: true, image: true },
-          },
           mentions: {
             with: {
               user: {
@@ -554,17 +535,11 @@ export class CommentService {
             },
           },
           reactions: true, // Include all reactions for processing
-          pinnedBy: {
-            columns: { id: true, name: true },
-          },
           ...(includeReplies
             ? {
                 replies: {
                   where: isNull(schema.Comment.deletedAt), // Exclude soft-deleted replies
                   with: {
-                    createdBy: {
-                      columns: { id: true, name: true, image: true },
-                    },
                     mentions: {
                       with: {
                         user: {
@@ -573,9 +548,6 @@ export class CommentService {
                       },
                     },
                     reactions: true, // Include all reactions for processing
-                    pinnedBy: {
-                      columns: { id: true, name: true },
-                    },
                   },
                 },
               }
@@ -618,15 +590,13 @@ export class CommentService {
   async getCommentById(id: string): Promise<Comment> {
     try {
       // Get the comment with all related data
+      // Note: createdBy/pinnedBy removed - frontend uses useActor hook to resolve user info
       const comment = await this.db.query.Comment.findFirst({
         where: and(
           eq(schema.Comment.id, id),
           isNull(schema.Comment.deletedAt) // Exclude soft-deleted comments
         ),
         with: {
-          createdBy: {
-            columns: { id: true, name: true, image: true },
-          },
           mentions: {
             with: {
               user: {
@@ -635,15 +605,9 @@ export class CommentService {
             },
           },
           reactions: true, // Include all reactions for processing
-          pinnedBy: {
-            columns: { id: true, name: true },
-          },
           replies: {
             where: isNull(schema.Comment.deletedAt), // Exclude soft-deleted replies
             with: {
-              createdBy: {
-                columns: { id: true, name: true, image: true },
-              },
               mentions: {
                 with: {
                   user: {
@@ -652,9 +616,6 @@ export class CommentService {
                 },
               },
               reactions: true, // Include all reactions for processing
-              pinnedBy: {
-                columns: { id: true, name: true },
-              },
             },
           },
         },
@@ -663,9 +624,9 @@ export class CommentService {
         throw new Error('Comment not found')
       }
       // Check access to the entity this comment belongs to based on type
-      if (isSystemEntityType(comment.entityType)) {
+      if (isSystemEntityType(comment.entityDefinitionId)) {
         // Normalize to capitalized format for permission checks
-        const normalizedType = normalizeEntityTypeForPermissions(comment.entityType)
+        const normalizedType = normalizeEntityTypeForPermissions(comment.entityDefinitionId)
         await this.permissionService.verifyAccess(
           this.permissionService.canAccessEntity(comment.entityId, normalizedType),
           `You don't have access to this comment`
@@ -673,7 +634,7 @@ export class CommentService {
       } else {
         // Custom entity - entityType IS the entityDefinitionId
         await this.permissionService.verifyAccess(
-          this.permissionService.canAccessEntityInstance(comment.entityId, comment.entityType),
+          this.permissionService.canAccessEntityInstance(comment.entityId, comment.entityDefinitionId),
           `You don't have access to this comment`
         )
       }
@@ -757,9 +718,9 @@ export class CommentService {
         throw new Error('Comment not found')
       }
       // Verify entity access based on type
-      if (isSystemEntityType(comment.entityType)) {
+      if (isSystemEntityType(comment.entityDefinitionId)) {
         // Normalize to capitalized format for permission checks
-        const normalizedType = normalizeEntityTypeForPermissions(comment.entityType)
+        const normalizedType = normalizeEntityTypeForPermissions(comment.entityDefinitionId)
         await this.permissionService.verifyAccess(
           this.permissionService.canAccessEntity(comment.entityId, normalizedType),
           `You don't have access to this comment`
@@ -767,7 +728,7 @@ export class CommentService {
       } else {
         // Custom entity - entityType IS the entityDefinitionId
         await this.permissionService.verifyAccess(
-          this.permissionService.canAccessEntityInstance(comment.entityId, comment.entityType),
+          this.permissionService.canAccessEntityInstance(comment.entityId, comment.entityDefinitionId),
           `You don't have access to this comment`
         )
       }
@@ -826,9 +787,9 @@ export class CommentService {
         throw new Error('Comment not found')
       }
       // Verify entity access based on type
-      if (isSystemEntityType(comment.entityType)) {
+      if (isSystemEntityType(comment.entityDefinitionId)) {
         // Normalize to capitalized format for permission checks
-        const normalizedType = normalizeEntityTypeForPermissions(comment.entityType)
+        const normalizedType = normalizeEntityTypeForPermissions(comment.entityDefinitionId)
         await this.permissionService.verifyAccess(
           this.permissionService.canAccessEntity(comment.entityId, normalizedType),
           `You don't have access to this comment`
@@ -836,7 +797,7 @@ export class CommentService {
       } else {
         // Custom entity - entityType IS the entityDefinitionId
         await this.permissionService.verifyAccess(
-          this.permissionService.canAccessEntityInstance(comment.entityId, comment.entityType),
+          this.permissionService.canAccessEntityInstance(comment.entityId, comment.entityDefinitionId),
           `You don't have access to this comment`
         )
       }
@@ -1000,6 +961,7 @@ export class CommentService {
         organizationId: this.organizationId,
       })
       // Get the comment with all related data including reactions and mentions
+      // Note: createdBy/pinnedBy removed - frontend uses useActor hook to resolve user info
       const comment = await this.db.query.Comment.findFirst({
         where: and(
           eq(schema.Comment.id, commentId),
@@ -1007,14 +969,6 @@ export class CommentService {
           isNull(schema.Comment.deletedAt)
         ),
         with: {
-          createdBy: {
-            columns: {
-              id: true,
-              name: true,
-              email: true,
-              image: true,
-            },
-          },
           mentions: {
             with: {
               user: {
@@ -1026,21 +980,15 @@ export class CommentService {
             },
           },
           reactions: true, // Include all reactions for processing
-          pinnedBy: {
-            columns: {
-              id: true,
-              name: true,
-            },
-          },
         },
       })
       if (!comment) {
         return null
       }
       // Check access to the entity this comment belongs to based on type
-      if (isSystemEntityType(comment.entityType)) {
+      if (isSystemEntityType(comment.entityDefinitionId)) {
         // Normalize to capitalized format for permission checks
-        const normalizedType = normalizeEntityTypeForPermissions(comment.entityType)
+        const normalizedType = normalizeEntityTypeForPermissions(comment.entityDefinitionId)
         await this.permissionService.verifyAccess(
           this.permissionService.canAccessEntity(comment.entityId, normalizedType),
           `You don't have access to this comment`
@@ -1048,7 +996,7 @@ export class CommentService {
       } else {
         // Custom entity - entityType IS the entityDefinitionId
         await this.permissionService.verifyAccess(
-          this.permissionService.canAccessEntityInstance(comment.entityId, comment.entityType),
+          this.permissionService.canAccessEntityInstance(comment.entityId, comment.entityDefinitionId),
           `You don't have access to this comment`
         )
       }
