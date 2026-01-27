@@ -189,6 +189,14 @@ export class CommentService {
         if (mentions && mentions.length > 0) {
           await this.addMentionsToComment(comment!.id, mentions, tx)
         }
+
+        // Update Thread.latestCommentId if this is a thread comment
+        if (entityType === 'thread') {
+          await tx.update(schema.Thread)
+            .set({ latestCommentId: comment!.id })
+            .where(eq(schema.Thread.id, entityId))
+        }
+
         return comment
       })
       // Trigger notifications outside the transaction
@@ -422,6 +430,13 @@ export class CommentService {
           )
         )
 
+      // Set Thread.latestCommentId to null if deleting all thread comments
+      if (entityType === 'thread') {
+        await this.db.update(schema.Thread)
+          .set({ latestCommentId: null })
+          .where(eq(schema.Thread.id, entityId))
+      }
+
       logger.info('Deleted comments for entity', { entityId, entityType })
     } catch (error) {
       logger.error('Error deleting comments by entity', { error, recordId })
@@ -449,6 +464,11 @@ export class CommentService {
         .update(schema.Comment)
         .set({ deletedAt: new Date(), updatedAt: new Date() })
         .where(eq(schema.Comment.id, id))
+
+      // Recalculate Thread.latestCommentId if this was a thread comment
+      if (comment && comment.entityDefinitionId === 'thread') {
+        await this.recalculateLatestCommentId(comment.entityId)
+      }
 
       // Publish event after deletion
       if (comment) {
@@ -1082,6 +1102,29 @@ export class CommentService {
     } catch (error) {
       logger.error('Error adding attachments to comment', { error, commentId, fileAttachments })
       throw error
+    }
+  }
+
+  /**
+   * Recalculates and updates the latestCommentId for a thread
+   */
+  private async recalculateLatestCommentId(threadId: string): Promise<void> {
+    try {
+      const latest = await this.db.query.Comment.findFirst({
+        where: and(
+          eq(schema.Comment.entityId, threadId),
+          eq(schema.Comment.entityDefinitionId, 'thread'),
+          isNull(schema.Comment.deletedAt)
+        ),
+        columns: { id: true },
+        orderBy: [desc(schema.Comment.createdAt), desc(schema.Comment.id)]
+      })
+
+      await this.db.update(schema.Thread)
+        .set({ latestCommentId: latest?.id ?? null })
+        .where(eq(schema.Thread.id, threadId))
+    } catch (error) {
+      logger.error('Failed to recalculate latestCommentId', { threadId, error })
     }
   }
 }

@@ -7,8 +7,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Badge } from '@auxx/ui/components/badge' // Use Badge if needed for tags/status
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import useThreadSelection from '~/components/kbar/use-thread-selection'
-import { useMailFilter } from './mail-filter-context'
+import { useIsThreadSelected, useThreadSelectionStore } from '~/components/threads/store'
 import { MessageSquare } from 'lucide-react' // Import chat icon
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar' // For assignee avatar
 import type { ThreadListItem } from './types' // Import the shared type
@@ -24,23 +23,18 @@ interface ChatThreadItemProps {
  */
 export function ChatThreadItem({ item, basePath, isSelected }: ChatThreadItemProps) {
   // --- Hooks ---
-  const { selectedThreadIds, contextType, contextId, statusSlug, searchQuery } = useMailFilter()
-  const { handleThreadMultiSelect } = useThreadSelection({
-    contextType,
-    contextId,
-    statusSlug,
-    searchQuery,
-  })
+
+  // Use per-item selector for efficient re-renders
+  const isMultiSelected = useIsThreadSelected(item.id)
+
+  // Get selection actions from store (stable reference)
+  const { setSelectedThreads, setActiveThread, toggleSelection } =
+    useThreadSelectionStore.getState()
 
   if (!item?.id) {
     console.error('ChatThreadItem rendered without valid item or item.id:', item)
     return null // Don't render invalid item
   }
-
-  const isMultiSelected = useMemo(
-    () => selectedThreadIds.includes(item.id),
-    [selectedThreadIds, item.id]
-  )
 
   // --- Drag and Drop ---
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -51,7 +45,8 @@ export function ChatThreadItem({ item, basePath, isSelected }: ChatThreadItemPro
       // Note: messageType computed from integration.provider at API boundary
       messageType: item.messageType,
       get draggedThreadIds() {
-        return selectedThreadIds.includes(item.id) ? selectedThreadIds : [item.id]
+        const storeIds = useThreadSelectionStore.getState().selectedThreadIds
+        return storeIds.includes(item.id) ? storeIds : [item.id]
       },
     },
     disabled: !item.id,
@@ -69,9 +64,24 @@ export function ChatThreadItem({ item, basePath, isSelected }: ChatThreadItemPro
   // --- Event Handlers ---
   const handleClick = useCallback(
     (event: React.MouseEvent) => {
-      handleThreadMultiSelect(item.id, event)
+      event.preventDefault()
+
+      if (event.metaKey || event.ctrlKey) {
+        // Toggle selection
+        toggleSelection(item.id)
+        setActiveThread(item.id)
+      } else if (event.shiftKey) {
+        // Range selection - use selectedThreadIds from context for now
+        // Note: For proper range selection, thread IDs need to be passed
+        setSelectedThreads([item.id])
+        setActiveThread(item.id)
+      } else {
+        // Normal click - select only this item
+        setSelectedThreads([item.id])
+        setActiveThread(item.id)
+      }
     },
-    [handleThreadMultiSelect, item.id]
+    [item.id, toggleSelection, setSelectedThreads, setActiveThread]
   )
 
   // --- Display Data ---

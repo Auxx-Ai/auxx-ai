@@ -3,14 +3,12 @@
 
 import React, { useMemo, useCallback } from 'react'
 import { formatDistanceToNowStrict } from 'date-fns'
-import { getInitialsFromName } from '@auxx/utils'
 import DOMPurify from 'dompurify'
 import { useDraggable } from '@dnd-kit/core'
 import { useMailFilter } from './mail-filter-context'
-import { Check, X, MoreVertical, Archive, Trash2, MailWarning } from 'lucide-react'
+import { MoreVertical, Archive, Trash2, MailWarning } from 'lucide-react'
 
 import { cn } from '@auxx/ui/lib/utils'
-import { type ThreadListItem } from './types'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { getIntegrationIcon } from './mail-status-config'
 import {
@@ -21,26 +19,25 @@ import {
   DropdownMenuSeparator,
 } from '@auxx/ui/components/dropdown-menu'
 import { Button } from '@auxx/ui/components/button'
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import { useThreadMutations } from '~/hooks/use-thread-mutations'
 import { WorkflowSubMenu } from '~/components/workflow/workflow-submenu'
+
+// NEW: Import from new hooks
+import { useThread, useMessage, useThreadReadStatus, useThreadDraftStatus } from '~/components/threads/hooks'
+import type { ThreadTagSummary } from '~/components/threads/store'
+
 /**
  * Processing menu component for triggering manual message processing
  */
 function ProcessingMenu({
-  messageId,
   threadId,
-  organizationId,
-  currentStatus,
   threadMutations,
 }: {
-  messageId: string
   threadId: string
-  organizationId: string
-  currentStatus?: string
   threadMutations: ReturnType<typeof useThreadMutations>
 }) {
   const onSuccess = useCallback(() => {
-    // Optionally handle success (e.g., show toast, refresh data)
     console.log('Workflow triggered successfully')
   }, [])
 
@@ -81,147 +78,135 @@ function ProcessingMenu({
 /**
  * Props for the MailThreadItem component.
  */
-interface MailThreadItemProps {
-  /** The thread data object. Expects at least an 'id' property. */
-  item: ThreadListItem // Replace 'any' with specific TRPC ThreadListItem type when available
-  /** Base URL path for constructing navigation links (though navigation is handled by selection). */
+export interface MailThreadItemProps {
+  /** Thread ID to fetch and display */
+  threadId: string
+  /** Base URL path for constructing navigation links */
   basePath: string
-  /** Indicates if this thread is the currently active one being displayed in detail view. */
+  /** Indicates if this thread is the currently active one being displayed in detail view */
   isSelected: boolean
-  handleThreadMultiSelect: (threadId: string, event: React.MouseEvent) => void
+  /** Handler for thread click with selection support */
+  handleThreadClick: (threadId: string, event: React.MouseEvent) => void
 }
 
 /**
  * Displays a single draggable mail thread item in the list.
- * Handles click events for selection and provides drag functionality.
+ * Uses new hooks architecture to fetch thread and message data.
  */
 export function MailThreadItem({
-  item,
-  basePath, // Keep basePath if needed for other potential link generation, though click handles selection
-  isSelected,
-  handleThreadMultiSelect,
+  threadId,
+  basePath: _basePath,
+  isSelected: _isSelected,
+  handleThreadClick,
 }: MailThreadItemProps) {
-  // --- Hooks ---
-
+  // --- Get filter context ---
   const { selectedThreadIds, contextType, contextId, statusSlug, searchQuery, viewMode } =
-    useMailFilter() // Get multi-selection state and view mode from context
+    useMailFilter()
 
-  // Get thread mutations for mark as read functionality
-  const threadMutations = useThreadMutations(item.id, {
+  // --- NEW: Use ID-based hooks ---
+  const { thread, isLoading: isThreadLoading } = useThread({ threadId })
+  const { message: latestMessage } = useMessage({
+    messageId: thread?.latestMessageId,
+    enabled: !!thread?.latestMessageId,
+  })
+  const { isUnread } = useThreadReadStatus(threadId)
+  const { hasDraft } = useThreadDraftStatus(threadId)
+
+  // --- Thread mutations ---
+  const threadMutations = useThreadMutations(threadId, {
     contextType,
     contextId,
     statusSlug,
     searchQuery,
   })
 
-  // Ensure item and item.id are valid before proceeding
-  if (!item?.id) {
-    console.error('MailThreadItem rendered without valid item or item.id:', item)
-    // return null // Don't render if item or id is missing
-  }
-
-  // const isMultiSelected = selectedThreadIds.includes(item.id)
+  // --- Selection state ---
   const isMultiSelected = useMemo(
-    () => selectedThreadIds.includes(item.id),
-    [selectedThreadIds, item.id]
+    () => selectedThreadIds.includes(threadId),
+    [selectedThreadIds, threadId]
   )
 
   // --- Drag and Drop Setup ---
-  const { attributes, listeners, setNodeRef, transform } = useDraggable({
-    id: item.id,
+  const { attributes, listeners, setNodeRef } = useDraggable({
+    id: threadId,
     data: {
       type: 'thread',
-      threadId: item.id,
-      // Pass all selected IDs if the dragged item is part of the selection
+      threadId,
       get draggedThreadIds() {
-        return selectedThreadIds.includes(item.id) ? selectedThreadIds : [item.id]
+        return selectedThreadIds.includes(threadId) ? selectedThreadIds : [threadId]
       },
     },
-    disabled: !item.id,
+    disabled: !threadId,
   })
-  // Handle click for selecting/multi-selecting threads
+
+  // --- Click handler ---
   const handleClick = useCallback(
     (event: React.MouseEvent) => {
-      // Prevent interfering with drag start if click happens during threshold
-      if (event.detail > 1) event.preventDefault() // Prevent double-click selection interfering?
+      if (event.detail > 1) event.preventDefault()
 
       if (viewMode === 'edit') {
-        // In edit mode, simulate meta key press to toggle selection instead of navigation
         event.preventDefault()
-        // Create a proper synthetic event object with all required methods
         const syntheticEvent = {
           ...event,
-          metaKey: true, // Simulate Meta key press to trigger multi-select behavior
-          ctrlKey: true, // Also set ctrlKey for cross-platform compatibility
+          metaKey: true,
+          ctrlKey: true,
           preventDefault: () => {},
           stopPropagation: () => {},
         }
-        handleThreadMultiSelect(item.id, syntheticEvent as React.MouseEvent)
+        handleThreadClick(threadId, syntheticEvent as React.MouseEvent)
       } else {
-        // In view mode, use normal selection behavior (navigation or multi-select with modifiers)
-        handleThreadMultiSelect(item.id, event)
+        handleThreadClick(threadId, event)
 
-        // Mark as read if thread is currently unread (only in view mode for navigation)
-        if (item.isUnread) {
-          threadMutations.markReadMutation.mutate({ threadId: item.id })
+        // Mark as read if thread is currently unread
+        if (isUnread) {
+          threadMutations.markReadMutation.mutate({ threadId })
         }
       }
-
-      // NOTE: Navigation to view the thread should be a side effect of the
-      // selection state changing (e.g., URL parameter update managed by selection hook or parent)
     },
-    [handleThreadMultiSelect, item.id, threadMutations.markReadMutation, item.isUnread, viewMode]
+    [handleThreadClick, threadId, threadMutations.markReadMutation, isUnread, viewMode]
   )
-  const formattedDate = useMemo(() => {
-    return item.lastMessageAt
-      ? formatDistanceToNowStrict(new Date(item.lastMessageAt), { addSuffix: false }) // Simpler format
-      : ''
-  }, [item.lastMessageAt])
 
-  const latestMessage = item.latestMessage ?? item.messages?.[0] ?? null
+  // --- Derived values ---
+  const formattedDate = useMemo(() => {
+    return thread?.lastMessageAt
+      ? formatDistanceToNowStrict(new Date(thread.lastMessageAt), { addSuffix: false })
+      : ''
+  }, [thread?.lastMessageAt])
+
   const senderName = useMemo(
     () => latestMessage?.from?.name || latestMessage?.from?.identifier || 'Unknown',
-    [latestMessage]
+    [latestMessage?.from]
   )
+
   const snippet = useMemo(() => {
-    // Sanitize snippet HTML. Ensure DOMPurify runs client-side only.
-    if (typeof window !== 'undefined') {
-      return DOMPurify.sanitize(latestMessage?.snippet ?? '', { USE_PROFILES: { html: true } })
+    if (typeof window !== 'undefined' && latestMessage?.snippet) {
+      return DOMPurify.sanitize(latestMessage.snippet, { USE_PROFILES: { html: true } })
     }
-    return latestMessage?.snippet ?? '' // Fallback for SSR/initial render
+    return latestMessage?.snippet ?? ''
   }, [latestMessage?.snippet])
 
-  const sanitizedCommentContent = useMemo(() => {
-    // Sanitize comment content to prevent XSS
-    const latestComment = item.latestComment
-    if (typeof window !== 'undefined' && latestComment?.content) {
-      return DOMPurify.sanitize(latestComment.content, { USE_PROFILES: { html: true } })
-    }
-    return latestComment?.content ?? ''
-  }, [item.latestComment?.content])
+  // --- Loading state ---
+  if (isThreadLoading || !thread) {
+    return <ThreadItemSkeleton />
+  }
 
   return (
     <div className="flex flex-row items-stretch relative">
       <div
         ref={setNodeRef}
-        // style={style}
         {...listeners}
         {...attributes}
-        id={`thread-${item.id}`}
+        id={`thread-${threadId}`}
         className={cn(
-          // Base styles
-          'z-2 hover:bg-accent hover:text-accent-foreground dark:border-slate-700  group relative flex w-full cursor-grab flex-col items-start gap-1 rounded-lg border bg-background ps-6 pe-2 py-3 text-left text-sm active:cursor-grabbing dark:bg-slate-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+          'z-2 hover:bg-accent hover:text-accent-foreground dark:border-slate-700 group relative flex w-full cursor-grab flex-col items-start gap-1 rounded-lg border bg-background ps-6 pe-2 py-3 text-left text-sm active:cursor-grabbing dark:bg-slate-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
           isMultiSelected &&
-            'bg-info hover:bg-info-100! text-background shadow-md dark:bg-info dark:hover:bg-info-100  border-info/50 '
+            'bg-info hover:bg-info-100! text-background shadow-md dark:bg-info dark:hover:bg-info-100 border-info/50'
         )}
         aria-selected={isMultiSelected}
         onClick={handleClick}
-        // Prevent default browser drag behavior which can interfere
-        onDragStart={(e) => e.preventDefault()}
-        // type="button" // Ensure it's treated as a button
-      >
+        onDragStart={(e) => e.preventDefault()}>
         {/* Unread indicator dot */}
-        {item.isUnread && (
+        {isUnread && (
           <div
             className={cn(
               'absolute left-2 top-9 h-2 w-2 -translate-y-1/2 rounded-full bg-blue-500',
@@ -230,32 +215,29 @@ export function MailThreadItem({
             aria-label="Unread message"
           />
         )}
+
         <div className="absolute top-3 left-1">
           {viewMode === 'edit' ? (
-            // Show checkbox in edit mode
             <Checkbox
               checked={isMultiSelected}
-              onCheckedChange={(checked) => {
-                // Create a synthetic click event to maintain existing selection logic
+              onCheckedChange={() => {
                 const syntheticEvent = {
                   preventDefault: () => {},
                   stopPropagation: () => {},
                   detail: 1,
-                  metaKey: true, // Simulate Meta key press for multi-select behavior
-                  ctrlKey: true, // Also set ctrlKey for cross-platform compatibility
+                  metaKey: true,
+                  ctrlKey: true,
                   currentTarget: null,
                   target: null,
                   nativeEvent: null,
                 } as React.MouseEvent
-                handleThreadMultiSelect(item.id, syntheticEvent)
+                handleThreadClick(threadId, syntheticEvent)
               }}
-              onClick={(e) => e.stopPropagation()} // Prevent bubble to parent click handler
+              onClick={(e) => e.stopPropagation()}
             />
           ) : (
-            // Show integration icon in view mode
-            // Note: Integration type derived from item.integration.provider
             <div className="flex-none rounded-full border p-0.5 text-blue-500 group-aria-selected:bg-background group-aria-selected:border-info/90">
-              {getIntegrationIcon(item.integration?.provider)}
+              {getIntegrationIcon(thread.integrationProvider)}
             </div>
           )}
         </div>
@@ -263,96 +245,87 @@ export function MailThreadItem({
         {/* Content */}
         <div className="flex w-full flex-col gap-1">
           <div className="flex items-center">
-            {/* Sender Name */}
             <div className="flex items-center ms-0.5 gap-0.5 overflow-hidden">
               <div className="flex-1 truncate font-semibold group-aria-selected:text-white">
                 {senderName}
               </div>
             </div>
-            {/* Date */}
             <div className="ml-auto shrink-0 whitespace-nowrap pl-2 text-xs text-muted-foreground group-aria-selected:text-background/50">
               {formattedDate}
             </div>
           </div>
+
           {/* Subject */}
           <div className="grid-auto-cols-[minmax(auto,max-content)] grid flex-1 grid-flow-col grid-cols-[auto] items-center gap-1">
             <div className="truncate text-xs font-medium group-aria-selected:text-background/80">
-              {item.subject || '(no subject)'}
+              {thread.subject || '(no subject)'}
             </div>
             <div>
               <div className="flex items-center justify-end gap-1 overflow-hidden">
-                {item.tags?.length > 0 &&
-                  item.tags.map((tag: ThreadListItem['tags'][number]) => getTagForThread(tag))}
+                {hasDraft && (
+                  <div
+                    className={cn(
+                      'flex items-center gap-1 whitespace-nowrap rounded-[5px] border px-[3px] py-[1px] text-xs text-red-600 border-red-300 bg-red-50',
+                      isMultiSelected && 'text-red-200 border-red-200/50 bg-transparent'
+                    )}>
+                    Draft
+                  </div>
+                )}
+                {thread.tags?.map((tag) => (
+                  <ThreadTag key={tag.id} tag={tag} isMultiSelected={isMultiSelected} />
+                ))}
               </div>
             </div>
           </div>
         </div>
+
         <div
           className="line-clamp-2 w-full break-words text-xs text-muted-foreground group-aria-selected:text-background/50"
           dangerouslySetInnerHTML={{ __html: snippet }}
         />
-        {item.latestComment && (
-          <div className="">
-            <div className="flex min-w-0 items-center gap-1 rounded-[10px] bg-[rgba(93,105,133,0.18)] pe-2 text-xs group-aria-selected:text-background group-aria-selected:bg-background/20">
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[rgba(93,105,133,0.5)] text-xs text-white group-aria-selected:bg-background/30">
-                {getInitialsFromName(item.latestComment.createdBy.name)}
-              </span>
-              <div
-                className="text-foreground/80 group-aria-selected:text-white/50"
-                dangerouslySetInnerHTML={{ __html: sanitizedCommentContent }}
-              />
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Processing menu */}
-
-      {/* Shown if in action mode  */}
-      <div className="z-1 me-0.5 relative border-primary-500 rounded-r-lg -ms-1.5 ps-2 py-0.5 pe-0.5 bg-primary-200 dark:bg-slate-800 flex flex-row shrink-0 ">
+      <div className="z-1 me-0.5 relative border-primary-500 rounded-r-lg -ms-1.5 ps-2 py-0.5 pe-0.5 bg-primary-200 dark:bg-slate-800 flex flex-row shrink-0">
         <div
-          className="absolute inset-0 rounded-r-lg pointer-events-none  mask-y-from-98% mask-y-to-100%"
-          style={{ boxShadow: 'inset 25px 0 25px -25px #000, 1px 1px 3px rgba(0,0,0,0.2)' }}></div>
-        <div className="flex flex-col justify-start h-full ">
-          {/* approve */}
-          {latestMessage && (
-            <ProcessingMenu
-              messageId={latestMessage.id}
-              threadId={item.id}
-              organizationId={item.organizationId || latestMessage.organizationId}
-              currentStatus={undefined}
-              threadMutations={threadMutations}
-            />
-          )}
-          {/* <Button
-            variant="ghost"
-            size="sm"
-            className="size-7 hover:bg-good-100 hover:text-good-900 text-muted-foreground">
-            <Check className="size-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="size-7 hover:border-bad-500 text-muted-foreground  hover:bg-bad-100 hover:text-bad-900 ">
-            <X className="size-4" />
-          </Button> */}
+          className="absolute inset-0 rounded-r-lg pointer-events-none mask-y-from-98% mask-y-to-100%"
+          style={{ boxShadow: 'inset 25px 0 25px -25px #000, 1px 1px 3px rgba(0,0,0,0.2)' }}
+        />
+        <div className="flex flex-col justify-start h-full">
+          <ProcessingMenu threadId={threadId} threadMutations={threadMutations} />
         </div>
       </div>
     </div>
   )
 }
 
-/** Renders a visual chip for a thread tag. */
-function getTagForThread(tag: ThreadListItem['tags'][number]): React.ReactNode {
-  const name = tag.title
-  // Add logic here to map label names/properties to Badge variants/colors
+/** Skeleton for loading thread item */
+function ThreadItemSkeleton() {
   return (
-    <div
-      key={tag.id}
-      className={`flex items-center gap-1 overflow-hidden whitespace-nowrap rounded-[5px] border  px-[3px] py-[1px] text-xs text-muted-foreground group-aria-selected:text-background/80 group-aria-selected:border-black/20  `}>
-      {tag.emoji} {name}
+    <div className="flex flex-row items-stretch relative">
+      <div className="z-2 group relative flex w-full flex-col items-start gap-1 rounded-lg border bg-background ps-6 pe-2 py-3">
+        <div className="flex w-full flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <Skeleton className="h-4 w-1/3" />
+            <Skeleton className="h-3 w-16" />
+          </div>
+          <Skeleton className="h-3 w-2/3" />
+          <Skeleton className="h-3 w-full" />
+        </div>
+      </div>
     </div>
   )
 }
 
-// --- END OF FILE ~/components/mail/mail-thread-item.tsx ---
+/** Renders a visual chip for a thread tag */
+function ThreadTag({ tag, isMultiSelected }: { tag: ThreadTagSummary; isMultiSelected: boolean }) {
+  return (
+    <div
+      className={cn(
+        'flex items-center gap-1 overflow-hidden whitespace-nowrap rounded-[5px] border px-[3px] py-[1px] text-xs text-muted-foreground',
+        isMultiSelected && 'text-background/80 border-black/20'
+      )}>
+      {tag.emoji} {tag.title}
+    </div>
+  )
+}

@@ -12,31 +12,33 @@ import { AssigneePicker } from '~/components/pickers/assignee-picker'
 import { TagPicker } from '~/components/pickers/tag-picker'
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
 import { toRecordId } from '~/components/resources'
-
-/**
- * Props for the BulkActionToolbar component.
- */
-interface BulkActionToolbarProps {
-  /** Controls visibility of the action bar with enter/exit animation. */
-  open?: boolean
-  /** Array of selected thread IDs for bulk actions. */
-  selectedThreadIds: string[]
-  /** Callback function to clear the current selection. */
-  onClearSelection: () => void
-}
+import {
+  useSelectedThreadIds,
+  useSelectionCount,
+  useHasMultipleSelected,
+  useThreadSelectionStore,
+  useViewMode,
+} from '~/components/threads/store'
+import { useKeyboard } from '~/components/threads/context/keyboard-context'
 
 /**
  * A toolbar component that appears when multiple threads are selected,
  * providing options for bulk actions like archiving, deleting, tagging, etc.
- * It uses MailFilterContext to correctly invalidate relevant thread lists.
+ * Fully self-contained - reads selection state from store directly.
  */
-export default function BulkActionToolbar({
-  open = true,
-  selectedThreadIds,
-  onClearSelection,
-}: BulkActionToolbarProps) {
+export default function BulkActionToolbar() {
   const utils = api.useUtils()
   const { contextType, contextId, statusSlug, searchQuery } = useMailFilter()
+
+  // Selection and view state from store
+  const selectedThreadIds = useSelectedThreadIds()
+  const selectionCount = useSelectionCount()
+  const hasMultipleSelected = useHasMultipleSelected()
+  const viewMode = useViewMode()
+  const clearSelection = useThreadSelectionStore((s) => s.clearSelection)
+
+  // Compute visibility internally
+  const open = hasMultipleSelected || viewMode === 'edit'
   const [confirm, ConfirmDialog] = useConfirm()
 
   // External dialog states (for actions that open dialogs outside ActionBar)
@@ -45,30 +47,30 @@ export default function BulkActionToolbar({
   // --- Mutations ---
   const archiveBulk = api.thread.archiveBulk.useMutation({
     onSuccess: () => {
-      toastSuccess({ title: `${selectedThreadIds.length} threads archived` })
+      toastSuccess({ title: `${selectionCount} threads archived` })
       utils.thread.list.invalidate({ contextType, contextId, statusSlug, searchQuery })
       utils.thread.list.invalidate({ contextType, contextId, statusSlug: 'done', searchQuery })
-      onClearSelection()
+      clearSelection()
     },
     onError: (err) => toastError({ title: 'Failed to archive', description: err.message }),
   })
 
   const moveToTrashBulk = api.thread.moveToTrashBulk.useMutation({
     onSuccess: () => {
-      toastSuccess({ title: `${selectedThreadIds.length} threads moved to trash` })
+      toastSuccess({ title: `${selectionCount} threads moved to trash` })
       utils.thread.list.invalidate({ contextType, contextId, statusSlug, searchQuery })
       utils.thread.list.invalidate({ contextType, contextId, statusSlug: 'trash', searchQuery })
-      onClearSelection()
+      clearSelection()
     },
     onError: (err) => toastError({ title: 'Failed to move to trash', description: err.message }),
   })
 
   const markAsSpamBulk = api.thread.markAsSpamBulk.useMutation({
     onSuccess: () => {
-      toastSuccess({ title: `${selectedThreadIds.length} threads marked as spam` })
+      toastSuccess({ title: `${selectionCount} threads marked as spam` })
       utils.thread.list.invalidate({ contextType, contextId, statusSlug, searchQuery })
       utils.thread.list.invalidate({ contextType, contextId, statusSlug: 'spam', searchQuery })
-      onClearSelection()
+      clearSelection()
     },
     onError: (err) => toastError({ title: 'Failed to mark as spam', description: err.message }),
   })
@@ -76,7 +78,7 @@ export default function BulkActionToolbar({
   const assignBulk = api.thread.assignBulk.useMutation({
     onSuccess: (_, variables) => {
       const msg = variables.assigneeId ? 'assigned' : 'unassigned'
-      toastSuccess({ title: `${selectedThreadIds.length} threads ${msg}` })
+      toastSuccess({ title: `${selectionCount} threads ${msg}` })
       utils.thread.list.invalidate({ contextType, contextId, statusSlug, searchQuery })
       if (contextType !== 'personal_assigned' && contextType !== 'personal_inbox') {
         utils.thread.list.invalidate({
@@ -104,14 +106,14 @@ export default function BulkActionToolbar({
           searchQuery,
         })
       }
-      onClearSelection()
+      clearSelection()
     },
     onError: (err) => toastError({ title: 'Failed to assign', description: err.message }),
   })
 
   const tagBulk = api.thread.tagBulk.useMutation({
     onSuccess: () => {
-      toastSuccess({ title: `Tags updated for ${selectedThreadIds.length} threads` })
+      toastSuccess({ title: `Tags updated for ${selectionCount} threads` })
       utils.thread.list.invalidate({ contextType, contextId, statusSlug, searchQuery })
     },
     onError: (err) => toastError({ title: 'Failed to update tags', description: err.message }),
@@ -119,37 +121,49 @@ export default function BulkActionToolbar({
 
   const deletePermanentlyBulk = api.thread.deletePermanentlyBulk.useMutation({
     onSuccess: () => {
-      toastSuccess({ title: `${selectedThreadIds.length} threads permanently deleted` })
+      toastSuccess({ title: `${selectionCount} threads permanently deleted` })
       utils.thread.list.invalidate({ contextType, contextId, statusSlug, searchQuery })
-      onClearSelection()
+      clearSelection()
     },
     onError: (err) => toastError({ title: 'Failed to delete', description: err.message }),
   })
+
+  // --- Keyboard shortcuts ---
+  useKeyboard(
+    'd',
+    (e) => {
+      e.preventDefault()
+      if (selectionCount > 0 && !archiveBulk.isPending) {
+        archiveBulk.mutate({ threadIds: selectedThreadIds })
+      }
+    },
+    { enabled: open }
+  )
 
   // --- Handlers ---
   const handleAssigneeChange = useCallback(
     (selected: any[]) => {
       const assigneeId = selected?.[0]?.id
-      if (selectedThreadIds.length > 0 && assigneeId) {
+      if (selectionCount > 0 && assigneeId) {
         assignBulk.mutate({ threadIds: selectedThreadIds, assigneeId })
       }
     },
-    [selectedThreadIds, assignBulk]
+    [selectionCount, selectedThreadIds, assignBulk]
   )
 
   const handleTagChange = useCallback(
     (tagIds: string[]) => {
       const cleanTagIds = tagIds.filter(Boolean)
-      if (cleanTagIds.length > 0 && selectedThreadIds.length > 0) {
+      if (cleanTagIds.length > 0 && selectionCount > 0) {
         tagBulk.mutate({ threadIds: selectedThreadIds, tagIds: cleanTagIds, operation: 'set' })
       }
     },
-    [selectedThreadIds, tagBulk]
+    [selectionCount, selectedThreadIds, tagBulk]
   )
 
   const handlePermanentlyDelete = useCallback(async () => {
     const confirmed = await confirm({
-      title: `Permanently delete ${selectedThreadIds.length} threads?`,
+      title: `Permanently delete ${selectionCount} threads?`,
       description: 'This action cannot be undone.',
       confirmText: 'Delete permanently',
       destructive: true,
@@ -157,9 +171,9 @@ export default function BulkActionToolbar({
     if (confirmed) {
       deletePermanentlyBulk.mutate({ threadIds: selectedThreadIds })
     }
-  }, [selectedThreadIds, deletePermanentlyBulk, confirm])
+  }, [selectionCount, selectedThreadIds, deletePermanentlyBulk, confirm])
 
-  const disabled = selectedThreadIds.length === 0
+  const disabled = selectionCount === 0
 
   // --- Build actions array ---
   const actions: ActionBarAction[] = useMemo(
@@ -241,7 +255,7 @@ export default function BulkActionToolbar({
     ],
     [
       selectedThreadIds,
-      disabled,
+      selectionCount,
       archiveBulk,
       moveToTrashBulk,
       markAsSpamBulk,
@@ -249,6 +263,7 @@ export default function BulkActionToolbar({
       assignBulk,
       deletePermanentlyBulk,
       handleAssigneeChange,
+      handleTagChange,
       handlePermanentlyDelete,
     ]
   )
@@ -260,9 +275,9 @@ export default function BulkActionToolbar({
       <ActionBar
         open={open}
         onOpenChange={(isOpen) => {
-          if (!isOpen) onClearSelection()
+          if (!isOpen) clearSelection()
         }}
-        selectedCount={selectedThreadIds.length}
+        selectedCount={selectionCount}
         selectedLabel="selected"
         actions={actions}
         showClose

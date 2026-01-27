@@ -1,13 +1,14 @@
 // src/components/mail/thread-details.tsx
 'use client'
 
-import React, { useState, useCallback } from 'react'
+import { useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 
 // Import custom hooks
 import { useConfirm } from '~/hooks/use-confirm'
-import { useThread } from './thread-provider'
+import { useThreadContext } from './thread-provider'
+import { useThread } from '~/components/threads/hooks'
 import { toRecordId } from '@auxx/lib/field-values/client'
 
 // Import components
@@ -23,21 +24,16 @@ import ReplyComposeEditor from './email-editor' // Renamed import
  */
 export default function ThreadDetails() {
   const router = useRouter()
-  // const { data: session } = useSession()
   const [confirm, ConfirmDialog] = useConfirm()
 
-  // Get all thread data and actions from context
-  const {
-    thread,
-    isLoading,
-    error,
-    isDone,
-    assignee,
-    replyBox,
-    mutations,
-    handlers,
-    emailActions,
-  } = useThread()
+  // Get actions from context
+  const { threadId, replyBox, mutations, handlers } = useThreadContext()
+
+  // Get thread data from store
+  const { thread, isLoading, isNotFound } = useThread({ threadId })
+
+  // Derive isDone from thread status
+  const isDone = thread?.status === 'ARCHIVED'
 
   // Define all callbacks first (before early returns)
   // const handleRule = useCallback(() => {
@@ -117,14 +113,16 @@ export default function ThreadDetails() {
       const newAssigneeId = firstAssignee?.id ?? null // Use optional chaining and nullish coalescing
 
       // Avoid mutation if assignee hasn't changed
-      if (newAssigneeId === (assignee?.id ?? null)) {
+      // Compare with assigneeActorId from store
+      const currentAssigneeId = thread?.assigneeActorId?.id ?? null
+      if (newAssigneeId === currentAssigneeId) {
         console.log('Assignee unchanged, skipping update.', { newAssigneeId })
         return
       }
 
       await handlers.updateAssignee(newAssigneeId)
     },
-    [thread, assignee, handlers]
+    [thread, handlers]
   )
 
   const handleChangeSubject = useCallback(
@@ -190,10 +188,10 @@ export default function ThreadDetails() {
         </div>
       )
     }
-    if (error) {
+    if (isNotFound) {
       return (
         <div className="flex h-full items-center justify-center">
-          <div className="text-red-500">Error loading thread: {error.message}</div>
+          <div className="text-red-500">Thread not found</div>
         </div>
       )
     }
@@ -242,12 +240,11 @@ export default function ThreadDetails() {
                 mode={editorMode}
                 sourceMessage={sourceMessage} // Pass the message being replied/forwarded to
                 thread={thread}
-                draftMessage={thread.draftMessage} // Pass the draft message from the thread query
+                draftMessage={undefined} // TODO: Add useDraft hook or fetch on-demand
                 onClose={() => handlers.closeReplyBox()}
                 onSendSuccess={() => {
                   console.log('onSendSuccess callback triggered')
                   // Invalidation already happens in the mutation's onSuccess
-                  // handlers.closeReplyBox(); // Close the box after sending
                 }}
               />
             </div>

@@ -1,62 +1,50 @@
-import { api } from '~/trpc/react'
+// apps/web/src/components/mail/thread-display.tsx
 import ThreadDetails from './thread-details'
 import { ThreadProvider } from './thread-provider'
-import { type RouterOutputs } from '~/server/api/root'
-import useThreadSelection from '../kbar/use-thread-selection'
 import BulkActionToolbar from './bulk-action-toolbar'
 import { useMailFilter } from './mail-filter-context'
-import useThreads from '~/hooks/use-threads-filter'
 import ChatInterface from '../mail-views/chat-interface'
 import { EmptyState } from '../global/empty-state'
 import { Mail, Plus } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
 import NewMessageDialog from './email-editor/new-message-dialog'
-import { MessageType } from '@auxx/database/enums'
+import { useHasMultipleSelected, useFirstSelectedThreadId } from '~/components/threads/store'
+import { useThread } from '~/components/threads/hooks'
+import type { IntegrationProvider } from '~/components/threads/store/thread-store'
 
+/** Chat providers that use ChatInterface instead of ThreadDetails */
+const CHAT_PROVIDERS: IntegrationProvider[] = ['FACEBOOK', 'INSTAGRAM', 'OPENPHONE']
+
+/** Check if thread should use chat interface based on integration provider */
+function isChatThread(provider: IntegrationProvider | null): boolean {
+  return provider !== null && CHAT_PROVIDERS.includes(provider)
+}
+
+/**
+ * ThreadDisplay - displays the selected thread details or bulk action toolbar.
+ * Gets thread data from Zustand store.
+ */
 export function ThreadDisplay() {
-  const { viewMode, selectedThreadIds, contextType, contextId, statusSlug, searchQuery } =
-    useMailFilter() // Get multi-selection state from context
-  const threadId =
-    selectedThreadIds && selectedThreadIds.length > 0 ? selectedThreadIds[0] : undefined
-  const { threads } = useThreads({ contextType, contextId, statusSlug, searchQuery })
-  const _thread = undefined //threads?.find((t) => t.id === threadId) // may need to change this to make it undefined and just fetch the detailed version.
+  const { viewMode } = useMailFilter()
 
-  const {
-    data: foundThread,
-    isLoading,
-    refetch,
-  } = api.thread.getById.useQuery(
-    { threadId: threadId ?? '' },
-    // { enabled: !!!_thread && !!threadId }
-    { enabled: !!threadId }
-  )
-  const thread = foundThread
-  const { selectedThreads, clearSelection, selectAll } = useThreadSelection({
-    contextType,
-    contextId,
-    statusSlug,
-    searchQuery,
-  })
-  function handleEmailSent() {
-    // Refetch the thread data after sending an email
-    // refetch()
-  }
+  // Granular selectors for minimal re-renders
+  const hasMultipleSelected = useHasMultipleSelected()
+  const threadId = useFirstSelectedThreadId()
 
-  const showBulkToolbar = selectedThreads.length > 1 || viewMode === 'edit'
+  // Get thread from store
+  const { thread, isLoading } = useThread({ threadId })
+
+  const showBulkToolbar = hasMultipleSelected || viewMode === 'edit'
 
   return (
     <div className="flex h-full flex-col flex-1">
-      {/* Always render, visibility controlled by open prop for exit animation */}
-      <BulkActionToolbar
-        open={showBulkToolbar}
-        selectedThreadIds={selectedThreads}
-        onClearSelection={clearSelection}
-      />
+      {/* BulkActionToolbar is self-contained - reads selection from store */}
+      <BulkActionToolbar />
       {!showBulkToolbar && (
         <>
           {thread ? (
-            // Note: messageType is computed at API boundary from integration.provider
-            thread.messageType === MessageType.CHAT ? (
+            // Determine thread type from integration provider
+            isChatThread(thread.integrationProvider) ? (
               <ChatInterface
                 key={thread.id}
                 threadId={thread.id}
@@ -80,12 +68,11 @@ export function ThreadDisplay() {
               button={
                 <NewMessageDialog
                   trigger={
-                    <Button className="" variant="outline">
+                    <Button variant="outline">
                       <Plus size={16} />
                       <span>Compose Message</span>
                     </Button>
                   }
-                  onSendSuccess={handleEmailSent}
                 />
               }
             />

@@ -256,11 +256,42 @@ export class ThreadManagerService {
       .set({ threadId: toThreadId })
       .where(eq(schema.ThreadReadStatus.threadId, fromThreadId))
 
+    // Recalculate latestMessageId for both threads after message move
+    await this.updateThreadMetadata(fromThreadId)
+    await this.updateThreadMetadata(toThreadId)
+
+    // Recalculate latestCommentId for both threads after comment move
+    await this.recalculateLatestCommentId(fromThreadId)
+    await this.recalculateLatestCommentId(toThreadId)
+
     logger.info('Merged threads', {
       fromThreadId,
       toThreadId,
       providerThreadId,
     })
+  }
+
+  /**
+   * Recalculates and updates the latestCommentId for a thread
+   */
+  private async recalculateLatestCommentId(threadId: string): Promise<void> {
+    try {
+      await this.db.execute(sql`
+        UPDATE "Thread"
+        SET "latestCommentId" = (
+          SELECT id
+          FROM "Comment"
+          WHERE "entityId" = ${threadId}
+            AND "entityDefinitionId" = 'thread'
+            AND "deletedAt" IS NULL
+          ORDER BY "createdAt" DESC, id DESC
+          LIMIT 1
+        )
+        WHERE id = ${threadId}
+      `)
+    } catch (error) {
+      logger.error('Failed to recalculate latestCommentId', { threadId, error })
+    }
   }
 
   /**
@@ -270,27 +301,37 @@ export class ThreadManagerService {
     try {
       await this.db.execute(sql`
         UPDATE "Thread" t
-        SET 
+        SET
           "messageCount" = COALESCE((
-            SELECT COUNT(*) 
-            FROM "Message" 
-            WHERE "threadId" = ${threadId} 
+            SELECT COUNT(*)
+            FROM "Message"
+            WHERE "threadId" = ${threadId}
               AND "draftMode" = 'NONE'
               AND "sentAt" IS NOT NULL
           ), 0),
           "firstMessageAt" = (
-            SELECT MIN("sentAt") 
-            FROM "Message" 
-            WHERE "threadId" = ${threadId} 
+            SELECT MIN("sentAt")
+            FROM "Message"
+            WHERE "threadId" = ${threadId}
               AND "draftMode" = 'NONE'
               AND "sentAt" IS NOT NULL
           ),
           "lastMessageAt" = (
-            SELECT MAX("sentAt") 
-            FROM "Message" 
-            WHERE "threadId" = ${threadId} 
+            SELECT MAX("sentAt")
+            FROM "Message"
+            WHERE "threadId" = ${threadId}
               AND "draftMode" = 'NONE'
               AND "sentAt" IS NOT NULL
+          ),
+          "latestMessageId" = (
+            SELECT id
+            FROM "Message"
+            WHERE "threadId" = ${threadId}
+              AND "draftMode" = 'NONE'
+            ORDER BY "receivedAt" DESC NULLS LAST,
+                     "sentAt" DESC NULLS LAST,
+                     id DESC
+            LIMIT 1
           ),
           "participantCount" = COALESCE((
             SELECT COUNT(DISTINCT "participantId")

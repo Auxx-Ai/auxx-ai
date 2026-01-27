@@ -1,77 +1,82 @@
+// apps/web/src/components/mail/participant-display.tsx
+'use client'
+
 import { titleize } from '@auxx/utils/strings'
 import { useQueryState } from 'nuqs'
 import React from 'react'
 import { cn } from '@auxx/ui/lib/utils'
 import { ContactHoverCard } from '~/components/contacts/contact-hover-card'
+import { Skeleton } from '@auxx/ui/components/skeleton'
+import { useParticipant } from '~/components/threads/hooks'
+import type { ParticipantMeta } from '~/components/threads/store'
 
-interface Participant {
-  id: string
-  identifier: string
-  identifierType: 'EMAIL' | 'PHONE'
-  name?: string
-  displayName?: string
-  initials?: string
-  isSpammer?: boolean
-  contactId?: string
-}
-interface MessageParticipant {
-  id: string
-  messageId: string
-  participantId: string
-  role: 'FROM' | 'TO' | 'CC' | 'BCC'
-  participant: Participant
-}
+/** Role types for message participants */
+type ParticipantRole = 'FROM' | 'TO' | 'CC' | 'BCC'
 
+/**
+ * Props for ParticipantDisplay component.
+ * Supports hybrid pattern: pass either participantId (will fetch) or participant object (uses directly).
+ */
 interface ParticipantDisplayProps {
-  participant: MessageParticipant
+  /** Participant ID to fetch from store */
+  participantId?: string | null
+  /** Pre-fetched participant object (skips fetch if provided) */
+  participant?: ParticipantMeta
+  /** Role of this participant in the message */
+  role?: ParticipantRole
+  /** Additional CSS classes */
   className?: string
-  showDetails?: boolean // Control whether to show the email/phone details
-  // isPrimary?: boolean // To style differently if it's the main participant
+  /** Control whether to show the email/phone details */
+  showDetails?: boolean
 }
 
+/**
+ * Displays a single participant with name and optional contact details.
+ * Supports both fetching by ID or using a pre-provided participant object.
+ */
 export const ParticipantDisplay: React.FC<ParticipantDisplayProps> = ({
-  participant,
+  participantId,
+  participant: providedParticipant,
+  role,
   className,
   showDetails = true,
-  // isPrimary = false,
 }) => {
-  const { identifier, identifierType, name, displayName, contactId, contact } =
-    participant.participant
-  const isPrimary = participant.role === 'FROM' // Example condition to determine primary
+  // Fetch from store only if participant object not provided
+  const { participant: fetchedParticipant, isLoading } = useParticipant({
+    participantId: providedParticipant ? null : participantId,
+    enabled: !providedParticipant && !!participantId,
+  })
 
-  // Import the useSearchParams hook from Next.js
+  const participant = providedParticipant ?? fetchedParticipant
+  const isPrimary = role === 'FROM'
+
   const [activeContactId, setContactId] = useQueryState('contactId', { defaultValue: '' })
 
-  // Use display name or name or fallback to first part of identifier
-  const displayLabel = displayName || name || identifier
-
-  const formatPhoneNumber = (phone: string) => {
-    // Basic E.164 formatting - can be enhanced based on regional preferences
-    if (phone?.startsWith('+')) {
-      // Try to format like: +1 (555) 123-4567
-      const digits = phone.substring(1)
-      if (digits.length >= 10) {
-        const countryCode = digits.slice(0, digits.length - 10)
-        const areaCode = digits.slice(digits.length - 10, digits.length - 7)
-        const firstPart = digits.slice(digits.length - 7, digits.length - 4)
-        const lastPart = digits.slice(digits.length - 4)
-        return `+${countryCode} (${areaCode}) ${firstPart}-${lastPart}`
-      }
-    }
-    // Fallback to original format if can't parse
-    return phone
-  }
-
+  /** Handle click to select/deselect contact */
   function handleContactClick(e: React.MouseEvent) {
     e.stopPropagation()
-    // If the participant is already selected, deselect it, otherwise select it
+    const contactId = participant?.entityInstanceId
+    if (!contactId) return
     const isAlreadySelected = contactId === activeContactId
-    setContactId(isAlreadySelected ? '' : contactId || '')
+    setContactId(isAlreadySelected ? '' : contactId)
   }
+
+  // Loading state
+  if (isLoading && !participant) {
+    return <ParticipantSkeleton />
+  }
+
+  // No participant found
+  if (!participant) {
+    return null
+  }
+
+  const { identifier, identifierType, name, displayName, entityInstanceId } = participant
+  const displayLabel = displayName || name || identifier
 
   return (
     <div className={cn('flex gap-2 truncate text-sm', isPrimary && 'font-medium', className)}>
-      <ContactHoverCard contact={contact}>
+      <ContactHoverCard contactId={entityInstanceId ?? undefined}>
         <button
           onClick={handleContactClick}
           className={cn('text-foreground cursor-pointer hover:text-blue-500')}>
@@ -89,40 +94,87 @@ export const ParticipantDisplay: React.FC<ParticipantDisplayProps> = ({
   )
 }
 
-// Usage example with multiple participants
-export const ParticipantList: React.FC<{
-  participants: MessageParticipant[]
-  // role?: string // 'FROM', 'TO', 'CC', etc.
-  // label?: string // Custom label
+/**
+ * Format phone number for display.
+ */
+function formatPhoneNumber(phone: string): string {
+  if (phone?.startsWith('+')) {
+    const digits = phone.substring(1)
+    if (digits.length >= 10) {
+      const countryCode = digits.slice(0, digits.length - 10)
+      const areaCode = digits.slice(digits.length - 10, digits.length - 7)
+      const firstPart = digits.slice(digits.length - 7, digits.length - 4)
+      const lastPart = digits.slice(digits.length - 4)
+      return `+${countryCode} (${areaCode}) ${firstPart}-${lastPart}`
+    }
+  }
+  return phone
+}
+
+/**
+ * Loading skeleton for participant.
+ */
+function ParticipantSkeleton() {
+  return <Skeleton className="h-4 w-24" />
+}
+
+/**
+ * Entry for a participant in a list.
+ * Supports both legacy MessageParticipant format and new ID-based format.
+ */
+export interface ParticipantListEntry {
+  /** Unique key for this entry */
+  id: string
+  /** Participant ID */
+  participantId: string
+  /** Role of this participant */
+  role: ParticipantRole
+  /** Pre-fetched participant data (optional, will fetch if not provided) */
+  participant?: ParticipantMeta
+}
+
+/**
+ * Props for ParticipantList component.
+ */
+interface ParticipantListProps {
+  /** Array of participant entries */
+  participants: ParticipantListEntry[]
+  /** Additional CSS classes */
   className?: string
-}> = ({ participants, className }) => {
-  if (!participants.length) return null
+}
+
+/**
+ * Displays a list of participants with their roles.
+ */
+export const ParticipantList: React.FC<ParticipantListProps> = ({ participants, className }) => {
   const [showDetails, setShowDetails] = React.useState(false)
+
+  if (!participants.length) return null
 
   function handleClick(e: React.MouseEvent<HTMLDivElement>) {
     e.stopPropagation()
     setShowDetails(true)
   }
+
   return (
-    <div onClick={(e: React.MouseEvent<HTMLDivElement>) => handleClick(e)}>
-      {participants.map((participant) => {
-        return (
-          <div className={cn('flex flex-row gap-1', className)} key={participant.id}>
-            {participant.role && (
-              <span className="mr-[4px] shrink-0 text-sm text-muted-foreground">
-                {titleize(participant.role)}:
-              </span>
-            )}
-            <div className="flex flex-wrap gap-x-2 gap-y-1 truncate">
-              <ParticipantDisplay
-                key={participant.id}
-                participant={participant}
-                showDetails={showDetails} // Hide details for the list
-              />
-            </div>
+    <div onClick={handleClick}>
+      {participants.map((entry) => (
+        <div className={cn('flex flex-row gap-1', className)} key={entry.id}>
+          {entry.role && (
+            <span className="mr-[4px] shrink-0 text-sm text-muted-foreground">
+              {titleize(entry.role)}:
+            </span>
+          )}
+          <div className="flex flex-wrap gap-x-2 gap-y-1 truncate">
+            <ParticipantDisplay
+              participantId={entry.participantId}
+              participant={entry.participant}
+              role={entry.role}
+              showDetails={showDetails}
+            />
           </div>
-        )
-      })}
+        </div>
+      ))}
     </div>
   )
 }

@@ -6,11 +6,12 @@ import { CommentService } from '@auxx/lib/comments'
 import { createScopedLogger } from '@auxx/logger'
 import { recordIdSchema } from '@auxx/types'
 import { toRecordId } from '@auxx/types/resource'
+import { toActorId, type ActorId } from '@auxx/types/actor'
 
 const logger = createScopedLogger('comment-router')
 
 /**
- * Transform comment to include recordId and strip internal fields.
+ * Transform comment to include recordId and actorId, stripping internal fields.
  * Handles both old (entityType) and new (entityDefinitionId) column names for compatibility.
  * Recursively transforms replies as well.
  */
@@ -19,16 +20,21 @@ const transformCommentResponse = <
     entityDefinitionId?: string
     entityType?: string
     entityId: string
+    createdById: string
     replies?: any[]
   },
 >(
   comment: T
-): Omit<T, 'entityDefinitionId' | 'entityType' | 'entityId'> & { recordId: string } => {
-  const { entityDefinitionId, entityType, entityId, replies, ...rest } = comment
+): Omit<T, 'entityDefinitionId' | 'entityType' | 'entityId' | 'createdById'> & {
+  recordId: string
+  actorId: ActorId
+} => {
+  const { entityDefinitionId, entityType, entityId, createdById, replies, ...rest } = comment
   const definitionId = entityDefinitionId || entityType || ''
   return {
     ...rest,
     recordId: toRecordId(definitionId, entityId),
+    actorId: toActorId('user', createdById),
     // Recursively transform replies
     ...(replies && { replies: replies.map(transformCommentResponse) }),
   } as any

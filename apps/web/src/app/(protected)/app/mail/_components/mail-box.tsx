@@ -21,7 +21,12 @@ import {
   type SortOption,
   type SortDirection,
 } from '~/components/mail/mail-filter-context'
-import useThreadSelection from '~/components/kbar/use-thread-selection'
+import {
+  useSelectedThreadIds,
+  KeyboardProvider,
+  useViewMode,
+  useThreadSelectionStore,
+} from '~/components/threads'
 import { type ThreadsFilterInput, VALID_STATUS_SLUGS } from '~/components/mail/types'
 import { MailboxStatusDropdown } from './mailbox-status-dropdown'
 import {
@@ -164,12 +169,8 @@ function MailboxInner({
   const [contactId, setContactId] = useQueryState('contactId', { defaultValue: '' })
   const isContactDrawerOpen = !!contactId
 
-  const { selectedThreads } = useThreadSelection({
-    contextType,
-    contextId,
-    statusSlug: toStatusSlug(initialStatusSlug), // Use safe conversion function
-    searchQuery: initialSearchQuery, // Use the initial query for selection context
-  })
+  // Use new selection store directly
+  const selectedThreads = useSelectedThreadIds()
 
   // Fetch pending actions count
   // const { data: pendingActionsCount } = api.proposedAction.getPendingCount.useQuery(undefined, {
@@ -188,8 +189,9 @@ function MailboxInner({
   // State to track if the thread list is currently fetching/loading data
   const [isListLoading, setIsListLoading] = useState(false)
 
-  // State for view mode (edit/view) - determines checkbox visibility and interaction behavior
-  const [viewMode, setViewMode] = useState<ViewMode>('view')
+  // View mode from store - determines checkbox visibility and interaction behavior
+  const viewMode = useViewMode()
+  const setViewMode = useThreadSelectionStore((s) => s.setViewMode)
 
   // State for sorting - default to newest first
   const [sortBy, setSortBy] = useState<SortOption>('newest')
@@ -308,6 +310,7 @@ function MailboxInner({
 
   return (
     <MailFilterProvider value={mailFilterContextValue}>
+      <KeyboardProvider>
       <MainPage loading={true}>
         <MainPageHeader
           action={
@@ -464,6 +467,7 @@ function MailboxInner({
           onOpenChange={handleContactDrawerClose}
         />
       )}
+      </KeyboardProvider>
     </MailFilterProvider>
   )
 }

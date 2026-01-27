@@ -38,6 +38,11 @@ import {
   type ThreadTagSummary,
   type ThreadParticipantSummary,
   type ThreadActorSummary,
+  type ListThreadIdsInput,
+  type PaginatedIdsResult,
+  type ThreadMeta,
+  type ThreadStatus,
+  type IntegrationProvider,
 } from './types'
 const logger = createScopedLogger('thread-query-service')
 
@@ -434,7 +439,7 @@ export class ThreadQueryService {
 
     try {
       // Phase 1: Get thread IDs (preserving order)
-      const { orderedThreadIds, nextCursor } = await this.getThreadIds(mailQueryWhere, pagination, {
+      const { orderedThreadIds, nextCursor } = await this.getThreadIdsInternal(mailQueryWhere, pagination, {
         orderBy: orderByExpressions,
         sort: resolvedSort,
       })
@@ -518,7 +523,7 @@ export class ThreadQueryService {
                 with: {
                   participant: {
                     with: {
-                      contact: true,
+                      entityInstance: true,
                     },
                   },
                 },
@@ -734,11 +739,183 @@ export class ThreadQueryService {
     return this.listThreads({ ...searchInput, searchQuery: enhancedQuery }, { limit, cursor })
   }
 
+  // ============================================================================
+  // New ID-first batch-fetch methods (Phase 1 refactor)
+  // ============================================================================
+
+  /**
+   * Returns only thread IDs with pagination info.
+   * The frontend will then batch-fetch metadata separately via getThreadMetaBatch.
+   */
+  async listThreadIds(input: ListThreadIdsInput): Promise<PaginatedIdsResult> {
+    const { context, userId, statusFilter, filter, sort, cursor, limit = 50 } = input
+    const effectiveLimit = Math.min(limit, 100)
+
+    logger.info('Listing thread IDs', {
+      organizationId: this.organizationId,
+      contextType: context.type,
+      statusFilter,
+      limit: effectiveLimit,
+      hasCursor: Boolean(cursor),
+    })
+
+    // Build query input for MailQueryBuilder
+    const queryBuilderInput: MailQueryInput = {
+      organizationId: this.organizationId,
+      userId,
+      contextType: context.type,
+      contextId: 'id' in context ? context.id : undefined,
+      statusFilter,
+      searchQuery: filter?.search,
+    }
+
+    if (filter?.search) {
+      const parsedSearch = parseSearchQuery(filter.search)
+      queryBuilderInput.parsedSearch = parsedSearch
+    }
+
+    // Handle MailView context to get filters
+    if (context.type === InternalFilterContextType.VIEW && 'id' in context) {
+      const mailView = await this.mailViewService.getMailView(context.id)
+      if (mailView?.filters) {
+        queryBuilderInput.mailViewFilter = mailView.filters as unknown as MailViewFilter
+      }
+    }
+
+    const queryBuilder = new MailQueryBuilder(queryBuilderInput)
+    const mailQueryWhere = queryBuilder.buildWhereCondition()
+
+    const resolvedSort = this.resolveSortDescriptor(sort)
+    const orderByExpressions = this.createOrderByFromDescriptor(resolvedSort)
+
+    // Use existing getThreadIds logic to get IDs
+    const { orderedThreadIds, nextCursor } = await this.getThreadIdsInternal(
+      mailQueryWhere,
+      { limit: effectiveLimit, cursor },
+      { orderBy: orderByExpressions, sort: resolvedSort }
+    )
+
+    // Get total count for the query
+    let total = 0
+    try {
+      const countResult = await this.db
+        .select({ count: count() })
+        .from(schema.Thread)
+        .where(mailQueryWhere)
+      total = countResult[0]?.count ?? 0
+    } catch (error) {
+      logger.warn('Failed to get total count for listThreadIds', {
+        error: error instanceof Error ? error.message : error,
+      })
+    }
+
+    return {
+      ids: orderedThreadIds,
+      total,
+      nextCursor,
+    }
+  }
+
+  /**
+   * Batch fetch thread metadata by IDs.
+   * Returns core thread data without embedded messages/participants.
+   * Uses denormalized latestMessageId and latestCommentId columns.
+   * Now includes isUnread status for the requesting user.
+   */
+  async getThreadMetaBatch(ids: string[], userId: string): Promise<ThreadMeta[]> {
+    if (ids.length === 0) return []
+    if (ids.length > 100) throw new Error('Batch size exceeds limit of 100')
+
+    logger.debug('Fetching thread metadata batch', {
+      organizationId: this.organizationId,
+      count: ids.length,
+    })
+
+    // Fetch threads with tags
+    const threads = await this.db.query.Thread.findMany({
+      where: and(
+        inArray(schema.Thread.id, ids),
+        eq(schema.Thread.organizationId, this.organizationId)
+      ),
+      with: {
+        integration: { columns: { provider: true } },
+        tags: { with: { tag: true } },
+      },
+    })
+
+    // Fetch read status for all threads for this user
+    const readStatuses = await this.db
+      .select({
+        threadId: schema.ThreadReadStatus.threadId,
+        isRead: schema.ThreadReadStatus.isRead,
+        lastReadAt: schema.ThreadReadStatus.lastReadAt,
+      })
+      .from(schema.ThreadReadStatus)
+      .where(
+        and(
+          inArray(schema.ThreadReadStatus.threadId, ids),
+          eq(schema.ThreadReadStatus.userId, userId)
+        )
+      )
+
+    // Build read status lookup
+    const readStatusMap = new Map(
+      readStatuses.map((s) => [s.threadId, { isRead: s.isRead, lastReadAt: s.lastReadAt }])
+    )
+
+    // Map to ThreadMeta, preserving input order
+    const threadMap = new Map(threads.map((t) => [t.id, t]))
+
+    return ids
+      .map((id) => {
+        const t = threadMap.get(id)
+        if (!t) return null
+
+        // Determine isUnread status
+        const status = readStatusMap.get(id)
+        let isUnread = true // Default: unread if no status entry
+
+        if (status) {
+          // Has status entry - check isRead flag
+          isUnread = !status.isRead
+
+          // Also check if new messages arrived after lastReadAt
+          if (!isUnread && status.lastReadAt && t.lastMessageAt) {
+            isUnread = new Date(t.lastMessageAt) > new Date(status.lastReadAt)
+          }
+        }
+
+        return {
+          id: t.id,
+          subject: t.subject,
+          status: t.status as ThreadStatus,
+          lastMessageAt: t.lastMessageAt?.toISOString() ?? new Date().toISOString(),
+          firstMessageAt: t.firstMessageAt?.toISOString() ?? null,
+          messageCount: t.messageCount,
+          participantCount: t.participantCount,
+          integrationId: t.integrationId,
+          integrationProvider: (t.integration?.provider as IntegrationProvider) ?? null,
+          assigneeActorId: t.assigneeId ? { type: 'user' as const, id: t.assigneeId } : null,
+          latestMessageId: t.latestMessageId ?? null,
+          latestCommentId: t.latestCommentId ?? null,
+          inboxId: t.inboxId ?? null,
+          externalId: t.externalId ?? null,
+          tags: (t.tags ?? [])
+            .map((tt: { tag?: { id: string; title: string; color?: string | null; emoji?: string | null } }) =>
+              tt.tag ? this.toTagSummary(tt.tag) : null
+            )
+            .filter((tag): tag is ThreadTagSummary => tag !== null),
+          isUnread,
+        } satisfies ThreadMeta
+      })
+      .filter(Boolean) as ThreadMeta[]
+  }
+
   /**
    * PHASE 1: Get thread IDs in order
    * Fetches only thread IDs and pagination metadata in a lightweight query
    */
-  private async getThreadIds(
+  private async getThreadIdsInternal(
     whereCondition: SQL | undefined,
     pagination: { limit: number; cursor?: string | null },
     options: { orderBy?: SQL[]; sort: ThreadSortDescriptor }
@@ -1053,12 +1230,11 @@ export class ThreadQueryService {
               identifier: true,
             },
             with: {
-              contact: {
+              entityInstance: {
                 columns: {
                   id: true,
-                  firstName: true,
-                  lastName: true,
-                  email: true,
+                  displayName: true,
+                  metadata: true,
                 },
               },
             },
@@ -1071,12 +1247,11 @@ export class ThreadQueryService {
               identifier: true,
             },
             with: {
-              contact: {
+              entityInstance: {
                 columns: {
                   id: true,
-                  firstName: true,
-                  lastName: true,
-                  email: true,
+                  displayName: true,
+                  metadata: true,
                 },
               },
             },
@@ -1094,11 +1269,11 @@ export class ThreadQueryService {
                   identifier: true,
                 },
                 with: {
-                  contact: {
+                  entityInstance: {
                     columns: {
                       id: true,
-                      firstName: true,
-                      lastName: true,
+                      displayName: true,
+                      metadata: true,
                     },
                   },
                 },
@@ -1339,16 +1514,15 @@ export class ThreadQueryService {
     if (!actor) {
       return null
     }
-    const contact = actor.contact
-    const contactName = contact
-      ? [contact.firstName, contact.lastName].filter(Boolean).join(' ') || null
-      : null
+    const entity = actor.entityInstance
+    const entityName = entity?.displayName ?? null
+    const entityMetadata = entity?.metadata as { email?: string } | null
 
     return {
       id: actor.id,
-      name: actor.name ?? contactName ?? null,
-      displayName: actor.displayName ?? contactName ?? null,
-      identifier: actor.identifier ?? contact?.email ?? null,
+      name: actor.name ?? entityName ?? null,
+      displayName: actor.displayName ?? entityName ?? null,
+      identifier: actor.identifier ?? entityMetadata?.email ?? null,
       image: actor.image ?? null,
     }
   }

@@ -992,6 +992,16 @@ export class MessageStorageService {
               AND "draftMode" = 'NONE'
               AND "sentAt" IS NOT NULL
           ),
+          "latestMessageId" = (
+            SELECT id
+            FROM "Message"
+            WHERE "threadId" = ${threadId}
+              AND "draftMode" = 'NONE'
+            ORDER BY "receivedAt" DESC NULLS LAST,
+                     "sentAt" DESC NULLS LAST,
+                     id DESC
+            LIMIT 1
+          ),
           "participantCount" = COALESCE((
             SELECT COUNT(DISTINCT "participantId")
             FROM "MessageParticipant" mp

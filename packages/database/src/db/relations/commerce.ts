@@ -8,6 +8,7 @@ import {
   CustomerGroup,
   CustomerGroupMember,
   CustomerSource,
+  EntityInstance,
   FulfillmentTracking,
   Invoice,
   Message,
@@ -72,7 +73,6 @@ export const contactRelations = relations(Contact, ({ one, many }) => ({
   }),
   customerSources: many(CustomerSource),
   customerGroups: many(CustomerGroupMember),
-  participants: many(Participant),
   shopifyCustomers: many(shopify_customers),
   tickets: many(Ticket),
   vendorParts: many(VendorPart),
@@ -109,9 +109,9 @@ export const customerGroupMemberRelations = relations(CustomerGroupMember, ({ on
 }))
 
 export const participantRelations = relations(Participant, ({ one, many }) => ({
-  contact: one(Contact, {
-    fields: [Participant.contactId],
-    references: [Contact.id],
+  entityInstance: one(EntityInstance, {
+    fields: [Participant.entityInstanceId],
+    references: [EntityInstance.id],
   }),
   organization: one(Organization, {
     fields: [Participant.organizationId],

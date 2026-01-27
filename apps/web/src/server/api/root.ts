@@ -70,6 +70,8 @@ import { taskRouter } from './routers/task'
 import { entityGroupRouter } from './routers/entityGroup'
 import { resourceAccessRouter } from './routers/resourceAccess'
 import { actorRouter } from './routers/actor'
+import { messageRouter } from './routers/message'
+import { participantRouter } from './routers/participant'
 
 /**
  * This is the primary router for your server.
@@ -117,10 +119,12 @@ export const appRouter = createTRPCRouter({
   mailDomain: mailDomainsRouter,
   mailView: mailViewRouter,
   member: memberRouter,
+  message: messageRouter,
   notification: notificationRouter,
   order: orderRouter,
   organization: organizationRouter,
   part: partRouter,
+  participant: participantRouter,
   product: productRouter,
   record: recordRouter,
   resource: resourceRouter,

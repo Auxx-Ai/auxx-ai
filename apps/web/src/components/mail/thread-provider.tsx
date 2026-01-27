@@ -1,28 +1,17 @@
 // ~/components/mail/thread-provider.tsx
 'use client'
 
-import React, {
-  createContext,
-  useContext,
-  useState,
-  useCallback,
-  useRef,
-  useMemo,
-  type RefObject,
-} from 'react'
+import React, { createContext, useContext, useMemo, type RefObject } from 'react'
 import { useMailFilter } from '~/components/mail/mail-filter-context'
 import { useThreadMutations } from '~/hooks/use-thread-mutations'
-import { useThreadTags } from '~/hooks/use-thread-tags'
+import { useThreadTags as useThreadTagsHook } from '~/hooks/use-thread-tags'
 import { useReplyBox } from '~/hooks/use-reply-box'
 import { useRuleTest } from '~/hooks/use-rule-test'
-import { api, RouterOutputs } from '~/trpc/react'
 import { toastSuccess, toastError } from '@auxx/ui/components/toast'
-// Email actions will be implemented directly in provider
-import type { EditorMode } from '~/components/mail/email-editor'
+import { useThread as useThreadFromStore } from '~/components/threads/hooks'
+import type { EditorMode } from '~/components/mail/email-editor/types'
 
-// Type definitions - use the actual type from the API
-type Thread = RouterOutputs['thread']['getById']
-
+/** Reply box UI state */
 interface ReplyBoxState {
   isOpen: boolean
   mode: EditorMode
@@ -30,6 +19,7 @@ interface ReplyBoxState {
   ref: RefObject<HTMLDivElement>
 }
 
+/** Thread mutation methods */
 interface ThreadMutations {
   archiveThread: () => Promise<void>
   unarchiveThread: () => Promise<void>
@@ -42,6 +32,7 @@ interface ThreadMutations {
   markAsRead: () => Promise<void>
 }
 
+/** Thread action handlers */
 interface ThreadHandlers {
   updateStatus: (done: boolean) => Promise<void>
   updateAssignee: (userId: string | null) => Promise<void>
@@ -52,16 +43,27 @@ interface ThreadHandlers {
   closeReplyBox: () => void
 }
 
-interface ThreadContextValue {
-  // Core Data
-  thread: Thread | null
-  isLoading: boolean
-  error: Error | null
+/** Email action handlers */
+interface EmailActions {
+  onReply: (message: any) => void
+  onReplyAll: (message: any) => void
+  onForward: (message: any) => void
+  onResend: (message: any) => Promise<void>
+  onMarkUnread: (message: any) => Promise<void>
+  onDelete: (message: any) => Promise<void>
+  onDownload: (message: any) => Promise<void>
+  onPrint: (message: any) => void
+  onCopyId: (message: any) => Promise<void>
+  onViewSource: (message: any) => void
+}
 
-  // Derived State
-  isDone: boolean
-  assignee: Thread['assignee']
-  inbox: Thread['inbox']
+/**
+ * ThreadContext value - provides actions and UI state only.
+ * Thread DATA should be accessed via useThread from store.
+ */
+interface ThreadContextValue {
+  // Thread ID for reference
+  threadId: string
 
   // Tag Management
   selectedTags: string[]
@@ -77,19 +79,7 @@ interface ThreadContextValue {
   handlers: ThreadHandlers
 
   // Email Actions
-  emailActions: {
-    onReply: (message: any) => void
-    onReplyAll: (message: any) => void
-    onForward: (message: any) => void
-    onResend: (message: any) => Promise<void>
-    onMarkUnread: (message: any) => Promise<void>
-    onDelete: (message: any) => Promise<void>
-    onDownload: (message: any) => Promise<void>
-    onPrint: (message: any) => void
-    onCopyId: (message: any) => Promise<void>
-    onViewSource: (message: any) => void
-    onRule: (ruleId: string, mode?: 'test' | 'run') => Promise<void>
-  }
+  emailActions: EmailActions
 
   // Contact ID from URL
   contactId: string | null
@@ -108,19 +98,8 @@ export function ThreadProvider({
 }) {
   const { contextType, contextId, statusSlug, searchQuery } = useMailFilter()
 
-  // Get thread data
-  const {
-    data: thread,
-    isLoading,
-    error,
-  } = api.thread.getById.useQuery(
-    { threadId },
-    { enabled: !!threadId, refetchOnWindowFocus: false }
-  )
-
-  // Local state
-  const [isDone, setIsDone] = useState(thread?.status === 'ARCHIVED')
-  const [assignee, setAssignee] = useState(thread?.assignee ?? null)
+  // Get thread from store (for mutations that need thread data)
+  const { thread } = useThreadFromStore({ threadId })
 
   // Get contact ID from URL
   const contactId = useMemo(() => {
@@ -137,7 +116,7 @@ export function ThreadProvider({
     searchQuery,
   })
 
-  const { selectedTags, fetchedTagsData, handleTagChange } = useThreadTags(thread, {
+  const { selectedTags, fetchedTagsData, handleTagChange } = useThreadTagsHook(thread, {
     contextType,
     contextId,
     statusSlug,
@@ -157,18 +136,10 @@ export function ThreadProvider({
     closeWithSuppress,
   } = useReplyBox(thread || ({ id: '', draftMessage: null } as any))
 
-  // Rule testing functionality
+  // Rule testing functionality (kept for potential future use)
   const { testRule, runRule } = useRuleTest({
     showToasts: true,
   })
-
-  // Update local state when thread changes
-  React.useEffect(() => {
-    if (thread) {
-      setIsDone(thread.status === 'ARCHIVED')
-      setAssignee(thread.assignee)
-    }
-  }, [thread])
 
   // Create handlers
   const handlers: ThreadHandlers = useMemo(
@@ -179,12 +150,10 @@ export function ThreadProvider({
         try {
           if (done) {
             await threadMutations.archiveThread.mutateAsync({ threadId })
-            // toastSuccess({ title: 'Thread marked as done', description: '' })
           } else {
             await threadMutations.unarchiveThread.mutateAsync({ threadId })
-            // toastSuccess({ title: 'Thread marked as todo', description: '' })
           }
-          setIsDone(done)
+          // Store will be updated by mutation's cache invalidation
         } catch (error) {
           toastError({
             title: 'Failed to update status',
@@ -196,9 +165,7 @@ export function ThreadProvider({
       updateAssignee: async (userId: string | null) => {
         try {
           await threadMutations.updateAssignee.mutateAsync({ threadId, assigneeId: userId })
-          const user = userId ? { id: userId, name: null, email: '', image: null } : null
-          setAssignee(user as any)
-          // toastSuccess({ title: 'Assignee updated', description: '' })
+          // Store will be updated by mutation's cache invalidation
         } catch (error) {
           toastError({
             title: 'Failed to update assignee',
@@ -254,15 +221,7 @@ export function ThreadProvider({
         closeWithSuppress()
       },
     }),
-    [
-      thread,
-      threadId,
-      threadMutations,
-      updateTags,
-      openEditorForAction,
-      handleShowGenericReply,
-      setIsShowReplyBox,
-    ]
+    [thread, threadId, threadMutations, updateTags, openEditorForAction, handleShowGenericReply, closeWithSuppress]
   )
 
   // Create email actions
@@ -401,8 +360,8 @@ export function ThreadProvider({
                 <title>Email Source - ${message.id}</title>
                 <style>
                   body { margin: 0; padding: 20px; background: #1e1e1e; }
-                  pre { 
-                    color: #d4d4d4; 
+                  pre {
+                    color: #d4d4d4;
                     font-family: 'Consolas', 'Monaco', monospace;
                     font-size: 13px;
                     line-height: 1.5;
@@ -419,44 +378,8 @@ export function ThreadProvider({
           sourceWindow.document.close()
         }
       },
-
-      onRule: async (ruleId: string, mode: 'test' | 'run' = 'test') => {
-        if (!thread?.messages || thread.messages.length === 0) {
-          toastError({
-            title: 'No messages found',
-            description: 'Cannot test rule on empty thread',
-          })
-          return
-        }
-
-        try {
-          // Get the latest message in the thread
-          const latestMessage = thread.messages[thread.messages.length - 1]
-
-          if (mode === 'test') {
-            await testRule({
-              ruleId,
-              messageId: latestMessage.id,
-              mode: 'test',
-              recordInHistory: true,
-            })
-          } else {
-            await runRule({
-              ruleId,
-              messageId: latestMessage.id,
-              dryRun: false,
-              recordInHistory: true,
-            })
-          }
-        } catch (error) {
-          toastError({
-            title: `Failed to ${mode} rule`,
-            description: error instanceof Error ? error.message : 'Unknown error',
-          })
-        }
-      },
     }
-  }, [thread, threadMutations, openEditorForAction, testRule, runRule])
+  }, [thread, threadMutations, openEditorForAction])
 
   // Create mutations object that matches the interface
   const mutations: ThreadMutations = useMemo(
@@ -495,17 +418,10 @@ export function ThreadProvider({
     [threadId, threadMutations]
   )
 
-  // Create context value
+  // Create context value - actions and UI state only, no thread data
   const contextValue: ThreadContextValue = {
-    // Core Data
-    thread: thread || null,
-    isLoading,
-    error: error instanceof Error ? error : null,
-
-    // Derived State
-    isDone,
-    assignee,
-    inbox: thread?.inbox ?? null,
+    // Thread ID for reference
+    threadId,
 
     // Tag Management
     selectedTags,
@@ -530,36 +446,27 @@ export function ThreadProvider({
   return <ThreadContext.Provider value={contextValue}>{children}</ThreadContext.Provider>
 }
 
-// Hook to use thread context
-export function useThread() {
+/**
+ * Hook to access thread context (actions and UI state).
+ * For thread DATA, use useThread from '~/components/threads/hooks' instead.
+ */
+export function useThreadContext() {
   const context = useContext(ThreadContext)
   if (!context) {
-    throw new Error('useThread must be used within ThreadProvider')
+    throw new Error('useThreadContext must be used within ThreadProvider')
   }
   return context
 }
 
-// Specialized hooks for better performance
-export function useThreadData() {
-  const context = useThread()
-  return {
-    thread: context.thread,
-    isLoading: context.isLoading,
-    error: context.error,
-    isDone: context.isDone,
-    assignee: context.assignee,
-    inbox: context.inbox,
-    contactId: context.contactId,
-  }
-}
-
+/** Returns mutations and handlers for thread actions */
 export function useThreadActions() {
-  const context = useThread()
+  const context = useThreadContext()
   return { mutations: context.mutations, handlers: context.handlers }
 }
 
+/** Returns reply box state and handlers */
 export function useThreadReply() {
-  const context = useThread()
+  const context = useThreadContext()
   return {
     ...context.replyBox,
     openReplyBox: context.handlers.openReplyBox,
@@ -567,9 +474,9 @@ export function useThreadReply() {
   }
 }
 
-export function useThreadTagsFromContext() {
-  const context = useThread()
-  // console.log(context.selectedTags, context.availableTags)
+/** Returns tag selection state and update handler */
+export function useThreadTags() {
+  const context = useThreadContext()
   return {
     selectedTags: context.selectedTags,
     availableTags: context.availableTags,
@@ -577,7 +484,11 @@ export function useThreadTagsFromContext() {
   }
 }
 
+/** Returns email action handlers */
 export function useThreadEmailActions() {
-  const context = useThread()
+  const context = useThreadContext()
   return context.emailActions
 }
+
+/** @deprecated Use useThreadTags instead */
+export const useThreadTagsFromContext = useThreadTags

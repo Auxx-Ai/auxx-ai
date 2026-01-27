@@ -182,3 +182,87 @@ export interface PaginatedThreadsResult {
   nextCursor: string | null
   totalCount?: number
 }
+
+// ============================================================================
+// New ID-first batch-fetch types (Phase 1 refactor)
+// ============================================================================
+
+/** Input for listing thread IDs with pagination. */
+export interface ListThreadIdsInput {
+  context: ListThreadsInput['context']
+  userId?: string
+  statusFilter?: UrlBasedStatusFilter
+  filter?: ThreadFilter
+  sort?: ThreadSortDescriptor
+  cursor?: string
+  limit?: number
+}
+
+/** Optional filters for thread list queries. */
+export interface ThreadFilter {
+  isUnread?: boolean
+  hasAttachments?: boolean
+  tagIds?: string[]
+  search?: string
+}
+
+/** Paginated result containing only IDs. */
+export interface PaginatedIdsResult {
+  ids: string[]
+  total: number
+  nextCursor: string | null
+}
+
+/** Thread status enum type. */
+export type ThreadStatus = 'OPEN' | 'ARCHIVED' | 'SPAM' | 'TRASH'
+
+/** Integration provider enum type. */
+export type IntegrationProvider = 'GMAIL' | 'OUTLOOK' | 'FACEBOOK' | 'INSTAGRAM' | 'OPENPHONE'
+
+/** Actor ID with type discriminator. */
+export interface ActorId {
+  type: 'user' | 'contact'
+  id: string
+}
+
+/**
+ * Core thread metadata for batch fetching.
+ * Contains minimal data needed for list display - frontend resolves related entities separately.
+ */
+export interface ThreadMeta {
+  id: string
+  subject: string
+  status: ThreadStatus
+  lastMessageAt: string // ISO date
+  firstMessageAt: string | null
+  messageCount: number
+  participantCount: number
+
+  // Foreign keys (IDs only - frontend resolves via separate stores)
+  integrationId: string
+  integrationProvider: IntegrationProvider | null
+  assigneeActorId: ActorId | null
+
+  // Denormalized for performance (avoid extra fetches for list display)
+  latestMessageId: string | null
+  latestCommentId: string | null
+
+  // Inbox association
+  inboxId: string | null
+
+  // External ID for chat threads (e.g., Facebook conversation ID)
+  externalId: string | null
+
+  // Tags included inline for list display (avoids separate fetch)
+  tags: ThreadTagSummary[]
+
+  // Read status for the requesting user
+  isUnread: boolean
+}
+
+/**
+ * Extended thread data returned for single thread detail view.
+ */
+export interface ThreadDetail extends ThreadMeta {
+  messageIds: string[]
+}

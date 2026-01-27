@@ -74,6 +74,8 @@
     "./messages": "./src/messages/index.ts",
     "./notifications": "./src/notifications/index.ts",
     "./organizations": "./src/organizations/index.ts",
+    "./participants": "./src/participants/index.ts",
+    "./participants/client": "./src/participants/client.ts",
     "./parts": "./src/parts/index.ts",
     "./permissions": "./src/permissions/index.ts",
     "./providers": "./src/providers/index.ts",

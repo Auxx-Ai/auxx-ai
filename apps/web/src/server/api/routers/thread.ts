@@ -13,6 +13,7 @@ import {
   UnreadService,
   type ListThreadsInput,
   type ThreadSortDescriptor,
+  type ListThreadIdsInput,
 } from '@auxx/lib/threads' // Import service and its input type
 import { ProviderRegistryService } from '@auxx/lib/providers'
 import {
@@ -257,6 +258,143 @@ export const threadRouter = createTRPCRouter({
       throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed fetching threads.' })
     }
   }),
+
+  // ============================================================================
+  // New ID-first batch-fetch endpoints (Phase 1 refactor)
+  // ============================================================================
+
+  /**
+   * Returns only thread IDs with pagination info.
+   * Frontend calls getByIds to batch-fetch metadata separately.
+   */
+  listIds: protectedProcedure
+    .input(
+      z.object({
+        contextType: z.enum([
+          'personal_assigned',
+          'personal_inbox',
+          'drafts',
+          'sent',
+          'tag',
+          'view',
+          'all_inboxes',
+          'all',
+          'specific_inbox',
+        ]),
+        contextId: z.string().optional(),
+        statusSlug: z.string().optional(), // e.g., "open", "done", "assigned", "unassigned"
+        filter: z
+          .object({
+            isUnread: z.boolean().optional(),
+            hasAttachments: z.boolean().optional(),
+            tagIds: z.array(z.string()).optional(),
+            search: z.string().optional(),
+          })
+          .optional(),
+        sortBy: z.enum(['newest', 'oldest', 'sender', 'subject']).optional(),
+        sortDirection: z.enum(['asc', 'desc']).optional(),
+        cursor: z.string().optional(),
+        limit: z.number().min(1).max(100).default(50),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { threadQuery, organizationId, userId } = getServiceDependencies(ctx)
+
+      // Map context type to internal enum
+      const internalContextType =
+        InternalFilterContextType[
+          input.contextType.toUpperCase() as keyof typeof InternalFilterContextType
+        ]
+      if (!internalContextType) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `Invalid context type provided: ${input.contextType}`,
+        })
+      }
+
+      // Build context for service
+      let context: ListThreadIdsInput['context']
+      const requiresContextId = [
+        InternalFilterContextType.TAG,
+        InternalFilterContextType.VIEW,
+        InternalFilterContextType.SPECIFIC_INBOX,
+      ].includes(internalContextType)
+
+      if (requiresContextId) {
+        if (!input.contextId) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: `contextId is required for context type '${input.contextType}'`,
+          })
+        }
+        context = { type: internalContextType, id: input.contextId }
+      } else {
+        context = { type: internalContextType } as ListThreadIdsInput['context']
+      }
+
+      // Map sort options
+      const resolveSortDescriptor = (
+        sortBy?: string,
+        sortDirection?: string
+      ): ThreadSortDescriptor | undefined => {
+        switch (sortBy) {
+          case 'newest':
+            return { field: 'lastMessageAt', direction: 'desc' }
+          case 'oldest':
+            return { field: 'lastMessageAt', direction: 'asc' }
+          case 'subject':
+            return { field: 'subject', direction: sortDirection === 'desc' ? 'desc' : 'asc' }
+          case 'sender':
+            return { field: 'sender', direction: sortDirection === 'desc' ? 'desc' : 'asc' }
+          default:
+            return undefined
+        }
+      }
+
+      // Map status slug to internal filter
+      const statusFilter = input.statusSlug ? mapUrlSlugToStatusFilter(input.statusSlug) : undefined
+
+      const serviceInput: ListThreadIdsInput = {
+        context,
+        userId,
+        statusFilter,
+        filter: input.filter,
+        sort: resolveSortDescriptor(input.sortBy, input.sortDirection),
+        cursor: input.cursor,
+        limit: input.limit,
+      }
+
+      try {
+        logger.debug('Calling threadQuery.listThreadIds', { serviceInput })
+        return await threadQuery.listThreadIds(serviceInput)
+      } catch (error: unknown) {
+        handleServiceError(error, 'threadQuery.listThreadIds', { organizationId, userId })
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed fetching thread IDs.' })
+      }
+    }),
+
+  /**
+   * Batch fetch thread metadata by IDs.
+   * Uses mutation to avoid caching issues with variable input.
+   */
+  getByIds: protectedProcedure
+    .input(
+      z.object({
+        ids: z.array(z.string()).max(100),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { threadQuery, organizationId, userId } = getServiceDependencies(ctx)
+
+      try {
+        logger.debug('Calling threadQuery.getThreadMetaBatch', { count: input.ids.length })
+        return await threadQuery.getThreadMetaBatch(input.ids, userId)
+      } catch (error: unknown) {
+        handleServiceError(error, 'threadQuery.getThreadMetaBatch', { organizationId, userId })
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed fetching thread metadata.' })
+      }
+    }),
+
   /**
    * Get a single thread by ID.
    * Updated to use ThreadQueryService.
@@ -419,6 +557,43 @@ export const threadRouter = createTRPCRouter({
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to delete draft.' })
       }
     }),
+
+  // ============================================================================
+  // Draft Query Endpoints (Phase 2 additions)
+  // ============================================================================
+
+  /**
+   * Check if a thread has a draft for the current user.
+   */
+  hasDraft: protectedProcedure
+    .input(z.object({ threadId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const { draftService } = getServiceDependencies(ctx)
+      return await draftService.hasDraft(input.threadId)
+    }),
+
+  /**
+   * Get draft ID for a thread (for the current user).
+   */
+  getDraftId: protectedProcedure
+    .input(z.object({ threadId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const { draftService } = getServiceDependencies(ctx)
+      return await draftService.getDraftId(input.threadId)
+    }),
+
+  /**
+   * Batch check which threads have drafts for the current user.
+   * Returns array of thread IDs that have drafts.
+   */
+  getThreadsWithDrafts: protectedProcedure
+    .input(z.object({ threadIds: z.array(z.string()).max(100) }))
+    .mutation(async ({ ctx, input }) => {
+      const { draftService } = getServiceDependencies(ctx)
+      const set = await draftService.getThreadsWithDrafts(input.threadIds)
+      return Array.from(set) // Return as array for JSON serialization
+    }),
+
   /**
    * Sends an email message, potentially from a draft.
    * Updated to use MessageSenderService directly.
@@ -937,53 +1112,6 @@ export const threadRouter = createTRPCRouter({
           code: 'INTERNAL_SERVER_ERROR',
           message: 'Failed unarchiving threads.',
         })
-      }
-    }),
-  /**
-   * Moves multiple threads to a specific target inbox.
-   * Updated to use ThreadMutationService.
-   */
-  moveBulkToInbox: protectedProcedure
-    .input(z.object({ threadIds: z.array(z.string()).min(1), targetInboxId: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      let threadMutation: ThreadMutationService, organizationId: string, userId: string
-      try {
-        // Get dependencies (service instance, orgId, userId)
-        ;({ threadMutation, organizationId, userId } = getServiceDependencies(ctx))
-      } catch (error: any) {
-        if (error instanceof TRPCError) throw error
-        handleServiceError(error, 'getServiceDependencies (moveBulkToInbox)', {})
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to initialize service.',
-        }) // Fallback
-      }
-      const { threadIds, targetInboxId } = input
-      try {
-        logger.info('API: Calling service to move threads to inbox', {
-          threadCount: threadIds.length,
-          targetInboxId,
-          userId,
-          organizationId,
-        })
-        // Call the ThreadMutationService method
-        const result = await threadMutation.moveThreadsToInbox(
-          threadIds,
-          targetInboxId,
-          userId // Pass userId for logging/auditing in service
-        )
-        logger.info('API: Service call successful', { result })
-        return result // Return the count from the service
-      } catch (error: unknown) {
-        // Let handleServiceError manage errors thrown by the service
-        handleServiceError(error, 'threadMutation.moveThreadsToInbox', {
-          organizationId,
-          userId,
-          threadIds,
-          targetInboxId,
-        })
-        // Fallback error because handleServiceError returns void
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed moving threads.' })
       }
     }),
   /**

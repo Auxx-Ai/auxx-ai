@@ -7,55 +7,15 @@ import { createScopedLogger } from '@auxx/logger'
 
 const logger = createScopedLogger('thread-mutation-service')
 
-// Performance-optimized mutation options
-export interface MutationOptions {
-  returnData?: boolean | 'minimal' | 'full'
-  include?: {
-    messages?: boolean
-    tags?: boolean
-    labels?: boolean
-    assignee?: boolean
-    // Note: inbox removed - Thread.inboxId was removed in migration 0028
-    integration?: boolean // Added to support provider-based type derivation
-    // Note: comments removed - fetched separately via CommentService
-  }
-}
-
+/**
+ * Standard result returned by all mutation operations.
+ * Frontend uses optimistic updates and refetches via ThreadQueryService if needed.
+ */
 export interface MutationResult {
   id: string
   success: boolean
   updatedFields: Record<string, any>
   timestamp: Date
-}
-
-export interface MutationResultWithData<T = ThreadListItem> extends MutationResult {
-  data?: T
-}
-
-export type ThreadListItem = {
-  id: string
-  subject: string
-  organizationId: string
-  status: string
-  lastMessageAt?: Date | null
-  firstMessageAt?: Date | null
-  messageCount: number
-  participantCount: number
-  assigneeId?: string | null
-  // Note: inboxId removed - Thread.inboxId was removed in migration 0028
-  createdAt: Date
-  // Relations
-  messages?: any[]
-  labels?: any[]
-  tags?: any[]
-  assignee?: any
-  integration?: any
-  inbox?: any
-  comments?: any[]
-  // Computed fields
-  currentUserReadStatus?: { isRead: boolean; lastReadAt: Date | null } | null
-  isUnread?: boolean
-  latestComment?: any | null
 }
 
 /**
@@ -73,17 +33,16 @@ export class ThreadMutationService {
   }
 
   /**
-   * Updates the status of a single thread with performance optimization
+   * Updates the status of a single thread.
+   * Returns MutationResult - frontend uses optimistic updates.
    */
   async updateThreadStatus(
     threadId: string,
-    status: typeof ThreadStatus[keyof typeof ThreadStatus],
-    options: MutationOptions = { returnData: 'minimal' }
-  ): Promise<MutationResult | ThreadListItem> {
+    status: typeof ThreadStatus[keyof typeof ThreadStatus]
+  ): Promise<MutationResult> {
     logger.info('Updating thread status', { threadId, status, organizationId: this.organizationId })
 
     try {
-      // Fast update with minimal return
       const result = await this.db
         .update(schema.Thread)
         .set({
@@ -104,22 +63,12 @@ export class ThreadMutationService {
         throw new Error(`Thread ${threadId} not found`)
       }
 
-      // Return minimal result by default (much faster)
-      if (options.returnData === 'minimal' || options.returnData === false) {
-        return {
-          id: threadId,
-          success: true,
-          updatedFields: { status },
-          timestamp: new Date()
-        }
+      return {
+        id: threadId,
+        success: true,
+        updatedFields: { status },
+        timestamp: new Date()
       }
-
-      // Only fetch full data if explicitly requested
-      if (options.returnData === 'full' || options.returnData === true) {
-        return await this.fetchThreadWithOptimizedIncludes(threadId, options.include)
-      }
-
-      return result[0] as any // Return just the updated fields
     } catch (error: unknown) {
       logger.error('Failed to update thread status', {
         threadId,
@@ -133,51 +82,13 @@ export class ThreadMutationService {
   }
 
   /**
-   * Optimized fetch method with selective includes
-   */
-  private async fetchThreadWithOptimizedIncludes(
-    threadId: string,
-    include?: MutationOptions['include']
-  ): Promise<ThreadListItem> {
-    const thread = await this.db.query.Thread.findFirst({
-      where: (threads, { eq, and }) => and(
-        eq(threads.id, threadId),
-        eq(threads.organizationId, this.organizationId)
-      ),
-      with: {
-        // Only include what's requested
-        ...(include?.messages && {
-          messages: {
-            where: (messages, { eq }) => eq(messages.draftMode, DraftMode.NONE),
-            orderBy: (messages, { desc }) => [desc(messages.sentAt)],
-            limit: 1,
-            with: { from: true }
-          }
-        }),
-        ...(include?.assignee && { assignee: true }),
-        // Note: inbox relation removed - Thread.inboxId was removed in migration 0028
-        ...(include?.integration && { integration: true }),
-        ...(include?.labels && {
-          labels: { with: { label: true } }
-        }),
-        ...(include?.tags && {
-          tags: { with: { tag: true } }
-        }),
-        // Comments removed - fetched separately via CommentService
-      }
-    })
-
-    return thread as ThreadListItem
-  }
-
-  /**
-   * Updates the subject of a thread
+   * Updates the subject of a thread.
+   * Returns MutationResult - frontend uses optimistic updates.
    */
   async updateThreadSubject(
     threadId: string,
-    subject: string,
-    options: MutationOptions = { returnData: 'minimal' }
-  ): Promise<MutationResult | ThreadListItem> {
+    subject: string
+  ): Promise<MutationResult> {
     logger.info('Updating thread subject', {
       threadId,
       subject,
@@ -208,22 +119,12 @@ export class ThreadMutationService {
         throw new Error(`Thread ${threadId} not found`)
       }
 
-      // Return minimal result by default
-      if (options.returnData === 'minimal' || options.returnData === false) {
-        return {
-          id: threadId,
-          success: true,
-          updatedFields: { subject: trimmedSubject },
-          timestamp: new Date()
-        }
+      return {
+        id: threadId,
+        success: true,
+        updatedFields: { subject: trimmedSubject },
+        timestamp: new Date()
       }
-
-      // Only fetch full data if explicitly requested
-      if (options.returnData === 'full' || options.returnData === true) {
-        return await this.fetchThreadWithOptimizedIncludes(threadId, options.include)
-      }
-
-      return result[0] as any
     } catch (error: unknown) {
       logger.error('Failed to update thread subject', {
         threadId,
@@ -238,17 +139,17 @@ export class ThreadMutationService {
   }
 
   /**
-   * Assigns or unassigns a thread to a user
+   * Assigns or unassigns a thread to a user.
+   * Returns MutationResult - frontend uses optimistic updates.
    */
   async assignThread(
     threadId: string,
-    assigneeId: string | null, // User ID or null to unassign
-    options: MutationOptions = { returnData: 'minimal' }
-  ): Promise<MutationResult | ThreadListItem> {
+    assigneeId: string | null // User ID or null to unassign
+  ): Promise<MutationResult> {
     logger.info('Assigning thread', { threadId, assigneeId, organizationId: this.organizationId })
 
     try {
-      // Optional: Verify assigneeId belongs to the organization if not null
+      // Verify assigneeId belongs to the organization if not null
       if (assigneeId) {
         const memberExists = await this.db.query.OrganizationMember.findFirst({
           where: (members, { eq, and }) => and(
@@ -284,22 +185,12 @@ export class ThreadMutationService {
         throw new Error(`Thread ${threadId} not found`)
       }
 
-      // Return minimal result by default
-      if (options.returnData === 'minimal' || options.returnData === false) {
-        return {
-          id: threadId,
-          success: true,
-          updatedFields: { assigneeId },
-          timestamp: new Date()
-        }
+      return {
+        id: threadId,
+        success: true,
+        updatedFields: { assigneeId },
+        timestamp: new Date()
       }
-
-      // Only fetch full data if explicitly requested
-      if (options.returnData === 'full' || options.returnData === true) {
-        return await this.fetchThreadWithOptimizedIncludes(threadId, options.include)
-      }
-
-      return result[0] as any
     } catch (error: unknown) {
       logger.error('Failed to assign thread', {
         threadId,
@@ -525,63 +416,6 @@ export class ThreadMutationService {
   }
 
   /**
-   * Moves multiple threads to a specified target inbox
-   */
-  async moveThreadsToInbox(
-    threadIds: string[],
-    targetInboxId: string,
-    userId: string
-  ): Promise<{ count: number }> {
-    if (!threadIds || threadIds.length === 0) return { count: 0 }
-
-    logger.info('Moving threads to inbox', {
-      count: threadIds.length,
-      targetInboxId,
-      organizationId: this.organizationId,
-      userId,
-    })
-
-    try {
-      // Verify target inbox exists and belongs to the org
-      const targetInbox = await this.db.query.Inbox.findFirst({
-        where: (inboxes, { eq, and }) => and(
-          eq(inboxes.id, targetInboxId),
-          eq(inboxes.organizationId, this.organizationId)
-        ),
-        columns: { id: true }
-      })
-      if (!targetInbox)
-        throw new Error(`Target inbox (${targetInboxId}) not found or not accessible.`)
-
-      // Update threads
-      const result = await this.db
-        .update(schema.Thread)
-        .set({
-          inboxId: targetInboxId
-        })
-        .where(
-          and(
-            inArray(schema.Thread.id, threadIds),
-            eq(schema.Thread.organizationId, this.organizationId)
-          )
-        )
-        .returning({ id: schema.Thread.id })
-
-      logger.info('Threads successfully moved to inbox', { updatedCount: result.length })
-      return { count: result.length }
-    } catch (error: unknown) {
-      logger.error('Failed to move threads to inbox', {
-        error: error instanceof Error ? error.message : error,
-        targetInboxId,
-      })
-      if (error instanceof Error && error.message.startsWith('Target inbox')) throw error
-      throw new Error(
-        `Database error while moving threads: ${error instanceof Error ? error.message : error}`
-      )
-    }
-  }
-
-  /**
    * Permanently deletes a thread and its associated data
    * Use with extreme caution!
    */
@@ -661,20 +495,20 @@ export class ThreadMutationService {
   }
 
   // Convenience status update methods
-  async markAsSpam(threadId: string, options?: MutationOptions): Promise<MutationResult | ThreadListItem> {
-    return this.updateThreadStatus(threadId, 'SPAM', options)
+  async markAsSpam(threadId: string): Promise<MutationResult> {
+    return this.updateThreadStatus(threadId, 'SPAM')
   }
 
-  async moveToTrash(threadId: string, options?: MutationOptions): Promise<MutationResult | ThreadListItem> {
-    return this.updateThreadStatus(threadId, 'TRASH', options)
+  async moveToTrash(threadId: string): Promise<MutationResult> {
+    return this.updateThreadStatus(threadId, 'TRASH')
   }
 
-  async archiveThread(threadId: string, options?: MutationOptions): Promise<MutationResult | ThreadListItem> {
-    return this.updateThreadStatus(threadId, 'ARCHIVED', options)
+  async archiveThread(threadId: string): Promise<MutationResult> {
+    return this.updateThreadStatus(threadId, 'ARCHIVED')
   }
 
-  async unarchiveThread(threadId: string, options?: MutationOptions): Promise<MutationResult | ThreadListItem> {
-    return this.updateThreadStatus(threadId, 'OPEN', options)
+  async unarchiveThread(threadId: string): Promise<MutationResult> {
+    return this.updateThreadStatus(threadId, 'OPEN')
   }
 
   // Convenience bulk status methods
@@ -702,7 +536,7 @@ export class ThreadMutationService {
     threadId: string,
     operation: 'create' | 'update' | 'delete' = 'create'
   ): Promise<void> {
-    // Get all non-draft messages with proper dates
+    // Get all non-draft messages with proper dates (ordered by sentAt ASC for first/last)
     const messages = await this.db.query.Message.findMany({
       where: (messages, { eq, and, isNotNull }) => and(
         eq(messages.threadId, threadId),
@@ -713,16 +547,32 @@ export class ThreadMutationService {
       orderBy: (messages, { asc }) => [asc(messages.sentAt)]
     })
 
+    // Get the latest message with deterministic ordering for latestMessageId
+    const latestMessage = await this.db.query.Message.findFirst({
+      where: (messages, { eq, and }) => and(
+        eq(messages.threadId, threadId),
+        eq(messages.draftMode, DraftMode.NONE)
+      ),
+      columns: { id: true },
+      orderBy: (messages, { desc }) => [
+        desc(messages.receivedAt),
+        desc(messages.sentAt),
+        desc(messages.id)
+      ]
+    })
+
     const messageCount = messages.length
     const firstMessageAt = messages[0]?.sentAt || null
     const lastMessageAt = messages[messages.length - 1]?.sentAt || null
+    const latestMessageId = latestMessage?.id || null
 
     await this.db
       .update(schema.Thread)
       .set({
         messageCount,
         firstMessageAt,
-        lastMessageAt
+        lastMessageAt,
+        latestMessageId
       })
       .where(eq(schema.Thread.id, threadId))
 
@@ -732,6 +582,7 @@ export class ThreadMutationService {
       messageCount,
       firstMessageAt,
       lastMessageAt,
+      latestMessageId,
     })
   }
 

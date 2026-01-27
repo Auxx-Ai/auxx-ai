@@ -1,9 +1,9 @@
+// apps/web/src/components/mail/message-display.tsx
 'use client'
 
 import { Letter } from 'react-letter'
-import { type RouterOutputs, api } from '~/trpc/react'
+import { api } from '~/trpc/react'
 import React, { useCallback, useState } from 'react'
-// import useThreads from '~/hooks/use-threads'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatDistanceToNow } from 'date-fns'
 import { Button } from '@auxx/ui/components/button'
@@ -34,28 +34,42 @@ import { ContactHoverCard } from '../contacts/contact-hover-card'
 import { type EmailActions } from './email-actions'
 import { SendStatusIndicator } from './send-status-indicator'
 import { toastError } from '@auxx/ui/components/toast'
+import { Skeleton } from '@auxx/ui/components/skeleton'
+import { useMessage, useParticipant } from '~/components/threads/hooks'
+import type { MessageMeta } from '~/components/threads/store'
 
-type Props = {
-  message: RouterOutputs['thread']['getById']['messages'][0]
-  // onReplyClick: () => void // Add the new prop type
-  messageActions: EmailActions // Use the grouped actions prop
+interface MessageDisplayProps {
+  /** Message ID to display */
+  messageId: string
+  /** Actions for this message */
+  messageActions: EmailActions
+  /** Whether message is expanded by default */
   isOpen: boolean
 }
 
 /**
- * Displays multipe emails from a thread.
- * The email itselfis rendered using the Letter component.
+ * Displays a non-email message (chat bubble style).
+ * Fetches its own data from stores.
  */
-const MessageDisplay = ({ message, messageActions, isOpen }: Props) => {
-  // const { account } = useThreads()
+const MessageDisplay = ({ messageId, messageActions, isOpen }: MessageDisplayProps) => {
   const [selected, setSelected] = useState(false)
   const utils = api.useUtils()
+
+  // Fetch message from store
+  const { message, isLoading } = useMessage({ messageId })
+
+  // Fetch sender participant
+  const { participant: sender } = useParticipant({
+    participantId: message?.fromParticipantId ?? null,
+    enabled: !!message?.fromParticipantId,
+  })
 
   // Retry send mutation
   const retrySendMessage = api.thread.retrySendMessage.useMutation({
     onSuccess: () => {
-      // Invalidate thread to refresh the message status
-      utils.thread.getById.invalidate({ id: message.threadId })
+      if (message) {
+        utils.thread.getById.invalidate({ id: message.threadId })
+      }
     },
     onError: (error) => {
       toastError({
@@ -66,45 +80,53 @@ const MessageDisplay = ({ message, messageActions, isOpen }: Props) => {
   })
 
   const handleRetry = useCallback(() => {
-    retrySendMessage.mutate({ messageId: message.id })
-  }, [message.id, retrySendMessage])
+    if (message) {
+      retrySendMessage.mutate({ messageId: message.id })
+    }
+  }, [message, retrySendMessage])
 
   // Get message content based on available fields
-  const getContent = useCallback(
-    (message: RouterOutputs['thread']['getById']['messages'][0]) => {
-      if (!message) return ''
-      if (message.textHtml) {
-        return (
-          <Letter className={cn('bg-background p-4 text-foreground')} html={message.textHtml} />
-        )
-      }
-      if (message.textPlain) {
-        return message.textPlain
-      }
-      if (message.snippet) {
-        return message.snippet
-      }
-      if (message.metadata?.fb_message) {
-        return message.metadata.fb_message
-      }
-      return <Letter className="" html={'<i>No content</i>'} />
-    },
-    [message]
-  )
+  const getContent = useCallback(() => {
+    if (!message) return ''
+    if (message.textHtml) {
+      return <Letter className={cn('bg-background p-4 text-foreground')} html={message.textHtml} />
+    }
+    if (message.textPlain) {
+      return message.textPlain
+    }
+    if (message.snippet) {
+      return message.snippet
+    }
+    return <Letter className="" html={'<i>No content</i>'} />
+  }, [message])
+
+  // Loading state
+  if (isLoading) {
+    return <MessageSkeleton />
+  }
+
+  // Message not found
+  if (!message) {
+    return null
+  }
 
   const isInbound = message.isInbound
+  const senderName = sender?.displayName ?? message.from?.displayName ?? 'Unknown'
+  const senderInitials = sender?.initials ?? senderName.charAt(0).toUpperCase()
+  const contactId = sender?.entityInstanceId
+
   return (
     <div className="mt-2 flex flex-col">
       <div
         className={cn('flex flex-row', isInbound ? 'justify-start' : 'justify-end')}
         onClick={() => setSelected(!selected)}>
         <div className={cn('mt-1 shrink-0', isInbound ? 'order-1' : 'order-3')}>
-          <ContactHoverCard contactId={message.from.contactId}>
+          <ContactHoverCard contactId={contactId ?? undefined}>
             <Avatar className="h-8 w-8">
               <AvatarFallback className="bg-foreground/50 text-background hover:bg-foreground/70">
-                {message.from.initials}
+                {senderInitials}
               </AvatarFallback>
-              <AvatarImage></AvatarImage>
+              <AvatarImage src={sender?.avatarUrl ?? undefined} />
             </Avatar>
           </ContactHoverCard>
         </div>
@@ -118,9 +140,7 @@ const MessageDisplay = ({ message, messageActions, isOpen }: Props) => {
             <div className="flex items-center justify-between">
               <div className="truncate px-4 py-2">
                 <div className="flex items-center gap-2 text-sm text-gray-500">
-                  <div className="truncate font-medium text-gray-700">
-                    {message.from.displayName}
-                  </div>
+                  <div className="truncate font-medium text-gray-700">{senderName}</div>
                   <SendStatusIndicator
                     status={message.sendStatus}
                     error={message.providerError}
@@ -131,7 +151,7 @@ const MessageDisplay = ({ message, messageActions, isOpen }: Props) => {
               </div>
               <div className="pr-2 pt-2">
                 <div className="flex items-center">
-                  <DropdownMenuDemo messageId={message.id} emailActions={messageActions} />
+                  <MessageDropdownMenu message={message} emailActions={messageActions} />
                 </div>
               </div>
             </div>
@@ -139,7 +159,7 @@ const MessageDisplay = ({ message, messageActions, isOpen }: Props) => {
             <div className="px-4 pb-3">
               <div className="flex-1 overflow-auto">
                 <div className="cursor-text select-text text-sm leading-6 text-gray-700">
-                  <div className="break-words font-sans text-black">{getContent(message)}</div>
+                  <div className="break-words font-sans text-black">{getContent()}</div>
                 </div>
               </div>
             </div>
@@ -152,13 +172,15 @@ const MessageDisplay = ({ message, messageActions, isOpen }: Props) => {
             isInbound ? 'order-3' : 'order-1'
           )}>
           <Tooltip
-            content={message.sentAt ? message.sentAt.toString() : ''}
+            content={message.sentAt ? new Date(message.sentAt).toString() : ''}
             delayDuration={0}
             side="top"
             sideOffset={5}
             className="text-xs text-muted-foreground">
             <span className="shrink-0 whitespace-nowrap">
-              {formatDistanceToNow(message.sentAt ?? new Date(), { addSuffix: true })}
+              {formatDistanceToNow(message.sentAt ? new Date(message.sentAt) : new Date(), {
+                addSuffix: true,
+              })}
             </span>
           </Tooltip>
         </div>
@@ -169,16 +191,37 @@ const MessageDisplay = ({ message, messageActions, isOpen }: Props) => {
 
 export default MessageDisplay
 
-export function DropdownMenuDemo({
-  messageId,
+/**
+ * Loading skeleton for message display.
+ */
+function MessageSkeleton() {
+  return (
+    <div className="mt-2 flex flex-col">
+      <div className="flex flex-row justify-start">
+        <Skeleton className="h-8 w-8 rounded-full mt-1" />
+        <div className="max-w-lg px-2">
+          <div className="min-h-[70px] min-w-[192px] rounded-2xl border p-4 space-y-2">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-12 w-full" />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Dropdown menu for message actions.
+ */
+function MessageDropdownMenu({
+  message,
   emailActions,
 }: {
-  messageId: string
+  message: MessageMeta
   emailActions: EmailActions
 }) {
-  const handleSelect = (action: (id: string) => void) => (event?: Event) => {
-    // event?.preventDefault(); // Prevent default browser actions if any
-    action(messageId)
+  const handleSelect = (action: (msg: any) => void) => (event?: Event) => {
+    action(message)
   }
 
   return (

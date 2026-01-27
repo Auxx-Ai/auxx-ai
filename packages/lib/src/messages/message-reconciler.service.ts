@@ -349,6 +349,9 @@ export class MessageReconcilerService {
           duplicateMessages.map((m) => m.id)
         )
       )
+
+      // Recalculate thread metadata after deleting duplicates
+      await this.threadManager.updateThreadMetadata(input.realThreadId)
     }
   }
 

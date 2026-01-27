@@ -29,3 +29,6 @@ export {
   getSocialProviders,
   getSmsProviders,
 } from './query-helpers'
+
+// Integration cache - cached provider lookup for batch operations
+export { getOrgProviderMap, invalidateOrgProviderMap } from './integration-cache'

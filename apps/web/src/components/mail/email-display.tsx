@@ -1,14 +1,12 @@
+// apps/web/src/components/mail/email-display.tsx
 'use client'
 
 import { Letter } from 'react-letter'
-import { api, type RouterOutputs } from '~/trpc/react'
-import React, { useCallback, useEffect, useRef, useState } from 'react'
-// import useThreads from '~/hooks/use-threads'
+import { api } from '~/trpc/react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatDistanceToNow } from 'date-fns'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
-
-// import Avatar from 'react-avatar'
 import { Button } from '@auxx/ui/components/button'
 import {
   Code,
@@ -32,36 +30,95 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { Tooltip } from '../global/tooltip'
-import { ParticipantList } from './participant-display'
+import { ParticipantList, type ParticipantListEntry } from './participant-display'
 import { type EmailActions } from './email-actions'
 import { SendStatusIndicator } from './send-status-indicator'
 import { toastError } from '@auxx/ui/components/toast'
 import { AttachmentDisplay } from '~/components/files/utils/attachment-display'
+import { Skeleton } from '@auxx/ui/components/skeleton'
+import { useMessage, useParticipantsArray } from '~/components/threads/hooks'
+import type { MessageMeta } from '~/components/threads/store'
 
-export type MessageType = RouterOutputs['thread']['getById']['messages'][number]
-
-type Props = {
-  message: MessageType
-  // onReplyClick: () => void // Add the new prop type
-  messageActions: EmailActions // Use the grouped actions prop
+interface EmailDisplayProps {
+  /** Message ID to display */
+  messageId: string
+  /** Actions for this message */
+  messageActions: EmailActions
+  /** Whether message is expanded by default */
   isOpen: boolean
 }
 
 /**
- * Displays multipe emails from a thread.
- * The email itselfis rendered using the Letter component.
+ * Displays a single email message.
+ * Fetches its own data from stores.
  */
-const EmailDisplay = ({ message, messageActions, isOpen }: Props) => {
-  // const { account } = useThreads()
+const EmailDisplay = ({ messageId, messageActions, isOpen }: EmailDisplayProps) => {
   const letterRef = useRef<HTMLDivElement>(null)
   const [selected, setSelected] = useState(isOpen)
   const utils = api.useUtils()
 
+  // Fetch message from store
+  const { message, isLoading } = useMessage({ messageId })
+
+  // Collect all participant IDs from the message
+  const allParticipantIds = useMemo(() => {
+    if (!message) return []
+    return [
+      message.fromParticipantId,
+      ...message.toParticipantIds,
+      ...message.ccParticipantIds,
+    ].filter((id): id is string => !!id)
+  }, [message])
+
+  // Fetch all participants at once
+  const participants = useParticipantsArray(allParticipantIds)
+
+  // Build participants list for ParticipantList component
+  const participantEntries = useMemo((): ParticipantListEntry[] => {
+    if (!message) return []
+
+    const participantMap = new Map(participants.map((p) => [p.id, p]))
+    const result: ParticipantListEntry[] = []
+
+    // FROM participant
+    if (message.fromParticipantId) {
+      result.push({
+        id: `${message.id}-from`,
+        participantId: message.fromParticipantId,
+        role: 'FROM',
+        participant: participantMap.get(message.fromParticipantId),
+      })
+    }
+
+    // TO participants
+    for (const toId of message.toParticipantIds) {
+      result.push({
+        id: `${message.id}-to-${toId}`,
+        participantId: toId,
+        role: 'TO',
+        participant: participantMap.get(toId),
+      })
+    }
+
+    // CC participants
+    for (const ccId of message.ccParticipantIds) {
+      result.push({
+        id: `${message.id}-cc-${ccId}`,
+        participantId: ccId,
+        role: 'CC',
+        participant: participantMap.get(ccId),
+      })
+    }
+
+    return result
+  }, [message, participants])
+
   // Retry send mutation
   const retrySendMessage = api.thread.retrySendMessage.useMutation({
     onSuccess: () => {
-      // Invalidate thread to refresh the message status
-      utils.thread.getById.invalidate({ id: message.threadId })
+      if (message) {
+        utils.thread.getById.invalidate({ id: message.threadId })
+      }
     },
     onError: (error) => {
       toastError({
@@ -72,8 +129,10 @@ const EmailDisplay = ({ message, messageActions, isOpen }: Props) => {
   })
 
   const handleRetry = useCallback(() => {
-    retrySendMessage.mutate({ messageId: message.id })
-  }, [message.id, retrySendMessage])
+    if (message) {
+      retrySendMessage.mutate({ messageId: message.id })
+    }
+  }, [message, retrySendMessage])
 
   useEffect(() => {
     if (letterRef.current) {
@@ -86,46 +145,50 @@ const EmailDisplay = ({ message, messageActions, isOpen }: Props) => {
 
   const handleDirectReplyClick = (e: React.MouseEvent) => {
     e.stopPropagation()
-    messageActions.onReply(message)
-  }
-  const handleDirectReplyAllClick = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    messageActions.onReplyAll(message)
+    if (message) messageActions.onReply(message as any)
   }
 
-  const handleMore = (e: React.MouseEvent) => {
+  const handleDirectReplyAllClick = (e: React.MouseEvent) => {
     e.stopPropagation()
-    // console.log('more')
+    if (message) messageActions.onReplyAll(message as any)
   }
 
   const handleReply = useCallback(
     (e?: React.SyntheticEvent) => {
-      // Allow optional event arg for dropdown compatibility
       e?.stopPropagation()
-      console.log('handleReply', message)
-      messageActions.onReply(message)
-      // onReplyClick() // Call the function passed from the parent
+      if (message) messageActions.onReply(message as any)
     },
-    [messageActions] // Add dependency
+    [message, messageActions]
   )
-  const isMe = !message.isInbound // user?.email === message?.from?.identifier
+
+  // Loading state
+  if (isLoading) {
+    return <EmailSkeleton />
+  }
+
+  // Message not found
+  if (!message) {
+    return null
+  }
+
+  const isMe = !message.isInbound
+  const senderInitials = message.from?.displayName?.charAt(0)?.toUpperCase() ?? '?'
 
   return (
     <div
       className={cn(
-        'flex flex-col  rounded-2xl border bg-background shadow-xs transition-all duration-200 ease-in-out hover:bg-muted',
+        'flex flex-col rounded-2xl border bg-background shadow-xs transition-all duration-200 ease-in-out hover:bg-muted',
         { 'ring-5 ring-info/5 hover:ring-info/20 border-info': isMe },
         { 'hover:bg-background transition-none': selected }
-        // { 'bg-muted': selected }
       )}
       ref={letterRef}>
       <div onClick={() => setSelected(!selected)}>
-        <div className="flex cursor-pointer justify-between gap-2  px-2 py-1 ">
-          <div className="flex grow items-start gap-1 ">
+        <div className="flex cursor-pointer justify-between gap-2 px-2 py-1">
+          <div className="flex grow items-start gap-1">
             <div className="size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors shrink-0 mt-2">
-              <Avatar className={`size-7 rounded-none shadow-none`}>
+              <Avatar className="size-7 rounded-none shadow-none">
                 <AvatarFallback className={cn('rounded-none bg-transparent')}>
-                  {message.from.initials}
+                  {senderInitials}
                 </AvatarFallback>
                 <AvatarImage />
               </Avatar>
@@ -133,14 +196,13 @@ const EmailDisplay = ({ message, messageActions, isOpen }: Props) => {
             <div
               className="flex flex-col rounded-[6px] px-[7px] py-[3px] hover:bg-muted"
               onClick={(e) => {
-                console.log('onClick')
                 if (selected) {
                   e.stopPropagation()
                 }
               }}>
               {selected ? (
                 <>
-                  <ParticipantList participants={message?.participants ?? []} />
+                  <ParticipantList participants={participantEntries} />
                   <div className="flex text-sm">
                     <span className="mr-[4px] shrink-0 text-muted-foreground">Subject:</span>
                     <span className="flex-shrink-1 min-w-0 truncate whitespace-nowrap">
@@ -149,9 +211,7 @@ const EmailDisplay = ({ message, messageActions, isOpen }: Props) => {
                   </div>
                 </>
               ) : (
-                <>
-                  <ParticipantList participants={message?.participants ?? []} />
-                </>
+                <ParticipantList participants={participantEntries} />
               )}
             </div>
             <SendStatusIndicator
@@ -162,26 +222,25 @@ const EmailDisplay = ({ message, messageActions, isOpen }: Props) => {
               className="mt-1"
             />
           </div>
-          <div className={cn('flex shrink-0 grow-0 items-start gap-2', {})}>
+          <div className="flex shrink-0 grow-0 items-start gap-2">
             <div className="flex flex-col items-end">
-              {/* {selected && ( */}
               <div className="flex items-center flex-row justify-end">
                 <DropdownMenuDemo message={message} emailActions={messageActions} />
                 <Button variant="ghost" size="icon-sm" onClick={handleReply}>
                   <Reply />
                 </Button>
               </div>
-              {/* )} */}
-
               <div className="text-xs text-muted-foreground">
                 <Tooltip
-                  content={message.sentAt ? message.sentAt.toString() : ''}
+                  content={message.sentAt ? new Date(message.sentAt).toString() : ''}
                   delayDuration={0}
                   side="bottom"
                   sideOffset={5}
                   className="text-xs text-muted-foreground">
                   <span className="shrink-0 whitespace-nowrap">
-                    {formatDistanceToNow(message.sentAt ?? new Date(), { addSuffix: true })}
+                    {formatDistanceToNow(message.sentAt ? new Date(message.sentAt) : new Date(), {
+                      addSuffix: true,
+                    })}
                   </span>
                 </Tooltip>
               </div>
@@ -193,11 +252,11 @@ const EmailDisplay = ({ message, messageActions, isOpen }: Props) => {
         <div className="border-t border-secondary">
           <Letter
             className={cn('bg-background p-4 text-foreground')}
-            html={message?.textHtml ?? message?.textPlain ?? ''}
+            html={message.textHtml ?? message.textPlain ?? ''}
           />
           {message.attachments && message.attachments.length > 0 && (
             <div className="px-4 pb-4">
-              <div className="flex items-center flex-row ">
+              <div className="flex items-center flex-row">
                 {message.attachments.map((attachment) => (
                   <AttachmentDisplay
                     key={attachment.id}
@@ -235,19 +294,35 @@ const EmailDisplay = ({ message, messageActions, isOpen }: Props) => {
 
 export default EmailDisplay
 
-export function DotPopover({}: Props) {
-  return <div>DotPopover</div>
+/**
+ * Loading skeleton for email display.
+ */
+function EmailSkeleton() {
+  return (
+    <div className="rounded-2xl border p-4 space-y-3">
+      <div className="flex items-center gap-3">
+        <Skeleton className="h-8 w-8 rounded-lg" />
+        <div className="space-y-2 flex-1">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-3 w-48" />
+        </div>
+        <Skeleton className="h-6 w-16" />
+      </div>
+    </div>
+  )
 }
 
+/**
+ * Dropdown menu for email actions.
+ */
 export function DropdownMenuDemo({
   message,
   emailActions,
 }: {
-  message: MessageType
+  message: MessageMeta
   emailActions: EmailActions
 }) {
-  const handleSelect = (action: (msg: MessageType) => void) => (event?: Event) => {
-    // event?.preventDefault(); // Prevent default browser actions if any
+  const handleSelect = (action: (msg: any) => void) => (event?: Event) => {
     action(message)
   }
 

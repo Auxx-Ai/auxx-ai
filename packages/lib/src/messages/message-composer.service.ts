@@ -202,6 +202,14 @@ export class MessageComposerService {
 
       await tx.insert(schema.MessageParticipant).values(participantLinks).onConflictDoNothing()
 
+      // Update thread latestMessageId if this is a non-draft message
+      const effectiveDraftMode = input.draftMode ?? DraftMode.NONE
+      if (effectiveDraftMode === DraftMode.NONE) {
+        await tx.update(schema.Thread)
+          .set({ latestMessageId: message.id })
+          .where(eq(schema.Thread.id, input.threadId))
+      }
+
       // Note: Attachments will be linked outside transaction using MessageAttachmentService
 
       return message
@@ -538,6 +546,14 @@ export class MessageComposerService {
       ]
 
       await tx.insert(schema.MessageParticipant).values(participantLinks).onConflictDoNothing()
+
+      // Update thread latestMessageId when promoting draft to non-draft
+      const effectiveDraftMode = input.draftMode ?? DraftMode.NONE
+      if (effectiveDraftMode === DraftMode.NONE) {
+        await tx.update(schema.Thread)
+          .set({ latestMessageId: message.id })
+          .where(eq(schema.Thread.id, input.threadId))
+      }
 
       return message
     })

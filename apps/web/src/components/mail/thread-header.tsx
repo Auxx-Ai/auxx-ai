@@ -6,11 +6,9 @@ import { Button } from '@auxx/ui/components/button'
 import { EditableText } from '../editor/editable-text'
 import { Tooltip } from '../global/tooltip'
 import {
-  Check,
   MailWarning,
   Tags,
   Trash,
-  TriangleAlert,
   MoreHorizontal,
   Zap,
   Archive,
@@ -21,7 +19,9 @@ import { InboxPicker } from '../pickers/inbox-picker'
 import { TagPicker } from '../pickers/tag-picker'
 import { AssigneePicker } from '../pickers/assignee-picker'
 import { Popover, PopoverTrigger } from '@auxx/ui/components/popover'
-import { useThread, useThreadTagsFromContext } from './thread-provider'
+import { useThreadContext, useThreadTags } from './thread-provider'
+import { useThread, useInboxById } from '~/components/threads/hooks'
+import { useActor } from '~/components/resources/hooks/use-actor'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,6 +32,7 @@ import { ThreadTag } from './thread-tag'
 import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button'
 import { toRecordId } from '@auxx/types/resource'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
+import type { ActorId as ActorIdString } from '@auxx/types/actor'
 
 /**
  * Header component for thread details with thread actions
@@ -55,17 +56,30 @@ export function ThreadHeader({
   onPermanentlyDelete?: () => void
   // onRule: () => void
 }) {
-  // Get data from context
-  const { thread, isDone, selectedTags, handlers } = useThread()
-  const { availableTags } = useThreadTagsFromContext()
+  // Get threadId and handlers from context
+  const { threadId, handlers } = useThreadContext()
+  const { selectedTags, availableTags, updateTags } = useThreadTags()
 
-  // Get updateTags from handlers
-  const updateTags = handlers?.updateTags
+  // Get thread data from store
+  const { thread } = useThread({ threadId })
+
+  // Get inbox details
+  const { inbox } = useInboxById(thread?.inboxId)
+
+  // Get assignee details via actor store
+  // Convert ActorId object to string format expected by useActor (e.g., 'user:abc123')
+  const assigneeActorId: ActorIdString | null = thread?.assigneeActorId
+    ? (`${thread.assigneeActorId.type}:${thread.assigneeActorId.id}` as ActorIdString)
+    : null
+  const { actor: assignee } = useActor({ actorId: assigneeActorId })
+
+  // Derive state
+  const isDone = thread?.status === 'ARCHIVED'
+
   // Local state for tag popover
   const [open, setOpen] = useState(false)
 
   if (!thread) return null
-  const threadId = thread.id
   const fetchedTagsData = availableTags
 
   return (
@@ -80,7 +94,7 @@ export function ThreadHeader({
               <Badge
                 variant="blue"
                 className="cursor-pointer data-[state=open]:brightness-90 shrink-0 text-nowrap rounded-full">
-                {thread?.inbox?.name || 'Loading...'}
+                {inbox?.name || 'Loading...'}
               </Badge>
             </InboxPicker>
           </div>
@@ -159,22 +173,22 @@ export function ThreadHeader({
               key={`assignee-${thread.id}`}
               onChange={onAssigneeChange}
               placeholder="Assign"
-              selected={thread.assignee || undefined}>
+              selected={assignee || undefined}>
               <div>
-                <Tooltip content={thread.assignee ? thread.assignee.name || 'Assigned' : 'Assign'}>
+                <Tooltip content={assignee ? assignee.name || 'Assigned' : 'Assign'}>
                   <Button
                     variant="ghost"
                     size="icon"
                     disabled={!thread}
                     className="rounded-full hover:bg-foreground/10">
-                    {thread.assignee ? (
+                    {assignee ? (
                       <Avatar className="size-6">
                         <AvatarImage
-                          src={thread.assignee.image || undefined}
-                          alt={thread.assignee.name || 'Assignee'}
+                          src={assignee.image || undefined}
+                          alt={assignee.name || 'Assignee'}
                         />
                         <AvatarFallback className="text-xs">
-                          {thread.assignee.name
+                          {assignee.name
                             ?.split(' ')
                             .map((n) => n[0])
                             .join('')

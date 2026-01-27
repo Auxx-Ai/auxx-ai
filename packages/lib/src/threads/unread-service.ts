@@ -42,18 +42,8 @@ export class UnreadService {
       .where(
         and(
           eq(schema.Thread.organizationId, this.organizationId),
-          // Filter by inboxId using InboxIntegration junction table
-          exists(
-            db
-              .select()
-              .from(schema.InboxIntegration)
-              .where(
-                and(
-                  eq(schema.InboxIntegration.integrationId, schema.Thread.integrationId),
-                  eq(schema.InboxIntegration.inboxId, inboxId)
-                )
-              )
-          ),
+          // Filter by inboxId directly on Thread
+          eq(schema.Thread.inboxId, inboxId),
           eq(schema.Thread.status, 'OPEN' as any)
         )
       )
@@ -66,18 +56,8 @@ export class UnreadService {
       .where(
         and(
           eq(schema.Thread.organizationId, this.organizationId),
-          // Filter by inboxId using InboxIntegration junction table
-          exists(
-            db
-              .select()
-              .from(schema.InboxIntegration)
-              .where(
-                and(
-                  eq(schema.InboxIntegration.integrationId, schema.Thread.integrationId),
-                  eq(schema.InboxIntegration.inboxId, inboxId)
-                )
-              )
-          ),
+          // Filter by inboxId directly on Thread
+          eq(schema.Thread.inboxId, inboxId),
           eq(schema.Thread.status, 'OPEN' as any),
           eq(schema.ThreadReadStatus.userId, this.userId),
           or(
@@ -177,17 +157,13 @@ export class UnreadService {
   ): Promise<void> {
     if (!userId) userId = this.userId
 
-    // Get thread info with inbox association via InboxIntegration junction table
+    // Get thread info with direct inboxId
     const [thread] = await db
       .select({
-        inboxId: schema.InboxIntegration.inboxId,
+        inboxId: schema.Thread.inboxId,
         lastMessageAt: schema.Thread.lastMessageAt,
       })
       .from(schema.Thread)
-      .leftJoin(
-        schema.InboxIntegration,
-        eq(schema.InboxIntegration.integrationId, schema.Thread.integrationId)
-      )
       .where(
         and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, this.organizationId))
       )
@@ -265,14 +241,10 @@ export class UnreadService {
   async markThreadAsUnread(threadId: string, userId?: string): Promise<void> {
     if (!userId) userId = this.userId // Use the class userId if not provided
 
-    // Get thread inbox association via InboxIntegration junction table
+    // Get thread with direct inboxId
     const [thread] = await db
-      .select({ inboxId: schema.InboxIntegration.inboxId })
+      .select({ inboxId: schema.Thread.inboxId })
       .from(schema.Thread)
-      .leftJoin(
-        schema.InboxIntegration,
-        eq(schema.InboxIntegration.integrationId, schema.Thread.integrationId)
-      )
       .where(
         and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, this.organizationId))
       )
@@ -335,29 +307,18 @@ export class UnreadService {
   async markMultipleThreads(threadIds: string[], markAs: 'read' | 'unread'): Promise<void> {
     if (threadIds.length === 0) return
 
-    // Get threads with their inbox associations via InboxIntegration junction table
+    // Get threads with direct inboxId
     const threads = await db
       .select({
         id: schema.Thread.id,
-        inboxId: schema.InboxIntegration.inboxId,
+        inboxId: schema.Thread.inboxId,
         lastMessageAt: schema.Thread.lastMessageAt,
       })
       .from(schema.Thread)
-      .leftJoin(
-        schema.InboxIntegration,
-        eq(schema.InboxIntegration.integrationId, schema.Thread.integrationId)
-      )
       .where(
         and(
           inArray(schema.Thread.id, threadIds),
-          eq(schema.Thread.organizationId, this.organizationId),
-          // Only include threads that have an inbox association
-          exists(
-            db
-              .select()
-              .from(schema.InboxIntegration)
-              .where(eq(schema.InboxIntegration.integrationId, schema.Thread.integrationId))
-          )
+          eq(schema.Thread.organizationId, this.organizationId)
         )
       )
 
@@ -577,14 +538,10 @@ export class UnreadService {
    * for users who had previously read it before this message.
    */
   async handleNewMessage(threadId: string, newMessageDate: Date): Promise<void> {
-    // Get thread inbox association via InboxIntegration junction table
+    // Get thread with direct inboxId
     const [thread] = await db
-      .select({ inboxId: schema.InboxIntegration.inboxId })
+      .select({ inboxId: schema.Thread.inboxId })
       .from(schema.Thread)
-      .leftJoin(
-        schema.InboxIntegration,
-        eq(schema.InboxIntegration.integrationId, schema.Thread.integrationId)
-      )
       .where(
         and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, this.organizationId))
       )

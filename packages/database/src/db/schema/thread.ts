@@ -17,6 +17,9 @@ import { createId } from '@paralleldrive/cuid2'
 import { User } from './user'
 import { Integration } from './integration'
 import { Organization } from './organization'
+import { Message } from './message'
+import { Comment } from './comment'
+import { Inbox } from './inbox'
 
 /** Drizzle table for thread */
 export const Thread = pgTable(
@@ -40,6 +43,12 @@ export const Thread = pgTable(
     participantCount: integer().default(0).notNull(),
     firstMessageAt: timestamp({ precision: 3 }),
     lastMessageAt: timestamp({ precision: 3 }),
+    /** Denormalized: ID of the latest non-draft message in the thread */
+    latestMessageId: text().references((): AnyPgColumn => Message.id, { onUpdate: 'cascade', onDelete: 'set null' }),
+    /** Denormalized: ID of the latest non-deleted comment on the thread */
+    latestCommentId: text().references((): AnyPgColumn => Comment.id, { onUpdate: 'cascade', onDelete: 'set null' }),
+    /** Denormalized: Inbox this thread belongs to (via InboxIntegration) */
+    inboxId: text().references((): AnyPgColumn => Inbox.id, { onUpdate: 'cascade', onDelete: 'set null' }),
     closedAt: timestamp({ precision: 3 }),
     repliedAt: timestamp({ precision: 3 }),
     waitingSince: timestamp({ precision: 3 }),
@@ -78,5 +87,6 @@ export const Thread = pgTable(
       table.lastMessageAt.desc().nullsFirst(),
       table.id.desc().nullsFirst()
     ),
+    index('Thread_inboxId_idx').using('btree', table.inboxId.asc().nullsLast()),
   ]
 )

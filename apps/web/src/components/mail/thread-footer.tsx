@@ -3,14 +3,16 @@
 
 import React from 'react'
 import CommentComposer from '../global/comments/comment-composer'
-import { useThreadData } from './thread-provider'
+import { useThreadContext } from './thread-provider'
+import { useThread } from '~/components/threads/hooks'
 import { toRecordId } from '@auxx/lib/field-values/client'
 
 /**
  * Footer component for thread details with comments section
  */
 export function ThreadFooter() {
-  const { thread } = useThreadData()
+  const { threadId } = useThreadContext()
+  const { thread } = useThread({ threadId })
 
   if (!thread) return null
   return (

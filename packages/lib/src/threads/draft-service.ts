@@ -13,7 +13,7 @@ import {
 import { TRPCError } from '@trpc/server'
 import { v4 as uuidv4 } from 'uuid'
 import { createScopedLogger } from '@auxx/logger'
-import { and, asc, count, eq } from 'drizzle-orm'
+import { and, asc, count, eq, inArray } from 'drizzle-orm'
 import { ParticipantService } from '../participants/participant-service'
 import { ThreadManagerService } from '../messages/thread-manager.service'
 import { MessageComposerService } from '../messages/message-composer.service'
@@ -502,5 +502,64 @@ export class DraftService {
       if (error instanceof Error && error.message.includes('forbidden')) throw error // Rethrow specific errors
       throw new Error(`Failed to delete draft: ${error instanceof Error ? error.message : error}`)
     }
+  }
+
+  // ============================================================================
+  // Lightweight draft query methods (Phase 2 additions)
+  // ============================================================================
+
+  /**
+   * Check if a thread has a draft for the current user.
+   * Lightweight query for UI indicators.
+   */
+  async hasDraft(threadId: string): Promise<boolean> {
+    const draft = await this.db.query.Message.findFirst({
+      where: and(
+        eq(schema.Message.threadId, threadId),
+        eq(schema.Message.createdById, this.userId),
+        eq(schema.Message.draftMode, DraftMode.PRIVATE),
+        eq(schema.Message.organizationId, this.organizationId)
+      ),
+      columns: { id: true },
+    })
+    return !!draft
+  }
+
+  /**
+   * Get draft ID for a thread (for the current user).
+   * Returns null if no draft exists.
+   */
+  async getDraftId(threadId: string): Promise<string | null> {
+    const draft = await this.db.query.Message.findFirst({
+      where: and(
+        eq(schema.Message.threadId, threadId),
+        eq(schema.Message.createdById, this.userId),
+        eq(schema.Message.draftMode, DraftMode.PRIVATE),
+        eq(schema.Message.organizationId, this.organizationId)
+      ),
+      columns: { id: true },
+    })
+    return draft?.id ?? null
+  }
+
+  /**
+   * Check which threads have drafts for the current user.
+   * Returns a Set of thread IDs that have drafts.
+   * Useful for showing draft indicators in thread lists.
+   */
+  async getThreadsWithDrafts(threadIds: string[]): Promise<Set<string>> {
+    if (threadIds.length === 0) return new Set()
+
+    const drafts = await this.db.query.Message.findMany({
+      where: and(
+        inArray(schema.Message.threadId, threadIds),
+        eq(schema.Message.createdById, this.userId),
+        eq(schema.Message.draftMode, DraftMode.PRIVATE),
+        eq(schema.Message.organizationId, this.organizationId)
+      ),
+      columns: { threadId: true },
+    })
+
+    return new Set(drafts.map((d) => d.threadId))
   }
 }
