@@ -5,7 +5,7 @@ import { BaseType, type UnifiedVariable } from '~/components/workflow/types/vari
 import type { TiptapJSON } from '~/components/workflow/ui/input-editor'
 import { type TargetBranch } from '~/components/workflow/types'
 import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
-import type { Operator } from '@auxx/lib/workflow-engine/client'
+import type { Operator } from '@auxx/lib/conditions/client'
 
 export type Node = FlowNode
 export type ValueSelector = string[]

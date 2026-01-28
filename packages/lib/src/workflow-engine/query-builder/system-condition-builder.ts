@@ -26,7 +26,7 @@ import {
 import { RESOURCE_FIELD_REGISTRY, RESOURCE_TABLE_MAP } from '../../resources/registry'
 import type { TableId } from '../../resources/registry/field-registry'
 import { type FieldOptionItem, getFieldOptions } from '../../resources/registry/option-helpers'
-import type { Operator } from '../operators/definitions'
+import type { Operator } from '../../conditions/operator-definitions'
 import { BaseConditionBuilder, type GenericCondition } from './base-condition-builder'
 
 const logger = createScopedLogger('system-condition-builder')

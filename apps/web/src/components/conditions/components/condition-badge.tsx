@@ -1,4 +1,4 @@
-// apps/web/src/components/conditions/components/condition-item.tsx
+// apps/web/src/components/conditions/components/condition-badge.tsx
 
 'use client'
 
@@ -17,7 +17,7 @@ import type { ConditionItemProps, Operator } from '../types'
 /**
  * Generic condition item component that works with both if-else and find systems
  */
-const ConditionItem = ({
+export const ConditionBadge = ({
   condition,
   groupId,
   showRemoveButton = true,
@@ -37,7 +37,6 @@ const ConditionItem = ({
     nodeId,
   } = useConditionContext()
 
-  console.log('ConditionItem render:', condition.fieldId)
   const fieldDef = getFieldDefinition(condition.fieldId)
 
   const handleUpdate = useCallback(
@@ -184,5 +183,3 @@ const ConditionItem = ({
     </div>
   )
 }
-
-export default ConditionItem

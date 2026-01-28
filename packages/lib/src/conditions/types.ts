@@ -1,6 +1,6 @@
 // packages/lib/src/conditions/types.ts
 
-import type { Operator } from '../workflow-engine/operators/definitions'
+import type { Operator } from './operator-definitions'
 import type { ResourceFieldId } from '@auxx/types/field'
 
 /**

@@ -4,7 +4,7 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { persist } from 'zustand/middleware'
-import type { FilterRef, SearchFilters } from '@auxx/lib/mail-query'
+import type { FilterRef, SearchFilters } from '@auxx/lib/mail-query/client'
 
 /**
  * Filter chip type for rendering badges in the search input.

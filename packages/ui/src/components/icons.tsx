@@ -5,6 +5,7 @@ import React from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
   // General UI
+  History,
   Home,
   Settings,
   Search,
@@ -322,6 +323,7 @@ export interface IconItem {
 /** Curated list of commonly used icons */
 export const ICON_DATA: IconItem[] = [
   // General UI
+  { id: 'history', label: 'History', icon: History },
   { id: 'home', label: 'Home', icon: Home },
   { id: 'settings', label: 'Settings', icon: Settings },
   { id: 'search', label: 'Search', icon: Search },

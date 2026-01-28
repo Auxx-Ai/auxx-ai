@@ -1,6 +1,6 @@
 // packages/lib/src/workflow-engine/constants/nodes/if-else.ts
 
-import { ALL_OPERATOR_KEYS, type Operator } from '../../operators/definitions'
+import { ALL_OPERATOR_KEYS, type Operator } from '../../../conditions/operator-definitions'
 
 /**
  * Comparison operators supported by if-else conditions

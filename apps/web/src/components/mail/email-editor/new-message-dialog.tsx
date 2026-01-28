@@ -41,7 +41,8 @@ const NewMessageDialog: React.FC<NewMessageDialogProps> = ({
         position="tc"
         size="xxl"
         showClose={false}
-        className="border-none shadow-none bg-transparent p-0">
+        className="border-none shadow-none bg-transparent p-0"
+        innerClassName="p-0 ">
         <DialogHeader className="sr-only">
           <DialogTitle className="text-2xl font-bold">Compose</DialogTitle>
         </DialogHeader>

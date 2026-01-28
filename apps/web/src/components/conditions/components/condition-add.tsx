@@ -6,16 +6,13 @@ import { useCallback, useState, memo } from 'react'
 import { Plus } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
 import { useConditionContext } from '../condition-context'
-import { VariablePicker } from '~/components/workflow/ui/variables/variable-picker'
-import { Select, SelectContent, SelectItem, SelectTrigger } from '@auxx/ui/components/select'
-import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
 import type { ConditionAddProps } from '../types'
-import { cn } from '@auxx/ui/lib/utils'
-import { VarTypeIcon } from '~/components/workflow/utils'
-import { Badge } from '@auxx/ui/components/badge'
+import VariableFieldSelector from './variable-field-selector'
+import ResourceFieldSelector from './resource-field-selector'
 
 /**
  * Generic condition add component that can work with both variable and resource-based systems
+ * Uses VariableFieldSelector for variable mode and ResourceFieldSelector for resource mode
  */
 const ConditionAdd = memo(
   ({
@@ -28,6 +25,7 @@ const ConditionAdd = memo(
     const [open, setOpen] = useState(false)
     const { config, addCondition, getAvailableFields, nodeId } = useConditionContext()
 
+    /** Handle field selection and add condition to group */
     const handleFieldSelect = useCallback(
       (fieldId: string) => {
         addCondition(fieldId, groupId)
@@ -36,102 +34,45 @@ const ConditionAdd = memo(
       [addCondition, groupId]
     )
 
-    const handleVariableSelect = useCallback(
-      (variable: UnifiedVariable) => {
-        addCondition(variable.id, groupId)
-        setOpen(false)
-      },
-      [addCondition, groupId]
+    /** Shared trigger button for both field selector modes */
+    const renderTrigger = useCallback(
+      ({ onClick }: { onClick: () => void }) => (
+        <Button size="sm" variant="outline" className={className} disabled={disabled} onClick={onClick}>
+          {buttonIcon}
+          {buttonText}
+        </Button>
+      ),
+      [className, disabled, buttonText, buttonIcon]
     )
 
-    // For variable-based systems (like if-else), use VariablePicker
+    // For variable-based systems (like if-else), use VariableFieldSelector
     if (config.mode === 'variable' && nodeId) {
-      const renderTrigger = useCallback(
-        ({ onClick }: { onClick: () => void }) => (
-          <Button
-            size="sm"
-            variant="outline"
-            className={className}
-            disabled={disabled}
-            onClick={onClick}>
-            {buttonIcon}
-            {buttonText}
-          </Button>
-        ),
-        [className, disabled, buttonText, buttonIcon]
-      )
-
       return (
-        <VariablePicker
-          open={open}
-          onOpenChange={setOpen}
+        <VariableFieldSelector
+          value=""
+          onChange={handleFieldSelect}
           nodeId={nodeId}
-          onVariableSelect={handleVariableSelect}
           renderTrigger={renderTrigger}
         />
       )
     }
 
-    // For resource-based systems (like find), use field selector
+    // For resource-based systems (like find), use ResourceFieldSelector
     if (config.mode === 'resource') {
-      const availableFields = getAvailableFields()
-
       return (
-        <Select
+        <ResourceFieldSelector
+          value=""
+          onChange={handleFieldSelect}
+          availableFields={getAvailableFields()}
+          disabled={disabled || getAvailableFields().length === 0}
           open={open}
           onOpenChange={setOpen}
-          onValueChange={handleFieldSelect}
-          value=""
-          disabled={disabled || availableFields.length === 0}>
-          <SelectTrigger
-            className={cn('w-auto rounded-lg', className)}
-            variant="outline"
-            size="sm">
-            <div className="flex items-center gap-1 [&>svg]:size-4">
-              {buttonIcon}
-              {buttonText}
-            </div>
-          </SelectTrigger>
-          <SelectContent position="popper" align="start">
-            {availableFields.map((field) => (
-              <SelectItem key={field.id} value={field.id} className="ps-1.5">
-                <div className="flex items-center gap-1.5">
-                  <div className="rounded-full ring-1 ring-ring bg-secondary flex items-center justify-center size-4">
-                    <VarTypeIcon type={field.type} className="size-3 text-blue-500" />
-                  </div>
-                  <span>{field.label}</span>
-                  <Badge variant="purple" size="xs" className="text-[10px]">
-                    {field.type}
-                  </Badge>
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )
-    }
-
-    // For custom field selector
-    if (config.customFieldSelector) {
-      const CustomFieldSelector = config.customFieldSelector
-      return (
-        <CustomFieldSelector
-          onFieldSelect={handleFieldSelect}
-          disabled={disabled}
-          className={className}
-          buttonText={buttonText}
-          buttonIcon={buttonIcon}
+          renderTrigger={renderTrigger}
         />
       )
     }
 
-    // Fallback for unsupported modes
-    return (
-      <Button size="sm" variant="outline" className={className} disabled={true}>
-        {buttonIcon}
-        {buttonText} (Unsupported)
-      </Button>
-    )
+    return null
   }
 )
 

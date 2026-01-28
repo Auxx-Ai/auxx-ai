@@ -1,36 +1,15 @@
-// ~/server/api/routers/mail-view.ts
+// apps/web/src/server/api/routers/mailView.ts
 import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 import { MailViewService } from '@auxx/lib/mail-views'
-import { FilterOperator, ConditionType, ComparisonOperator } from '@auxx/lib/types'
-
-// Define the filter condition schema
-const filterConditionSchema = z.object({
-  // id: z.string(),
-  type: z.enum(ConditionType),
-  operator: z.enum(ComparisonOperator),
-  value: z.any().nullable(), // Allow null values explicitly
-  field: z.string().optional(),
-})
-
-// Define the recursive filter group schema
-const filterGroupSchema: z.ZodType<any> = z.lazy(() =>
-  z.object({
-    // id: z.string(),
-    operator: z.enum(FilterOperator),
-    conditions: z.array(z.union([filterConditionSchema, filterGroupSchema])),
-  })
-)
-
-// Filter schema (can be either a simple condition or a group)
-const filterSchema = filterGroupSchema
+import { conditionGroupsSchema } from '@auxx/lib/conditions/client'
 
 // Create mail view input schema
 const createMailViewSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100),
   description: z.string().optional(),
-  filters: filterSchema,
+  filterGroups: conditionGroupsSchema,
   isDefault: z.boolean().default(false),
   isPinned: z.boolean().default(false),
   isShared: z.boolean().default(false),
@@ -44,7 +23,7 @@ const updateMailViewSchema = z.object({
   data: z.object({
     name: z.string().min(1, 'Name is required').max(100).optional(),
     description: z.string().optional(),
-    filters: filterSchema.optional(),
+    filterGroups: conditionGroupsSchema.optional(),
     isDefault: z.boolean().optional(),
     isPinned: z.boolean().optional(),
     isShared: z.boolean().optional(),

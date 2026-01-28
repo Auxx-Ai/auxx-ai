@@ -6,7 +6,7 @@ import { useShallow } from 'zustand/shallow'
 import { useSearchStore, buildFilterChips, type FilterChip } from './store'
 import { FilterBadge } from './filter-badge'
 import { cn } from '@auxx/ui/lib/utils'
-import type { SearchFilters } from '@auxx/lib/mail-query'
+import type { SearchFilters } from '@auxx/lib/mail-query/client'
 
 /**
  * Props for SearchFilterInput component

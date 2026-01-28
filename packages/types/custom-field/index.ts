@@ -60,6 +60,8 @@ export const selectOptionSchema = z.object({
   label: z.string(),
   value: z.string(),
   color: z.enum(SELECT_OPTION_COLORS).optional(),
+  /** Icon ID for displaying an entity icon */
+  icon: z.string().optional(),
   /** Target time for items to remain in this status (kanban) */
   targetTimeInStatus: targetTimeInStatusSchema.optional(),
   /** Trigger celebration animation when cards move to this column (kanban) */

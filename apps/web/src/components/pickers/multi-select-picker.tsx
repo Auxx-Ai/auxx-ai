@@ -14,6 +14,7 @@ import {
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import { getColorSwatch } from '@auxx/lib/custom-fields/client'
 import type { SelectOption } from '@auxx/types/custom-field'
 
@@ -407,6 +408,13 @@ export function MultiSelectPicker({
                       <div className="flex items-center justify-between w-full">
                         <div className="flex items-center gap-2">
                           {/* Selection indicator (checkbox/radio) or manage icon */}
+
+                          {/* Icon (if option has icon) */}
+                          {opt.icon && (
+                            <>
+                              <EntityIcon iconId={opt.icon} size="sm" color="gray" />
+                            </>
+                          )}
 
                           {/* Color dot (if option has color) */}
                           {opt.color && (

@@ -1,6 +1,7 @@
-// packages/lib/src/workflow-engine/operators/definitions.ts
+// packages/lib/src/conditions/operator-definitions.ts
 
-import { BaseType } from '../core/types'
+import { FieldType } from '@auxx/database/enums'
+import { BaseType } from '../workflow-engine/core/types'
 
 /**
  * Operator definition with complete metadata
@@ -15,8 +16,15 @@ export interface OperatorDefinition {
   /** Whether this operator requires a comparison value */
   requiresValue: boolean
 
-  /** Which BaseTypes support this operator */
+  /** Which BaseTypes support this operator (used for workflow variables) */
   supportedTypes: BaseType[]
+
+  /**
+   * Optional: Explicit FieldType support for resource conditions.
+   * If defined, takes precedence over supportedTypes when checking FieldType compatibility.
+   * This allows more precise control over which operators appear for specific field types.
+   */
+  supportedFieldTypes?: string[]
 
   /** Value input type: single value, multiple values, or none */
   valueType?: 'single' | 'multiple' | 'none'
@@ -58,6 +66,23 @@ export const OPERATOR_DEFINITIONS = {
       BaseType.PHONE,
       BaseType.REFERENCE,
       BaseType.RELATION,
+      BaseType.ACTOR,
+    ],
+    supportedFieldTypes: [
+      FieldType.TEXT,
+      FieldType.NAME,
+      FieldType.NUMBER,
+      FieldType.CURRENCY,
+      FieldType.CHECKBOX,
+      FieldType.SINGLE_SELECT,
+      FieldType.EMAIL,
+      FieldType.URL,
+      FieldType.PHONE_INTL,
+      FieldType.RELATIONSHIP,
+      FieldType.ACTOR,
+      FieldType.DATE,
+      FieldType.DATETIME,
+      FieldType.TIME,
     ],
     valueType: 'single',
     category: 'equality',
@@ -77,6 +102,23 @@ export const OPERATOR_DEFINITIONS = {
       BaseType.PHONE,
       BaseType.REFERENCE,
       BaseType.RELATION,
+      BaseType.ACTOR,
+    ],
+    supportedFieldTypes: [
+      FieldType.TEXT,
+      FieldType.NAME,
+      FieldType.NUMBER,
+      FieldType.CURRENCY,
+      FieldType.CHECKBOX,
+      FieldType.SINGLE_SELECT,
+      FieldType.EMAIL,
+      FieldType.URL,
+      FieldType.PHONE_INTL,
+      FieldType.RELATIONSHIP,
+      FieldType.ACTOR,
+      FieldType.DATE,
+      FieldType.DATETIME,
+      FieldType.TIME,
     ],
     valueType: 'single',
     category: 'equality',
@@ -88,6 +130,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'Greater than',
     requiresValue: true,
     supportedTypes: [BaseType.NUMBER, BaseType.CURRENCY],
+    supportedFieldTypes: [FieldType.NUMBER, FieldType.CURRENCY],
     valueType: 'single',
     category: 'comparison',
   },
@@ -96,6 +139,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'Less than',
     requiresValue: true,
     supportedTypes: [BaseType.NUMBER, BaseType.CURRENCY],
+    supportedFieldTypes: [FieldType.NUMBER, FieldType.CURRENCY],
     valueType: 'single',
     category: 'comparison',
   },
@@ -104,6 +148,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'Greater than or equal',
     requiresValue: true,
     supportedTypes: [BaseType.NUMBER, BaseType.CURRENCY],
+    supportedFieldTypes: [FieldType.NUMBER, FieldType.CURRENCY],
     valueType: 'single',
     category: 'comparison',
   },
@@ -112,6 +157,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'Less than or equal',
     requiresValue: true,
     supportedTypes: [BaseType.NUMBER, BaseType.CURRENCY],
+    supportedFieldTypes: [FieldType.NUMBER, FieldType.CURRENCY],
     valueType: 'single',
     category: 'comparison',
   },
@@ -130,11 +176,27 @@ export const OPERATOR_DEFINITIONS = {
       BaseType.TAGS,
       BaseType.ADDRESS,
       BaseType.RELATION,
+      BaseType.ACTOR,
       BaseType.ANY,
+    ],
+    supportedFieldTypes: [
+      FieldType.TEXT,
+      FieldType.RICH_TEXT,
+      FieldType.NAME,
+      FieldType.EMAIL,
+      FieldType.URL,
+      FieldType.PHONE_INTL,
+      FieldType.MULTI_SELECT,
+      FieldType.TAGS,
+      FieldType.ADDRESS,
+      FieldType.ADDRESS_STRUCT,
+      FieldType.RELATIONSHIP,
+      FieldType.ACTOR,
     ],
     valueType: 'single',
     category: 'string',
-    description: 'For ADDRESS: searches across all address fields. For TAGS: checks if tag exists',
+    description:
+      'For ADDRESS: searches across all address fields. For TAGS/MULTI_SELECT: checks if value exists. For ACTOR: searches by display name',
   },
   'not contains': {
     key: 'not contains',
@@ -149,11 +211,27 @@ export const OPERATOR_DEFINITIONS = {
       BaseType.TAGS,
       BaseType.ADDRESS,
       BaseType.RELATION,
+      BaseType.ACTOR,
       BaseType.ANY,
+    ],
+    supportedFieldTypes: [
+      FieldType.TEXT,
+      FieldType.RICH_TEXT,
+      FieldType.NAME,
+      FieldType.EMAIL,
+      FieldType.URL,
+      FieldType.PHONE_INTL,
+      FieldType.MULTI_SELECT,
+      FieldType.TAGS,
+      FieldType.ADDRESS,
+      FieldType.ADDRESS_STRUCT,
+      FieldType.RELATIONSHIP,
+      FieldType.ACTOR,
     ],
     valueType: 'single',
     category: 'string',
-    description: 'For ADDRESS: searches across all address fields. For TAGS: checks if tag does not exist',
+    description:
+      'For ADDRESS: searches across all address fields. For TAGS/MULTI_SELECT: checks if value does not exist. For ACTOR: searches by display name',
   },
   'starts with': {
     key: 'starts with',
@@ -165,7 +243,16 @@ export const OPERATOR_DEFINITIONS = {
       BaseType.URL,
       BaseType.PHONE,
       BaseType.RELATION,
+      BaseType.ACTOR,
       BaseType.ANY,
+    ],
+    supportedFieldTypes: [
+      FieldType.TEXT,
+      FieldType.RICH_TEXT,
+      FieldType.NAME,
+      FieldType.EMAIL,
+      FieldType.URL,
+      FieldType.PHONE_INTL,
     ],
     valueType: 'single',
     category: 'string',
@@ -180,7 +267,16 @@ export const OPERATOR_DEFINITIONS = {
       BaseType.URL,
       BaseType.PHONE,
       BaseType.RELATION,
+      BaseType.ACTOR,
       BaseType.ANY,
+    ],
+    supportedFieldTypes: [
+      FieldType.TEXT,
+      FieldType.RICH_TEXT,
+      FieldType.NAME,
+      FieldType.EMAIL,
+      FieldType.URL,
+      FieldType.PHONE_INTL,
     ],
     valueType: 'single',
     category: 'string',
@@ -200,11 +296,25 @@ export const OPERATOR_DEFINITIONS = {
       BaseType.EMAIL,
       BaseType.URL,
       BaseType.PHONE,
+      BaseType.ACTOR,
       BaseType.ANY,
+    ],
+    supportedFieldTypes: [
+      FieldType.TEXT,
+      FieldType.NAME,
+      FieldType.NUMBER,
+      FieldType.SINGLE_SELECT,
+      FieldType.MULTI_SELECT,
+      FieldType.TAGS,
+      FieldType.EMAIL,
+      FieldType.URL,
+      FieldType.PHONE_INTL,
+      FieldType.ACTOR,
+      FieldType.RELATIONSHIP,
     ],
     valueType: 'multiple',
     category: 'set',
-    description: 'For TAGS: checks if ANY selected tag is in the list',
+    description: 'For TAGS/MULTI_SELECT: checks if ANY selected value is in the list',
   },
   'not in': {
     key: 'not in',
@@ -219,11 +329,25 @@ export const OPERATOR_DEFINITIONS = {
       BaseType.EMAIL,
       BaseType.URL,
       BaseType.PHONE,
+      BaseType.ACTOR,
       BaseType.ANY,
+    ],
+    supportedFieldTypes: [
+      FieldType.TEXT,
+      FieldType.NAME,
+      FieldType.NUMBER,
+      FieldType.SINGLE_SELECT,
+      FieldType.MULTI_SELECT,
+      FieldType.TAGS,
+      FieldType.EMAIL,
+      FieldType.URL,
+      FieldType.PHONE_INTL,
+      FieldType.ACTOR,
+      FieldType.RELATIONSHIP,
     ],
     valueType: 'multiple',
     category: 'set',
-    description: 'For TAGS: checks if NO selected tag is in the list',
+    description: 'For TAGS/MULTI_SELECT: checks if NO selected value is in the list',
   },
 
   // ===== DATE OPERATORS =====
@@ -232,6 +356,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'Before',
     requiresValue: true,
     supportedTypes: [BaseType.DATE, BaseType.DATETIME, BaseType.TIME],
+    supportedFieldTypes: [FieldType.DATE, FieldType.DATETIME, FieldType.TIME],
     valueType: 'single',
     category: 'date',
   },
@@ -240,6 +365,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'After',
     requiresValue: true,
     supportedTypes: [BaseType.DATE, BaseType.DATETIME, BaseType.TIME],
+    supportedFieldTypes: [FieldType.DATE, FieldType.DATETIME, FieldType.TIME],
     valueType: 'single',
     category: 'date',
   },
@@ -248,6 +374,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'On',
     requiresValue: true,
     supportedTypes: [BaseType.DATE, BaseType.DATETIME],
+    supportedFieldTypes: [FieldType.DATE, FieldType.DATETIME],
     valueType: 'single',
     category: 'date',
   },
@@ -256,6 +383,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'Not on',
     requiresValue: true,
     supportedTypes: [BaseType.DATE, BaseType.DATETIME],
+    supportedFieldTypes: [FieldType.DATE, FieldType.DATETIME],
     valueType: 'single',
     category: 'date',
   },
@@ -264,6 +392,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'Within days',
     requiresValue: true,
     supportedTypes: [BaseType.DATE, BaseType.DATETIME],
+    supportedFieldTypes: [FieldType.DATE, FieldType.DATETIME],
     valueType: 'single',
     category: 'date',
     description: 'Check if date is within N days from now',
@@ -273,6 +402,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'Older than days',
     requiresValue: true,
     supportedTypes: [BaseType.DATE, BaseType.DATETIME],
+    supportedFieldTypes: [FieldType.DATE, FieldType.DATETIME],
     valueType: 'single',
     category: 'date',
     description: 'Check if date is older than N days',
@@ -282,6 +412,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'Today',
     requiresValue: false,
     supportedTypes: [BaseType.DATE, BaseType.DATETIME],
+    supportedFieldTypes: [FieldType.DATE, FieldType.DATETIME],
     valueType: 'none',
     category: 'date',
   },
@@ -290,6 +421,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'Yesterday',
     requiresValue: false,
     supportedTypes: [BaseType.DATE, BaseType.DATETIME],
+    supportedFieldTypes: [FieldType.DATE, FieldType.DATETIME],
     valueType: 'none',
     category: 'date',
   },
@@ -298,6 +430,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'This week',
     requiresValue: false,
     supportedTypes: [BaseType.DATE, BaseType.DATETIME],
+    supportedFieldTypes: [FieldType.DATE, FieldType.DATETIME],
     valueType: 'none',
     category: 'date',
   },
@@ -306,6 +439,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'This month',
     requiresValue: false,
     supportedTypes: [BaseType.DATE, BaseType.DATETIME],
+    supportedFieldTypes: [FieldType.DATE, FieldType.DATETIME],
     valueType: 'none',
     category: 'date',
   },
@@ -325,11 +459,30 @@ export const OPERATOR_DEFINITIONS = {
       BaseType.CURRENCY,
       BaseType.ADDRESS,
       BaseType.TAGS,
+      BaseType.ACTOR,
       BaseType.ANY,
+    ],
+    supportedFieldTypes: [
+      FieldType.TEXT,
+      FieldType.RICH_TEXT,
+      FieldType.NAME,
+      FieldType.SINGLE_SELECT,
+      FieldType.MULTI_SELECT,
+      FieldType.TAGS,
+      FieldType.EMAIL,
+      FieldType.URL,
+      FieldType.PHONE_INTL,
+      FieldType.ADDRESS,
+      FieldType.ADDRESS_STRUCT,
+      FieldType.RELATIONSHIP,
+      FieldType.ACTOR,
+      FieldType.FILE,
+      FieldType.CURRENCY,
     ],
     valueType: 'none',
     category: 'existence',
-    description: 'For TAGS: checks if no tags selected. For ADDRESS: checks if address is empty',
+    description:
+      'For TAGS/MULTI_SELECT: checks if no values selected. For ADDRESS: checks if address is empty. For ACTOR: checks if no user/group assigned',
   },
   'not empty': {
     key: 'not empty',
@@ -345,17 +498,37 @@ export const OPERATOR_DEFINITIONS = {
       BaseType.CURRENCY,
       BaseType.ADDRESS,
       BaseType.TAGS,
+      BaseType.ACTOR,
       BaseType.ANY,
+    ],
+    supportedFieldTypes: [
+      FieldType.TEXT,
+      FieldType.RICH_TEXT,
+      FieldType.NAME,
+      FieldType.SINGLE_SELECT,
+      FieldType.MULTI_SELECT,
+      FieldType.TAGS,
+      FieldType.EMAIL,
+      FieldType.URL,
+      FieldType.PHONE_INTL,
+      FieldType.ADDRESS,
+      FieldType.ADDRESS_STRUCT,
+      FieldType.RELATIONSHIP,
+      FieldType.ACTOR,
+      FieldType.FILE,
+      FieldType.CURRENCY,
     ],
     valueType: 'none',
     category: 'existence',
-    description: 'For TAGS: checks if at least one tag selected. For ADDRESS: checks if address is not empty',
+    description:
+      'For TAGS/MULTI_SELECT: checks if at least one value selected. For ADDRESS: checks if address is not empty. For ACTOR: checks if user/group is assigned',
   },
   exists: {
     key: 'exists',
     label: 'Exists',
     requiresValue: false,
-    supportedTypes: Object.values(BaseType), // All types
+    supportedTypes: Object.values(BaseType),
+    // No supportedFieldTypes - use BaseType fallback for all field types
     valueType: 'none',
     category: 'existence',
   },
@@ -363,7 +536,8 @@ export const OPERATOR_DEFINITIONS = {
     key: 'not exists',
     label: 'Does not exist',
     requiresValue: false,
-    supportedTypes: Object.values(BaseType), // All types
+    supportedTypes: Object.values(BaseType),
+    // No supportedFieldTypes - use BaseType fallback for all field types
     valueType: 'none',
     category: 'existence',
   },
@@ -374,6 +548,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'Is valid',
     requiresValue: false,
     supportedTypes: [BaseType.FILE],
+    supportedFieldTypes: [FieldType.FILE],
     valueType: 'none',
     category: 'file',
     description: 'Check if file is valid (has required properties)',
@@ -383,6 +558,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'Is invalid',
     requiresValue: false,
     supportedTypes: [BaseType.FILE],
+    supportedFieldTypes: [FieldType.FILE],
     valueType: 'none',
     category: 'file',
     description: 'Check if file is invalid',
@@ -392,6 +568,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'Uploaded today',
     requiresValue: false,
     supportedTypes: [BaseType.FILE],
+    supportedFieldTypes: [FieldType.FILE],
     valueType: 'none',
     category: 'file',
     description: 'Check if file was uploaded today',
@@ -401,6 +578,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'Uploaded within days',
     requiresValue: true,
     supportedTypes: [BaseType.FILE],
+    supportedFieldTypes: [FieldType.FILE],
     valueType: 'single',
     category: 'file',
     description: 'Check if file was uploaded within N days',
@@ -412,6 +590,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'Matches pattern',
     requiresValue: true,
     supportedTypes: [BaseType.FILE],
+    supportedFieldTypes: [FieldType.FILE],
     valueType: 'single',
     category: 'file',
     description: 'Check if filename matches regex pattern',
@@ -421,6 +600,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'Contains numbers',
     requiresValue: false,
     supportedTypes: [BaseType.FILE],
+    supportedFieldTypes: [FieldType.FILE],
     valueType: 'none',
     category: 'file',
     description: 'Check if filename contains numbers',
@@ -430,6 +610,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'Contains date',
     requiresValue: false,
     supportedTypes: [BaseType.FILE],
+    supportedFieldTypes: [FieldType.FILE],
     valueType: 'none',
     category: 'file',
     description: 'Check if filename contains a date',
@@ -439,6 +620,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'Has version',
     requiresValue: false,
     supportedTypes: [BaseType.FILE],
+    supportedFieldTypes: [FieldType.FILE],
     valueType: 'none',
     category: 'file',
     description: 'Check if filename has version number',
@@ -450,6 +632,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'Is office document',
     requiresValue: false,
     supportedTypes: [BaseType.FILE],
+    supportedFieldTypes: [FieldType.FILE],
     valueType: 'none',
     category: 'file',
     description: 'Check if file is an office document (docx, xlsx, pptx, etc.)',
@@ -459,6 +642,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'Is image format',
     requiresValue: false,
     supportedTypes: [BaseType.FILE],
+    supportedFieldTypes: [FieldType.FILE],
     valueType: 'none',
     category: 'file',
     description: 'Check if file is an image (jpg, png, gif, etc.)',
@@ -468,6 +652,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'Is text format',
     requiresValue: false,
     supportedTypes: [BaseType.FILE],
+    supportedFieldTypes: [FieldType.FILE],
     valueType: 'none',
     category: 'file',
     description: 'Check if file is a text format (txt, md, csv, etc.)',
@@ -477,6 +662,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'Is compressed',
     requiresValue: false,
     supportedTypes: [BaseType.FILE],
+    supportedFieldTypes: [FieldType.FILE],
     valueType: 'none',
     category: 'file',
     description: 'Check if file is compressed (zip, rar, tar, etc.)',
@@ -486,6 +672,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'Is executable',
     requiresValue: false,
     supportedTypes: [BaseType.FILE],
+    supportedFieldTypes: [FieldType.FILE],
     valueType: 'none',
     category: 'file',
     description: 'Check if file is executable (exe, sh, bat, etc.)',
@@ -497,6 +684,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'Within size limit',
     requiresValue: true,
     supportedTypes: [BaseType.FILE],
+    supportedFieldTypes: [FieldType.FILE],
     valueType: 'single',
     category: 'file',
     description: 'Check if file size is within limit (bytes)',
@@ -506,6 +694,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'Exceeds limit',
     requiresValue: true,
     supportedTypes: [BaseType.FILE],
+    supportedFieldTypes: [FieldType.FILE],
     valueType: 'single',
     category: 'file',
     description: 'Check if file size exceeds limit (bytes)',
@@ -517,6 +706,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'Length equals',
     requiresValue: true,
     supportedTypes: [BaseType.ARRAY],
+    // No supportedFieldTypes - array length ops don't apply to FieldTypes
     valueType: 'single',
     category: 'array',
   },
@@ -559,6 +749,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'Has key',
     requiresValue: true,
     supportedTypes: [BaseType.OBJECT, BaseType.JSON],
+    supportedFieldTypes: [FieldType.JSON],
     valueType: 'single',
     category: 'object',
   },
@@ -567,6 +758,7 @@ export const OPERATOR_DEFINITIONS = {
     label: 'Key equals',
     requiresValue: true,
     supportedTypes: [BaseType.OBJECT, BaseType.JSON],
+    supportedFieldTypes: [FieldType.JSON],
     valueType: 'single',
     category: 'object',
     description: 'Format: key:value',
@@ -620,20 +812,20 @@ export function getOperatorDefinition(operator: Operator): OperatorDefinition | 
 }
 
 /**
- * Helper: Get all operators for a specific type
+ * Helper: Get all operators for a specific BaseType (for workflow variables)
  *
- * If fieldType is BaseType.ANY, returns all operators (since ANY can work with any operator)
+ * If baseType is BaseType.ANY, returns all operators (since ANY can work with any operator)
  * Otherwise, returns only operators that explicitly support that type
  */
-export function getOperatorsForFieldType(fieldType: BaseType): OperatorDefinition[] {
+export function getOperatorsForBaseType(baseType: BaseType): OperatorDefinition[] {
   // If querying for ANY type, return all operators
-  if (fieldType === BaseType.ANY) {
+  if (baseType === BaseType.ANY) {
     return Object.values(OPERATOR_DEFINITIONS)
   }
 
   // Otherwise, return only operators that support this specific type
   return Object.values(OPERATOR_DEFINITIONS).filter((op) =>
-    (op.supportedTypes as readonly BaseType[]).includes(fieldType)
+    (op.supportedTypes as readonly BaseType[]).includes(baseType)
   )
 }
 
@@ -644,4 +836,71 @@ export function getOperatorsByCategory(
   category: OperatorDefinition['category']
 ): OperatorDefinition[] {
   return Object.values(OPERATOR_DEFINITIONS).filter((op) => op.category === category)
+}
+
+/**
+ * Maps FieldType to BaseType for fallback operator lookup
+ * Used when supportedFieldTypes is not defined on an operator
+ */
+export function mapFieldTypeToBaseType(fieldType: string): BaseType {
+  const mapping: Record<string, BaseType> = {
+    [FieldType.TEXT]: BaseType.STRING,
+    [FieldType.NAME]: BaseType.STRING,
+    [FieldType.RICH_TEXT]: BaseType.STRING,
+    [FieldType.EMAIL]: BaseType.EMAIL,
+    [FieldType.URL]: BaseType.URL,
+    [FieldType.PHONE_INTL]: BaseType.PHONE,
+    [FieldType.NUMBER]: BaseType.NUMBER,
+    [FieldType.CURRENCY]: BaseType.CURRENCY,
+    [FieldType.CHECKBOX]: BaseType.BOOLEAN,
+    [FieldType.SINGLE_SELECT]: BaseType.ENUM,
+    [FieldType.MULTI_SELECT]: BaseType.ARRAY,
+    [FieldType.TAGS]: BaseType.TAGS,
+    [FieldType.DATE]: BaseType.DATE,
+    [FieldType.DATETIME]: BaseType.DATETIME,
+    [FieldType.TIME]: BaseType.TIME,
+    [FieldType.FILE]: BaseType.FILE,
+    [FieldType.RELATIONSHIP]: BaseType.RELATION,
+    [FieldType.ACTOR]: BaseType.ACTOR,
+    [FieldType.ADDRESS]: BaseType.ADDRESS,
+    [FieldType.ADDRESS_STRUCT]: BaseType.ADDRESS,
+    [FieldType.JSON]: BaseType.JSON,
+    [FieldType.CALC]: BaseType.ANY, // Calculated fields - not typically filterable
+  }
+
+  return mapping[fieldType] ?? BaseType.ANY
+}
+
+/**
+ * Get operators that support a specific FieldType (for resource conditions)
+ * Uses supportedFieldTypes if defined, otherwise falls back to BaseType mapping
+ */
+export function getOperatorsForFieldType(fieldType: string): OperatorDefinition[] {
+  return Object.values(OPERATOR_DEFINITIONS).filter((op) => {
+    // If supportedFieldTypes is defined and non-empty, use it directly
+    if (op.supportedFieldTypes && op.supportedFieldTypes.length > 0) {
+      return op.supportedFieldTypes.includes(fieldType)
+    }
+
+    // Fall back to BaseType mapping
+    const baseType = mapFieldTypeToBaseType(fieldType)
+    return (op.supportedTypes as readonly BaseType[]).includes(baseType)
+  })
+}
+
+/**
+ * Check if operator supports a specific FieldType
+ */
+export function isOperatorValidForFieldType(operator: Operator, fieldType: string): boolean {
+  const def = OPERATOR_DEFINITIONS[operator]
+  if (!def) return false
+
+  // If supportedFieldTypes is defined and non-empty, use it directly
+  if (def.supportedFieldTypes && def.supportedFieldTypes.length > 0) {
+    return def.supportedFieldTypes.includes(fieldType)
+  }
+
+  // Fall back to BaseType mapping
+  const baseType = mapFieldTypeToBaseType(fieldType)
+  return (def.supportedTypes as readonly BaseType[]).includes(baseType)
 }

@@ -1,7 +1,7 @@
 // packages/lib/src/workflow-engine/operators/input-modes.ts
 
 import { BaseType } from '../core/types'
-import type { Operator } from './definitions'
+import type { Operator } from '../../conditions/operator-definitions'
 
 /**
  * Input rendering modes for condition values
@@ -105,7 +105,7 @@ export function resolveInputConfig(fieldType: BaseType, operator: Operator): Inp
   // ===== RELATION FIELD HANDLING =====
   if (fieldType === BaseType.RELATION) {
     // For "is" and "is not", use relation picker
-    if (['is', 'is not', '=', '!='].includes(operator)) {
+    if (['is', 'is not'].includes(operator)) {
       return {
         mode: InputMode.RELATION,
         varType: BaseType.RELATION,

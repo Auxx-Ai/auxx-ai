@@ -12,7 +12,7 @@ import { NodeType } from '~/components/workflow/types'
 import { BaseType } from '~/components/workflow/types'
 import { createUnifiedOutputVariable } from '../../../utils/variable-conversion'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
-import { ALL_OPERATOR_KEYS } from '@auxx/lib/workflow-engine/client'
+import { ALL_OPERATOR_KEYS } from '@auxx/lib/conditions/client'
 
 /**
  * Zod schema for if-else condition

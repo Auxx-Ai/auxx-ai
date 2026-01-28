@@ -1,7 +1,7 @@
 // packages/lib/src/workflow-engine/nodes/condition-nodes/if-else-types.ts
 
 import type { LogicalOperator } from '../../constants/nodes/if-else'
-import type { Operator } from '../../operators/definitions'
+import type { Operator } from '../../../conditions/operator-definitions'
 /**
  * Types for if-else node condition evaluation
  * Aligned with frontend types from apps/web/src/components/workflow/nodes/core/if-else/types.ts

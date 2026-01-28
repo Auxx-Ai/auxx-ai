@@ -9,7 +9,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import { parseSearchQuery, type SearchToken } from '@auxx/lib/mail-query'
+import { parseSearchQuery, type SearchToken } from '@auxx/lib/mail-query/client'
 import { parse, isValid } from 'date-fns'
 import { api } from '~/trpc/react'
 

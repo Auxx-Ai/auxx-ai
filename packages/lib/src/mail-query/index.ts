@@ -24,3 +24,6 @@ export {
   hasActiveFilters,
   filtersToApiFilter,
 } from './search-filters'
+
+// NOTE: condition-query-builder.ts is server-only (uses drizzle/database)
+// Import directly from '@auxx/lib/mail-query/condition-query-builder' in server code

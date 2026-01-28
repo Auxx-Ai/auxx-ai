@@ -10,10 +10,10 @@ import type { Condition, ConditionGroup as BaseConditionGroup } from '@auxx/lib/
 // Re-export core types from lib
 export type { Condition } from '@auxx/lib/conditions/client'
 
-// Re-export Operator type
-export type { Operator } from '@auxx/lib/workflow-engine/client'
+// Re-export Operator type from conditions module
+export type { Operator } from '@auxx/lib/conditions/client'
 
-// Import operators for re-export
+// Import operators for re-export from conditions module
 import {
   OPERATOR_DEFINITIONS,
   operatorRequiresValue,
@@ -21,7 +21,7 @@ import {
   getOperatorDefinition,
   type OperatorDefinition,
   type Operator,
-} from '@auxx/lib/workflow-engine/client'
+} from '@auxx/lib/conditions/client'
 
 // Re-export operator utilities
 export {
@@ -101,8 +101,6 @@ export interface ConditionSystemConfig {
   addGroupButtonText?: string
   allowVarEditor?: boolean
   allowConstantToggle?: boolean
-  customValueInputs?: Record<string, React.ComponentType<any>>
-  customFieldSelector?: React.ComponentType<any>
   className?: string
   itemClassName?: string
   groupClassName?: string

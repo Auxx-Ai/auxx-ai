@@ -93,19 +93,19 @@ export function TableFilterBuilder({
   // Pattern from: workflow/nodes/core/find/panel.tsx
   const fieldDefinitions = useMemo(() => {
     return filterableFields.map((field) => ({
-      id: field.key,
+      id: field.id,
       label: field.label,
       type: field.type,
       fieldType: field.fieldType,
       // Use operatorOverrides if defined, otherwise get defaults for field type
       operators: field.operatorOverrides || getFieldOperators(field),
       // Pass options from field.options.options
-      options: field.options?.options,
+      options: field.options,
       // Add fieldReference for RELATION type fields
-      ...(field.type === BaseType.RELATION &&
-        field.relationship && {
-          fieldReference: `${resourceType}:${field.key}`,
-        }),
+      // ...(field.type === BaseType.RELATION &&
+      //   field.relationship && {
+      //     fieldReference: `${resourceType}:${field.key}`,
+      //   }),
     }))
   }, [filterableFields, resourceType])
 

@@ -2,16 +2,14 @@
 
 'use client'
 
-import { useMemo } from 'react'
-import { VarEditor } from '~/components/workflow/ui/input-editor/var-editor'
 import { useConditionContext } from '../condition-context'
-import { resolveInputConfig, InputMode } from '@auxx/lib/workflow-engine/client'
-import MultipleValueInput from './multiple-value-input'
-import type { ValueInputProps, FieldDefinition } from '../types'
-import { BaseType } from '@auxx/lib/workflow-engine/types'
+import { ResourceInput } from './resource-input'
+import { VariableInput } from './variable-input'
+import type { ValueInputProps } from '../types'
 
 /**
- * Generic value input component that handles different field types and input modes
+ * Router component that delegates to ResourceInput or VariableInput
+ * based on the conditions configuration mode.
  */
 const ValueInput = ({
   condition,
@@ -25,107 +23,39 @@ const ValueInput = ({
 }: ValueInputProps) => {
   const { config } = useConditionContext()
 
-  const inputConfig = useMemo(() => {
-    return resolveInputConfig(field.type as BaseType, condition.operator)
-  }, [field.type, condition.operator])
-
-  const renderVarEditor = (varType: BaseType, useField?: FieldDefinition) => {
-    const targetField = useField || field
-
-    // Build fieldOptions with enum and fieldReference embedded if applicable
-    const fieldOptions: { enum?: Array<{ label: string; value: string }>; fieldReference?: string } = {}
-    if (targetField.options?.length) {
-      fieldOptions.enum = targetField.options
-    }
-    if (targetField.fieldReference) {
-      fieldOptions.fieldReference = targetField.fieldReference
-    }
-
-    const allowedTypes: (BaseType | string)[] = []
-
-    if ((varType === BaseType.RELATION || varType === BaseType.REFERENCE) && targetField.targetTable) {
-      allowedTypes.push(targetField.targetTable)
-    } else if (varType !== BaseType.ANY) {
-      allowedTypes.push(varType)
-    }
-
+  // Resource mode - use FieldInputAdapter directly
+  if (config.mode === 'resource' && !nodeId) {
     return (
-      <VarEditor
-        value={value}
-        onChange={(newValue, isConstantMode) => onChange(newValue, isConstantMode)}
-        onBlur={(newValue) => onChange(newValue)}
-        nodeId={nodeId!}
-        placeholder={
-          placeholder ||
-          inputConfig.placeholder ||
-          `Enter ${targetField.label?.toLowerCase() || 'value'} or select variable`
-        }
-        disabled={disabled}
-        varType={varType}
-        className={className}
-        allowConstant={config.allowConstantToggle}
-        defaultIsConstantMode={condition.isConstant}
-        fieldOptions={Object.keys(fieldOptions).length > 0 ? fieldOptions : undefined}
-        allowedTypes={allowedTypes}
-      />
-    )
-  }
-
-  const customInput = useMemo(() => {
-    if (config.customValueInputs && config.customValueInputs[field.type]) {
-      return config.customValueInputs[field.type]
-    }
-    return null
-  }, [config.customValueInputs, field.type])
-
-  if (customInput) {
-    const CustomInput = customInput
-    return (
-      <CustomInput
+      <ResourceInput
         condition={condition}
         field={field}
         value={value}
-        onChange={onChange}
+        onChange={(val) => onChange(val, true)} // Resource is always constant mode
         disabled={disabled}
         placeholder={placeholder}
         className={className}
-        nodeId={nodeId}
       />
     )
   }
 
-  if (inputConfig.mode === InputMode.NONE) {
+  // Variable mode - use VarEditor with full variable support
+  if (!nodeId) {
+    console.warn('ValueInput: nodeId required for variable mode')
     return null
   }
 
-  if (inputConfig.mode === InputMode.MULTIPLE) {
-    return (
-      <MultipleValueInput
-        field={field}
-        value={value}
-        onChange={onChange}
-        disabled={disabled}
-        placeholder={inputConfig.placeholder}
-        className={className}
-        nodeId={nodeId}
-        config={config}
-      />
-    )
-  }
-
-  if (inputConfig.mode === InputMode.RELATION) {
-    return renderVarEditor(BaseType.RELATION, field)
-  }
-
-  if (inputConfig.mode === InputMode.TEXT) {
-    return renderVarEditor(BaseType.STRING, field)
-  }
-
-  if (inputConfig.mode === InputMode.SINGLE) {
-    return renderVarEditor(inputConfig.varType || (field.type as BaseType), field)
-  }
-
-  return renderVarEditor(BaseType.ANY, field)
+  return (
+    <VariableInput
+      condition={condition}
+      field={field}
+      value={value}
+      nodeId={nodeId}
+      onChange={onChange}
+      disabled={disabled}
+      placeholder={placeholder}
+      className={className}
+    />
+  )
 }
 
 export default ValueInput

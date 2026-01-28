@@ -2,8 +2,6 @@
 
 import { and, or, type SQL } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
-import type { Operator } from '../operators/definitions'
-import { operatorRequiresValue } from '../operators/definitions'
 import { type FieldOptionItem, labelToValue } from '../../resources/registry/option-helpers'
 import { BaseType } from '../core/types'
 
@@ -12,7 +10,9 @@ import type {
   Condition,
   ConditionGroup as BaseConditionGroup,
   ConditionValidationResult,
+  Operator,
 } from '../../conditions'
+import { operatorRequiresValue } from '../../conditions'
 import type { ResourceFieldId } from '@auxx/types/field'
 import { parseResourceFieldId } from '@auxx/types/field'
 

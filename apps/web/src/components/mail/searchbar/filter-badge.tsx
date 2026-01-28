@@ -84,10 +84,7 @@ export function FilterBadge({
       } else if (e.key === 'ArrowLeft' && input?.selectionStart === 0) {
         e.preventDefault()
         onNavigateLeft?.()
-      } else if (
-        e.key === 'ArrowRight' &&
-        input?.selectionStart === editValue.length
-      ) {
+      } else if (e.key === 'ArrowRight' && input?.selectionStart === editValue.length) {
         e.preventDefault()
         onNavigateRight?.()
       } else if (e.key === 'Backspace' && editValue === '') {
@@ -112,15 +109,9 @@ export function FilterBadge({
         'ps-2 pe-1 shrink-0 group gap-0.5',
         isHighlighted && 'bg-info text-white',
         isEditing && 'ring-2 ring-info'
-      )}
-    >
+      )}>
       {/* Operator label */}
-      <span
-        className={cn(
-          'text-blue-600 font-medium',
-          isHighlighted && 'text-white'
-        )}
-      >
+      <span className={cn('text-blue-600 font-medium', isHighlighted && 'text-white')}>
         {operator}:
       </span>
 
@@ -137,11 +128,7 @@ export function FilterBadge({
           inputClassName="bg-transparent outline-none text-sm"
         />
       ) : (
-        <button
-          type="button"
-          onClick={onEditStart}
-          className="text-left hover:underline"
-        >
+        <button type="button" onClick={onEditStart} className="text-left hover:underline">
           {value || <span className="text-muted-foreground italic">empty</span>}
         </button>
       )}
@@ -158,10 +145,11 @@ export function FilterBadge({
           'text-blue-600 hover:text-blue-800',
           isHighlighted && 'text-white hover:text-white/80'
         )}
-        aria-label={`Remove ${operator} filter`}
-      >
+        aria-label={`Remove ${operator} filter`}>
         <X className="size-3" />
       </button>
     </Badge>
   )
 }
+
+export function FilterItem({ operator, value }) {}

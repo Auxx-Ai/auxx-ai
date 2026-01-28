@@ -4,7 +4,7 @@ import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
 import type { Edge } from './node-base'
 import type { Viewport } from '@xyflow/react'
 import { BaseType } from './unified-types'
-import type { Operator } from '@auxx/lib/workflow-engine/client'
+import type { Operator } from '@auxx/lib/conditions/client'
 
 // Re-export base types from node-base.ts to maintain backwards compatibility
 export type { BaseNodeConfig, BaseNodeData, CommonNodeType, WorkflowNode } from './node-base'

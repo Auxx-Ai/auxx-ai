@@ -1,4 +1,4 @@
-// components/mail-views/MailViewDialog.tsx
+// apps/web/src/components/mail-views/mail-view-dialog.tsx
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -24,8 +24,8 @@ import { MailViewFilterBuilder } from './mail-view-filter-builder'
 import { MailViewSortOptions } from './mail-view-sort-options'
 import { MailViewSharingOptions } from './mail-view-sharing-options'
 import { api } from '~/trpc/react'
-import { type MailViewFilter, FilterOperator } from '@auxx/lib/types'
 import { toastSuccess, toastError } from '@auxx/ui/components/toast'
+import type { ConditionGroup } from '~/components/conditions'
 
 // Define the form schema using zod
 const mailViewFormSchema = z.object({
@@ -36,7 +36,7 @@ const mailViewFormSchema = z.object({
   isShared: z.boolean().default(false),
   sortField: z.string().optional(),
   sortDirection: z.enum(['asc', 'desc']).default('desc'),
-  filters: z.any(), // Complex nested structure handled separately
+  filterGroups: z.any(), // ConditionGroup[] - complex nested structure handled separately
 })
 
 export type MailViewFormValues = z.infer<typeof mailViewFormSchema>
@@ -62,7 +62,7 @@ export function MailViewDialog({ isOpen, onClose, mailViewId }: MailViewDialogPr
       isShared: false,
       sortField: 'lastMessageAt',
       sortDirection: 'desc',
-      filters: { operator: FilterOperator.AND, conditions: [] } as MailViewFilter,
+      filterGroups: [] as ConditionGroup[],
     },
   })
 
@@ -147,7 +147,8 @@ export function MailViewDialog({ isOpen, onClose, mailViewId }: MailViewDialogPr
         isShared: mailView.isShared,
         sortField: mailView.sortField || 'lastMessageAt',
         sortDirection: (mailView.sortDirection as 'asc' | 'desc') || 'desc',
-        filters: mailView.filters as unknown as MailViewFilter,
+        // Database stores filterGroups in 'filters' column (backwards compatible)
+        filterGroups: (mailView.filters as ConditionGroup[]) || [],
       })
     }
   }, [mailView, methods])
@@ -181,7 +182,7 @@ export function MailViewDialog({ isOpen, onClose, mailViewId }: MailViewDialogPr
           isShared: data.isShared,
           sortField: data.sortField,
           sortDirection: data.sortDirection,
-          filters: data.filters,
+          filterGroups: data.filterGroups,
         },
       })
     } else {
@@ -193,7 +194,7 @@ export function MailViewDialog({ isOpen, onClose, mailViewId }: MailViewDialogPr
         isShared: data.isShared,
         sortField: data.sortField,
         sortDirection: data.sortDirection,
-        filters: data.filters,
+        filterGroups: data.filterGroups,
       })
     }
   }

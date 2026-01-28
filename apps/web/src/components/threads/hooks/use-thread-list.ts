@@ -8,8 +8,7 @@ import {
   createThreadSelector,
   type ThreadFilter,
 } from '../store/thread-selectors'
-import { mapStatusSlugToClientFilter, type ThreadClientFilter } from '@auxx/lib/mail-query/client'
-import type { ApiSearchFilter } from '@auxx/lib/mail-query'
+import { mapStatusSlugToClientFilter, type ThreadClientFilter, type ApiSearchFilter } from '@auxx/lib/mail-query/client'
 import { api } from '~/trpc/react'
 
 interface ThreadListFilter {

@@ -50,6 +50,8 @@ export interface FieldInputAdapterProps {
   className?: string
   /** Callback when options change (for TAGS management) */
   onOptionsChange?: (options: SelectOption[]) => void
+  /** Override multi-select behavior (for operators like "in"/"not in") */
+  allowMultiple?: boolean
 }
 
 /**
@@ -66,6 +68,7 @@ export function FieldInputAdapter({
   disabled = false,
   className,
   onOptionsChange,
+  allowMultiple,
 }: FieldInputAdapterProps) {
   // For NodeInputProps-compatible components
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -133,8 +136,8 @@ export function FieldInputAdapter({
         return <div className="text-muted-foreground text-sm">Missing entity definition</div>
       }
 
-      // Derive multi from relationship type using helper
-      const multi = isMultiRelationship(relationship.relationshipType)
+      // Use allowMultiple if provided (from operator), otherwise derive from relationship type
+      const multi = allowMultiple ?? isMultiRelationship(relationship.relationshipType)
 
       // Value is already RecordId[] from caller - just pass through
       const recordIds = (value as RecordId[]) || []
@@ -187,6 +190,9 @@ export function FieldInputAdapter({
     case FieldType.ACTOR: {
       const actorOpts = fieldOptions?.actor as ActorOptions | undefined
 
+      // Use allowMultiple if provided (from operator), otherwise use field options
+      const multi = allowMultiple ?? actorOpts?.multiple
+
       // Value is already ActorId[] from caller
       const actorIds = (value as ActorId[]) || []
 
@@ -196,7 +202,7 @@ export function FieldInputAdapter({
           onChange={onChange as (selected: ActorId[]) => void}
           target={actorOpts?.target}
           roles={actorOpts?.roles}
-          multi={actorOpts?.multiple}
+          multi={multi}
           emptyLabel={placeholder}
           disabled={disabled}
           triggerVariant="transparent"
@@ -213,7 +219,9 @@ export function FieldInputAdapter({
     case FieldType.MULTI_SELECT:
     case FieldType.TAGS: {
       const options = fieldOptions?.options ?? []
-      const config = getSelectConfig(fieldType)
+      const baseConfig = getSelectConfig(fieldType)
+      // Override multi if allowMultiple is explicitly set
+      const config = allowMultiple !== undefined ? { ...baseConfig, multi: allowMultiple } : baseConfig
 
       // Value should already be string[] - caller normalizes
       const selectedValues = (value as string[]) || []

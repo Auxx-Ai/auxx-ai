@@ -22,27 +22,18 @@ export { RESOURCE_TABLE_MAP, RESOURCE_FIELD_REGISTRY } from '../resources/regist
 // Core types
 export { BaseType, WorkflowTriggerType, TRIGGER_NAME_MAP } from './core/types'
 
-// Operators (Type-Operator Map)
+// Operators (Type-Operator Map) - for BaseType lookups in workflow variables
 export {
   TYPE_OPERATOR_MAP,
   getOperatorsForType,
   isValidOperatorForType,
 } from './operators/type-operator-map'
 
-// Operator definitions and utilities
-export {
-  OPERATOR_DEFINITIONS,
-  ALL_OPERATOR_KEYS,
-  operatorRequiresValue,
-  getOperatorDefinition,
-  getOperatorsForFieldType,
-  getOperatorsByCategory,
-  type OperatorDefinition,
-  type Operator,
-} from './operators/definitions'
-
-// Input mode utilities
+// Input mode utilities - for workflow variable inputs
 export { InputMode, resolveInputConfig, type InputConfig } from './operators/input-modes'
+
+// NOTE: Operator definitions moved to @auxx/lib/conditions
+// Import OPERATOR_DEFINITIONS, Operator, etc. from '@auxx/lib/conditions' or '@auxx/lib/conditions/client'
 
 // Type compatibility utilities
 export { isTypeCompatible, getCompatibleTypes } from './utils/type-compatibility'

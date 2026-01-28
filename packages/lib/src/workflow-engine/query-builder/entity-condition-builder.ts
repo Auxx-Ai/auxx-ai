@@ -8,7 +8,7 @@ import { type FieldOptionItem, getFieldOptions } from '../../resources/registry/
 import { BaseType } from '../core/types'
 import { BaseConditionBuilder, type GenericCondition } from './base-condition-builder'
 import { getValueType } from '@auxx/types'
-import type { Operator } from '../operators/definitions'
+import type { Operator } from '../../conditions/operator-definitions'
 import type { ResourceFieldId } from '@auxx/types/field'
 import { parseResourceFieldId, getFieldId, getFieldDefinitionId } from '@auxx/types/field'
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'

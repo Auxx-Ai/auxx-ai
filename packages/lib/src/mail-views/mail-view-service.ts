@@ -1,4 +1,4 @@
-// lib/mail-views/mail-view-service.ts
+// packages/lib/src/mail-views/mail-view-service.ts
 import { database as db, schema, type Database } from '@auxx/database'
 import {
   MailViewModel,
@@ -9,8 +9,8 @@ import {
 import { eq, and, desc, asc, count, inArray } from 'drizzle-orm'
 import { createScopedLogger } from '../logger'
 import { getRedisClient } from '@auxx/redis'
-import { MailViewQueryBuilder } from '../mail-query/mail-view-query-builder'
-import { type MailViewFilter } from '../mail-query/types'
+import { buildConditionGroupsQuery } from '../mail-query/condition-query-builder'
+import type { ConditionGroup } from '../conditions/types'
 
 const logger = createScopedLogger('mail-view-service')
 
@@ -98,7 +98,7 @@ type ThreadWithRelations = {
 type CreateMailViewServiceInput = {
   name: string
   description?: string
-  filters: MailViewFilter
+  filterGroups: ConditionGroup[]
   isDefault?: boolean
   isPinned?: boolean
   isShared?: boolean
@@ -109,7 +109,7 @@ type CreateMailViewServiceInput = {
 type UpdateMailViewServiceInput = Partial<{
   name: string
   description: string
-  filters: MailViewFilter
+  filterGroups: ConditionGroup[]
   isDefault: boolean
   isPinned: boolean
   isShared: boolean
@@ -337,7 +337,8 @@ export class MailViewService {
         organizationId: this.organizationId,
         name: data.name,
         description: data.description,
-        filters: data.filters,
+        // Store filterGroups in the 'filters' jsonb column (backwards compatible)
+        filters: data.filterGroups,
         isDefault: data.isDefault ?? false,
         isPinned: data.isPinned ?? false,
         isShared: data.isShared ?? false,
@@ -588,7 +589,8 @@ export class MailViewService {
       // Only include fields that are provided
       if (data.name !== undefined) updateData.name = data.name
       if (data.description !== undefined) updateData.description = data.description
-      if (data.filters !== undefined) updateData.filters = data.filters
+      // Map filterGroups to filters column (backwards compatible)
+      if (data.filterGroups !== undefined) updateData.filters = data.filterGroups
       if (data.isDefault !== undefined) updateData.isDefault = data.isDefault
       if (data.isPinned !== undefined) updateData.isPinned = data.isPinned
       if (data.isShared !== undefined) updateData.isShared = data.isShared
@@ -652,8 +654,8 @@ export class MailViewService {
       await redis.del(this.getSharedMailViewsCacheKey())
     }
 
-    // If filters changed, invalidate thread caches
-    if (updateData.filters !== undefined) {
+    // If filterGroups changed, invalidate thread caches
+    if (updateData.filterGroups !== undefined) {
       await this.invalidateMailViewThreadsCache(currentView.id)
     }
   }
@@ -743,18 +745,17 @@ export class MailViewService {
         throw new Error('Mail view not found')
       }
 
-      // Parse the filters from JSON
-      const filters = mailView.filters as unknown as MailViewFilter
+      // Read filterGroups from the 'filters' column (backwards compatible)
+      const filterGroups = (mailView.filters as ConditionGroup[]) || []
 
-      // Build the WHERE condition using the query builder
-      const queryBuilder = new MailViewQueryBuilder(filters, this.organizationId)
-      const whereCondition = queryBuilder.buildWhereCondition()
+      // Build the WHERE condition using the condition query builder
+      const whereCondition = buildConditionGroupsQuery(filterGroups, this.organizationId)
 
       // Count total matches for pagination using Drizzle
       const countResult = await this.db
         .select({ count: count() })
         .from(schema.Thread)
-        .where(and(eq(schema.Thread.organizationId, this.organizationId), whereCondition))
+        .where(whereCondition)
       const total = countResult[0]?.count ?? 0
 
       // Calculate pagination
@@ -803,7 +804,7 @@ export class MailViewService {
         })
         .from(schema.Thread)
         .leftJoin(schema.User, eq(schema.Thread.assigneeId, schema.User.id))
-        .where(and(eq(schema.Thread.organizationId, this.organizationId), whereCondition))
+        .where(whereCondition)
         .orderBy(orderByClause)
         .offset(skip)
         .limit(pageSize)

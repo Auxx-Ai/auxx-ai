@@ -8,6 +8,7 @@ import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
 import { useConditionContext } from '../condition-context'
+import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
 import type { OperatorSelectorProps } from '../types'
 
 /**
@@ -45,22 +46,17 @@ const ConditionOperator = ({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-48 p-0">
-        <div className="max-h-64 overflow-y-auto">
-          {options.map((option) => (
-            <div
-              key={option.value}
-              className={cn(
-                'flex cursor-pointer items-center h-9 px-3 text-sm hover:bg-accent hover:text-accent-foreground',
-                selectedOption?.value === option.value && 'bg-accent/50'
-              )}
-              onClick={() => {
-                onChange(option.value)
-                setOpen(false)
-              }}>
-              {option.label}
-            </div>
-          ))}
-        </div>
+        <MultiSelectPicker
+          options={options}
+          value={value}
+          onChange={(selected) => onChange(selected[0] ?? '')}
+          multi={false}
+          canManage={false}
+          canAdd={false}
+          disabled={disabled}
+          placeholder="Search operators..."
+          onSelectSingle={() => setOpen(false)}
+        />
       </PopoverContent>
     </Popover>
   )

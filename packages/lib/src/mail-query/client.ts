@@ -1,6 +1,15 @@
 // packages/lib/src/mail-query/client.ts
 
-export { SearchOperator, IsOperatorValue, parseSearchQuery } from './search-query-parser'
+export { SearchOperator, IsOperatorValue, parseSearchQuery, type SearchToken } from './search-query-parser'
+
+// Structured search filters for the searchbar
+export {
+  type FilterRef,
+  type SearchFilters,
+  type ApiSearchFilter,
+  hasActiveFilters,
+  filtersToApiFilter,
+} from './search-filters'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Thread Client Filter Types and Utilities

@@ -6,7 +6,7 @@ import { useSearchStore, selectHasActiveFilters } from '../store'
 import {
   filtersToApiFilter,
   type ApiSearchFilter,
-} from '@auxx/lib/mail-query'
+} from '@auxx/lib/mail-query/client'
 
 /**
  * Convert search store filters to tRPC API filter format.

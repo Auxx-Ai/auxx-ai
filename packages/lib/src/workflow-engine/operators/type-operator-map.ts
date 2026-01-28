@@ -1,7 +1,7 @@
 // packages/lib/src/workflow-engine/operators/type-operator-map.ts
 
 import { BaseType } from '../core/types'
-import { OPERATOR_DEFINITIONS, type Operator } from './definitions'
+import { OPERATOR_DEFINITIONS, type Operator } from '../../conditions/operator-definitions'
 
 /**
  * Defines valid operators for each BaseType.
@@ -27,6 +27,7 @@ export const TYPE_OPERATOR_MAP: Record<BaseType, Operator[]> = {
   [BaseType.FILE]: getOperatorKeysForType(BaseType.FILE),
   [BaseType.REFERENCE]: getOperatorKeysForType(BaseType.REFERENCE),
   [BaseType.RELATION]: getOperatorKeysForType(BaseType.RELATION),
+  [BaseType.ACTOR]: getOperatorKeysForType(BaseType.ACTOR),
   [BaseType.SECRET]: getOperatorKeysForType(BaseType.SECRET),
   [BaseType.ANY]: getOperatorKeysForType(BaseType.ANY),
   [BaseType.NULL]: getOperatorKeysForType(BaseType.NULL),

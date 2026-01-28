@@ -41,6 +41,7 @@ export const VAR_TYPE_ICON_MAP: Record<BaseType, string> = {
   [BaseType.FILE]: 'file',
   [BaseType.REFERENCE]: 'link',
   [BaseType.RELATION]: 'link',
+  [BaseType.ACTOR]: 'user',
   [BaseType.EMAIL]: 'mail',
   [BaseType.URL]: 'link',
   [BaseType.PHONE]: 'phone',
@@ -112,6 +113,8 @@ export const getVarTypeName = (type: BaseType): string => {
       return 'Reference'
     case BaseType.RELATION:
       return 'Relation'
+    case BaseType.ACTOR:
+      return 'Actor'
     case BaseType.SECRET:
       return 'Secret'
     case BaseType.ANY:

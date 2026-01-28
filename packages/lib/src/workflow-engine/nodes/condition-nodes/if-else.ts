@@ -19,7 +19,7 @@ import {
   isUploadedWithinDays,
   isWithinSizeLimit,
 } from '../../types/file-variable'
-import { getOperatorDefinition, type Operator } from '../../operators/definitions'
+import { getOperatorDefinition, type Operator } from '../../../conditions/operator-definitions'
 import {
   isSameDay,
   isWithinDays,

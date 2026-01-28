@@ -3,13 +3,60 @@
 
 import React from 'react'
 import { CommandGroup, CommandItem, CommandEmpty } from '@auxx/ui/components/command'
-import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
-import { History, Search, User, Tag, Inbox, Hash } from 'lucide-react'
-import { cn } from '@auxx/ui/lib/utils'
 import Image from 'next/image'
+import { EntityIcon } from '@auxx/ui/components/icons'
+
+/** Suggestion type for search suggestions */
+export type SearchSuggestionType =
+  | 'operator'
+  | 'recent'
+  | 'user'
+  | 'participant'
+  | 'tag'
+  | 'inbox'
+  | 'status'
+  | 'has'
+
+/** Maps suggestion types to EntityIcon iconIds */
+const SUGGESTION_TYPE_ICON_MAP: Record<SearchSuggestionType, string> = {
+  recent: 'history',
+  user: 'user',
+  participant: 'user',
+  tag: 'tag',
+  inbox: 'inbox',
+  operator: 'hash',
+  status: 'circle',
+  has: 'check',
+}
+
+/** Default icon for unknown suggestion types */
+const DEFAULT_SUGGESTION_ICON = 'search'
+
+/** Maps suggestion types to group labels */
+const SUGGESTION_TYPE_LABEL_MAP: Record<SearchSuggestionType, string> = {
+  recent: 'Recent Searches',
+  operator: 'Search Operators',
+  user: 'Team Members',
+  participant: 'Participants',
+  tag: 'Tags',
+  inbox: 'Inboxes',
+  status: 'Status',
+  has: 'Properties',
+}
+
+/** Default label for unknown suggestion types */
+const DEFAULT_GROUP_LABEL = 'Suggestions'
+
+/** Gets the group label for a suggestion type */
+const getGroupLabel = (type: SearchSuggestionType): string =>
+  SUGGESTION_TYPE_LABEL_MAP[type] ?? DEFAULT_GROUP_LABEL
+
+/** Gets the iconId for a suggestion type */
+const getIconId = (type: SearchSuggestionType): string =>
+  SUGGESTION_TYPE_ICON_MAP[type] ?? DEFAULT_SUGGESTION_ICON
 
 export interface SearchSuggestion {
-  type: 'operator' | 'recent' | 'user' | 'participant' | 'tag' | 'inbox' | 'status' | 'has'
+  type: SearchSuggestionType
   value: string
   label: string
   description?: string
@@ -52,50 +99,6 @@ export function SearchSuggestionsList({
     {} as Record<string, SearchSuggestion[]>
   )
 
-  const getIcon = (type: string) => {
-    switch (type) {
-      case 'recent':
-        return History
-      case 'user':
-        return User
-      case 'participant':
-        return User
-      case 'tag':
-        return Tag
-      case 'inbox':
-        return Inbox
-      case 'operator':
-        return Hash
-      case 'to':
-        return User
-      default:
-        return Search
-    }
-  }
-
-  const getGroupLabel = (type: string) => {
-    switch (type) {
-      case 'recent':
-        return 'Recent Searches'
-      case 'operator':
-        return 'Search Operators'
-      case 'user':
-        return 'Team Members'
-      case 'participant':
-        return 'Participants'
-      case 'tag':
-        return 'Tags'
-      case 'inbox':
-        return 'Inboxes'
-      case 'status':
-        return 'Status'
-      case 'has':
-        return 'Properties'
-      default:
-        return 'Suggestions'
-    }
-  }
-
   if (suggestions.length === 0) {
     return (
       <CommandEmpty>
@@ -109,13 +112,12 @@ export function SearchSuggestionsList({
   return (
     <>
       {Object.entries(groupedSuggestions).map(([type, items]) => (
-        <CommandGroup key={type} heading={getGroupLabel(type)} className="">
+        <CommandGroup key={type} heading={getGroupLabel(type as SearchSuggestionType)} className="">
           {items.map((suggestion, index) => (
             <CommandItem
               key={`${type}-${index}`}
               value={`${type}-${suggestion.value}-${index}`}
-              onSelect={() => onSelect(suggestion)}
-              className="cursor-pointer border border-transparent hover:border-primary-100">
+              onSelect={() => onSelect(suggestion)}>
               <div className="flex items-center gap-2 w-full">
                 <div className="border bg-primary-50 rounded-md size-6 flex items-center justify-center relative">
                   {/* Icon or Avatar */}
@@ -134,25 +136,23 @@ export function SearchSuggestionsList({
                       style={{ backgroundColor: suggestion.color }}
                     />
                   ) : (
-                    React.createElement(getIcon(type), {
-                      className: 'size-3 text-muted-foreground',
-                    })
-                  )}{' '}
+                    <EntityIcon size="sm" iconId={getIconId(type as SearchSuggestionType)} />
+                  )}
                 </div>
 
                 {/* Main content */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
                     <span className="truncate text-primary-700">{suggestion.label}</span>
                     {suggestion.secondary && (
                       <span className="text-xs text-primary-300 truncate">
                         {suggestion.secondary}
                       </span>
                     )}
+                    {suggestion.description && (
+                      <div className="text-xs text-primary-400">{suggestion.description}</div>
+                    )}
                   </div>
-                  {suggestion.description && (
-                    <div className="text-xs text-primary-400">{suggestion.description}</div>
-                  )}
                 </div>
               </div>
             </CommandItem>

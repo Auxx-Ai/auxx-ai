@@ -5,7 +5,7 @@ import { BaseNode } from '../../shared/base/base-node'
 import { type IfElseNode as IfElseNodeType } from './types'
 import { NodeTargetHandle, NodeSourceHandle } from '../../../ui/node-handle'
 import VariableTag from '~/components/workflow/ui/variables/variable-tag'
-import { OPERATOR_DEFINITIONS, operatorRequiresValue, type Operator } from '@auxx/lib/workflow-engine/client'
+import { OPERATOR_DEFINITIONS, operatorRequiresValue, type Operator } from '@auxx/lib/conditions/client'
 import type { TiptapJSON } from '~/components/workflow/ui/input-editor'
 
 /**

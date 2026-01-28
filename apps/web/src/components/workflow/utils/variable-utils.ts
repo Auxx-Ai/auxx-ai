@@ -9,8 +9,8 @@ import {
   type ResourceField,
   BaseType,
   isTypeCompatible as isBaseTypeCompatible,
-  getOperatorsForFieldType,
 } from '@auxx/lib/workflow-engine/client'
+import { getOperatorsForFieldType } from '@auxx/lib/conditions/client'
 import { useResourceStore } from '~/components/resources/store/resource-store'
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import { parseResourceFieldId, isResourceFieldId, type ResourceFieldId } from '@auxx/types/field'

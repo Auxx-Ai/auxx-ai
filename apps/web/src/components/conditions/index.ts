@@ -47,11 +47,19 @@ export { default as ConditionGroupComponent } from './components/condition-group
 export { default as SortableConditionGroup } from './components/sortable-condition-group'
 export { default as ConditionOperator } from './components/condition-operator'
 export { default as ConditionValue } from './components/condition-value'
-export { default as FieldSelector } from './components/field-selector'
+export {
+  default as VariableFieldSelector,
+  type VariableFieldSelectorProps,
+} from './components/variable-field-selector'
+export {
+  default as ResourceFieldSelector,
+  type ResourceFieldSelectorProps,
+} from './components/resource-field-selector'
 
 // Inputs
 export { default as ValueInput } from './inputs/value-input'
-export { default as MultipleValueInput } from './inputs/multiple-value-input'
+export { VariableInput } from './inputs/variable-input'
+export { ResourceInput } from './inputs/resource-input'
 
 // Utilities
 export { InputMode, resolveInputConfig, type InputConfig } from '@auxx/lib/workflow-engine/client'

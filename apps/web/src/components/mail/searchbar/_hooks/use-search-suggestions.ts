@@ -4,7 +4,7 @@
 import { useCallback, useMemo } from 'react'
 import { api } from '~/trpc/react'
 import { useDebouncedValue } from '~/hooks/use-debounced-value'
-import { parseSearchQuery } from '@auxx/lib/mail-query'
+import { parseSearchQuery } from '@auxx/lib/mail-query/client'
 
 interface UseSuggestionsProps {
   query: string
