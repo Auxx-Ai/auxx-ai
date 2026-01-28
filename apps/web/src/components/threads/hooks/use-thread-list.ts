@@ -9,13 +9,17 @@ import {
   type ThreadFilter,
 } from '../store/thread-selectors'
 import { mapStatusSlugToClientFilter, type ThreadClientFilter } from '@auxx/lib/mail-query/client'
+import type { ApiSearchFilter } from '@auxx/lib/mail-query'
 import { api } from '~/trpc/react'
 
 interface ThreadListFilter {
   contextType: string
   contextId?: string
   statusSlug?: string
+  /** Legacy search query string (deprecated, use filter instead) */
   searchQuery?: string
+  /** Structured API filter (preferred over searchQuery) */
+  filter?: ApiSearchFilter
   sortBy?: 'newest' | 'oldest' | 'sender' | 'subject'
   sortDirection?: 'asc' | 'desc'
 }
@@ -114,6 +118,19 @@ export function useThreadList(filter: ThreadListFilter): UseThreadListResult {
   // (immer creates new Map references on any thread update)
   const threads = useThreadStore(useShallow(threadSelector))
 
+  // Build API filter - prefer structured filter, fall back to legacy searchQuery
+  const apiFilter = useMemo((): ApiSearchFilter | undefined => {
+    // If structured filter is provided, use it
+    if (filter.filter) {
+      return filter.filter
+    }
+    // Fall back to legacy search query string
+    if (filter.searchQuery) {
+      return { search: filter.searchQuery }
+    }
+    return undefined
+  }, [filter.filter, filter.searchQuery])
+
   // Fetch IDs via tRPC infinite query
   const {
     data,
@@ -129,7 +146,7 @@ export function useThreadList(filter: ThreadListFilter): UseThreadListResult {
       statusSlug: filter.statusSlug,
       sortBy: filter.sortBy,
       sortDirection: filter.sortDirection,
-      filter: filter.searchQuery ? { search: filter.searchQuery } : undefined,
+      filter: apiFilter,
     },
     {
       getNextPageParam: (lastPage) => lastPage.nextCursor,

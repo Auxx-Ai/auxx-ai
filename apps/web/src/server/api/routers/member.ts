@@ -18,6 +18,42 @@ export const memberRouter = createTRPCRouter({
   // QUERIES
   // ─────────────────────────────────────────────────────────────
 
+  /**
+   * Search members by name/email for autocomplete.
+   * Returns members with id (userId) and name for FilterRef.
+   */
+  search: protectedProcedure
+    .input(z.object({ query: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const query = input.query.toLowerCase()
+
+      const rows = await ctx.db
+        .select({
+          userId: schema.OrganizationMember.userId,
+          name: schema.User.name,
+          email: schema.User.email,
+        })
+        .from(schema.OrganizationMember)
+        .innerJoin(schema.User, eq(schema.OrganizationMember.userId, schema.User.id))
+        .where(
+          and(
+            eq(schema.OrganizationMember.organizationId, organizationId),
+            eq(schema.User.userType, 'USER'),
+            or(
+              ilike(schema.User.name, `%${query}%`),
+              ilike(schema.User.email, `%${query}%`)
+            )
+          )
+        )
+        .limit(10)
+
+      return rows.map((row) => ({
+        id: row.userId,
+        name: row.name || row.email || 'Unknown',
+      }))
+    }),
+
   /** Get all members with optional filtering */
   all: protectedProcedure
     .input(

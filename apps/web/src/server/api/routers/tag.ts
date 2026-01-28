@@ -12,6 +12,30 @@ export const tagRouter = createTRPCRouter({
     return await tagService.getAllTags()
   }),
 
+  /**
+   * Search tags by name for autocomplete.
+   * Returns tags matching the query with id and name for FilterRef.
+   */
+  search: protectedProcedure
+    .input(z.object({ query: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      const tagService = new TagService(organizationId, userId, ctx.db)
+      const allTags = await tagService.getAllTags()
+
+      // Filter tags by query (case-insensitive)
+      const query = input.query.toLowerCase()
+      const filtered = allTags
+        .filter((tag) => tag.title.toLowerCase().includes(query))
+        .slice(0, 10)
+        .map((tag) => ({
+          id: tag.id,
+          name: tag.title,
+        }))
+
+      return filtered
+    }),
+
   // Get tag hierarchy
   getHierarchy: protectedProcedure.query(async ({ ctx }) => {
     const { organizationId, userId } = ctx.session

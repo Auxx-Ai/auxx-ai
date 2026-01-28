@@ -56,7 +56,7 @@ export function ThreadList({
   selectedThreadId,
   onLoadingChange,
 }: ThreadListProps) {
-  // NEW: Use ID-based hook instead of full thread objects
+  // Use ID-based hook with structured filters
   const {
     threadIds,
     total,
@@ -69,6 +69,7 @@ export function ThreadList({
     contextType: filter.contextType,
     contextId: filter.contextId,
     statusSlug: filter.statusSlug,
+    filter: filter.filter,
     searchQuery: filter.searchQuery,
     sortBy: filter.sortBy,
     sortDirection: filter.sortDirection,

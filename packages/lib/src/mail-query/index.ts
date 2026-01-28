@@ -15,3 +15,12 @@ export {
   threadMatchesFilter,
   filterThreads,
 } from './client'
+
+// Structured search filters for the new searchbar architecture
+export {
+  type FilterRef,
+  type SearchFilters,
+  type ApiSearchFilter,
+  hasActiveFilters,
+  filtersToApiFilter,
+} from './search-filters'

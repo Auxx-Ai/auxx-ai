@@ -285,10 +285,26 @@ export const threadRouter = createTRPCRouter({
         statusSlug: z.string().optional(), // e.g., "open", "done", "assigned", "unassigned"
         filter: z
           .object({
-            isUnread: z.boolean().optional(),
-            hasAttachments: z.boolean().optional(),
-            tagIds: z.array(z.string()).optional(),
+            // Free text search
             search: z.string().optional(),
+            // Participant filters
+            from: z.array(z.string()).optional(),
+            to: z.array(z.string()).optional(),
+            // Entity ID filters
+            tagIds: z.array(z.string()).optional(),
+            assigneeIds: z.array(z.string()).optional(),
+            inboxIds: z.array(z.string()).optional(),
+            // Text field filters
+            subject: z.string().optional(),
+            body: z.string().optional(),
+            // Status filters (read, unread, starred, etc.)
+            is: z.array(z.string()).optional(),
+            // Property filters
+            hasAttachments: z.boolean().optional(),
+            isUnread: z.boolean().optional(), // Legacy compat
+            // Date filters (ISO string format)
+            before: z.string().optional(),
+            after: z.string().optional(),
           })
           .optional(),
         sortBy: z.enum(['newest', 'oldest', 'sender', 'subject']).optional(),

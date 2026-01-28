@@ -3,6 +3,8 @@
 import type { RouterOutputs } from '~/trpc/react'
 import { MessageType } from '@auxx/database/enums'
 import type { ThreadListItem as ServiceThreadListItem } from '@auxx/lib/threads/types'
+import type { ApiSearchFilter } from '@auxx/lib/mail-query'
+
 export const VALID_STATUS_SLUGS = [
   'open',
   'done',
@@ -42,8 +44,10 @@ export type ThreadsFilterInput = {
   contextId?: string // Required for tag, view, specific_inbox
   // Status - Represents the refinement based on the last URL segment
   statusSlug?: 'open' | 'done' | 'assigned' | 'unassigned'
-  // Optional search
+  /** @deprecated Use filter instead */
   searchQuery?: string
+  /** Structured API filter (preferred over searchQuery) */
+  filter?: ApiSearchFilter
   // Sorting options
   sortBy?: 'newest' | 'oldest' | 'sender' | 'subject'
   sortDirection?: 'asc' | 'desc'

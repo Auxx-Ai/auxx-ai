@@ -67,6 +67,7 @@ import { ContactDrawer } from '~/components/contacts/drawer/contact-drawer'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
 // import { MailFilterProvider } from '~/context/mail-filter-context' // Import the provider
+import { useSearchFiltersForQuery } from '~/components/mail/searchbar/hooks/use-search-filters'
 
 /**
  * Props for the Mailbox component.
@@ -183,6 +184,9 @@ function MailboxInner({
   // Deferred version of the search query to avoid blocking UI updates during typing
   const deferredSearchQuery = useDeferredValue(searchQuery)
 
+  // Get structured filters from search store (preferred over searchQuery)
+  const storeApiFilter = useSearchFiltersForQuery()
+
   // State for the currently selected thread ID, derived from URL search parameter 'thread'
   const selectedThreadId = searchParams?.get('selected')
 
@@ -235,20 +239,21 @@ function MailboxInner({
   )
 
   // Construct the filter object passed to the useThreads hook
-  // Uses the DEFERRED search query for performance
+  // Uses structured filters from the store (preferred) or falls back to deferred search query
   const threadFilterForHook: ThreadsFilterInput = useMemo(
     () => ({
       contextType: contextType,
       contextId: contextId,
       // Use the active status slug derived from the URL, ensure it's a valid StatusSlug
       statusSlug: activeStatusSlug === 'all' ? undefined : activeStatusSlug,
-      // Use the deferred search query to avoid performance issues during typing
-      searchQuery: deferredSearchQuery || undefined,
+      // Prefer store API filter, fall back to legacy search query
+      filter: storeApiFilter,
+      searchQuery: !storeApiFilter ? deferredSearchQuery || undefined : undefined,
       // Include sorting parameters
       sortBy: sortBy,
       sortDirection: sortDirection,
     }),
-    [contextType, contextId, activeStatusSlug, deferredSearchQuery, sortBy, sortDirection] // Depend on deferred query and sorting
+    [contextType, contextId, activeStatusSlug, storeApiFilter, deferredSearchQuery, sortBy, sortDirection]
   )
 
   // Calculate the base path for constructing links within the ThreadList using utility

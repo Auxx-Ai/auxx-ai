@@ -1,4 +1,11 @@
 // src/components/mail/searchbar/_hooks/use-query-to-filters.ts
+/**
+ * @deprecated This module is deprecated. Use the new Zustand store-based architecture instead:
+ * - For filter state: import from './store' (useSearchFilters, useSearchActions)
+ * - For API conversion: import useSearchFiltersForQuery from './hooks/use-search-filters'
+ *
+ * This file is kept for backward compatibility with legacy components.
+ */
 'use client'
 
 import { useMemo } from 'react'

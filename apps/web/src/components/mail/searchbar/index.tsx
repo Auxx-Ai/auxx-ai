@@ -1,46 +1,57 @@
-// src/components/mail/searchbar/index.tsx
+// apps/web/src/components/mail/searchbar/index.tsx
 'use client'
 
-import React, { useRef, useState, useEffect, useCallback } from 'react'
-import { flushSync } from 'react-dom'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { Filter, Loader2, Search, X } from 'lucide-react'
 import { cn } from '@auxx/ui/lib/utils'
 import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { Command, CommandList } from '@auxx/ui/components/command'
-import { SearchInputWithHighlighting } from './search-input-with-highlighting'
-import { SearchSuggestionsList } from './search-suggestions-list'
-import { AdvancedFilterMode } from './advanced-filter-mode'
-import { useSearchState } from './_hooks/use-search-state'
-import { useSearchSuggestions, useSaveSearchQuery } from './_hooks/use-search-suggestions'
-import { useDebouncedValue } from '~/hooks/use-debounced-value'
-import { parseSearchQuery } from '@auxx/lib/mail-query/client'
-import {
-  useQueryToFilters,
-  extractFreeText,
-  filtersToQuery,
-  type FilterValue,
-} from './_hooks/use-query-to-filters'
-import { useTags } from '~/hooks/use-tags'
 import { Badge } from '@auxx/ui/components/badge'
 
+import { SearchFilterInput } from './search-filter-input'
+import { SearchSuggestionsList, type SearchSuggestion } from './search-suggestions-list'
+import { AdvancedFilterMode } from './advanced-filter-mode'
+import { useSearchSuggestions, useSaveSearchQuery } from './_hooks/use-search-suggestions'
+import {
+  useSearchStore,
+  selectHasActiveFilters,
+  selectActiveFilterCount,
+  selectDisplayText,
+  useFilterChips,
+  useSearchActions,
+} from './store'
+import {
+  type FilterValue,
+  filtersToQuery,
+  extractFreeText,
+  useQueryToFilters,
+} from './_hooks/use-query-to-filters'
+
+/**
+ * Props for MailSearchBar component
+ */
 interface MailSearchBarProps {
-  /** Function to call when the search query changes */
+  /** Callback when search is executed (Enter pressed or filter applied) */
   onSearch: (query: string) => void
-  /** Initial query value for the search bar */
+  /** Initial query string for the search bar */
   initialQuery?: string
-  /** Optional className to pass styling from parent */
+  /** Additional CSS classes */
   className?: string
-  /** Delay in milliseconds for debouncing the search input */
+  /** Debounce delay in milliseconds */
   debounceDelay?: number
-  /** Optional prop to indicate if the parent component is loading results */
+  /** Loading state indicator */
   isLoading?: boolean
 }
 
-// Alias for backward compatibility
+/** Alias for backward compatibility */
 export interface SearchBarProps extends MailSearchBarProps {}
 export const SearchBar = MailSearchBar
 
+/**
+ * MailSearchBar component with store-driven filter management.
+ * Supports both inline text input and structured filter badges.
+ */
 export function MailSearchBar({
   onSearch,
   initialQuery = '',
@@ -48,470 +59,338 @@ export function MailSearchBar({
   debounceDelay = 500,
   isLoading = false,
 }: MailSearchBarProps) {
-  const [isOpen, setIsOpen] = useState(false)
-  const [localQuery, setLocalQuery] = useState(initialQuery)
-  const [isFocused, setIsFocused] = useState(false)
-  const [hasUserTyped, setHasUserTyped] = useState(false) // Track if user has actually typed
-  const [shouldSaveQuery, setShouldSaveQuery] = useState(false) // Track if query should be saved (Enter pressed in input)
-  const lastSavedQueryRef = useRef<string>('') // Track last saved query to prevent duplicates
-  const commandRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const localQueryRef = useRef<string>(localQuery) // Add ref to track current localQuery
+  const commandRef = useRef<HTMLDivElement>(null)
 
-  // Tag editing state
-  const [isTagEditing, setIsTagEditing] = useState(false)
-  const [tagEditingContext, setTagEditingContext] = useState<{
-    operator: string
-    value: string
-  } | null>(null)
+  // Local UI state
+  const [isOpen, setIsOpen] = useState(false)
+  const [inputValue, setInputValue] = useState('')
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [highlightedSuggestionIndex, setHighlightedSuggestionIndex] = useState(-1)
 
-  // Search state
-  const { showFilters, setShowFilters, clearSearch } = useSearchState()
+  // Store state
+  const hasActiveFilters = useSearchStore(selectHasActiveFilters)
+  const filterCount = useSearchStore(selectActiveFilterCount)
+  const displayText = useSearchStore(selectDisplayText)
+  const chips = useFilterChips()
+  const actions = useSearchActions()
 
   // Save search query hook
   const saveSearchQuery = useSaveSearchQuery()
 
-  // Track the last executed search to avoid duplicate calls
-  const [lastExecutedSearch, setLastExecutedSearch] = useState(initialQuery)
+  // Parse operator from input (e.g., "tag:urgent" -> operator: "tag", query: "urgent")
+  const operatorMatch = inputValue.match(/^(\w+):(.*)$/)
+  const currentOperator = operatorMatch?.[1]?.toLowerCase()
+  const currentQuery = operatorMatch?.[2] ?? inputValue
 
-  // Save search query only when user stops typing (longer debounce)
-  const [debouncedQueryForSaving] = useDebouncedValue(localQuery, debounceDelay * 3)
-
-  // Derive filter values from current query
-  const derivedFilters = useQueryToFilters(localQuery)
-  const freeText = extractFreeText(localQuery)
-
-  // Debug: Log whenever the component renders with a new localQuery
-  // useEffect(() => {
-  //   console.log('MailSearchBar rendered with localQuery:', localQuery)
-  // })
-
-  // Keep ref in sync with state
-  useEffect(() => {
-    localQueryRef.current = localQuery
-  }, [localQuery])
-
-  useEffect(() => {
-    if (
-      debouncedQueryForSaving &&
-      debouncedQueryForSaving.trim() &&
-      hasUserTyped &&
-      shouldSaveQuery &&
-      debouncedQueryForSaving !== lastSavedQueryRef.current
-    ) {
-      saveSearchQuery(debouncedQueryForSaving)
-      lastSavedQueryRef.current = debouncedQueryForSaving
-      setShouldSaveQuery(false) // Reset flag after saving
-    }
-  }, [debouncedQueryForSaving, saveSearchQuery, hasUserTyped, shouldSaveQuery])
-
-  // Execute search - only called on Enter or other explicit actions
-  const executeSearch = useCallback(
-    (query?: string) => {
-      const searchQuery = query ?? localQueryRef.current // Use ref to get current value
-      if (searchQuery !== lastExecutedSearch) {
-        onSearch(searchQuery)
-        setLastExecutedSearch(searchQuery)
-      }
-    },
-    [onSearch, lastExecutedSearch]
-  )
-
-  // Update local query when initialQuery changes from parent (but don't mark as user typed)
-  useEffect(() => {
-    if (initialQuery !== localQuery && !hasUserTyped) {
-      setLocalQuery(initialQuery || '')
-      // Execute search immediately for programmatic changes (URL navigation, etc.)
-      if (initialQuery !== lastExecutedSearch) {
-        onSearch(initialQuery || '')
-        setLastExecutedSearch(initialQuery || '')
-      }
-    }
-  }, [initialQuery, localQuery, hasUserTyped, lastExecutedSearch, onSearch])
-
-  // For suggestions, we need a different approach:
-  // - If input is empty (just focused), show recent searches
-  // - If typing partial operator (like "w"), show filtered operators + recent searches containing that text
-  // - Don't debounce for empty queries to show immediate results
-
-  const getSuggestionQuery = useCallback(() => {
-    const parsed = parseSearchQuery(localQuery)
-    let remaining = localQuery
-
-    // Remove complete operator tags, keep any partial typing
-    parsed.tokens.forEach((token: any) => {
-      if (token.operator && token.raw.includes(':') && !localQuery.endsWith(token.raw)) {
-        remaining = remaining.replace(token.raw, '').trim()
-      }
-    })
-
-    return remaining
-  }, [localQuery])
-
-  const suggestionQuery = getSuggestionQuery()
-
-  // Get search suggestions - consider tag editing context
-  const finalSuggestionQuery =
-    isTagEditing && tagEditingContext
-      ? `${tagEditingContext.operator}:${tagEditingContext.value}`
-      : suggestionQuery
-
+  // Get suggestions
   const { suggestions, isLoading: suggestionsLoading } = useSearchSuggestions({
-    query: finalSuggestionQuery,
-    enabled: (isFocused && isOpen) || isTagEditing,
+    query: inputValue,
+    enabled: isOpen && !showAdvanced,
   })
 
-  // Handle tag editing
-  const handleTagEditing = useCallback((isEditing: boolean, operator?: string, value?: string) => {
-    setIsTagEditing(isEditing)
-    if (isEditing && operator && value !== undefined) {
-      setTagEditingContext({ operator, value })
-      setIsOpen(true) // Show suggestions when editing tag
-    } else {
-      setTagEditingContext(null)
-    }
-  }, [])
-
-  // Handle input changes
-  const handleInputChange = (value: string) => {
-    setLocalQuery(value)
-    localQueryRef.current = value // Update ref immediately
-    setHasUserTyped(true) // Mark that user has actually typed
-    setShouldSaveQuery(false) // Reset save flag when typing (only save on explicit Enter)
-  }
-
-  // Handle suggestion selection
-  const handleSelectSuggestion = (suggestion: any) => {
-    // Mark that user has typed (since selecting a suggestion is user action)
-    setHasUserTyped(true)
-    // Don't save query when selecting suggestions
-    setShouldSaveQuery(false)
-
-    // Check if we're in tag editing mode
-    if (isTagEditing && tagEditingContext) {
-      // We're editing a tag, so apply the suggestion to the tag
-      const newTagValue = `${tagEditingContext.operator}:${suggestion.value}`
-
-      // Find the current tag being edited and replace it
-      const parsed = parseSearchQuery(localQuery)
-      const updatedTags: string[] = []
-      let found = false
-
-      parsed.tokens.forEach((token: any) => {
-        if (
-          token.operator &&
-          token.operator.toLowerCase() === tagEditingContext.operator.toLowerCase() &&
-          !found
-        ) {
-          // Replace the first matching tag
-          updatedTags.push(newTagValue)
-          found = true
-        } else if (token.operator) {
-          updatedTags.push(token.raw)
-        }
-      })
-
-      // If no existing tag was found, add the new tag
-      if (!found) {
-        updatedTags.push(newTagValue)
-      }
-
-      const newQuery = updatedTags.join(' ').trim()
-      setLocalQuery(newQuery)
-      setIsTagEditing(false)
-      setTagEditingContext(null)
-      setIsOpen(false)
-
-      return
-    }
-
-    // Determine how to apply the suggestion
-    if (suggestion.type === 'operator') {
-      // For operator suggestions, we want to create a tag and focus inside it
-      const parsed = parseSearchQuery(localQuery)
-      const existingTags: string[] = []
-      let inputTextPart = localQuery
-
-      // Extract existing tags
-      parsed.tokens.forEach((token: any) => {
-        if (token.operator) {
-          existingTags.push(token.raw)
-          inputTextPart = inputTextPart.replace(token.raw, '').trim()
-        }
-      })
-
-      // Create new query with the selected operator, replacing any partial input
-      const newTags = [...existingTags, suggestion.value]
-      const newQuery = newTags.join(' ')
-
-      setLocalQuery(newQuery)
-
-      // The search input component will automatically detect the operator and create a tag
-      // We need to let it process first, then focus the tag
-      setTimeout(() => {
-        const tagButtons = document.querySelectorAll('.tag-edit-button')
-        const lastTagBtn = tagButtons[tagButtons.length - 1] as HTMLElement | undefined
-        lastTagBtn?.click()
-      }, 50)
-    } else if (suggestion.type === 'recent') {
-      // Replace entire query with recent search
-
-      // Use flushSync to force synchronous state update
-      flushSync(() => {
-        setLocalQuery(suggestion.value)
-        // Update the ref immediately to ensure executeSearch uses the new value
-        localQueryRef.current = suggestion.value
-      })
-
-      executeSearch(suggestion.value) // Execute search immediately for recent searches
-      setIsOpen(false)
-    } else {
-      // For other types, append the value to the current operator
-      const words = localQuery.trim().split(' ')
-      const lastWord = words[words.length - 1]
-
-      if (lastWord && lastWord.endsWith(':')) {
-        // We have an operator waiting for a value
-        words[words.length - 1] = lastWord + suggestion.value
-      } else {
-        // Replace the partial value
-        const colonIndex = lastWord.lastIndexOf(':')
-        if (colonIndex > -1) {
-          words[words.length - 1] = lastWord.substring(0, colonIndex + 1) + suggestion.value
-        }
-      }
-
-      setLocalQuery(words.join(' ') + ' ')
-      setIsOpen(false)
-    }
-  }
-
-  // Clear search
-  const handleClear = () => {
-    setLocalQuery('')
-    setHasUserTyped(false) // Reset user typed flag
-    setShouldSaveQuery(false) // Reset save flag
-    lastSavedQueryRef.current = '' // Reset last saved query
-    clearSearch()
-    executeSearch('') // Execute empty search
-    setIsOpen(false)
-    inputRef.current?.blur()
-  }
-
-  // Remove chip function
-  const removeRawToken = useCallback(
-    (raw: string) => {
-      const parsed = parseSearchQuery(localQuery)
-      const remainder = parsed.tokens
-        .filter((t: any) => t.raw !== raw)
-        .map((t: any) => t.raw)
-        .join(' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-
-      setLocalQuery(remainder)
-      executeSearch(remainder)
-    },
-    [localQuery, executeSearch]
-  )
-
-  // Handle filter application
-  const handleApplyFilters = (filters: FilterValue) => {
-    // Convert filters to query string, preserving any free text
-    const newQuery = filtersToQuery(filters, freeText)
-
-    setLocalQuery(newQuery)
-    executeSearch(newQuery) // Execute search immediately for filter application
-    setShowFilters(false)
-    setIsOpen(false)
-  }
-
-  // Handle real-time filter changes (for bidirectional sync)
-  const handleFiltersChange = (filters: FilterValue) => {
-    // Convert filters to query string, preserving any free text
-    const newQuery = filtersToQuery(filters, freeText)
-
-    // Update local query but don't execute search (real-time preview)
-    setLocalQuery(newQuery)
-    setHasUserTyped(true) // Mark as user interaction
-  }
-
-  // Focus input when popover opens
+  // Reset suggestion highlight when suggestions change
   useEffect(() => {
-    if (isOpen && !showFilters) {
-      // Small delay to ensure the popover content is rendered
-      setTimeout(() => {
-        const input = document.querySelector('[role="textbox"]') as HTMLElement
-        if (input) {
-          console.log('Focusing input:', input)
-          const range = document.createRange()
-          const selection = window.getSelection()
-          range.setStart(input, input.childNodes.length)
-          range.collapse(true)
-          selection.removeAllRanges()
-          selection.addRange(range)
+    setHighlightedSuggestionIndex(-1)
+  }, [suggestions])
 
-          // input.focus()
-        }
-      }, 100)
-    }
-  }, [isOpen, showFilters])
-
-  // Keyboard shortcuts
+  // Keyboard shortcut to open (/)
   useEffect(() => {
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+    const handleKeyDown = (e: KeyboardEvent) => {
       if (
         e.key === '/' &&
-        document.activeElement !== inputRef.current &&
-        !['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName || '') &&
-        !(e.target as HTMLElement)?.isContentEditable
+        !isOpen &&
+        !isInputFocused()
       ) {
         e.preventDefault()
         setIsOpen(true)
-        inputRef.current?.focus()
       }
     }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen])
 
-    window.addEventListener('keydown', handleGlobalKeyDown)
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown)
-  }, [])
+  // Focus input when popover opens
+  useEffect(() => {
+    if (isOpen && !showAdvanced) {
+      setTimeout(() => inputRef.current?.focus(), 100)
+    }
+  }, [isOpen, showAdvanced])
 
-  const handleOpenChange = useCallback(
-    (open: boolean) => {
-      setIsOpen(open)
-      if (!open) setShowFilters(false)
+  /** Handle suggestion selection */
+  const handleSuggestionSelect = useCallback(
+    (suggestion: SearchSuggestion) => {
+      // Operator selection - set input to that operator
+      if (suggestion.type === 'operator') {
+        setInputValue(suggestion.value)
+        return
+      }
+
+      // Recent search - execute immediately
+      if (suggestion.type === 'recent') {
+        onSearch(suggestion.value)
+        setInputValue('')
+        setIsOpen(false)
+        return
+      }
+
+      // Entity selection based on operator
+      const operator = currentOperator || suggestion.type
+
+      switch (operator) {
+        case 'tag':
+          if (suggestion.value) {
+            actions.addTag({ id: suggestion.value, name: suggestion.label })
+          }
+          break
+        case 'assignee':
+        case 'user':
+          if (suggestion.value) {
+            actions.addAssignee({ id: suggestion.value, name: suggestion.label })
+          }
+          break
+        case 'inbox':
+          if (suggestion.value) {
+            actions.addInbox({ id: suggestion.value, name: suggestion.label })
+          }
+          break
+        case 'from':
+          actions.addFrom(suggestion.value)
+          break
+        case 'to':
+          actions.addTo(suggestion.value)
+          break
+        case 'is':
+        case 'status':
+          actions.toggleIs(suggestion.value)
+          break
+        case 'has':
+          if (suggestion.value === 'attachments') {
+            actions.setHasAttachments(true)
+          }
+          break
+      }
+
+      setInputValue('')
+      setHighlightedSuggestionIndex(-1)
     },
-    [setShowFilters]
+    [currentOperator, actions, onSearch]
   )
 
-  // Component to display the query with tags in the button
-  const SearchQueryDisplay = ({
-    query,
-    onRemove,
-  }: {
-    query: string
-    onRemove: (rawTag: string) => void
-  }) => {
-    const { getTagDisplayName } = useTags()
+  /** Handle input keydown for suggestion navigation and filter creation */
+  const handleInputKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      // Arrow navigation in suggestions
+      if (e.key === 'ArrowDown' && suggestions.length > 0) {
+        e.preventDefault()
+        setHighlightedSuggestionIndex((i) =>
+          Math.min(i + 1, suggestions.length - 1)
+        )
+        return
+      }
+      if (e.key === 'ArrowUp' && suggestions.length > 0) {
+        e.preventDefault()
+        setHighlightedSuggestionIndex((i) => Math.max(i - 1, -1))
+        return
+      }
 
-    if (!query) {
-      return <span className="text-muted-foreground/60">Search...</span>
-    }
+      // Enter to select suggestion or add filter
+      if (e.key === 'Enter') {
+        e.preventDefault()
 
-    const parsed = parseSearchQuery(query)
-    const tags: string[] = []
-    let remaining = query
+        // Select highlighted suggestion
+        if (
+          highlightedSuggestionIndex >= 0 &&
+          suggestions[highlightedSuggestionIndex]
+        ) {
+          handleSuggestionSelect(suggestions[highlightedSuggestionIndex])
+          return
+        }
 
-    // Extract valid tags
-    parsed.tokens.forEach((token) => {
-      if (token.operator) {
-        const operatorName = token.operator.toLowerCase()
-        const VALID_OPERATORS = [
-          'assignee',
-          'from',
-          'to',
-          'cc',
-          'bcc',
-          'subject',
-          'body',
-          'content',
-          'tag',
-          'label',
-          'inbox',
-          'status',
-          'priority',
-          'is',
-          'has',
-          'in',
-          'date',
-          'before',
-          'after',
-          'during',
-          'author',
-          'recipient',
-          'size',
-          'attachment',
-          'filename',
-          'thread',
-          'conversation',
-          'participants',
-          'with',
-          'without',
-        ]
-        if (VALID_OPERATORS.includes(operatorName)) {
-          tags.push(token.raw)
-          remaining = remaining.replace(token.raw, '').trim()
+        // Add typed value as filter
+        if (currentOperator && currentQuery) {
+          // Entity operators need autocomplete selection
+          if (['tag', 'assignee', 'inbox'].includes(currentOperator)) {
+            // Don't add without selection
+            return
+          }
+
+          // Text operators can be added directly
+          switch (currentOperator) {
+            case 'from':
+              actions.addFrom(currentQuery)
+              break
+            case 'to':
+              actions.addTo(currentQuery)
+              break
+            case 'subject':
+              actions.setSubject(currentQuery)
+              break
+            case 'body':
+              actions.setBody(currentQuery)
+              break
+            case 'is':
+              actions.toggleIs(currentQuery)
+              break
+            case 'has':
+              if (currentQuery === 'attachments') {
+                actions.setHasAttachments(true)
+              }
+              break
+            case 'before': {
+              const date = new Date(currentQuery)
+              if (!isNaN(date.getTime())) actions.setBefore(date)
+              break
+            }
+            case 'after': {
+              const date = new Date(currentQuery)
+              if (!isNaN(date.getTime())) actions.setAfter(date)
+              break
+            }
+          }
+          setInputValue('')
+          return
+        }
+
+        // Free text or execute search
+        if (inputValue.trim()) {
+          actions.setFreeText(inputValue.trim())
+          setInputValue('')
+        }
+
+        // Execute search
+        executeSearch()
+        return
+      }
+
+      // Escape to close or clear
+      if (e.key === 'Escape') {
+        if (inputValue) {
+          setInputValue('')
+        } else {
+          setIsOpen(false)
         }
       }
-    })
+    },
+    [
+      suggestions,
+      highlightedSuggestionIndex,
+      currentOperator,
+      currentQuery,
+      inputValue,
+      handleSuggestionSelect,
+      actions,
+    ]
+  )
 
-    return (
-      <div className="w-full flex items-center flex-1">
-        <div className="flex items-center gap-1  w-full overflow-x-auto no-scrollbar">
-          {tags.map((tag, index) => {
-            const colonIndex = tag.indexOf(':')
-            const operator = colonIndex > -1 ? tag.substring(0, colonIndex + 1) : tag
-            const value = colonIndex > -1 ? tag.substring(colonIndex + 1).trim() : ''
+  /** Execute search with current filters */
+  const executeSearch = useCallback(() => {
+    const query = displayText
+    onSearch(query)
+    saveSearchQuery(query)
+    setIsOpen(false)
+  }, [displayText, onSearch, saveSearchQuery])
 
-            // For tag operator, display the tag name instead of ID
-            const displayValue = operator === 'tag:' && value ? getTagDisplayName(value) : value
-            // className="inline-flex items-center shrink-0 rounded-md px-1 bg-blue-100 text-blue-800">
+  /** Clear all filters and input */
+  const handleClear = useCallback(() => {
+    setInputValue('')
+    actions.clearFilters()
+    onSearch('')
+    setIsOpen(false)
+  }, [actions, onSearch])
 
-            return (
-              <Badge variant="user" key={index} className="px-2 pe-1 shrink-0 hover:border-info/40">
-                <span className="text-blue-600 font-medium">{operator}&nbsp;</span>
-                {displayValue && <span>{displayValue}</span>}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onRemove(tag)
-                  }}
-                  className="rounded-full size-4 flex items-center justify-center text-blue-600 hover:text-blue-800"
-                  aria-label="Remove">
-                  ×
-                </button>
-              </Badge>
-            )
-          })}
-          {remaining && <span className="text-sm ">{remaining}</span>}
-        </div>
-      </div>
-    )
-  }
+  /** Handle open/close */
+  const handleOpenChange = useCallback((open: boolean) => {
+    setIsOpen(open)
+    if (!open) {
+      setShowAdvanced(false)
+    }
+  }, [])
+
+  /** Handle advanced filter application (legacy FilterValue format) */
+  const handleApplyAdvancedFilters = useCallback(
+    (filters: FilterValue) => {
+      // Convert legacy FilterValue to store actions
+      actions.clearFilters()
+
+      filters.from?.forEach((email) => actions.addFrom(email))
+      filters.to?.forEach((email) => actions.addTo(email))
+      if (filters.subject) actions.setSubject(filters.subject)
+      if (filters.body) actions.setBody(filters.body)
+      filters.assignee?.forEach((id) =>
+        actions.addAssignee({ id, name: id })
+      )
+      filters.tag?.forEach((id) => actions.addTag({ id, name: id }))
+      filters.inbox?.forEach((id) => actions.addInbox({ id, name: id }))
+      filters.is?.forEach((status) => actions.toggleIs(status))
+      if (filters.hasAttachment) actions.setHasAttachments(true)
+      if (filters.before) actions.setBefore(filters.before)
+      if (filters.after) actions.setAfter(filters.after)
+
+      setShowAdvanced(false)
+      executeSearch()
+    },
+    [actions, executeSearch]
+  )
+
+  /** Convert store state to legacy FilterValue for AdvancedFilterMode */
+  const getCurrentFiltersAsLegacy = useCallback((): FilterValue => {
+    const filters = useSearchStore.getState().filters
+    return {
+      from: filters.from,
+      to: filters.to,
+      subject: filters.subject,
+      body: filters.body,
+      assignee: filters.assignees?.map((a) => a.id),
+      tag: filters.tags?.map((t) => t.id),
+      inbox: filters.inboxes?.map((i) => i.id),
+      is: filters.is,
+      hasAttachment: filters.hasAttachments,
+      before: filters.before,
+      after: filters.after,
+    }
+  }, [])
 
   return (
     <Popover open={isOpen} onOpenChange={handleOpenChange}>
       <PopoverTrigger
         asChild
-        className="w-full h-7 flex flex-1 min-w-[20rem] max-w-[30rem] justify-start items-center relative bg-primary-50 hover:bg-background rounded-full pe-1">
+        className="w-full h-7 flex flex-1 min-w-[20rem] max-w-[30rem] justify-start items-center relative bg-primary-50 hover:bg-background rounded-full pe-1"
+      >
         <div>
           <div
             onClick={() => {
-              setShowFilters(false)
+              setShowAdvanced(false)
               setIsOpen(true)
             }}
-            className="px-3 whitespace-nowrap rounded-md font-medium transition-colors gap-2 text-sm inline-flex items-center shrink-0 w-full flex-1 h-7 overflow-hidden justify-start relative bg-transparent shadow-none hover:bg-transparent focus:ring-0 focus:ring-offset-0 focus:outline-hidden">
+            className="px-3 whitespace-nowrap rounded-md font-medium transition-colors gap-2 text-sm inline-flex items-center shrink-0 w-full flex-1 h-7 overflow-hidden justify-start relative bg-transparent shadow-none hover:bg-transparent focus:ring-0 focus:ring-offset-0 focus:outline-hidden"
+          >
             <Search className="size-4 shrink-0 opacity-50" />
-            <SearchQueryDisplay query={localQuery} onRemove={removeRawToken} />
+            <TriggerDisplay
+              hasFilters={hasActiveFilters}
+              filterCount={filterCount}
+              chips={chips}
+            />
           </div>
-          <div className=" flex items-center gap-1 absolute right-7">
+
+          <div className="flex items-center gap-1 absolute right-7">
             {(isLoading || suggestionsLoading) && (
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground " />
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
             )}
           </div>
 
           <Button
             variant="ghost"
-            aria-selected={showFilters ? 'true' : 'false'}
-            className={cn('size-6 rounded-full aria-[selected=true]:bg-primary-200')}
+            aria-selected={showAdvanced ? 'true' : 'false'}
+            className={cn(
+              'size-6 rounded-full aria-[selected=true]:bg-primary-200'
+            )}
             onClick={(e) => {
               e.stopPropagation()
-              setShowFilters(true)
-              if (!showFilters) {
-                setIsOpen(true)
-              }
-            }}>
+              setShowAdvanced(true)
+              setIsOpen(true)
+            }}
+          >
             <Filter className="size-4 shrink-0 opacity-50" />
           </Button>
         </div>
@@ -524,117 +403,60 @@ export function MailSearchBar({
         style={{
           width: 'calc(0px + var(--radix-popover-trigger-width))',
           maxHeight: 'var(--radix-popover-content-available-height)',
-        }}>
-        {showFilters ? (
+        }}
+      >
+        {showAdvanced ? (
           <div className="flex flex-col">
             <AdvancedFilterMode
-              initialFilters={derivedFilters}
-              onApply={handleApplyFilters}
-              onFiltersChange={handleFiltersChange}
-              onCancel={() => {
-                setShowFilters(false)
-              }}
+              initialFilters={getCurrentFiltersAsLegacy()}
+              onApply={handleApplyAdvancedFilters}
+              onCancel={() => setShowAdvanced(false)}
             />
           </div>
         ) : (
           <Command
             ref={commandRef}
             shouldFilter={false}
-            className="bg-transparent rounded-t-xl shadow-none">
+            className="bg-transparent rounded-t-xl shadow-none"
+          >
             <div className="flex items-center border-b px-3 relative h-7">
               <Search className="mr-2 h-4 w-4 shrink-0 opacity-50 ml-[-1px]" />
-              <SearchInputWithHighlighting
-                inputId="mail-search-editor"
-                value={localQuery}
-                onChange={handleInputChange}
-                onFocus={() => setIsFocused(true)}
-                onBlur={() => {
-                  setTimeout(() => setIsFocused(false), 200)
-                }}
-                onTagEditing={handleTagEditing}
-                onSelectHighlightedSuggestion={() => {
-                  const el = commandRef.current?.querySelector(
-                    '[cmdk-item][data-selected="true"]'
-                  ) as HTMLElement | null
-                  if (el) {
-                    el.click()
-                    return true
-                  }
-                  return false
-                }}
-                onKeyDown={(e) => {
-                  // Handle command navigation
-                  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-                    // Dispatch the event to the Command component
-                    const commandElement = commandRef.current
-                    if (commandElement) {
-                      const event = new KeyboardEvent('keydown', {
-                        key: e.key,
-                        bubbles: true,
-                        cancelable: true,
-                      })
-                      commandElement.dispatchEvent(event)
-                      e.preventDefault()
-                    }
-                    return
-                  }
-
-                  if (e.key === 'Enter') {
-                    // Check if there's a highlighted suggestion
-                    const highlightedItem = commandRef.current?.querySelector(
-                      '[cmdk-item][data-selected="true"]'
-                    )
-                    if (highlightedItem && suggestions.length > 0) {
-                      // Trigger click on highlighted item (don't save query for suggestion selection)
-                      ;(highlightedItem as HTMLElement).click()
-                      e.preventDefault()
-                      return
-                    } else {
-                      e.preventDefault()
-                      executeSearch() // Execute search on Enter only if no suggestion is selected
-                      setShouldSaveQuery(true) // Set flag to save query only when Enter is pressed in input
-                      setIsOpen(false)
-                      inputRef.current?.blur()
-                    }
-                  } else if (e.key === 'Escape') {
-                    e.preventDefault()
-                    if (localQuery) {
-                      handleClear()
-                    } else {
-                      setIsOpen(false)
-                    }
-                  }
-                }}
-                className="border-0"
+              <SearchFilterInput
+                inputRef={inputRef}
+                inputValue={inputValue}
+                onInputChange={setInputValue}
+                onInputKeyDown={handleInputKeyDown}
+                placeholder="Search..."
+                className="flex-1"
               />
-              <div className=" flex items-center gap-1 absolute right-[29px]">
+
+              <div className="flex items-center gap-1 absolute right-[29px]">
                 {(isLoading || suggestionsLoading) && (
-                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground " />
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                 )}
               </div>
 
               <Button
                 variant="ghost"
-                aria-selected={showFilters ? 'true' : 'false'}
+                aria-selected={showAdvanced ? 'true' : 'false'}
                 className={cn(
                   'size-6 rounded-full aria-[selected=true]:bg-primary-200 absolute right-[4px]'
                 )}
                 onClick={(e) => {
                   e.stopPropagation()
-                  setShowFilters(true)
-                  if (!showFilters) {
-                    setIsOpen(true)
-                  }
-                }}>
+                  setShowAdvanced(true)
+                }}
+              >
                 <Filter className="size-4 shrink-0 opacity-50" />
               </Button>
 
-              {localQuery && (
+              {(inputValue || hasActiveFilters) && (
                 <Button
                   variant="ghost"
                   size="icon"
                   className="size-6 rounded-full shrink-0 bg-primary-50 hover:bg-primary-100 absolute right-[29px] [&_svg]:opacity-50 hover:[&_svg]:opacity-100"
-                  onClick={handleClear}>
+                  onClick={handleClear}
+                >
                   <X className="size-4 shrink-0" />
                 </Button>
               )}
@@ -643,13 +465,56 @@ export function MailSearchBar({
             <CommandList>
               <SearchSuggestionsList
                 suggestions={suggestions}
-                onSelect={handleSelectSuggestion}
-                showEmpty={isFocused && !localQuery}
+                onSelect={handleSuggestionSelect}
+                showEmpty={!inputValue && chips.length === 0}
               />
             </CommandList>
           </Command>
         )}
       </PopoverContent>
     </Popover>
+  )
+}
+
+/** Check if an input element is currently focused */
+function isInputFocused(): boolean {
+  const active = document.activeElement
+  return (
+    active instanceof HTMLInputElement ||
+    active instanceof HTMLTextAreaElement ||
+    (active as HTMLElement)?.isContentEditable === true
+  )
+}
+
+/** Display component for the trigger button */
+function TriggerDisplay({
+  hasFilters,
+  filterCount,
+  chips,
+}: {
+  hasFilters: boolean
+  filterCount: number
+  chips: Array<{ key: string; type: string; value: string }>
+}) {
+  if (!hasFilters) {
+    return <span className="text-muted-foreground/60">Search...</span>
+  }
+
+  return (
+    <div className="w-full flex items-center flex-1">
+      <div className="flex items-center gap-1 w-full overflow-x-auto no-scrollbar">
+        {chips.slice(0, 3).map((chip) => (
+          <Badge key={chip.key} variant="user" className="px-2 pe-1 shrink-0">
+            <span className="text-blue-600 font-medium">{chip.type}:</span>
+            <span className="max-w-[100px] truncate">{chip.value}</span>
+          </Badge>
+        ))}
+        {chips.length > 3 && (
+          <span className="text-xs text-muted-foreground">
+            +{chips.length - 3} more
+          </span>
+        )}
+      </div>
+    </div>
   )
 }

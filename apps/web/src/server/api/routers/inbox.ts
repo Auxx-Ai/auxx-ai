@@ -57,6 +57,31 @@ export const inboxRouter = createTRPCRouter({
   }),
 
   /**
+   * Search inboxes by name for autocomplete.
+   * Returns inboxes accessible to the user with id and name for FilterRef.
+   */
+  search: protectedProcedure
+    .input(z.object({ query: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const userId = ctx.session.user.id
+      const inboxService = new InboxService(ctx.db, organizationId, userId)
+      const userInboxes = await inboxService.getInboxesForUser(userId)
+
+      // Filter inboxes by query (case-insensitive)
+      const query = input.query.toLowerCase()
+      const filtered = userInboxes
+        .filter((inbox) => inbox.name.toLowerCase().includes(query))
+        .slice(0, 10)
+        .map((inbox) => ({
+          id: inbox.id,
+          name: inbox.name,
+        }))
+
+      return filtered
+    }),
+
+  /**
    * Get inboxes accessible to the current user
    */
   getUserInboxes: protectedProcedure.query(async ({ ctx }) => {
