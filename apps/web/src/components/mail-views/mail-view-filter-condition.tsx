@@ -1,7 +1,7 @@
 // apps/web/src/components/mail-views/mail-view-filter-condition.tsx
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import {
   Select,
   SelectContent,
@@ -15,7 +15,6 @@ import { TagPicker } from '~/components/pickers/tag-picker'
 import { AssigneePicker, type TeamMember } from '~/components/pickers/assignee-picker'
 import { InboxPicker } from '~/components/pickers/inbox-picker'
 import { FilterDatePicker } from '~/components/pickers/filter-date-picker'
-import { Popover, PopoverTrigger } from '@auxx/ui/components/popover'
 import { Button } from '@auxx/ui/components/button'
 import { Inbox, Tag, User } from 'lucide-react'
 import { cn } from '@auxx/ui/lib/utils'
@@ -41,6 +40,7 @@ export function MailViewFilterCondition({ condition, onChange }: MailViewFilterC
   const [isTagPopoverOpen, setIsTagPopoverOpen] = useState(false)
   const [isAssigneePopoverOpen, setIsAssigneePopoverOpen] = useState(false)
   const [isInboxPopoverOpen, setIsInboxPopoverOpen] = useState(false)
+  const tagButtonRef = useRef<HTMLButtonElement>(null)
 
   // Use condition props directly instead of watching form state
   const conditionType = condition.type
@@ -112,33 +112,34 @@ export function MailViewFilterCondition({ condition, onChange }: MailViewFilterC
       case ConditionType.TAG:
         const selectedTagIds = (valueToDisplay as string[]) || []
         return (
-          <Popover open={isTagPopoverOpen} onOpenChange={setIsTagPopoverOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                type="button"
-                variant="input"
-                size="sm"
-                className={cn(
-                  'w-full justify-start text-left font-normal rounded-xl',
-                  !valueToDisplay && 'text-muted-foreground'
-                )}>
-                <Tag />
-                {getTagButtonText(selectedTagIds)}
-              </Button>
-            </PopoverTrigger>
-            {/* TagPicker expects PopoverContent structure around it */}
-            <TagPicker
-              // Pass state to TagPicker if it needs external control (unlikely based on its code)
-              open={isTagPopoverOpen}
-              onOpenChange={setIsTagPopoverOpen}
-              selectedTags={selectedTagIds}
-              onChange={(tags) => {
-                handleValueChange(tags)
-                if (!allowMultipleValues) setIsTagPopoverOpen(false) // Close on single select
-              }}
-              allowMultiple={allowMultipleValues}
-            />
-          </Popover>
+          <>
+            <Button
+              ref={tagButtonRef}
+              type="button"
+              variant="input"
+              size="sm"
+              className={cn(
+                'w-full justify-start text-left font-normal rounded-xl',
+                !valueToDisplay && 'text-muted-foreground'
+              )}
+              onClick={() => setIsTagPopoverOpen(true)}>
+              <Tag />
+              {getTagButtonText(selectedTagIds)}
+            </Button>
+            {isTagPopoverOpen && (
+              <TagPicker
+                open={isTagPopoverOpen}
+                onOpenChange={setIsTagPopoverOpen}
+                anchorRef={tagButtonRef}
+                selectedTags={selectedTagIds}
+                onChange={(tags) => {
+                  handleValueChange(tags)
+                  if (!allowMultipleValues) setIsTagPopoverOpen(false)
+                }}
+                allowMultiple={allowMultipleValues}
+              />
+            )}
+          </>
         )
       case ConditionType.ASSIGNEE:
         const selectedAssignees = (valueToDisplay as TeamMember[]) || []

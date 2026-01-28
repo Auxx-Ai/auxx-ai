@@ -319,7 +319,7 @@ export class OutlookOAuthService {
           .returning()
         integration = created
       }
-      const inboxService = new InboxService(db, orgId)
+      const inboxService = new InboxService(db, orgId, userId)
       await inboxService.addIntegrationToDefaultInbox(integration.id)
       // const inboxes = await inboxService.getInboxes()
       // if(!inboxes || inboxes.length === 0) {

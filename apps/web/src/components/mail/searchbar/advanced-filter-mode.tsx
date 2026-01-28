@@ -1,7 +1,7 @@
 // src/components/mail/searchbar/advanced-filter-mode.tsx
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
@@ -46,6 +46,7 @@ export function AdvancedFilterMode({
   const [filters, setFilters] = useState<FilterValue>(initialFilters)
   const [datePickerOpen, setDatePickerOpen] = useState<'before' | 'after' | null>(null)
   const [isTagOpen, setIsTagOpen] = useState(false)
+  const tagButtonRef = useRef<HTMLButtonElement>(null)
 
   const { inboxes } = useInbox()
 
@@ -214,37 +215,38 @@ export function AdvancedFilterMode({
             <div className="flex items-center gap-2">
               <Label className="w-20 text-sm">Tags</Label>
               <div className="flex-1">
-                <Popover open={isTagOpen} onOpenChange={setIsTagOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="input"
-                      className="w-full justify-start overflow-y-auto flex-nowrap flex-row"
-                      size="sm">
-                      {filters.tag && filters.tag.length > 0 ? (
-                        <SelectedTagsDisplay
-                          tagIds={filters.tag}
-                          maxDisplay={2}
-                          className="flex-1 flex-nowrap"
-                        />
-                      ) : (
-                        <span className="text-muted-foreground">Select tags...</span>
-                      )}
-                    </Button>
-                  </PopoverTrigger>
+                <Button
+                  ref={tagButtonRef}
+                  variant="input"
+                  className="w-full justify-start overflow-y-auto flex-nowrap flex-row"
+                  size="sm"
+                  onClick={() => setIsTagOpen(true)}>
+                  {filters.tag && filters.tag.length > 0 ? (
+                    <SelectedTagsDisplay
+                      tagIds={filters.tag}
+                      maxDisplay={2}
+                      className="flex-1 flex-nowrap"
+                    />
+                  ) : (
+                    <span className="text-muted-foreground">Select tags...</span>
+                  )}
+                </Button>
+                {isTagOpen && (
                   <TagPicker
                     open={isTagOpen}
-                    align="start"
                     onOpenChange={setIsTagOpen}
+                    anchorRef={tagButtonRef}
                     selectedTags={filters.tag || []}
                     onChange={(tags) => {
                       updateFilter('tag', tags.length > 0 ? tags : undefined)
                     }}
+                    align="start"
                     style={{ width: 'var(--radix-popover-trigger-width)' }}
                     sideOffset={-30}
                     allowMultiple
                     className="flex-1"
                   />
-                </Popover>
+                )}
               </div>
             </div>
 

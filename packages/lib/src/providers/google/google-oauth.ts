@@ -143,9 +143,9 @@ export class GoogleOAuthService {
 
     const url = oauth2Client.generateAuthUrl({
       access_type: 'offline',
-      // Only force consent for explicit re-authentication flows
-      // Normal auth flows should not force consent to preserve RAPT tokens
-      prompt: options.isReauth ? 'consent' : undefined,
+      // Always force consent to ensure we receive a refresh token
+      // Google only returns refresh_token on first auth or when prompt=consent
+      prompt: 'consent',
       scope: [
         'https://www.googleapis.com/auth/gmail.readonly',
         'https://www.googleapis.com/auth/gmail.send',
@@ -311,7 +311,7 @@ export class GoogleOAuthService {
           .returning()
       }
 
-      const inboxService = new InboxService(db, orgId)
+      const inboxService = new InboxService(db, orgId, userId)
       await inboxService.addIntegrationToDefaultInbox(integration!.id)
 
       // Set up Gmail webhooks (push notifications)

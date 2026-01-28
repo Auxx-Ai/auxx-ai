@@ -1,7 +1,7 @@
 // apps/web/src/components/inbox/inbox-dialog.tsx
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -30,14 +30,11 @@ import { useDirtyCheck } from '~/hooks/use-dirty-state'
 import { useForm } from 'react-hook-form'
 import { Form } from '@auxx/ui/components/form'
 import type { InboxVisibility } from '@auxx/lib/inboxes'
-import { useRecord, parseRecordId, type RecordId, type RecordMeta } from '~/components/resources'
+import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
+import { useResourceFields } from '~/components/resources/hooks'
+import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
+import { formatToRawValue } from '@auxx/lib/field-values/client'
 
-/** Inbox record shape for useRecord */
-interface InboxRecord extends RecordMeta {
-  name: string
-  description: string | null
-  color: string | null
-}
 
 /** Props for InboxDialog */
 interface InboxDialogProps {
@@ -49,8 +46,8 @@ interface InboxDialogProps {
   onSuccess?: (inbox: { id: string; name: string }) => void
 }
 
-/** Form data for create mode */
-interface CreateInboxFormData {
+/** Form data for inbox dialog */
+interface InboxFormData {
   name: string
   description: string
   color: string
@@ -59,13 +56,6 @@ interface CreateInboxFormData {
     memberIds: string[]
     groupIds: string[]
   }
-}
-
-/** Form data for edit mode */
-interface EditInboxFormData {
-  name: string
-  description: string
-  color: string
 }
 
 /** Dialog for creating and editing inboxes */
@@ -81,25 +71,38 @@ export function InboxDialog({
   // Extract inboxId from recordId for mutations
   const inboxId = recordId ? parseRecordId(recordId).entityInstanceId : null
 
-  // Fetch inbox data for edit mode using useRecord
-  const { record: inbox, isLoading: isInboxLoading, isNotFound } = useRecord<InboxRecord>({
-    recordId: recordId ?? undefined,
-    enabled: isEditing && open,
+  // Get field definitions for inboxes
+  const { fields } = useResourceFields('inboxes')
+
+  // Get specific fields we need
+  const editableFields = useMemo(() => {
+    return fields.filter(
+      (f) =>
+        ['name', 'description', 'color', 'visibility'].includes(f.key ?? '') &&
+        f.capabilities?.updatable !== false
+    )
+  }, [fields])
+
+  // Build arrays for syncer
+  const recordIds = useMemo(() => (recordId ? [recordId] : []), [recordId])
+  const resourceFieldIds = useMemo(
+    () => editableFields.map((f) => f.resourceFieldId!).filter(Boolean),
+    [editableFields]
+  )
+
+  // Sync field values from store
+  const { getValue } = useFieldValueSyncer({
+    recordIds,
+    resourceFieldIds,
+    columnVisibility: {},
+    enabled: isEditing && resourceFieldIds.length > 0,
   })
 
-  // Handle case where inbox is not found when editing
-  useEffect(() => {
-    if (open && recordId && !isInboxLoading && isNotFound) {
-      toastError({
-        title: 'Inbox not found',
-        description: 'The inbox may have been deleted.',
-      })
-      onOpenChange(false)
-    }
-  }, [open, recordId, isInboxLoading, isNotFound, onOpenChange])
+  // Track if form has been initialized this open cycle
+  const isInitialized = useRef(false)
 
   // Form setup
-  const form = useForm<CreateInboxFormData>({
+  const form = useForm<InboxFormData>({
     defaultValues: {
       name: '',
       description: '',
@@ -119,9 +122,9 @@ export function InboxDialog({
       name: form.watch('name'),
       description: form.watch('description'),
       color: colorValue,
-      accessType: isEditing ? undefined : accessType,
+      accessType,
     }),
-    [form.watch('name'), form.watch('description'), colorValue, accessType, isEditing]
+    [form.watch('name'), form.watch('description'), colorValue, accessType]
   )
 
   // Track dirty state for unsaved changes warning
@@ -138,25 +141,51 @@ export function InboxDialog({
     onConfirmedClose: handleConfirmedClose,
   })
 
-  // Reset form when dialog opens/closes or editing inbox changes
+  // Initialize form when dialog opens (only once per cycle)
   useEffect(() => {
     if (open) {
-      if (isEditing && inbox) {
-        // Edit mode: populate from inbox data
+      // Skip if already initialized
+      if (isInitialized.current) return
+
+      // In edit mode, wait for fields to be ready
+      if (isEditing && editableFields.length === 0) return
+
+      isInitialized.current = true
+
+      if (isEditing && recordId) {
+        // Edit mode: get values from field value store
+        const nameField = editableFields.find((f) => f.key === 'name')
+        const descField = editableFields.find((f) => f.key === 'description')
+        const colorField = editableFields.find((f) => f.key === 'color')
+        const visibilityField = editableFields.find((f) => f.key === 'visibility')
+
+        const name = nameField?.resourceFieldId ? getValue(recordId, nameField.resourceFieldId) : ''
+        const description = descField?.resourceFieldId
+          ? getValue(recordId, descField.resourceFieldId)
+          : ''
+        const color = colorField?.resourceFieldId
+          ? getValue(recordId, colorField.resourceFieldId)
+          : '#4F46E5'
+        const visibility = visibilityField?.resourceFieldId
+          ? getValue(recordId, visibilityField.resourceFieldId)
+          : 'org_members'
+
+        const accessType = visibility === 'org_members' ? 'anyone' : 'restricted'
+
         form.reset({
-          name: inbox.name,
-          description: inbox.description || '',
-          color: inbox.color || '#4F46E5',
-          accessType: 'anyone',
+          name: (formatToRawValue(name, 'TEXT') as string) ?? '',
+          description: (formatToRawValue(description, 'RICH_TEXT') as string) ?? '',
+          color: (formatToRawValue(color, 'TEXT') as string) ?? '#4F46E5',
+          accessType,
           memberGroupSelection: { memberIds: [], groupIds: [] },
         })
         setInitial({
-          name: inbox.name,
-          description: inbox.description || '',
-          color: inbox.color || '#4F46E5',
-          accessType: undefined,
+          name: (formatToRawValue(name, 'TEXT') as string) ?? '',
+          description: (formatToRawValue(description, 'RICH_TEXT') as string) ?? '',
+          color: (formatToRawValue(color, 'TEXT') as string) ?? '#4F46E5',
+          accessType,
         })
-      } else if (!isEditing) {
+      } else {
         // Create mode: reset to defaults
         form.reset({
           name: '',
@@ -172,8 +201,11 @@ export function InboxDialog({
           accessType: 'anyone',
         })
       }
+    } else {
+      // Reset flag when dialog closes
+      isInitialized.current = false
     }
-  }, [open, isEditing, inbox, form, setInitial])
+  }, [open, isEditing, recordId, editableFields, getValue, form, setInitial])
 
   // Get tRPC utils for cache invalidation
   const utils = api.useUtils()
@@ -214,8 +246,10 @@ export function InboxDialog({
   }
 
   // Handle form submission
-  const handleSubmit = (data: CreateInboxFormData) => {
+  const handleSubmit = (data: InboxFormData) => {
     if (!isValid) return
+
+    const visibility: InboxVisibility = data.accessType === 'anyone' ? 'org_members' : 'custom'
 
     if (isEditing && inboxId) {
       updateInbox.mutate({
@@ -224,11 +258,10 @@ export function InboxDialog({
           name: data.name.trim(),
           description: data.description,
           color: data.color,
+          visibility,
         },
       })
     } else {
-      // Map accessType to visibility
-      const visibility: InboxVisibility = data.accessType === 'anyone' ? 'org_members' : 'custom'
       createInbox.mutate({
         name: data.name.trim(),
         description: data.description,
@@ -237,19 +270,6 @@ export function InboxDialog({
         visibility,
       })
     }
-  }
-
-  // Don't render content while loading in edit mode
-  if (isEditing && isInboxLoading) {
-    return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent size="sm" position="tc">
-          <DialogHeader>
-            <DialogTitle>Loading...</DialogTitle>
-          </DialogHeader>
-        </DialogContent>
-      </Dialog>
-    )
   }
 
   return (
@@ -296,44 +316,40 @@ export function InboxDialog({
                   <FormColorTagPicker value={colorValue} onChange={handleColorChange} />
                 </Field>
 
-                {/* Access fields - only show in create mode */}
-                {!isEditing && (
-                  <>
-                    <Field>
-                      <FieldLabel>Access</FieldLabel>
-                      <RadioGroup
-                        value={accessType}
-                        onValueChange={(value) =>
-                          form.setValue('accessType', value as 'anyone' | 'restricted')
-                        }
-                        className="mt-2 flex flex-col space-y-2">
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="anyone" id="anyone" />
-                          <Label htmlFor="anyone" className="cursor-pointer">
-                            Anyone in the organization
-                          </Label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="restricted" id="restricted" />
-                          <Label htmlFor="restricted" className="cursor-pointer">
-                            Restricted
-                          </Label>
-                        </div>
-                      </RadioGroup>
-                    </Field>
+                {/* Access fields */}
+                <Field>
+                  <FieldLabel>Access</FieldLabel>
+                  <RadioGroup
+                    value={accessType}
+                    onValueChange={(value) =>
+                      form.setValue('accessType', value as 'anyone' | 'restricted')
+                    }
+                    className="mt-2 flex flex-col space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="anyone" id="anyone" />
+                      <Label htmlFor="anyone" className="cursor-pointer">
+                        Anyone in the organization
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="restricted" id="restricted" />
+                      <Label htmlFor="restricted" className="cursor-pointer">
+                        Restricted
+                      </Label>
+                    </div>
+                  </RadioGroup>
+                </Field>
 
-                    {accessType === 'restricted' && (
-                      <div className="pl-6">
-                        <MemberGroupFormField
-                          name="memberGroupSelection"
-                          control={form.control}
-                          label="Select members or groups with access"
-                          description="Only selected members and groups will have access to this inbox"
-                          disabled={isPending}
-                        />
-                      </div>
-                    )}
-                  </>
+                {accessType === 'restricted' && (
+                  <div className="pl-6">
+                    <MemberGroupFormField
+                      name="memberGroupSelection"
+                      control={form.control}
+                      label="Select members or groups with access"
+                      description="Only selected members and groups will have access to this inbox"
+                      disabled={isPending}
+                    />
+                  </div>
                 )}
               </FieldGroup>
 

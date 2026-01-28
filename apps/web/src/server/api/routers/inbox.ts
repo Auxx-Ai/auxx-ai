@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 import { InboxService } from '@auxx/lib/inboxes'
-import { toRecordId } from '@auxx/types/resource'
+import { toRecordId, recordIdSchema } from '@auxx/types/resource'
 
 /** Schema for creating an inbox */
 const createInboxSchema = z.object({
@@ -37,9 +37,9 @@ const inboxAccessSchema = z.object({
   groupIds: z.array(z.string()).optional(),
 })
 
-/** Schema for managing integrations */
+/** Schema for managing integrations - uses RecordId for consistency */
 const integrationSchema = z.object({
-  inboxId: z.string(),
+  recordId: recordIdSchema,
   integrationId: z.string(),
   isDefault: z.boolean().optional(),
   settings: z.record(z.string(), z.unknown()).optional(),
@@ -161,8 +161,8 @@ export const inboxRouter = createTRPCRouter({
     const userId = ctx.session.user.id
     const inboxService = new InboxService(ctx.db, organizationId, userId)
 
-    return inboxService.addIntegrationById(
-      input.inboxId,
+    return inboxService.addIntegration(
+      input.recordId,
       input.integrationId,
       input.isDefault,
       input.settings

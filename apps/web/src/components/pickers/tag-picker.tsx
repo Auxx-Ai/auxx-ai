@@ -112,7 +112,7 @@ function TagList({
                 <Checkbox
                   checked={isSelected}
                   aria-label={`Select ${tag.title}`}
-                  className="pointer-events-none"
+                  className="ml-auto pointer-events-none"
                 />
               )}
             </CommandNavigableItem>
@@ -149,8 +149,11 @@ function TagPickerContent({
   allTags: Tag[] | undefined
   isLoading: boolean
 }) {
-  const { current, push, handleKeyDown: handleNavKeyDown } =
-    useCommandNavigation<TagNavigationItem>()
+  const {
+    current,
+    push,
+    handleKeyDown: handleNavKeyDown,
+  } = useCommandNavigation<TagNavigationItem>()
   const [selectedIndex, setSelectedIndex] = useState(-1)
 
   /**
@@ -291,7 +294,7 @@ function TagPickerContent({
           placeholder="Search tags..."
           value={search}
           onValueChange={setSearch}
-          className="h-9"
+          autoFocus
         />
 
         <CommandBreadcrumb rootLabel="All Tags" />
@@ -386,15 +389,21 @@ export function TagPicker({
         ref={contentRef}
         align={align}
         onOpenAutoFocus={(e) => {
-          // Prevent focus issues when using anchorRef
-          if (anchorRef) e.preventDefault()
+          // Prevent default focus behavior when using anchorRef, then focus the input manually
+          if (anchorRef) {
+            e.preventDefault()
+            // Focus the CommandInput after the popover opens
+            requestAnimationFrame(() => {
+              const input = contentRef.current?.querySelector('input')
+              input?.focus()
+            })
+          }
         }}
         onFocusOutside={(e) => {
           // Prevent closing on focus changes when using anchorRef
           if (anchorRef) e.preventDefault()
         }}
-        {...props}
-      >
+        {...props}>
         <CommandNavigation<TagNavigationItem> isGlobalSearch={!!search}>
           <TagPickerContent
             selectedTags={selectedTags}

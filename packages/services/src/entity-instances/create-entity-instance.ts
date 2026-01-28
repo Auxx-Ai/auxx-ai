@@ -44,7 +44,7 @@ export async function createEntityInstance(params: CreateEntityInstanceParams, t
       .values({
         entityDefinitionId,
         organizationId,
-        createdById: createdById ?? null,
+        createdById: createdById || null,
         displayName: displayName ?? null,
         secondaryDisplayValue: secondaryDisplayValue ?? null,
         avatarUrl: avatarUrl ?? null,

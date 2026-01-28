@@ -4,7 +4,6 @@ import React, { useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { useIntegration } from '~/hooks/use-integration'
-import { useInbox } from '~/hooks/use-inbox'
 import IntegrationRouting from './integration-routing'
 import { ArrowLeft } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
@@ -29,7 +28,6 @@ export default function IntegrationTabs() {
   const [activeTab, setActiveTab] = useState(initialTab)
 
   const { integrations, isLoading: isIntegrationsLoading } = useIntegration()
-  const { inboxes, isLoading: isInboxesLoading } = useInbox()
 
   const integration = integrations?.integrations?.find((item) => item.id === integrationId)
 
@@ -45,7 +43,7 @@ export default function IntegrationTabs() {
   }
 
   // Loading state
-  if (isIntegrationsLoading || isInboxesLoading) {
+  if (isIntegrationsLoading) {
     return (
       <SettingsPage
         title={'Loading...'}
@@ -134,7 +132,7 @@ export default function IntegrationTabs() {
           )}
 
           <TabsContent value="routing" className="space-y-4">
-            <IntegrationRouting integration={integration} inboxes={inboxes || []} />
+            <IntegrationRouting integration={integration} />
           </TabsContent>
 
           <TabsContent value="settings" className="space-y-4">

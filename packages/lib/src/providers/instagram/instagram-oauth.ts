@@ -248,7 +248,7 @@ export class InstagramOAuthService {
         integration = newIntegration
       }
 
-      const inboxService = new InboxService(db, orgId)
+      const inboxService = new InboxService(db, orgId, userId)
       await inboxService.addIntegrationToDefaultInbox(integration.id)
 
       // 8. Subscribe Page to App Webhooks for Instagram events
