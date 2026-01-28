@@ -8,13 +8,21 @@ export {
   type IntegrationProvider,
   type ActorId,
   type ThreadTagSummary,
+  type ThreadSort,
+  type ContextPagination,
+  type ThreadFilter,
 } from './thread-store'
 
 export {
-  useThreadListStore,
-  getThreadListStoreState,
-  createListKey,
-} from './thread-list-store'
+  createContextKey,
+  createThreadSelector,
+  createInboxThreadsSelector,
+  createAssignedThreadsSelector,
+  createUnreadThreadsSelector,
+  sortThreads,
+  filterThreadsFromMap,
+  getThreadIdsFromSelector,
+} from './thread-selectors'
 
 export {
   useMessageStore,

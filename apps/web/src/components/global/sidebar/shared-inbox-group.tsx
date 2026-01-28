@@ -1,7 +1,7 @@
 // ~/components/global/sidebar/shared-inbox-group.tsx
 'use client'
 
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { usePathname } from 'next/navigation'
 
 import { SidebarGroup, SidebarMenu, SidebarMenuSubItem } from '@auxx/ui/components/sidebar'
@@ -34,6 +34,7 @@ import { useDndState } from '~/app/context/dnd-state-context'
 import { api } from '~/trpc/react'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
 import Link from 'next/link'
+import { InboxDialog } from '~/components/inbox/inbox-dialog'
 
 // import { useDndState } from '~/context/dnd-state-context'; // <-- IMPORT NEW HOOK
 
@@ -134,6 +135,7 @@ export function SharedInboxesGroup({
   const pathname = usePathname()
   const { getGroupOpen, toggleGroup } = useSidebarStateContext()
   const isOpen = getGroupOpen('shared')
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const getInboxHref = (inboxId: string): string => {
     // Default to the "unassigned" view for a specific inbox
     return `/app/mail/inboxes/${inboxId}/unassigned`
@@ -282,11 +284,9 @@ export function SharedInboxesGroup({
 
   const additionalOptions = (
     <>
-      <DropdownMenuItem asChild>
-        <Link href="/app/settings/inbox/new">
-          <Inbox />
-          Create inbox
-        </Link>
+      <DropdownMenuItem onSelect={() => setIsCreateDialogOpen(true)}>
+        <Inbox />
+        Create inbox
       </DropdownMenuItem>
       <DropdownMenuSeparator />
     </>
@@ -298,41 +298,47 @@ export function SharedInboxesGroup({
   }
 
   return (
-    <SidebarGroup className="group">
-      <SidebarGroupHeader
-        title="Shared"
-        isEditMode={isEditMode}
-        onToggleEditMode={onToggleEditMode}
-        additionalOptions={additionalOptions}
-        toggleOpen={handleToggleOpen}
-        isOpen={isOpen}
-        isGroupVisible={isGroupVisible}
-        onToggleGroupVisibility={onToggleGroupVisibility}
-      />
-      {(isEditMode || isOpen) && (
-        <SidebarMenu className="gap-0">
-          <CollapsibleSidebarSection
-            title="Shared Inboxes"
-            avatar={
-              <div className="flex size-5 shrink-0 items-center justify-center rounded-md bg-info">
-                <Mail className="size-3 text-white/80" />
-              </div>
-            }
-            href="/app/mail/inboxes/all/unassigned"
-            isEditMode={isEditMode}
-            defaultOpen // Keep open by default
-            alwaysShowChildren // Content needs to be mounted for dnd-kit even if visually collapsed
-            isActive={
-              pathname?.startsWith(allInboxesHref) ||
-              (isSharedSectionActive &&
-                !visibleInboxes.some((inbox) =>
-                  pathname?.startsWith(`/app/mail/inboxes/${inbox.id}`)
-                ))
-            }>
-            {renderInboxList()}
-          </CollapsibleSidebarSection>
-        </SidebarMenu>
+    <>
+      <SidebarGroup className="group">
+        <SidebarGroupHeader
+          title="Shared"
+          isEditMode={isEditMode}
+          onToggleEditMode={onToggleEditMode}
+          additionalOptions={additionalOptions}
+          toggleOpen={handleToggleOpen}
+          isOpen={isOpen}
+          isGroupVisible={isGroupVisible}
+          onToggleGroupVisibility={onToggleGroupVisibility}
+        />
+        {(isEditMode || isOpen) && (
+          <SidebarMenu className="gap-0">
+            <CollapsibleSidebarSection
+              title="Shared Inboxes"
+              avatar={
+                <div className="flex size-5 shrink-0 items-center justify-center rounded-md bg-info">
+                  <Mail className="size-3 text-white/80" />
+                </div>
+              }
+              href="/app/mail/inboxes/all/unassigned"
+              isEditMode={isEditMode}
+              defaultOpen // Keep open by default
+              alwaysShowChildren // Content needs to be mounted for dnd-kit even if visually collapsed
+              isActive={
+                pathname?.startsWith(allInboxesHref) ||
+                (isSharedSectionActive &&
+                  !visibleInboxes.some((inbox) =>
+                    pathname?.startsWith(`/app/mail/inboxes/${inbox.id}`)
+                  ))
+              }>
+              {renderInboxList()}
+            </CollapsibleSidebarSection>
+          </SidebarMenu>
+        )}
+      </SidebarGroup>
+
+      {isCreateDialogOpen && (
+        <InboxDialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen} />
       )}
-    </SidebarGroup>
+    </>
   )
 }

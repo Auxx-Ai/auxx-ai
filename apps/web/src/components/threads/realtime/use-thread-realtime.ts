@@ -5,7 +5,6 @@ import { useEffect, useCallback } from 'react'
 import { usePusher } from '~/providers/pusher-provider'
 import { useUser } from '~/hooks/use-user'
 import { useThreadStore } from '../store/thread-store'
-import { useThreadListStore } from '../store/thread-list-store'
 import { useMessageStore } from '../store/message-store'
 import { useMessageListStore } from '../store/message-list-store'
 import { useThreadReadStatusStore } from '../store/thread-read-status-store'
@@ -21,6 +20,10 @@ import type {
  * Hook that subscribes to Pusher realtime events and updates thread/message stores.
  * Should be used within a component that has access to PusherProvider context.
  *
+ * With the derived views architecture, we no longer need to manually manipulate
+ * list caches. When thread properties change, all filtered views automatically
+ * update via selectors.
+ *
  * This hook handles the following events:
  * - session-created: New chat session (creates a new thread)
  * - session-closed: Chat session ended
@@ -35,9 +38,7 @@ export function useThreadRealtime() {
   // Store actions
   const requestThread = useThreadStore((s) => s.requestThread)
   const updateThread = useThreadStore((s) => s.updateThread)
-  const invalidateAllLists = useThreadListStore((s) => s.invalidateAll)
-  const prependThreadToList = useThreadListStore((s) => s.prependThreadToList)
-  const activeListKey = useThreadListStore((s) => s.activeListKey)
+  const invalidateAllContexts = useThreadStore((s) => s.invalidateAllContexts)
 
   const requestMessage = useMessageStore((s) => s.requestMessage)
   const appendMessage = useMessageListStore((s) => s.appendMessage)
@@ -47,46 +48,49 @@ export function useThreadRealtime() {
   /**
    * Handle session-created event.
    * A new chat session has been created with a new thread.
+   *
+   * With derived views, requesting the thread will automatically make it
+   * appear in the correct filtered views once loaded.
    */
   const handleSessionCreated = useCallback(
     (data: SessionCreatedEvent) => {
       console.log('[ThreadRealtime] session-created:', data.threadId)
 
       // Request the new thread metadata (will be batch-fetched)
+      // Once loaded, derived views will automatically include it based on its properties
       requestThread(data.threadId)
 
-      // Add to the active list at the top (if we have an active list)
-      if (activeListKey) {
-        prependThreadToList(activeListKey, data.threadId)
-      }
-
-      // Invalidate all lists to ensure consistency on next fetch
-      // (new thread should appear in appropriate filtered lists)
-      invalidateAllLists()
+      // Invalidate context pagination to ensure fresh data on next page load
+      invalidateAllContexts()
     },
-    [requestThread, prependThreadToList, invalidateAllLists, activeListKey]
+    [requestThread, invalidateAllContexts]
   )
 
   /**
    * Handle session-closed event.
    * A chat session has been closed.
+   *
+   * With derived views, changing the status automatically moves the thread
+   * from OPEN views to ARCHIVED views.
    */
   const handleSessionClosed = useCallback(
     (data: SessionClosedEvent) => {
       console.log('[ThreadRealtime] session-closed:', data.threadId)
 
       // Update thread status in cache
+      // Derived views automatically update - thread will disappear from OPEN views
+      // and appear in ARCHIVED views
       updateThread(data.threadId, { status: 'ARCHIVED' })
-
-      // Invalidate lists (thread might move to different filtered view)
-      invalidateAllLists()
     },
-    [updateThread, invalidateAllLists]
+    [updateThread]
   )
 
   /**
    * Handle new-chat-message event.
    * A new message has been added to a chat thread.
+   *
+   * With derived views, updating lastMessageAt automatically re-sorts the thread
+   * in all views that include it.
    */
   const handleNewChatMessage = useCallback(
     (data: NewChatMessageEvent) => {
@@ -99,23 +103,17 @@ export function useThreadRealtime() {
       }
 
       // Update thread's lastMessageAt and latestMessageId
+      // Derived views will automatically re-sort based on new lastMessageAt
       updateThread(data.threadId, {
         lastMessageAt: data.message?.createdAt || new Date().toISOString(),
         latestMessageId: data.message?.id || null,
-        messageCount: undefined, // Will be refreshed on next fetch
+        isUnread: true,
       })
 
-      // Mark thread as unread (unless it's from the current user)
-      // For chat, messages from agents should mark thread as read for that agent
-      // For now, we'll mark as unread for simplicity - the read status
-      // will be properly set when the thread is viewed
+      // Also update the separate read status store for backward compatibility
       setReadStatus(data.threadId, true)
-
-      // Thread position in list might change due to new lastMessageAt
-      // Invalidate lists to ensure proper ordering on next fetch
-      invalidateAllLists()
     },
-    [requestMessage, appendMessage, updateThread, setReadStatus, invalidateAllLists]
+    [requestMessage, appendMessage, updateThread, setReadStatus]
   )
 
   /**
@@ -133,6 +131,7 @@ export function useThreadRealtime() {
       }
 
       // Update thread timestamp
+      // Derived views will automatically re-sort based on new lastMessageAt
       updateThread(data.threadId, {
         lastMessageAt: data.message?.createdAt || new Date().toISOString(),
         latestMessageId: data.message?.id || null,

@@ -1,7 +1,14 @@
 // apps/web/src/components/threads/hooks/use-thread-list.ts
 
 import { useMemo, useEffect, useCallback } from 'react'
-import { useThreadListStore, createListKey, useThreadStore } from '../store'
+import { useShallow } from 'zustand/shallow'
+import { useThreadStore, type ThreadMeta, type ThreadSort } from '../store'
+import {
+  createContextKey,
+  createThreadSelector,
+  type ThreadFilter,
+} from '../store/thread-selectors'
+import { mapStatusSlugToClientFilter, type ThreadClientFilter } from '@auxx/lib/mail-query/client'
 import { api } from '~/trpc/react'
 
 interface ThreadListFilter {
@@ -14,9 +21,11 @@ interface ThreadListFilter {
 }
 
 interface UseThreadListResult {
-  /** Thread IDs in the list */
+  /** Thread IDs in the list (for backward compatibility) */
   threadIds: string[]
-  /** Total count (may be > threadIds.length if paginated) */
+  /** Filtered and sorted threads */
+  threads: ThreadMeta[]
+  /** Total count (may be > threads.length if paginated) */
   total: number
   /** Initial load in progress */
   isLoading: boolean
@@ -26,42 +35,91 @@ interface UseThreadListResult {
   hasNextPage: boolean
   /** Fetch next page of results */
   fetchNextPage: () => void
-  /** Refresh the list */
+  /** Refresh the list (invalidate and refetch) */
   refresh: () => void
 }
 
 /**
+ * Map sortBy option to ThreadSort.
+ */
+function mapSortOption(sortBy?: string, sortDirection?: string): ThreadSort {
+  const direction = (sortDirection === 'asc' ? 'asc' : 'desc') as 'asc' | 'desc'
+
+  switch (sortBy) {
+    case 'oldest':
+      return { field: 'lastMessageAt', direction: 'asc' }
+    case 'newest':
+      return { field: 'lastMessageAt', direction: 'desc' }
+    case 'subject':
+      return { field: 'subject', direction }
+    default:
+      return { field: 'lastMessageAt', direction: 'desc' }
+  }
+}
+
+/**
  * Hook to get thread list by filter.
- * Returns IDs only - use useThread() to get thread data.
+ *
+ * Uses hybrid approach:
+ * 1. Server fetches thread IDs for the context (pagination, search)
+ * 2. Client derives filtered view from loaded threads
+ * 3. Optimistic updates just modify thread properties - views update automatically
  *
  * @example
- * const { threadIds, isLoading, fetchNextPage } = useThreadList({
+ * const { threads, threadIds, isLoading, fetchNextPage } = useThreadList({
  *   contextType: 'personal_inbox',
  *   statusSlug: 'open'
  * })
  *
- * return threadIds.map(id => <ThreadItem key={id} threadId={id} />)
+ * return threads.map(thread => <ThreadItem key={thread.id} thread={thread} />)
  */
 export function useThreadList(filter: ThreadListFilter): UseThreadListResult {
-  const listKey = useMemo(() => createListKey(filter), [filter])
-  const cachedList = useThreadListStore((s) => s.lists[listKey])
-  const setActiveListKey = useThreadListStore((s) => s.setActiveListKey)
-  const setList = useThreadListStore((s) => s.setList)
-  const appendToList = useThreadListStore((s) => s.appendToList)
+  const contextKey = useMemo(() => createContextKey(filter), [filter])
+
+  // Store selectors
+  const contextPagination = useThreadStore((s) => s.loadedContexts.get(contextKey))
+  const setContextLoaded = useThreadStore((s) => s.setContextLoaded)
+  const invalidateContext = useThreadStore((s) => s.invalidateContext)
   const requestThread = useThreadStore((s) => s.requestThread)
 
-  // Set active list key for optimistic updates
-  useEffect(() => {
-    setActiveListKey(listKey)
-    return () => setActiveListKey(null)
-  }, [listKey, setActiveListKey])
+  // Build client-side filter for derived view using shared utility
+  // This mirrors server-side behavior for consistent optimistic updates
+  const clientFilter = useMemo((): ThreadClientFilter => {
+    // Start with status slug filter (may include status and/or hasAssignee)
+    const slugFilter = mapStatusSlugToClientFilter(filter.statusSlug)
+
+    const f: ThreadClientFilter = { ...slugFilter }
+
+    // Inbox filter for specific_inbox context
+    if (filter.contextType === 'specific_inbox' && filter.contextId) {
+      f.inboxId = filter.contextId
+    }
+
+    return f
+  }, [filter.contextType, filter.contextId, filter.statusSlug])
+
+  const sortOption = useMemo(
+    () => mapSortOption(filter.sortBy, filter.sortDirection),
+    [filter.sortBy, filter.sortDirection]
+  )
+
+  // Create selector for this filter - memoized to prevent recreation
+  const threadSelector = useMemo(
+    () => createThreadSelector(clientFilter, sortOption),
+    [clientFilter, sortOption]
+  )
+
+  // Subscribe to derived thread list
+  // useShallow prevents re-renders when array contents are identical
+  // (immer creates new Map references on any thread update)
+  const threads = useThreadStore(useShallow(threadSelector))
 
   // Fetch IDs via tRPC infinite query
   const {
     data,
     isLoading,
     isFetchingNextPage,
-    hasNextPage,
+    hasNextPage: queryHasNextPage,
     fetchNextPage: fetchMore,
     refetch,
   } = api.thread.listIds.useInfiniteQuery(
@@ -79,39 +137,48 @@ export function useThreadList(filter: ThreadListFilter): UseThreadListResult {
     }
   )
 
-  // Sync to store and queue metadata fetches
+  // Sync fetched data to store and queue metadata fetches
   useEffect(() => {
     if (!data?.pages) return
 
     const allIds = data.pages.flatMap((p) => p.ids)
     const total = data.pages[0]?.total ?? 0
-    const nextCursor = data.pages[data.pages.length - 1]?.nextCursor ?? null
+    const lastPage = data.pages[data.pages.length - 1]
+    const hasMore = !!lastPage?.nextCursor
 
-    setList(listKey, {
-      ids: allIds,
-      total,
-      nextCursor,
-      fetchedAt: Date.now(),
-    })
+    // Mark context as loaded with pagination info
+    setContextLoaded(contextKey, lastPage?.nextCursor ?? null, hasMore, total)
 
     // Queue metadata fetch for uncached threads
     for (const id of allIds) {
       requestThread(id)
     }
-  }, [data, listKey, setList, requestThread])
+  }, [data, contextKey, setContextLoaded, requestThread])
 
-  // Handle next page fetch
+  // Refresh handler - invalidate context and refetch
+  const refresh = useCallback(() => {
+    invalidateContext(contextKey)
+    refetch()
+  }, [contextKey, invalidateContext, refetch])
+
+  // Fetch next page
   const fetchNextPage = useCallback(() => {
-    fetchMore()
-  }, [fetchMore])
+    if (!isFetchingNextPage && (queryHasNextPage || contextPagination?.hasMore)) {
+      fetchMore()
+    }
+  }, [fetchMore, isFetchingNextPage, queryHasNextPage, contextPagination])
+
+  // Derive thread IDs from threads for backward compatibility
+  const threadIds = useMemo(() => threads.map((t) => t.id), [threads])
 
   return {
-    threadIds: cachedList?.ids ?? [],
-    total: cachedList?.total ?? 0,
+    threadIds,
+    threads,
+    total: contextPagination?.total ?? data?.pages?.[0]?.total ?? threads.length,
     isLoading,
     isFetchingNextPage,
-    hasNextPage: !!hasNextPage || !!cachedList?.nextCursor,
+    hasNextPage: queryHasNextPage ?? contextPagination?.hasMore ?? false,
     fetchNextPage,
-    refresh: refetch,
+    refresh,
   }
 }

@@ -2,6 +2,7 @@
 
 export { useThread, useIsThreadLoading, useIsThreadNotFound } from './use-thread'
 export { useThreadList } from './use-thread-list'
+export { useThreadMutation } from './use-thread-mutation'
 export { useMessage } from './use-message'
 export { useMessages } from './use-messages'
 export { useParticipant } from './use-participant'
