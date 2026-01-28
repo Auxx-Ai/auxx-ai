@@ -9,6 +9,7 @@ import { buildFieldOptions, mapCapabilities, shouldCreateField } from './utils'
 import { CONTACT_FIELDS } from '../../resources/registry/resources/contact-fields'
 import { TICKET_FIELDS } from '../../resources/registry/resources/ticket-fields'
 import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
+import { INBOX_FIELDS } from '../../resources/registry/resources/inbox-fields'
 import type { ResourceField } from '../../resources/registry/field-types'
 
 const logger = createScopedLogger('entity-seeder:create-fields')
@@ -20,6 +21,7 @@ const FIELD_REGISTRY: Record<string, Record<string, ResourceField>> = {
   contact: CONTACT_FIELDS,
   ticket: TICKET_FIELDS,
   part: PART_FIELDS,
+  inbox: INBOX_FIELDS,
 }
 
 /**

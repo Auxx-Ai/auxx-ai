@@ -1,21 +1,22 @@
-// ~/server/api/routers/inbox.ts
+// apps/web/src/server/api/routers/inbox.ts
+
 import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 import { InboxService } from '@auxx/lib/inboxes'
+import { toRecordId } from '@auxx/types/resource'
 
-// Input validation schemas
+/** Schema for creating an inbox */
 const createInboxSchema = z.object({
   name: z.string().min(1).max(255),
   description: z.string().optional(),
   color: z.string().optional(),
   status: z.enum(['ACTIVE', 'ARCHIVED', 'PAUSED']).optional(),
-  settings: z.record(z.string(), z.any()).optional(),
-  allowAllMembers: z.boolean().optional(),
-  enableMemberAccess: z.boolean().optional(),
-  enableGroupAccess: z.boolean().optional(),
+  visibility: z.enum(['org_members', 'private', 'custom']).optional(),
+  settings: z.record(z.string(), z.unknown()).optional(),
 })
 
+/** Schema for updating an inbox */
 const updateInboxSchema = z.object({
   inboxId: z.string(),
   data: z.object({
@@ -23,56 +24,59 @@ const updateInboxSchema = z.object({
     description: z.string().optional(),
     color: z.string().optional(),
     status: z.enum(['ACTIVE', 'ARCHIVED', 'PAUSED']).optional(),
-    settings: z.record(z.string(), z.any()).optional(),
+    visibility: z.enum(['org_members', 'private', 'custom']).optional(),
+    settings: z.record(z.string(), z.unknown()).optional(),
   }),
 })
 
+/** Schema for updating inbox access */
 const inboxAccessSchema = z.object({
   inboxId: z.string(),
-  allowAllMembers: z.boolean().optional(),
+  visibility: z.enum(['org_members', 'private', 'custom']).optional(),
   memberIds: z.array(z.string()).optional(),
   groupIds: z.array(z.string()).optional(),
 })
 
+/** Schema for managing integrations */
 const integrationSchema = z.object({
   inboxId: z.string(),
   integrationId: z.string(),
   isDefault: z.boolean().optional(),
-  settings: z.record(z.string(), z.any()).optional(),
+  settings: z.record(z.string(), z.unknown()).optional(),
 })
 
 export const inboxRouter = createTRPCRouter({
-  // Get all inboxes for the organization
+  /**
+   * Get all inboxes for the organization
+   */
   getAll: protectedProcedure.query(async ({ ctx }) => {
     const { organizationId } = ctx.session
-    const inboxService = new InboxService(ctx.db, organizationId)
-    return await inboxService.getInboxes()
+    const userId = ctx.session.user.id
+    const inboxService = new InboxService(ctx.db, organizationId, userId)
+    return inboxService.getInboxes()
   }),
 
-  // Get inboxes for the current user
+  /**
+   * Get inboxes accessible to the current user
+   */
   getUserInboxes: protectedProcedure.query(async ({ ctx }) => {
     const { organizationId } = ctx.session
     const userId = ctx.session.user.id
-    const inboxService = new InboxService(ctx.db, organizationId)
-    return await inboxService.getInboxesForUser(userId)
+    const inboxService = new InboxService(ctx.db, organizationId, userId)
+    return inboxService.getInboxesForUser(userId)
   }),
 
-  // Get user inboxes with group details
-  getUserInboxesWithGroups: protectedProcedure.query(async ({ ctx }) => {
-    const { organizationId } = ctx.session
-    const userId = ctx.session.user.id
-    const inboxService = new InboxService(ctx.db, organizationId)
-    return await inboxService.getInboxesWithGroupDetails(userId)
-  }),
-
-  // Get a specific inbox by ID
+  /**
+   * Get a specific inbox by ID
+   */
   getById: protectedProcedure
     .input(z.object({ inboxId: z.string() }))
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      const inboxService = new InboxService(ctx.db, organizationId)
+      const userId = ctx.session.user.id
+      const inboxService = new InboxService(ctx.db, organizationId, userId)
 
-      const inbox = await inboxService.getInbox(input.inboxId)
+      const inbox = await inboxService.getInboxById(input.inboxId)
 
       if (!inbox) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Inbox not found' })
@@ -81,49 +85,83 @@ export const inboxRouter = createTRPCRouter({
       return inbox
     }),
 
-  // Check if user has access to an inbox
+  /**
+   * Get inbox with integrations
+   */
+  getByIdWithIntegrations: protectedProcedure
+    .input(z.object({ inboxId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const userId = ctx.session.user.id
+      const inboxService = new InboxService(ctx.db, organizationId, userId)
+
+      const inbox = await inboxService.getInboxWithIntegrationsById(input.inboxId)
+
+      if (!inbox) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Inbox not found' })
+      }
+
+      return inbox
+    }),
+
+  /**
+   * Check if current user has access to an inbox
+   */
   checkUserAccess: protectedProcedure
     .input(z.object({ inboxId: z.string() }))
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
       const userId = ctx.session.user.id
-      const inboxService = new InboxService(ctx.db, organizationId)
+      const inboxService = new InboxService(ctx.db, organizationId, userId)
 
-      return await inboxService.hasUserAccess(input.inboxId, userId)
+      return inboxService.hasUserAccessById(input.inboxId, userId)
     }),
 
-  // Create a new inbox
+  /**
+   * Create a new inbox
+   */
   create: protectedProcedure.input(createInboxSchema).mutation(async ({ ctx, input }) => {
     const { organizationId } = ctx.session
-    const inboxService = new InboxService(ctx.db, organizationId)
+    const userId = ctx.session.user.id
+    const inboxService = new InboxService(ctx.db, organizationId, userId)
 
-    return await inboxService.createInbox(input)
+    return inboxService.createInbox(input)
   }),
 
-  // Update an existing inbox
+  /**
+   * Update an existing inbox
+   */
   update: protectedProcedure.input(updateInboxSchema).mutation(async ({ ctx, input }) => {
     const { organizationId } = ctx.session
-    const inboxService = new InboxService(ctx.db, organizationId)
+    const userId = ctx.session.user.id
+    const inboxService = new InboxService(ctx.db, organizationId, userId)
 
-    return await inboxService.updateInbox(input.inboxId, input.data)
+    return inboxService.updateInboxById(input.inboxId, input.data)
   }),
 
-  // Delete an inbox
+  /**
+   * Delete an inbox
+   */
   delete: protectedProcedure
     .input(z.object({ inboxId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      const inboxService = new InboxService(ctx.db, organizationId)
+      const userId = ctx.session.user.id
+      const inboxService = new InboxService(ctx.db, organizationId, userId)
 
-      return await inboxService.deleteInbox(input.inboxId)
+      await inboxService.deleteInboxById(input.inboxId)
+      return { success: true }
     }),
 
-  // Add an integration to an inbox
+  /**
+   * Add an integration to an inbox
+   */
   addIntegration: protectedProcedure.input(integrationSchema).mutation(async ({ ctx, input }) => {
     const { organizationId } = ctx.session
-    const inboxService = new InboxService(ctx.db, organizationId)
+    const userId = ctx.session.user.id
+    const inboxService = new InboxService(ctx.db, organizationId, userId)
 
-    return await inboxService.addIntegration(
+    return inboxService.addIntegrationById(
       input.inboxId,
       input.integrationId,
       input.isDefault,
@@ -131,42 +169,31 @@ export const inboxRouter = createTRPCRouter({
     )
   }),
 
-  // Remove an integration from an inbox
+  /**
+   * Remove an integration from an inbox
+   */
   removeIntegration: protectedProcedure
     .input(z.object({ inboxId: z.string(), integrationId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      const inboxService = new InboxService(ctx.db, organizationId)
+      const userId = ctx.session.user.id
+      const inboxService = new InboxService(ctx.db, organizationId, userId)
 
-      return await inboxService.removeIntegration(input.inboxId, input.integrationId)
+      const recordId = toRecordId('inbox', input.inboxId)
+      return inboxService.removeIntegration(recordId, input.integrationId)
     }),
 
-  // Update inbox access settings
+  /**
+   * Update inbox access settings
+   */
   updateAccess: protectedProcedure.input(inboxAccessSchema).mutation(async ({ ctx, input }) => {
     const { organizationId } = ctx.session
-    const inboxService = new InboxService(ctx.db, organizationId)
+    const userId = ctx.session.user.id
+    const inboxService = new InboxService(ctx.db, organizationId, userId)
 
     const { inboxId, ...accessData } = input
+    const recordId = toRecordId('inbox', inboxId)
 
-    return await inboxService.updateInboxAccess(inboxId, accessData)
-  }),
-
-  // Invalidate cache for a user
-  invalidateUserCache: protectedProcedure.mutation(async ({ ctx }) => {
-    const { organizationId } = ctx.session
-    const userId = ctx.session.user.id
-    const inboxService = new InboxService(ctx.db, organizationId)
-
-    await inboxService.invalidateUserInboxCache(userId)
-    return { success: true }
-  }),
-
-  // Invalidate all organization inbox caches
-  invalidateAllCaches: protectedProcedure.mutation(async ({ ctx }) => {
-    const { organizationId } = ctx.session
-    const inboxService = new InboxService(ctx.db, organizationId)
-
-    await inboxService.invalidateAllInboxCaches()
-    return { success: true }
+    return inboxService.updateInboxAccess(recordId, accessData)
   }),
 })

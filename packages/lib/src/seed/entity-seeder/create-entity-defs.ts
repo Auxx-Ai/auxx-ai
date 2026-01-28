@@ -29,6 +29,7 @@ export async function createEntityDefinitions(
         plural: entity.plural,
         icon: entity.icon,
         color: entity.color,
+        isVisible: entity.isVisible ?? true,
         updatedAt: now,
       })
       .returning()
@@ -45,6 +46,7 @@ export async function createEntityDefinitions(
       plural: entity.plural,
       icon: entity.icon,
       color: entity.color,
+      isVisible: entity.isVisible ?? true,
     })
 
     logger.debug(`Created EntityDefinition: ${entity.entityType}`, { id: created.id })

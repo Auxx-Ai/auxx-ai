@@ -1,0 +1,1 @@
+ALTER TABLE "EntityDefinition" ADD COLUMN "isVisible" boolean DEFAULT true NOT NULL;

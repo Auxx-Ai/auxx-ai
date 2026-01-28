@@ -1,42 +1,41 @@
+// apps/web/src/components/pickers/inbox-picker.tsx
 'use client'
 
-import React, { useState } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@auxx/ui/components/command'
-import { Checkbox } from '@auxx/ui/components/checkbox'
-import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { useInbox } from '~/hooks/use-inbox'
 import { cn } from '@auxx/ui/lib/utils'
-import { Check } from 'lucide-react'
-import { type InboxWithRelations } from '@auxx/lib/types'
+import { MultiSelectPicker } from './multi-select-picker'
+import { InboxDialog } from '~/components/inbox/inbox-dialog'
+import type { InboxWithRelations } from '@auxx/lib/types'
+import type { SelectOption } from '@auxx/types/custom-field'
 
+/** Props for InboxPicker component */
 interface InboxPickerProps {
   open?: boolean
   onOpenChange?: (open: boolean) => void
-  selected?: string[] // Array of selected inbox IDs
+  selected?: string[]
   onChange?: (selectedInboxes: string[]) => void
   allowMultiple?: boolean
-  selectAll?: boolean // New prop for showing "Select all" option
-  selectAllLabel?: string // Custom label for "Select all" option
+  selectAll?: boolean
+  selectAllLabel?: string
   className?: string
-  inboxes?: InboxWithRelations[] // Optional pre-fetched inboxes
-  children?: React.ReactNode // Custom trigger
-  align?: 'start' | 'center' | 'end' // Alignment for the popover
-  side?: 'top' | 'right' | 'bottom' | 'left' // Side for the popover
-  sideOffset?: number // Offset for the popover
-  style?: React.CSSProperties // Additional styles for the popover
+  inboxes?: InboxWithRelations[]
+  children?: React.ReactNode
+  align?: 'start' | 'center' | 'end'
+  side?: 'top' | 'right' | 'bottom' | 'left'
+  sideOffset?: number
+  style?: React.CSSProperties
 }
 
+/** Special value for "Select All" option */
 export const INBOX_SELECT_ALL_VALUE = '__all__'
 
+/**
+ * InboxPicker
+ * Popover-based picker for selecting inbox(es) using MultiSelectPicker.
+ */
 export function InboxPicker({
   open,
   onOpenChange,
@@ -50,145 +49,109 @@ export function InboxPicker({
   children,
   ...props
 }: InboxPickerProps) {
-  // Use the custom hook to fetch inboxes if not provided
+  // Fetch inboxes if not provided
   const { inboxes: fetchedInboxes } = useInbox()
   const inboxes = externalInboxes || fetchedInboxes || []
 
-  // Local state for managing selected inboxes
-  const [localSelected, setLocalSelected] = useState<string[]>(selected)
-  const [searchValue, setSearchValue] = useState('')
+  // Dialog state for creating new inbox
+  const [dialogOpen, setDialogOpen] = useState(false)
 
-  // Check if "Select all" is currently selected
-  const isSelectAllChecked = localSelected.includes(INBOX_SELECT_ALL_VALUE)
+  // Convert inboxes to SelectOption format
+  const options: SelectOption[] = useMemo(() => {
+    const baseOptions = inboxes.map((inbox) => ({
+      value: inbox.id,
+      label: inbox.name,
+      color: inbox.color || '#4F46E5',
+    }))
 
-  // Handle inbox selection
-  const handleInboxSelect = (inboxId: string) => {
-    let newSelected: string[]
-
-    if (inboxId === INBOX_SELECT_ALL_VALUE) {
-      // Handle "Select all" selection
-      if (isSelectAllChecked) {
-        // Uncheck "Select all" - clear all selections
-        newSelected = []
-      } else {
-        // Check "Select all" - only include the special value
-        newSelected = [INBOX_SELECT_ALL_VALUE]
-      }
-    } else {
-      // Handle individual inbox selection
-      if (!allowMultiple) {
-        // Single selection mode
-        newSelected = [inboxId]
-      } else {
-        // Multiple selection mode
-        if (isSelectAllChecked) {
-          // If "Select all" was checked, uncheck it and select only this item
-          newSelected = [inboxId]
-        } else {
-          // Normal multi-select behavior
-          newSelected = localSelected.includes(inboxId)
-            ? localSelected.filter((id) => id !== inboxId)
-            : [...localSelected, inboxId]
-        }
-      }
+    // Prepend "Select All" option if enabled
+    if (allowMultiple && selectAll) {
+      return [{ value: INBOX_SELECT_ALL_VALUE, label: selectAllLabel }, ...baseOptions]
     }
 
-    if (!allowMultiple && inboxId !== INBOX_SELECT_ALL_VALUE) {
-      setSearchValue('')
-      if (onOpenChange) {
-        onOpenChange(false)
-      }
-    }
-    setLocalSelected(newSelected)
-    onChange?.(newSelected)
-  }
+    return baseOptions
+  }, [inboxes, allowMultiple, selectAll, selectAllLabel])
 
-  // Filter inboxes based on search
-  const filteredInboxes = inboxes.filter((inbox) =>
-    inbox.name.toLowerCase().includes(searchValue.toLowerCase())
+  // Handle selection change from MultiSelectPicker
+  const handleChange = useCallback(
+    (newSelected: string[]) => {
+      const hadSelectAll = selected.includes(INBOX_SELECT_ALL_VALUE)
+      const hasSelectAll = newSelected.includes(INBOX_SELECT_ALL_VALUE)
+
+      if (hasSelectAll && !hadSelectAll) {
+        // User just checked "Select All" - clear other selections
+        onChange?.([INBOX_SELECT_ALL_VALUE])
+      } else if (!hasSelectAll && hadSelectAll) {
+        // User unchecked "Select All"
+        onChange?.(newSelected.filter((id) => id !== INBOX_SELECT_ALL_VALUE))
+      } else if (hadSelectAll && newSelected.length > 1) {
+        // User selected individual item while "Select All" was checked
+        onChange?.(newSelected.filter((id) => id !== INBOX_SELECT_ALL_VALUE))
+      } else {
+        onChange?.(newSelected)
+      }
+    },
+    [selected, onChange]
+  )
+
+  // Handle single select (close popover)
+  const handleSelectSingle = useCallback(
+    (_value: string) => {
+      onOpenChange?.(false)
+    },
+    [onOpenChange]
+  )
+
+  // Handle create button click
+  const handleCreate = useCallback(() => {
+    setDialogOpen(true)
+  }, [])
+
+  // Handle dialog success (optionally select the new inbox)
+  const handleDialogSuccess = useCallback(
+    (inbox: { id: string; name: string }) => {
+      if (allowMultiple) {
+        onChange?.([...selected.filter((id) => id !== INBOX_SELECT_ALL_VALUE), inbox.id])
+      } else {
+        onChange?.([inbox.id])
+        onOpenChange?.(false)
+      }
+    },
+    [allowMultiple, selected, onChange, onOpenChange]
   )
 
   return (
-    <Popover open={open} onOpenChange={onOpenChange}>
-      <PopoverTrigger asChild>
-        {children || <Button variant="outline">Select Inbox{allowMultiple ? 's' : ''}</Button>}
-      </PopoverTrigger>
-      <PopoverContent
-        className={cn('w-[300px] p-0 backdrop-blur-sm bg-popover/60', className)}
-        {...props}>
-        <Command>
-          <CommandInput
+    <>
+      <Popover open={open} onOpenChange={onOpenChange}>
+        <PopoverTrigger asChild>
+          {children || <Button variant="outline">Select Inbox{allowMultiple ? 'es' : ''}</Button>}
+        </PopoverTrigger>
+        <PopoverContent
+          className={cn('w-[300px] p-0 backdrop-blur-sm bg-popover/60', className)}
+          {...props}>
+          <MultiSelectPicker
+            options={options}
+            value={selected}
+            onChange={handleChange}
+            onSelectSingle={allowMultiple ? undefined : handleSelectSingle}
             placeholder="Search inboxes..."
-            value={searchValue}
-            onValueChange={setSearchValue}
+            canManage={false}
+            canAdd={false}
+            multi={allowMultiple}
+            onCreate={handleCreate}
+            createLabel="Create inbox"
           />
-          <CommandList>
-            <CommandEmpty>No inboxes found.</CommandEmpty>
-            {/* Select All option - only show when allowMultiple and selectAll are true */}
-            {allowMultiple && selectAll && (
-              <CommandGroup>
-                <CommandItem
-                  value={INBOX_SELECT_ALL_VALUE}
-                  onSelect={() => handleInboxSelect(INBOX_SELECT_ALL_VALUE)}
-                  className="flex items-center justify-between">
-                  <span className="font-medium">{selectAllLabel}</span>
-                  <Checkbox
-                    checked={isSelectAllChecked}
-                    onCheckedChange={() => handleInboxSelect(INBOX_SELECT_ALL_VALUE)}
-                  />
-                </CommandItem>
-              </CommandGroup>
-            )}
-            <CommandGroup heading="All Inboxes">
-              {filteredInboxes.map((inbox) => (
-                <CommandItem
-                  key={inbox.id}
-                  value={inbox.id}
-                  onSelect={() => handleInboxSelect(inbox.id)}
-                  className="flex items-center justify-between rounded-full">
-                  <div className="flex items-center space-x-2">
-                    <div
-                      className="h-3 w-3 rounded-full"
-                      style={{ backgroundColor: inbox.color || '#4F46E5' }}
-                    />
-                    <span>{inbox.name}</span>
-                  </div>
-                  {allowMultiple ? (
-                    <Checkbox
-                      checked={!isSelectAllChecked && localSelected.includes(inbox.id)}
-                      onCheckedChange={() => handleInboxSelect(inbox.id)}
-                    />
-                  ) : (
-                    localSelected.includes(inbox.id) && <Check className="ml-auto h-4 w-4" />
-                  )}
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-        {allowMultiple && localSelected.length > 0 && (
-          <div className="flex flex-wrap gap-1 border-t p-2">
-            {isSelectAllChecked ? (
-              <Badge variant="secondary" className="flex items-center">
-                All Inboxes Selected
-              </Badge>
-            ) : (
-              localSelected.map((selectedId) => {
-                const selectedInbox = inboxes.find((inbox) => inbox.id === selectedId)
-                return selectedInbox ? (
-                  <Badge key={selectedId} variant="secondary" className="flex items-center">
-                    <div
-                      className="mr-2 h-2 w-2 rounded-full"
-                      style={{ backgroundColor: selectedInbox.color || '#4F46E5' }}
-                    />
-                    {selectedInbox.name}
-                  </Badge>
-                ) : null
-              })
-            )}
-          </div>
-        )}
-      </PopoverContent>
-    </Popover>
+        </PopoverContent>
+      </Popover>
+
+      {/* Inbox creation dialog */}
+      {dialogOpen && (
+        <InboxDialog
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          onSuccess={handleDialogSuccess}
+        />
+      )}
+    </>
   )
 }

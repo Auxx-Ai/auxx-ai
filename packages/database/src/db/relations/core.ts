@@ -44,9 +44,7 @@ import {
   File,
   Folder,
   FolderFile,
-  Inbox,
   InboxIntegration,
-  InboxMemberAccess,
   Integration,
   IntegrationTagLabel,
   Inventory,
@@ -228,7 +226,6 @@ export const organizationRelations = relations(Organization, ({ one, many }) => 
   customerSources: many(CustomerSource),
   customerGroups: many(CustomerGroup),
   participants: many(Participant),
-  inboxes: many(Inbox),
   threadReadStatuses: many(ThreadReadStatus),
   userInboxUnreadCounts: many(UserInboxUnreadCount),
   labels: many(Label),
@@ -301,7 +298,7 @@ export const organizationRelations = relations(Organization, ({ one, many }) => 
   systemModelDefaults: many(SystemModelDefault),
 }))
 
-export const organizationMemberRelations = relations(OrganizationMember, ({ one, many }) => ({
+export const organizationMemberRelations = relations(OrganizationMember, ({ one }) => ({
   organization: one(Organization, {
     fields: [OrganizationMember.organizationId],
     references: [Organization.id],
@@ -310,7 +307,6 @@ export const organizationMemberRelations = relations(OrganizationMember, ({ one,
     fields: [OrganizationMember.userId],
     references: [User.id],
   }),
-  inboxAccess: many(InboxMemberAccess),
 }))
 
 export const organizationInvitationRelations = relations(OrganizationInvitation, ({ one }) => ({

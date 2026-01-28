@@ -1,5 +1,6 @@
-// /app/settings/inbox/_components/inbox-settings-tab.tsx
+// apps/web/src/components/inbox/inbox-settings-tab.tsx
 'use client'
+
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { api } from '~/trpc/react'
@@ -14,27 +15,29 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-// import { ColorTagPicker } from '~/components/color-tag-picker'
 import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 import { FormColorTagPicker } from '~/components/pickers/color-tag-picker'
 import { Separator } from '@auxx/ui/components/separator'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useRouter } from 'next/navigation'
 import { Trash, AlertTriangle } from 'lucide-react'
-import { type InboxStatus } from '@auxx/database/types'
-import type { InboxEntity as Inbox } from '@auxx/database/models'
+import type { Inbox, InboxStatus } from '@auxx/lib/inboxes'
 
+/** Form data shape for inbox settings */
 type InboxFormData = {
   name: string
   description: string
   color: string
   status: InboxStatus
 }
+
+/** Tab component for managing inbox settings */
 export function InboxSettingsTab({ inbox }: { inbox: Inbox }) {
   const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [confirm, ConfirmDialog] = useConfirm()
+
   // Form setup
   const {
     register,
@@ -50,6 +53,8 @@ export function InboxSettingsTab({ inbox }: { inbox: Inbox }) {
       status: inbox.status,
     },
   })
+
+  // Delete inbox mutation
   const deleteInbox = api.inbox.delete.useMutation({
     onSuccess: () => {
       toastSuccess({
@@ -63,8 +68,10 @@ export function InboxSettingsTab({ inbox }: { inbox: Inbox }) {
       setIsDeleting(false)
     },
   })
+
   // Watch the color value to show in the picker
   const colorValue = watch('color')
+
   // Update inbox mutation
   const updateInbox = api.inbox.update.useMutation({
     onSuccess: () => {
@@ -79,11 +86,13 @@ export function InboxSettingsTab({ inbox }: { inbox: Inbox }) {
       toastError({ title: 'Error updating inbox', description: error.message })
     },
   })
-  // Handle color change from the color picker
+
+  /** Handle color change from the color picker */
   const handleColorChange = (color: string) => {
     setValue('color', color)
   }
-  // Handle form submission
+
+  /** Handle form submission */
   const onSubmit = (data: InboxFormData) => {
     setIsSubmitting(true)
     updateInbox.mutate({
@@ -96,6 +105,8 @@ export function InboxSettingsTab({ inbox }: { inbox: Inbox }) {
       },
     })
   }
+
+  /** Handle inbox deletion with confirmation */
   const handleDeleteInbox = async () => {
     if (!inbox) return
     const confirmed = await confirm({
@@ -106,12 +117,12 @@ export function InboxSettingsTab({ inbox }: { inbox: Inbox }) {
       cancelText: 'Cancel',
       destructive: true,
     })
-    console.log('Deleting inbox:', inbox.id)
     if (confirmed) {
       setIsDeleting(true)
       await deleteInbox.mutateAsync({ inboxId: inbox.id })
     }
   }
+
   return (
     <>
       <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-6">
@@ -174,7 +185,7 @@ export function InboxSettingsTab({ inbox }: { inbox: Inbox }) {
                   <AlertTriangle className="size-4 text-destructive" />
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-sm text-destructive">Delete Imbox</span>
+                  <span className="text-sm text-destructive">Delete Inbox</span>
                   <span className="text-xs text-destructive/80">
                     Deleting this inbox will remove all associated data and cannot be undone.
                   </span>

@@ -72,6 +72,7 @@ export const FieldTypeValues = [
   'RELATIONSHIP',
   'CALC',
   'ACTOR',
+  'JSON',
 ] as const
 
 export const CustomerSourceTypeValues = [
@@ -699,6 +700,7 @@ export const FieldType = {
   RELATIONSHIP: 'RELATIONSHIP',
   CALC: 'CALC',
   ACTOR: 'ACTOR',
+  JSON: 'JSON',
 } as const
 
 export const CustomerSourceType = {

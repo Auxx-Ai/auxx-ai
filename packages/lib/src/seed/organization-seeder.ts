@@ -279,16 +279,14 @@ export class OrganizationSeeder {
    */
   private async seedInboxes(organizationId: string): Promise<void> {
     logger.info('Creating default inboxes for organization', { organizationId })
-    const inboxService = new InboxService(this.db, organizationId)
+    const inboxService = new InboxService(this.db, organizationId, this.userId)
     // Create a default shared inbox
     const defaultInbox = await inboxService.createInbox({
       name: 'Shared Inbox',
       description: 'Default shared inbox for all team members',
       color: '#A7C1F2', // Light Blue
       status: 'ACTIVE',
-      allowAllMembers: true, // All members have access by default
-      enableMemberAccess: false,
-      enableGroupAccess: false,
+      visibility: 'org_members', // All members have access by default
     })
     logger.info('Created default shared inbox', { organizationId, inboxId: defaultInbox.id })
     // You can create additional default inboxes here if needed
@@ -377,7 +375,7 @@ export class OrganizationSeeder {
    * @param organizationId The organization ID
    */
   private async ensureDefaultInboxes(organizationId: string): Promise<void> {
-    const inboxService = new InboxService(this.db, organizationId)
+    const inboxService = new InboxService(this.db, organizationId, this.userId)
     // Get existing inboxes
     const existingInboxes = await inboxService.getInboxes()
     // If no inboxes exist, create the default one
@@ -388,7 +386,7 @@ export class OrganizationSeeder {
         description: 'Default shared inbox for all team members',
         color: '#A7C1F2', // Light Blue
         status: 'ACTIVE',
-        allowAllMembers: true,
+        visibility: 'org_members',
       })
       logger.info('Created default inbox for existing organization', { organizationId })
     }
@@ -407,8 +405,9 @@ export class OrganizationSeeder {
 
     const entityTypes = existingEntities.map((e) => e.entityType)
 
-    // If no system entities exist, seed them all
-    if (!entityTypes.includes('contact') || !entityTypes.includes('ticket') || !entityTypes.includes('part')) {
+    // If any system entities are missing, seed them all
+    const requiredEntities = ['contact', 'ticket', 'part', 'inbox']
+    if (requiredEntities.some((et) => !entityTypes.includes(et))) {
       logger.info('System entities missing, seeding for existing organization', { organizationId })
       const entitySeeder = new EntitySeeder(this.db, organizationId)
       await entitySeeder.seedSystemEntities()

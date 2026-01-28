@@ -39,7 +39,7 @@ import {
   type MutationContext,
   type CreateEntityResult,
 } from './unified-handler-mutations'
-import type { TableId } from '../registry/field-registry'
+import { SYSTEM_FIELD_KEYS, type TableId } from '../registry/field-registry'
 // import type { EntityDefinitionEntity } from '@auxx/database/schema/entity-definition'
 // import type { EntityInstanceEntity } from '@auxx/database/schema/entity-instance'
 
@@ -629,7 +629,7 @@ export class UnifiedCrudHandler {
     let entityDef: EntityDefinitionEntity
 
     // System types map to entityType column - query by entityType
-    if (['contact', 'ticket', 'part', 'entity_group'].includes(entityDefinitionId)) {
+    if (['contact', 'ticket', 'part', 'entity_group', 'inbox'].includes(entityDefinitionId)) {
       const rows = await this.db
         .select()
         .from(schema.EntityDefinition)
@@ -691,9 +691,30 @@ export class UnifiedCrudHandler {
    * @param values - Map of fieldId -> value
    */
   private async setFieldValues(recordId: RecordId, values: Record<string, unknown>): Promise<void> {
-    const valueArray = Object.entries(values)
-      .filter(([_, value]) => value !== undefined)
-      .map(([fieldId, value]) => ({ fieldId, value }))
+    const { entityDefinitionId } = parseRecordId(recordId)
+
+    // Check if any key is a system field key (needs mapping to CustomField UUID)
+    const needsMapping = Object.keys(values).some((key) => SYSTEM_FIELD_KEYS.has(key))
+
+    let valueArray: Array<{ fieldId: string; value: unknown }>
+
+    if (needsMapping) {
+      // Build systemAttribute → CustomField.id map using cached fields
+      const fields = await this.getCustomFieldsCached(entityDefinitionId)
+      const sysAttrToIdMap = new Map(fields.map((f) => [f.systemAttribute ?? '', f.id]))
+
+      valueArray = Object.entries(values)
+        .filter(([_, value]) => value !== undefined)
+        .map(([key, value]) => ({
+          fieldId: sysAttrToIdMap.get(key) ?? key, // Map systemAttribute → UUID, or pass through
+          value,
+        }))
+    } else {
+      // Direct - keys are already field IDs
+      valueArray = Object.entries(values)
+        .filter(([_, value]) => value !== undefined)
+        .map(([fieldId, value]) => ({ fieldId, value }))
+    }
 
     if (valueArray.length > 0) {
       await this.fieldValueService.setValuesForEntity({

@@ -9,9 +9,8 @@ import {
   ChatWidget,
   EmailAttachment,
   EmailEmbedding,
-  Inbox,
+  EntityInstance,
   InboxIntegration,
-  InboxMemberAccess,
   Integration,
   IntegrationTagLabel,
   Label,
@@ -20,7 +19,6 @@ import {
   MessageParticipant,
   OperatingHours,
   Organization,
-  OrganizationMember,
   Participant,
   PromptHistory,
   Signature,
@@ -33,37 +31,18 @@ import {
   UserInboxUnreadCount,
 } from '../schema'
 
-export const inboxRelations = relations(Inbox, ({ one, many }) => ({
-  organization: one(Organization, {
-    fields: [Inbox.organizationId],
-    references: [Organization.id],
-  }),
-  integrations: many(InboxIntegration),
-  memberAccess: many(InboxMemberAccess),
-  unreadCounts: many(UserInboxUnreadCount),
-  // Note: threads relation removed - Thread.inboxId was removed in migration 0028
-  // Note: groupAccess removed - migrated to ResourceAccess
-}))
-
+/**
+ * InboxIntegration relations
+ * Links to EntityInstance (inbox) and Integration
+ */
 export const inboxIntegrationRelations = relations(InboxIntegration, ({ one }) => ({
-  inbox: one(Inbox, {
+  inbox: one(EntityInstance, {
     fields: [InboxIntegration.inboxId],
-    references: [Inbox.id],
+    references: [EntityInstance.id],
   }),
   integration: one(Integration, {
     fields: [InboxIntegration.integrationId],
     references: [Integration.id],
-  }),
-}))
-
-export const inboxMemberAccessRelations = relations(InboxMemberAccess, ({ one }) => ({
-  inbox: one(Inbox, {
-    fields: [InboxMemberAccess.inboxId],
-    references: [Inbox.id],
-  }),
-  organizationMember: one(OrganizationMember, {
-    fields: [InboxMemberAccess.organizationMemberId],
-    references: [OrganizationMember.id],
   }),
 }))
 
@@ -89,7 +68,6 @@ export const threadRelations = relations(Thread, ({ one, many }) => ({
     fields: [Thread.assigneeId],
     references: [User.id],
   }),
-  // Note: inbox relation removed - Thread.inboxId was removed in migration 0028
   integration: one(Integration, {
     fields: [Thread.integrationId],
     references: [Integration.id],
@@ -105,10 +83,14 @@ export const threadRelations = relations(Thread, ({ one, many }) => ({
   tags: many(TagsOnThread),
 }))
 
+/**
+ * UserInboxUnreadCount relations
+ * Links to EntityInstance (inbox), Organization, and User
+ */
 export const userInboxUnreadCountRelations = relations(UserInboxUnreadCount, ({ one }) => ({
-  inbox: one(Inbox, {
+  inbox: one(EntityInstance, {
     fields: [UserInboxUnreadCount.inboxId],
-    references: [Inbox.id],
+    references: [EntityInstance.id],
   }),
   organization: one(Organization, {
     fields: [UserInboxUnreadCount.organizationId],
@@ -253,7 +235,6 @@ export const chatAttachmentRelations = relations(ChatAttachment, ({ one }) => ({
     references: [ChatSession.id],
   }),
 }))
-
 
 
 

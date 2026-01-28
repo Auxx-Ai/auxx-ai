@@ -1,6 +1,7 @@
 // packages/lib/src/messages/message-query.service.ts
 
 import { type Database, schema } from '@auxx/database'
+import { toParticipantId, type ParticipantId } from '@auxx/types'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
 import type {
@@ -34,6 +35,102 @@ export class MessageQueryService {
   }
 
   /**
+   * Get all messages for a thread with full metadata.
+   * Single query - no separate ID listing step.
+   */
+  async getMessagesByThread(
+    threadId: string,
+    options: ListMessageIdsOptions = {}
+  ): Promise<ListMessagesByThreadResult> {
+    const { includeDrafts = false } = options
+
+    logger.debug('Fetching messages for thread', {
+      organizationId: this.organizationId,
+      threadId,
+      includeDrafts,
+    })
+
+    const providerMap = await getOrgProviderMap(this.organizationId, this.db)
+
+    const conditions = [
+      eq(schema.Message.threadId, threadId),
+      eq(schema.Message.organizationId, this.organizationId),
+    ]
+
+    if (!includeDrafts) {
+      conditions.push(eq(schema.Message.draftMode, 'NONE'))
+    }
+
+    const rows = await this.db.query.Message.findMany({
+      where: and(...conditions),
+      orderBy: [
+        sql`${schema.Message.receivedAt} ASC NULLS LAST`,
+        sql`${schema.Message.sentAt} ASC NULLS LAST`,
+        sql`${schema.Message.id} ASC`,
+      ],
+      columns: {
+        id: true,
+        threadId: true,
+        subject: true,
+        snippet: true,
+        textHtml: true,
+        textPlain: true,
+        isInbound: true,
+        isFirstInThread: true,
+        hasAttachments: true,
+        sentAt: true,
+        receivedAt: true,
+        createdAt: true,
+        draftMode: true,
+        createdById: true,
+        fromId: true,
+        replyToId: true,
+        integrationId: true,
+        sendStatus: true,
+        providerError: true,
+        attempts: true,
+      },
+    })
+
+    // Batch fetch all participant relationships
+    const messageIds = rows.map((m) => m.id)
+    const participantsByMessage = await this.getParticipantsForMessages(messageIds)
+
+    const messages: MessageMeta[] = rows.map((m) => {
+      const participantData = participantsByMessage.get(m.id)
+      const participants = this.buildParticipantIds(m, participantData)
+
+      const provider = providerMap.get(m.integrationId) ?? 'google'
+      const messageType = getMessageTypeFromProvider(provider)
+
+      return {
+        id: m.id,
+        threadId: m.threadId,
+        subject: m.subject,
+        snippet: m.snippet,
+        textHtml: m.textHtml,
+        textPlain: m.textPlain,
+        isInbound: m.isInbound,
+        isFirstInThread: m.isFirstInThread ?? false,
+        hasAttachments: m.hasAttachments,
+        sentAt: m.sentAt?.toISOString() ?? null,
+        receivedAt: m.receivedAt?.toISOString() ?? null,
+        createdAt: m.createdAt.toISOString(),
+        participants,
+        draftMode: (m.draftMode as DraftMode) ?? 'NONE',
+        createdById: m.createdById,
+        messageType,
+        sendStatus: (m.sendStatus as SendStatus) ?? null,
+        providerError: m.providerError ?? null,
+        attempts: m.attempts ?? 0,
+        attachments: [],
+      }
+    })
+
+    return { messages, total: messages.length }
+  }
+
+  /**
    * Batch fetch messages by ID.
    * Returns messages in same order as input IDs (missing IDs are excluded).
    */
@@ -49,7 +146,7 @@ export class MessageQueryService {
     // Get cached provider map for this organization
     const providerMap = await getOrgProviderMap(this.organizationId, this.db)
 
-    // Fetch messages with inline from/replyTo participant data
+    // Fetch messages
     const messages = await this.db.query.Message.findMany({
       where: and(
         inArray(schema.Message.id, ids),
@@ -77,14 +174,6 @@ export class MessageQueryService {
         providerError: true,
         attempts: true,
       },
-      with: {
-        from: {
-          columns: { id: true, name: true, displayName: true, identifier: true },
-        },
-        replyTo: {
-          columns: { id: true, name: true, displayName: true, identifier: true },
-        },
-      },
     })
 
     // Batch fetch participant IDs for recipients (to, cc, bcc)
@@ -94,13 +183,8 @@ export class MessageQueryService {
     // Create a map for quick lookup
     const messageMap = new Map(
       messages.map((m) => {
-        const participants = participantsByMessage.get(m.id) ?? {
-          from: null,
-          replyTo: null,
-          to: [],
-          cc: [],
-          bcc: [],
-        }
+        const participantData = participantsByMessage.get(m.id)
+        const participants = this.buildParticipantIds(m, participantData)
 
         // Derive messageType from integration provider
         const provider = providerMap.get(m.integrationId) ?? 'google'
@@ -119,38 +203,13 @@ export class MessageQueryService {
           sentAt: m.sentAt?.toISOString() ?? null,
           receivedAt: m.receivedAt?.toISOString() ?? null,
           createdAt: m.createdAt.toISOString(),
-          // Inline sender info for display
-          from: m.from
-            ? {
-                id: m.from.id,
-                name: m.from.name,
-                displayName: m.from.displayName,
-                identifier: m.from.identifier,
-              }
-            : null,
-          replyTo: m.replyTo
-            ? {
-                id: m.replyTo.id,
-                name: m.replyTo.name,
-                displayName: m.replyTo.displayName,
-                identifier: m.replyTo.identifier,
-              }
-            : null,
-          // Participant IDs for detail views
-          fromParticipantId: m.fromId ?? participants.from,
-          replyToParticipantId: m.replyToId ?? participants.replyTo,
-          toParticipantIds: participants.to,
-          ccParticipantIds: participants.cc,
-          bccParticipantIds: participants.bcc,
+          participants,
           draftMode: (m.draftMode as DraftMode) ?? 'NONE',
           createdById: m.createdById,
-          // Message type derived from integration provider
           messageType,
-          // Send status for outbound messages
           sendStatus: (m.sendStatus as SendStatus) ?? null,
           providerError: m.providerError ?? null,
           attempts: m.attempts ?? 0,
-          // Attachments fetched separately if needed
           attachments: [],
         }
         return [m.id, meta]
@@ -162,42 +221,54 @@ export class MessageQueryService {
   }
 
   /**
-   * Get message IDs for a thread, sorted by date.
-   * Excludes draft messages by default.
+   * Build ParticipantId[] array from message data and participant relationships.
    */
-  async listMessageIds(
-    threadId: string,
-    options: ListMessageIdsOptions = {}
-  ): Promise<ListMessagesByThreadResult> {
-    const { includeDrafts = false } = options
+  private buildParticipantIds(
+    message: { fromId: string | null; replyToId: string | null },
+    participantData?: {
+      from: string | null
+      replyTo: string | null
+      to: string[]
+      cc: string[]
+      bcc: string[]
+    }
+  ): ParticipantId[] {
+    const participants: ParticipantId[] = []
 
-    logger.debug('Listing message IDs for thread', {
-      organizationId: this.organizationId,
-      threadId,
-      includeDrafts,
-    })
-
-    const conditions = [
-      eq(schema.Message.threadId, threadId),
-      eq(schema.Message.organizationId, this.organizationId),
-    ]
-
-    if (!includeDrafts) {
-      conditions.push(eq(schema.Message.draftMode, 'NONE'))
+    // From (prefer message.fromId, fallback to participant data)
+    const fromId = message.fromId ?? participantData?.from
+    if (fromId) {
+      participants.push(toParticipantId('from', fromId))
     }
 
-    const messages = await this.db
-      .select({ id: schema.Message.id })
-      .from(schema.Message)
-      .where(and(...conditions))
-      .orderBy(
-        sql`${schema.Message.receivedAt} ASC NULLS LAST`,
-        sql`${schema.Message.sentAt} ASC NULLS LAST`,
-        sql`${schema.Message.id} ASC`
-      )
+    // Reply-to
+    const replyToId = message.replyToId ?? participantData?.replyTo
+    if (replyToId) {
+      participants.push(toParticipantId('replyto', replyToId))
+    }
 
-    const ids = messages.map((m) => m.id)
-    return { ids, total: ids.length }
+    // To recipients
+    if (participantData?.to) {
+      for (const id of participantData.to) {
+        participants.push(toParticipantId('to', id))
+      }
+    }
+
+    // CC recipients
+    if (participantData?.cc) {
+      for (const id of participantData.cc) {
+        participants.push(toParticipantId('cc', id))
+      }
+    }
+
+    // BCC recipients
+    if (participantData?.bcc) {
+      for (const id of participantData.bcc) {
+        participants.push(toParticipantId('bcc', id))
+      }
+    }
+
+    return participants
   }
 
   /**

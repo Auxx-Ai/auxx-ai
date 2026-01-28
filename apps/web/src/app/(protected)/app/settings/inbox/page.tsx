@@ -1,6 +1,5 @@
-// /app/settings/inbox/page.tsx
-import { InboxList } from './_components/inbox-list'
-import { Card } from '@auxx/ui/components/card'
+// apps/web/src/app/(protected)/app/settings/inbox/page.tsx
+import { InboxList } from '~/components/inbox'
 
 export default function InboxesPage() {
   return <InboxList />

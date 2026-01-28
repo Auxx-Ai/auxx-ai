@@ -1,4 +1,4 @@
-// /app/settings/inbox/_components/inbox-integrations-tab.tsx
+// apps/web/src/components/inbox/inbox-integrations-tab.tsx
 'use client'
 
 import { useState } from 'react'
@@ -16,10 +16,11 @@ import { CheckCircle, ChevronRight, MailIcon, X } from 'lucide-react'
 import { Badge } from '@auxx/ui/components/badge'
 import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 import { useConfirm } from '~/hooks/use-confirm'
-import type { InboxWithRelations, BaseIntegration } from '@auxx/lib/types'
+import type { InboxWithIntegrations } from '@auxx/lib/inboxes'
 import { useRouter } from 'next/navigation'
 
-export function InboxIntegrationsTab({ inbox }: { inbox: InboxWithRelations }) {
+/** Tab component for managing inbox integrations */
+export function InboxIntegrationsTab({ inbox }: { inbox: InboxWithIntegrations }) {
   const router = useRouter()
   const [isRemoving, setIsRemoving] = useState(false)
 
@@ -41,7 +42,7 @@ export function InboxIntegrationsTab({ inbox }: { inbox: InboxWithRelations }) {
     },
   })
 
-  // Handle removing an integration with confirmation
+  /** Handle removing an integration with confirmation */
   const handleRemoveIntegration = async (integrationId: string) => {
     const confirmed = await confirm({
       title: 'Remove integration?',
@@ -58,14 +59,16 @@ export function InboxIntegrationsTab({ inbox }: { inbox: InboxWithRelations }) {
     }
   }
 
-  const getIntegrationName = (integration: BaseIntegration): string => {
+  /** Get display name for an integration */
+  const getIntegrationName = (integration: { name: string; provider: string }): string => {
     if (integration.name) {
       return integration.name
     }
     return integration.provider.charAt(0).toUpperCase() + integration.provider.slice(1)
   }
+
+  /** Navigate to integration details page */
   const handleGoToIntegration = (integrationId: string) => {
-    // Navigate to the integration details page
     router.push(`/app/settings/integrations/${integrationId}`)
   }
 
@@ -75,8 +78,6 @@ export function InboxIntegrationsTab({ inbox }: { inbox: InboxWithRelations }) {
       <ConfirmDialog />
 
       <div>
-        {/* <h3 className="mb-4 text-lg font-medium">Connected Integrations</h3> */}
-
         {/* Integrations table */}
         <Table>
           <TableHeader>
@@ -108,20 +109,12 @@ export function InboxIntegrationsTab({ inbox }: { inbox: InboxWithRelations }) {
                       variant="ghost"
                       size="icon"
                       onClick={(e) => {
-                        e.stopPropagation() // Prevent row click event
+                        e.stopPropagation()
                         handleGoToIntegration(integration.integrationId)
                       }}>
                       <ChevronRight className="h-4 w-4" />
                       <span className="sr-only">Go to Integration</span>
                     </Button>
-                    {/* <Button
-                      variant="ghost"
-                      size="icon"
-                      disabled={isRemoving}
-                      onClick={() => handleRemoveIntegration(integration.integrationId)}>
-                      <X className="h-4 w-4" />
-                      <span className="sr-only">Remove</span>
-                    </Button> */}
                   </TableCell>
                 </TableRow>
               ))
@@ -134,8 +127,6 @@ export function InboxIntegrationsTab({ inbox }: { inbox: InboxWithRelations }) {
             )}
           </TableBody>
         </Table>
-
-        {/* Add Integration button (implementation would be added in practice) */}
       </div>
     </>
   )

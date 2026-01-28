@@ -108,3 +108,18 @@ export function getFieldById(tableId: TableId, fieldId: FieldId): ResourceField 
   // Search by id
   return Object.values(fields).find((f) => f.id === fieldId)
 }
+
+/**
+ * Set of all system field keys across all resource types.
+ * Used to detect when field values are passed using field keys (e.g., 'name', 'status')
+ * instead of CustomField UUIDs.
+ *
+ * @example
+ * // Check if a key needs mapping to CustomField UUID
+ * if (SYSTEM_FIELD_KEYS.has('name')) {
+ *   // 'name' is a system field key, needs mapping
+ * }
+ */
+export const SYSTEM_FIELD_KEYS = new Set(
+  Object.values(RESOURCE_FIELD_REGISTRY).flatMap((fields) => Object.keys(fields))
+)

@@ -36,7 +36,7 @@ import { SendStatusIndicator } from './send-status-indicator'
 import { toastError } from '@auxx/ui/components/toast'
 import { AttachmentDisplay } from '~/components/files/utils/attachment-display'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { useMessage, useParticipantsArray } from '~/components/threads/hooks'
+import { useMessage, useMessageParticipants } from '~/components/threads/hooks'
 import type { MessageMeta } from '~/components/threads/store'
 
 interface EmailDisplayProps {
@@ -60,58 +60,47 @@ const EmailDisplay = ({ messageId, messageActions, isOpen }: EmailDisplayProps) 
   // Fetch message from store
   const { message, isLoading } = useMessage({ messageId })
 
-  // Collect all participant IDs from the message
-  const allParticipantIds = useMemo(() => {
-    if (!message) return []
-    return [
-      message.fromParticipantId,
-      ...message.toParticipantIds,
-      ...message.ccParticipantIds,
-    ].filter((id): id is string => !!id)
-  }, [message])
-
-  // Fetch all participants at once
-  const participants = useParticipantsArray(allParticipantIds)
+  // Fetch participants using the new hook
+  const { from, to, cc } = useMessageParticipants(message?.participants ?? [])
 
   // Build participants list for ParticipantList component
   const participantEntries = useMemo((): ParticipantListEntry[] => {
     if (!message) return []
 
-    const participantMap = new Map(participants.map((p) => [p.id, p]))
     const result: ParticipantListEntry[] = []
 
     // FROM participant
-    if (message.fromParticipantId) {
+    if (from) {
       result.push({
         id: `${message.id}-from`,
-        participantId: message.fromParticipantId,
+        participantId: from.id,
         role: 'FROM',
-        participant: participantMap.get(message.fromParticipantId),
+        participant: from,
       })
     }
 
     // TO participants
-    for (const toId of message.toParticipantIds) {
+    for (const toParticipant of to) {
       result.push({
-        id: `${message.id}-to-${toId}`,
-        participantId: toId,
+        id: `${message.id}-to-${toParticipant.id}`,
+        participantId: toParticipant.id,
         role: 'TO',
-        participant: participantMap.get(toId),
+        participant: toParticipant,
       })
     }
 
     // CC participants
-    for (const ccId of message.ccParticipantIds) {
+    for (const ccParticipant of cc) {
       result.push({
-        id: `${message.id}-cc-${ccId}`,
-        participantId: ccId,
+        id: `${message.id}-cc-${ccParticipant.id}`,
+        participantId: ccParticipant.id,
         role: 'CC',
-        participant: participantMap.get(ccId),
+        participant: ccParticipant,
       })
     }
 
     return result
-  }, [message, participants])
+  }, [message, from, to, cc])
 
   // Retry send mutation
   const retrySendMessage = api.thread.retrySendMessage.useMutation({
@@ -172,7 +161,7 @@ const EmailDisplay = ({ messageId, messageActions, isOpen }: EmailDisplayProps) 
   }
 
   const isMe = !message.isInbound
-  const senderInitials = message.from?.displayName?.charAt(0)?.toUpperCase() ?? '?'
+  const senderInitials = from?.displayName?.charAt(0)?.toUpperCase() ?? '?'
 
   return (
     <div

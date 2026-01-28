@@ -25,7 +25,7 @@ import { WorkflowSubMenu } from '~/components/workflow/workflow-submenu'
 
 // NEW: Import from new hooks
 import { useThread, useMessage, useThreadReadStatus, useThreadDraftStatus } from '~/components/threads/hooks'
-import type { ThreadTagSummary } from '~/components/threads/store'
+import { useThreadSelectionStore, type ThreadTagSummary } from '~/components/threads/store'
 
 /**
  * Processing menu component for triggering manual message processing
@@ -112,6 +112,10 @@ export function MailThreadItem({
   const { isUnread } = useThreadReadStatus(threadId)
   const { hasDraft } = useThreadDraftStatus(threadId)
 
+  // --- Selection store actions ---
+  const toggleSelection = useThreadSelectionStore((s) => s.toggleSelection)
+  const setActiveThread = useThreadSelectionStore((s) => s.setActiveThread)
+
   // --- Thread mutations ---
   const threadMutations = useThreadMutations(threadId, {
     contextType,
@@ -146,14 +150,8 @@ export function MailThreadItem({
 
       if (viewMode === 'edit') {
         event.preventDefault()
-        const syntheticEvent = {
-          ...event,
-          metaKey: true,
-          ctrlKey: true,
-          preventDefault: () => {},
-          stopPropagation: () => {},
-        }
-        handleThreadClick(threadId, syntheticEvent as React.MouseEvent)
+        toggleSelection(threadId)
+        setActiveThread(threadId)
       } else {
         handleThreadClick(threadId, event)
 
@@ -163,7 +161,7 @@ export function MailThreadItem({
         }
       }
     },
-    [handleThreadClick, threadId, threadMutations.markReadMutation, isUnread, viewMode]
+    [handleThreadClick, threadId, threadMutations.markReadMutation, isUnread, viewMode, toggleSelection, setActiveThread]
   )
 
   // --- Derived values ---
@@ -218,23 +216,14 @@ export function MailThreadItem({
 
         <div className="absolute top-3 left-1">
           {viewMode === 'edit' ? (
-            <Checkbox
-              checked={isMultiSelected}
-              onCheckedChange={() => {
-                const syntheticEvent = {
-                  preventDefault: () => {},
-                  stopPropagation: () => {},
-                  detail: 1,
-                  metaKey: true,
-                  ctrlKey: true,
-                  currentTarget: null,
-                  target: null,
-                  nativeEvent: null,
-                } as React.MouseEvent
-                handleThreadClick(threadId, syntheticEvent)
-              }}
-              onClick={(e) => e.stopPropagation()}
-            />
+            <div
+              onClick={(e) => {
+                e.stopPropagation()
+                toggleSelection(threadId)
+                setActiveThread(threadId)
+              }}>
+              <Checkbox checked={isMultiSelected} />
+            </div>
           ) : (
             <div className="flex-none rounded-full border p-0.5 text-blue-500 group-aria-selected:bg-background group-aria-selected:border-info/90">
               {getIntegrationIcon(thread.integrationProvider)}

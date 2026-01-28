@@ -52,7 +52,8 @@ export const messageRouter = createTRPCRouter({
     }),
 
   /**
-   * Get message IDs for a thread.
+   * Get messages for a thread with full metadata.
+   * Returns messages with participants as ParticipantId[] array.
    */
   listByThread: protectedProcedure
     .input(
@@ -73,22 +74,22 @@ export const messageRouter = createTRPCRouter({
       const messageQuery = new MessageQueryService(organizationId, ctx.db)
 
       try {
-        logger.debug('Listing message IDs for thread', {
+        logger.debug('Fetching messages for thread', {
           threadId: input.threadId,
           includeDrafts: input.includeDrafts,
         })
-        return await messageQuery.listMessageIds(input.threadId, {
+        return await messageQuery.getMessagesByThread(input.threadId, {
           includeDrafts: input.includeDrafts,
         })
       } catch (error: unknown) {
-        logger.error('Failed to list message IDs for thread', {
+        logger.error('Failed to fetch messages for thread', {
           organizationId,
           threadId: input.threadId,
           error: error instanceof Error ? error.message : error,
         })
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to list messages for thread.',
+          message: 'Failed to fetch messages for thread.',
         })
       }
     }),

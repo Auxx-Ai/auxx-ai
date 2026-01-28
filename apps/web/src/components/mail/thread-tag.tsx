@@ -15,13 +15,14 @@ import { TagFormDialog } from '~/app/(protected)/app/settings/tags/_components/t
 import { useConfirm } from '~/hooks/use-confirm'
 import { Pencil, Trash2 } from 'lucide-react'
 import { toastError } from '@auxx/ui/components/toast'
+import type { ThreadTagSummary } from '~/components/threads/store'
 
 /**
  * Displays a single tag for a thread with dropdown actions
- * @param tag The tag relationship object
+ * @param tag The tag summary object (flat structure from store)
  * @param threadId The thread ID the tag is attached to
  */
-export function ThreadTag({ tag, threadId }: { tag: any; threadId: string }) {
+export function ThreadTag({ tag, threadId }: { tag: ThreadTagSummary; threadId: string }) {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [confirm, ConfirmDialog] = useConfirm()
   const utils = api.useUtils()
@@ -65,12 +66,12 @@ export function ThreadTag({ tag, threadId }: { tag: any; threadId: string }) {
     })
 
     if (confirmed) {
-      await deleteTag.mutateAsync({ id: tag.tag.id })
+      await deleteTag.mutateAsync({ id: tag.id })
     }
   }
 
   async function handleRemoveFromThread() {
-    await untagEntity.mutateAsync({ entityId: threadId, entityType: 'thread', tagId: tag.tag.id })
+    await untagEntity.mutateAsync({ entityId: threadId, entityType: 'thread', tagId: tag.id })
   }
 
   return (
@@ -78,12 +79,11 @@ export function ThreadTag({ tag, threadId }: { tag: any; threadId: string }) {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <div
-            key={tag.tag.id}
             className={cn(
               'flex cursor-pointer items-center gap-1 overflow-hidden whitespace-nowrap rounded-[5px] border border-foreground/20 px-[3px] py-px text-xs',
               'data-[state=open]:bg-accent data-[state=open]:text-accent-foreground'
             )}>
-            {tag.tag.emoji} {tag.tag.title}
+            {tag.emoji} {tag.title}
           </div>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
@@ -104,7 +104,7 @@ export function ThreadTag({ tag, threadId }: { tag: any; threadId: string }) {
       <TagFormDialog
         open={isEditDialogOpen}
         onOpenChange={setIsEditDialogOpen}
-        editingTag={tag.tag}
+        editingTag={tag}
         onSuccess={handleEditSuccess}
       />
 

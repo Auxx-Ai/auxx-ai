@@ -37,6 +37,16 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     plural: 'Groups',
     icon: 'users',
     color: 'purple',
+    isVisible: false,
+  },
+  {
+    entityType: 'inbox',
+    apiSlug: 'inboxes',
+    singular: 'Inbox',
+    plural: 'Inboxes',
+    icon: 'inbox',
+    color: 'indigo',
+    isVisible: false,
   },
 ]
 
@@ -56,6 +66,10 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
   part: {
     primaryDisplayField: 'title',
     secondaryDisplayField: 'sku',
+  },
+  inbox: {
+    primaryDisplayField: 'name',
+    secondaryDisplayField: undefined,
   },
 }
 

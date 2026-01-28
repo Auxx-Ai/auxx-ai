@@ -16,6 +16,7 @@ export interface EntityDefRecord {
   plural: string
   icon: string
   color: string
+  isVisible: boolean
 }
 
 export type EntityDefMap = Map<string, EntityDefRecord>
@@ -49,6 +50,8 @@ export interface SystemEntityConfig {
   plural: string
   icon: string
   color: string
+  /** Whether this entity should appear in the sidebar (default: true) */
+  isVisible?: boolean
 }
 
 /**

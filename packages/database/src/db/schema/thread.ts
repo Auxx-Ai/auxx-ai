@@ -19,7 +19,7 @@ import { Integration } from './integration'
 import { Organization } from './organization'
 import { Message } from './message'
 import { Comment } from './comment'
-import { Inbox } from './inbox'
+import { EntityInstance } from './entity-instance'
 
 /** Drizzle table for thread */
 export const Thread = pgTable(
@@ -47,8 +47,8 @@ export const Thread = pgTable(
     latestMessageId: text().references((): AnyPgColumn => Message.id, { onUpdate: 'cascade', onDelete: 'set null' }),
     /** Denormalized: ID of the latest non-deleted comment on the thread */
     latestCommentId: text().references((): AnyPgColumn => Comment.id, { onUpdate: 'cascade', onDelete: 'set null' }),
-    /** Denormalized: Inbox this thread belongs to (via InboxIntegration) */
-    inboxId: text().references((): AnyPgColumn => Inbox.id, { onUpdate: 'cascade', onDelete: 'set null' }),
+    /** Denormalized: Inbox EntityInstance this thread belongs to (via InboxIntegration) */
+    inboxId: text().references((): AnyPgColumn => EntityInstance.id, { onUpdate: 'cascade', onDelete: 'set null' }),
     closedAt: timestamp({ precision: 3 }),
     repliedAt: timestamp({ precision: 3 }),
     waitingSince: timestamp({ precision: 3 }),

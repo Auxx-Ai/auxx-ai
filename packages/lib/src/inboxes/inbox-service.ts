@@ -1,917 +1,448 @@
-// lib/inbox/inbox-service.ts
-import { InboxStatus, MemberType, BuiltInEntityType, ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
-import { type InboxIntegrationEntity as InboxIntegration } from '@auxx/database/models'
+// packages/lib/src/inboxes/inbox-service.ts
 
-import { database as db, schema, type Database } from '@auxx/database'
-import { eq, and, or, inArray, sql, desc } from 'drizzle-orm'
-import { setInstanceAccess, getInstanceAccess, getUserAccessibleInstances } from '@auxx/lib/resource-access'
-import { toRecordId, parseRecordId } from '@auxx/types/resource'
-
+import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { database as defaultDb, schema, type Database } from '@auxx/database'
+import { eq, and } from 'drizzle-orm'
+import {
+  checkAccess,
+  getUserAccessibleInstances,
+  setInstanceAccess,
+  type ResourceAccessContext,
+} from '@auxx/lib/resource-access'
+import { toRecordId, parseRecordId, type RecordId } from '@auxx/types/resource'
 import { createScopedLogger } from '@auxx/logger'
-import { getRedisClient } from '@auxx/redis'
+import { UnifiedCrudHandler } from '../resources/crud'
 import type {
   CreateInboxInput,
   InboxAccessInput,
-  InboxWithRelations,
+  Inbox,
+  InboxWithIntegrations,
   UpdateInboxInput,
+  InboxVisibility,
 } from './types'
 
 const logger = createScopedLogger('inbox-service')
 
-const DefaultInboxWith = {
-  integrations: {
-    with: { integration: { columns: { name: true, email: true, provider: true } } },
-  },
-  memberAccess: true,
-  // Note: groupAccess removed - migrated to ResourceAccess
-} as const
+/**
+ * Helper to extract instance ID from RecordId
+ */
+function getInstanceId(recordId: RecordId): string {
+  return parseRecordId(recordId).entityInstanceId
+}
 
+/**
+ * Service for managing inboxes.
+ * Uses RecordId branded types throughout for type safety.
+ * Delegates core CRUD to UnifiedCrudHandler, uses ResourceAccess helpers for permissions.
+ */
 export class InboxService {
-  private organizationId: string
-  private enableCache: boolean
-  private cacheTtl: number // in seconds
+  private crudHandler: UnifiedCrudHandler
+  private db: Database
+  private ctx: ResourceAccessContext
 
-  /**
-   * Create a new InboxService instance
-   * @param db Database instance (not used - we use the imported db directly)
-   * @param organizationId Organization ID to scope operations to
-   * @param options Optional service configuration
-   */
   constructor(
     db: Database,
-    organizationId: string,
-    options: { enableCache?: boolean; cacheTtl?: number } = {}
+    private organizationId: string,
+    private userId?: string
   ) {
-    this.organizationId = organizationId
-    this.enableCache = options.enableCache ?? false // Enable by default
-    this.cacheTtl = options.cacheTtl ?? 300 // 5 minutes default TTL
+    this.db = db ?? defaultDb
+    this.crudHandler = new UnifiedCrudHandler(organizationId, userId ?? '', this.db)
+    this.ctx = { db: this.db, organizationId, userId: userId ?? '' }
   }
 
-  /**
-   * Get cache key for user inboxes
-   * @param userId User ID
-   * @returns Cache key string
-   */
-  private getUserInboxesCacheKey(userId: string): string {
-    return `inbox:user:${userId}:org:${this.organizationId}`
-  }
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CRUD OPERATIONS (delegated to UnifiedCrudHandler)
+  // ═══════════════════════════════════════════════════════════════════════════
 
   /**
-   * Get cache key for organization inboxes
-   * @returns Cache key string
+   * Create a new inbox (returns Inbox which includes recordId)
    */
-  private getOrgInboxesCacheKey(): string {
-    return `inbox:org:${this.organizationId}`
-  }
+  async createInbox(input: CreateInboxInput): Promise<Inbox> {
+    logger.info('Creating new inbox', { organizationId: this.organizationId, name: input.name })
 
-  /**
-   * Try to get data from cache
-   * @param key Cache key
-   * @returns Cached data or null if not found
-   */
-  private async getFromCache<T>(key: string): Promise<T | null> {
-    if (!this.enableCache) return null
-
-    try {
-      const redis = await getRedisClient(false)
-      if (!redis) return null
-
-      const cachedData = await redis.get(key)
-      if (cachedData) {
-        return JSON.parse(cachedData) as T
-      }
-    } catch (error) {
-      logger.warn('Cache retrieval failed', { error, key })
+    const values: Record<string, unknown> = {
+      name: input.name,
+      description: input.description ?? null,
+      color: input.color ?? '#4F46E5',
+      status: input.status ?? 'ACTIVE',
+      visibility: input.visibility ?? 'org_members',
+      settings: input.settings ?? {},
     }
 
-    return null
-  }
+    const result = await this.crudHandler.create('inbox', values)
+    const recordId = toRecordId('inbox', result.instance.id)
 
-  /**
-   * Set data in cache
-   * @param key Cache key
-   * @param data Data to cache
-   * @returns Success status
-   */
-  private async setInCache<T>(key: string, data: T): Promise<boolean> {
-    if (!this.enableCache) return false
-
-    try {
-      const redis = await getRedisClient(false)
-      if (!redis) return false
-
-      await redis.set(key, JSON.stringify(data), 'EX', this.cacheTtl)
-      return true
-    } catch (error) {
-      logger.warn('Cache storage failed', { error, key })
-      return false
+    // Set default permissions: org_members visibility + creator as admin
+    await this.setVisibilityAccess(recordId, input.visibility ?? 'org_members')
+    if (this.userId) {
+      await setInstanceAccess(this.ctx, recordId, ResourceGranteeType.user, [
+        { granteeId: this.userId, permission: ResourcePermission.admin },
+      ])
     }
+
+    return this.resolveInbox(recordId)
   }
 
   /**
-   * Invalidate all inbox caches for an organization
+   * Get a single inbox by RecordId
    */
-  async invalidateAllInboxCaches(): Promise<void> {
-    if (!this.enableCache) return
+  async getInbox(recordId: RecordId): Promise<Inbox | null> {
+    const instance = await this.crudHandler.getById(recordId)
+    return instance ? this.resolveInbox(recordId) : null
+  }
 
-    try {
-      const redis = await getRedisClient(false)
-      if (!redis || !redis.keys) {
-        logger.debug('Redis unavailable, skipping cache invalidation')
-        return
+  /**
+   * Get a single inbox by raw ID (convenience method)
+   */
+  async getInboxById(inboxId: string): Promise<Inbox | null> {
+    return this.getInbox(toRecordId('inbox', inboxId))
+  }
+
+  /**
+   * Update an inbox by RecordId
+   */
+  async updateInbox(recordId: RecordId, input: UpdateInboxInput): Promise<Inbox> {
+    logger.info('Updating inbox', { recordId, input })
+
+    const values: Record<string, unknown> = {}
+
+    if (input.name !== undefined) values.name = input.name
+    if (input.description !== undefined) values.description = input.description
+    if (input.color !== undefined) values.color = input.color
+    if (input.status !== undefined) values.status = input.status
+    if (input.settings !== undefined) values.settings = input.settings
+    if (input.visibility !== undefined) {
+      values.visibility = input.visibility
+      await this.setVisibilityAccess(recordId, input.visibility)
+    }
+
+    if (Object.keys(values).length > 0) {
+      await this.crudHandler.update(recordId, values)
+    }
+
+    return this.resolveInbox(recordId)
+  }
+
+  /**
+   * Update an inbox by raw ID (convenience method)
+   */
+  async updateInboxById(inboxId: string, input: UpdateInboxInput): Promise<Inbox> {
+    return this.updateInbox(toRecordId('inbox', inboxId), input)
+  }
+
+  /**
+   * Delete an inbox by RecordId
+   */
+  async deleteInbox(recordId: RecordId): Promise<void> {
+    const instanceId = getInstanceId(recordId)
+    logger.info('Deleting inbox', { recordId, instanceId })
+
+    // Delete related records first
+    await this.db.transaction(async (tx) => {
+      // Delete inbox integrations
+      await tx.delete(schema.InboxIntegration).where(eq(schema.InboxIntegration.inboxId, instanceId))
+
+      // Delete resource access records
+      await tx.delete(schema.ResourceAccess).where(
+        and(
+          eq(schema.ResourceAccess.organizationId, this.organizationId),
+          eq(schema.ResourceAccess.entityInstanceId, instanceId)
+        )
+      )
+    })
+
+    // Delete the entity instance
+    await this.crudHandler.delete(recordId)
+  }
+
+  /**
+   * Delete an inbox by raw ID (convenience method)
+   */
+  async deleteInboxById(inboxId: string): Promise<void> {
+    return this.deleteInbox(toRecordId('inbox', inboxId))
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // QUERY OPERATIONS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Get all inboxes for the organization
+   */
+  async getInboxes(): Promise<Inbox[]> {
+    const { items } = await this.crudHandler.list('inbox')
+    return Promise.all(items.map((i) => this.resolveInbox(toRecordId('inbox', i.id))))
+  }
+
+  /**
+   * Get all inboxes accessible to a user
+   */
+  async getInboxesForUser(userId: string): Promise<Inbox[]> {
+    const result = await getUserAccessibleInstances(this.ctx, userId, 'inbox')
+
+    // If user has type-level access, return all inboxes
+    if (result.hasTypeAccess) {
+      return this.getInboxes()
+    }
+
+    return Promise.all(result.instances.map((i) => this.resolveInbox(i.recordId)))
+  }
+
+  /**
+   * Check if user has access to an inbox
+   */
+  async hasUserAccess(recordId: RecordId, userId: string): Promise<boolean> {
+    const result = await checkAccess(this.ctx, { recordId, userId })
+    return result.hasAccess
+  }
+
+  /**
+   * Check if user has access to an inbox by raw ID (convenience method)
+   */
+  async hasUserAccessById(inboxId: string, userId: string): Promise<boolean> {
+    return this.hasUserAccess(toRecordId('inbox', inboxId), userId)
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ACCESS CONTROL
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Update inbox access (groups, members, visibility)
+   */
+  async updateInboxAccess(recordId: RecordId, accessData: InboxAccessInput): Promise<Inbox> {
+    if (accessData.visibility !== undefined) {
+      await this.crudHandler.setFieldValue(recordId, 'visibility', accessData.visibility)
+      await this.setVisibilityAccess(recordId, accessData.visibility)
+    }
+    if (accessData.memberIds !== undefined) {
+      await setInstanceAccess(
+        this.ctx,
+        recordId,
+        ResourceGranteeType.user,
+        accessData.memberIds.map((id) => ({ granteeId: id, permission: ResourcePermission.view }))
+      )
+    }
+    if (accessData.groupIds !== undefined) {
+      await setInstanceAccess(
+        this.ctx,
+        recordId,
+        ResourceGranteeType.group,
+        accessData.groupIds.map((id) => ({ granteeId: id, permission: ResourcePermission.view }))
+      )
+    }
+
+    return this.resolveInbox(recordId)
+  }
+
+  /**
+   * Set role-based access based on visibility setting
+   */
+  private async setVisibilityAccess(recordId: RecordId, visibility: InboxVisibility): Promise<void> {
+    const grants =
+      visibility === 'org_members'
+        ? [{ granteeId: 'org_member', permission: ResourcePermission.view }]
+        : []
+    await setInstanceAccess(this.ctx, recordId, ResourceGranteeType.role, grants)
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // INTEGRATION MANAGEMENT
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Add an integration to an inbox
+   */
+  async addIntegration(
+    recordId: RecordId,
+    integrationId: string,
+    isDefault: boolean = false,
+    settings?: Record<string, unknown>
+  ) {
+    const instanceId = getInstanceId(recordId)
+    logger.info('Adding integration to inbox', { instanceId, integrationId, isDefault })
+
+    return this.db.transaction(async (tx) => {
+      // Check if integration already assigned somewhere
+      const existing = await tx.query.InboxIntegration.findFirst({
+        where: eq(schema.InboxIntegration.integrationId, integrationId),
+      })
+
+      // Verify integration belongs to this organization
+      const integration = await tx.query.Integration.findFirst({
+        where: and(
+          eq(schema.Integration.id, integrationId),
+          eq(schema.Integration.organizationId, this.organizationId)
+        ),
+      })
+
+      if (!integration) {
+        throw new Error(`Integration ${integrationId} not found`)
       }
 
-      const pattern = `inbox:*:org:${this.organizationId}*`
-
-      // Find all keys matching the pattern
-      const keys = await redis.keys(pattern)
-      logger.info('Found keys to invalidate', { keys, pattern })
-      // Delete all matching keys
-      if (keys.length > 0) {
-        await redis!.del(...keys)
-        logger.info('Invalidated all inbox caches', {
-          organizationId: this.organizationId,
-          keyCount: keys.length,
-        })
-      }
-    } catch (error) {
-      logger.error('Error invalidating inbox caches', { error })
-      // Continue execution even if cache invalidation fails
-    }
-  }
-
-  /**
-   * Invalidate inbox cache for a specific user
-   * @param userId User ID
-   */
-  async invalidateUserInboxCache(userId: string): Promise<void> {
-    if (!this.enableCache) return
-
-    try {
-      const redis = await getRedisClient(false)
-      if (!redis) {
-        logger.debug('Redis unavailable, skipping user cache invalidation')
-        return
+      // If this is the default integration, unset other defaults
+      if (isDefault) {
+        await tx
+          .update(schema.InboxIntegration)
+          .set({ isDefault: false, updatedAt: new Date() })
+          .where(
+            and(
+              eq(schema.InboxIntegration.inboxId, instanceId),
+              eq(schema.InboxIntegration.isDefault, true)
+            )
+          )
       }
 
-      const key = this.getUserInboxesCacheKey(userId)
-      await redis.del(key)
-      logger.info('Invalidated user inbox cache', { userId })
-    } catch (error) {
-      logger.error('Error invalidating user inbox cache', { error, userId })
-      // Continue execution even if cache invalidation fails
-    }
-  }
+      if (existing) {
+        // Update existing assignment
+        const [updated] = await tx
+          .update(schema.InboxIntegration)
+          .set({ isDefault, inboxId: instanceId, settings: settings ?? {}, updatedAt: new Date() })
+          .where(eq(schema.InboxIntegration.id, existing.id))
+          .returning()
+        return updated
+      }
 
-  /**
-   * Create a new inbox for the organization
-   * @param data Inbox creation data
-   * @returns The created inbox with its relations
-   */
-  async createInbox(data: CreateInboxInput): Promise<InboxWithRelations> {
-    try {
-      logger.info('Creating new inbox', { organizationId: this.organizationId, name: data.name })
-
-      const [inbox] = await db
-        .insert(schema.Inbox)
+      // Create new assignment
+      const [created] = await tx
+        .insert(schema.InboxIntegration)
         .values({
-          name: data.name,
-          description: data.description,
-          color: data.color,
-          status: data.status || InboxStatus.ACTIVE,
-          settings: data.settings ? data.settings : {},
-          organizationId: this.organizationId,
-          // Access control fields directly on Inbox
-          allowAllMembers: data.allowAllMembers ?? true,
-          enableMemberAccess: data.enableMemberAccess ?? false,
-          enableGroupAccess: data.enableGroupAccess ?? false,
+          inboxId: instanceId,
+          integrationId,
+          isDefault,
+          settings: settings ?? {},
           updatedAt: new Date(),
         })
         .returning()
 
-      // Get the created inbox with relations
-      const inboxWithRelations = await db.query.Inbox.findFirst({
-        where: eq(schema.Inbox.id, inbox!.id),
-        with: DefaultInboxWith,
-      })
-
-      if (!inboxWithRelations) {
-        throw new Error('Failed to retrieve created inbox')
-      }
-
-      // Invalidate caches after successful creation
-      await this.invalidateAllInboxCaches()
-
-      return inboxWithRelations
-    } catch (error) {
-      logger.error('Error creating inbox', { error, data, organizationId: this.organizationId })
-      throw error
-    }
+      return created
+    })
   }
 
   /**
-   * Get all inboxes for the organization
-   * @returns Array of inboxes with their relations
+   * Add an integration to an inbox by raw ID (convenience method)
    */
-  async getInboxes(): Promise<InboxWithRelations[]> {
-    try {
-      const cacheKey = this.getOrgInboxesCacheKey()
-      logger.info('Fetching organization inboxes', { cacheKey })
-
-      // Try to get from cache
-      const cachedInboxes = await this.getFromCache<InboxWithRelations[]>(cacheKey)
-
-      if (cachedInboxes) {
-        logger.info('Retrieved organization inboxes from cache', {
-          organizationId: this.organizationId,
-        })
-        return cachedInboxes
-      }
-
-      logger.info('Fetching inboxes from database', { organizationId: this.organizationId })
-
-      const inboxes = await db.query.Inbox.findMany({
-        where: eq(schema.Inbox.organizationId, this.organizationId),
-        with: DefaultInboxWith,
-        orderBy: [desc(schema.Inbox.createdAt)],
-      })
-
-      // Store in cache for future requests
-      await this.setInCache(cacheKey, inboxes)
-
-      return inboxes
-    } catch (error) {
-      logger.error('Error fetching inboxes', { error, organizationId: this.organizationId })
-      throw error
-    }
-  }
-
-  /**
-   * Get a specific inbox by ID
-   * @param inboxId The inbox ID
-   * @returns The inbox with its relations, or null if not found
-   */
-  async getInbox(inboxId: string): Promise<InboxWithRelations | null> {
-    try {
-      const cacheKey = `inbox:${inboxId}:org:${this.organizationId}`
-
-      // Try to get from cache
-      const cachedInbox = await this.getFromCache<InboxWithRelations>(cacheKey)
-      if (cachedInbox) {
-        logger.info('Retrieved inbox from cache', { inboxId })
-        return cachedInbox
-      }
-
-      logger.info('Fetching inbox from database', { inboxId, organizationId: this.organizationId })
-
-      const inbox = await db.query.Inbox.findFirst({
-        where: and(
-          eq(schema.Inbox.id, inboxId),
-          eq(schema.Inbox.organizationId, this.organizationId)
-        ),
-        with: DefaultInboxWith,
-      })
-
-      // Only cache if inbox exists
-      if (inbox) {
-        await this.setInCache(cacheKey, inbox)
-      }
-
-      return inbox || null
-    } catch (error) {
-      logger.error('Error fetching inbox', { error, inboxId, organizationId: this.organizationId })
-      throw error
-    }
-  }
-
-  /**
-   * Update an existing inbox
-   * @param inboxId The inbox ID
-   * @param data Update data
-   * @returns The updated inbox with its relations
-   */
-  async updateInbox(inboxId: string, data: UpdateInboxInput): Promise<InboxWithRelations> {
-    try {
-      logger.info('Updating inbox', { inboxId, organizationId: this.organizationId, data })
-
-      const updateData: Partial<typeof schema.Inbox.$inferInsert> = {
-        updatedAt: new Date(),
-      }
-
-      if (data.name !== undefined) updateData.name = data.name
-      if (data.description !== undefined) updateData.description = data.description
-      if (data.color !== undefined) updateData.color = data.color
-      if (data.status !== undefined) updateData.status = data.status
-      if (data.settings !== undefined) updateData.settings = data.settings
-
-      await db
-        .update(schema.Inbox)
-        .set(updateData)
-        .where(
-          and(eq(schema.Inbox.id, inboxId), eq(schema.Inbox.organizationId, this.organizationId))
-        )
-
-      // Get updated inbox with relations
-      const result = await db.query.Inbox.findFirst({
-        where: and(
-          eq(schema.Inbox.id, inboxId),
-          eq(schema.Inbox.organizationId, this.organizationId)
-        ),
-        with: DefaultInboxWith,
-      })
-
-      if (!result) {
-        throw new Error('Inbox not found after update')
-      }
-
-      // Invalidate caches after successful update
-      await this.invalidateAllInboxCaches()
-
-      return result
-    } catch (error) {
-      logger.error('Error updating inbox', {
-        error,
-        inboxId,
-        organizationId: this.organizationId,
-        data,
-      })
-      throw error
-    }
-  }
-
-  /**
-   * Delete an inbox
-   * @param inboxId The inbox ID
-   * @returns True if successful, throws an error otherwise
-   */
-  async deleteInbox(inboxId: string): Promise<boolean> {
-    try {
-      logger.info('Deleting inbox', { inboxId, organizationId: this.organizationId })
-
-      await db.transaction(async (tx) => {
-        // Delete all related records in correct order
-        await tx
-          .delete(schema.InboxMemberAccess)
-          .where(eq(schema.InboxMemberAccess.inboxId, inboxId))
-
-        // Delete ResourceAccess records for this inbox
-        await tx
-          .delete(schema.ResourceAccess)
-          .where(
-            and(
-              eq(schema.ResourceAccess.entityDefinitionId, BuiltInEntityType.inbox),
-              eq(schema.ResourceAccess.entityInstanceId, inboxId)
-            )
-          )
-
-        await tx.delete(schema.InboxIntegration).where(eq(schema.InboxIntegration.inboxId, inboxId))
-
-        // Finally delete the inbox itself
-        await tx
-          .delete(schema.Inbox)
-          .where(
-            and(eq(schema.Inbox.id, inboxId), eq(schema.Inbox.organizationId, this.organizationId))
-          )
-      })
-
-      // Invalidate caches after successful deletion
-      await this.invalidateAllInboxCaches()
-
-      return true
-    } catch (error) {
-      logger.error('Error deleting inbox', { error, inboxId, organizationId: this.organizationId })
-      throw error
-    }
-  }
-
-  /**
-   * Add an integration to an inbox
-   * @param inboxId The inbox ID
-   * @param integrationId The integration ID
-   * @param isDefault Whether this is the default integration
-   * @param settings Integration-specific settings
-   * @returns The created inbox integration
-   */
-  async addIntegration(
+  async addIntegrationById(
     inboxId: string,
     integrationId: string,
     isDefault: boolean = false,
-    settings?: Record<string, any>
-  ): Promise<InboxIntegration | undefined> {
-    try {
-      logger.info('Adding integration to inbox', { inboxId, integrationId, isDefault })
-
-      const result = await db.transaction(async (tx) => {
-        // Check if the integration is already assigned to another inbox
-        const existingAssignment = await tx.query.InboxIntegration.findFirst({
-          where: eq(schema.InboxIntegration.integrationId, integrationId),
-          columns: { id: true },
-        })
-
-        if (existingAssignment) {
-          // throw new Error(
-          //   `Integration ${integrationId} is already assigned to inbox ${existingAssignment.inboxId}`
-          // )
-        }
-
-        // Check if the integration belongs to the same organization as the service
-        const integration = await tx.query.Integration.findFirst({
-          where: and(
-            eq(schema.Integration.id, integrationId),
-            eq(schema.Integration.organizationId, this.organizationId)
-          ),
-        })
-
-        if (!integration) {
-          throw new Error(
-            `Integration ${integrationId} not found or not associated with this organization`
-          )
-        }
-
-        // If this is the default integration, ensure no other integration is default
-        if (isDefault) {
-          await tx
-            .update(schema.InboxIntegration)
-            .set({ isDefault: false, updatedAt: new Date() })
-            .where(
-              and(
-                eq(schema.InboxIntegration.inboxId, inboxId),
-                eq(schema.InboxIntegration.isDefault, true)
-              )
-            )
-        }
-
-        if (existingAssignment) {
-          // If the integration already exists, update it
-          const [updated] = await tx
-            .update(schema.InboxIntegration)
-            .set({ isDefault, inboxId, settings: settings || {}, updatedAt: new Date() })
-            .where(eq(schema.InboxIntegration.id, existingAssignment.id))
-            .returning()
-
-          return updated
-        } else {
-          const [created] = await tx
-            .insert(schema.InboxIntegration)
-            .values({
-              inboxId,
-              integrationId,
-              isDefault,
-              settings: settings || {},
-              updatedAt: new Date(),
-            })
-            .returning()
-
-          return created
-        }
-      })
-
-      // Invalidate caches after successful integration
-      await this.invalidateAllInboxCaches()
-
-      return result
-    } catch (error) {
-      logger.error('Error adding integration to inbox', { error, inboxId, integrationId })
-      throw error
-    }
+    settings?: Record<string, unknown>
+  ) {
+    return this.addIntegration(toRecordId('inbox', inboxId), integrationId, isDefault, settings)
   }
 
   /**
    * Remove an integration from an inbox
-   * @param inboxId The inbox ID
-   * @param integrationId The integration ID
-   * @returns True if successful, throws an error otherwise
    */
-  async removeIntegration(inboxId: string, integrationId: string): Promise<boolean> {
-    try {
-      logger.info('Removing integration from inbox', { inboxId, integrationId })
+  async removeIntegration(recordId: RecordId, integrationId: string): Promise<boolean> {
+    const instanceId = getInstanceId(recordId)
+    logger.info('Removing integration from inbox', { instanceId, integrationId })
 
-      await db
-        .delete(schema.InboxIntegration)
-        .where(
-          and(
-            eq(schema.InboxIntegration.inboxId, inboxId),
-            eq(schema.InboxIntegration.integrationId, integrationId)
-          )
+    await this.db
+      .delete(schema.InboxIntegration)
+      .where(
+        and(
+          eq(schema.InboxIntegration.inboxId, instanceId),
+          eq(schema.InboxIntegration.integrationId, integrationId)
         )
-
-      // Invalidate caches after successful removal
-      await this.invalidateAllInboxCaches()
-
-      return true
-    } catch (error) {
-      logger.error('Error removing integration from inbox', { error, inboxId, integrationId })
-      throw error
-    }
-  }
-
-  /**
-   * Update inbox access settings
-   * @param inboxId The inbox ID
-   * @param accessData Access configuration data
-   * @returns The updated inbox with its relations
-   */
-  async updateInboxAccess(
-    inboxId: string,
-    accessData: InboxAccessInput
-  ): Promise<InboxWithRelations> {
-    try {
-      logger.info('Updating inbox access', {
-        inboxId,
-        organizationId: this.organizationId,
-        accessData,
-      })
-
-      const result = await db.transaction(async (tx) => {
-        // Update inbox access fields directly
-        await tx
-          .update(schema.Inbox)
-          .set({
-            allowAllMembers: accessData.allowAllMembers ?? true,
-            enableMemberAccess: !!accessData.memberIds?.length,
-            enableGroupAccess: !!accessData.groupIds?.length,
-            updatedAt: new Date(),
-          })
-          .where(
-            and(eq(schema.Inbox.id, inboxId), eq(schema.Inbox.organizationId, this.organizationId))
-          )
-
-        // Update member access if provided
-        if (accessData.memberIds !== undefined) {
-          // First delete existing member access entries
-          await tx
-            .delete(schema.InboxMemberAccess)
-            .where(eq(schema.InboxMemberAccess.inboxId, inboxId))
-
-          // Then create new member access entries
-          if (accessData.memberIds.length > 0) {
-            await tx.insert(schema.InboxMemberAccess).values(
-              accessData.memberIds.map((memberId) => ({
-                inboxId,
-                organizationMemberId: memberId,
-                updatedAt: new Date(),
-              }))
-            )
-          }
-        }
-
-        // Update group access if provided using ResourceAccess
-        if (accessData.groupIds !== undefined) {
-          await setInstanceAccess(
-            { db: tx, organizationId: this.organizationId },
-            toRecordId(BuiltInEntityType.inbox, inboxId),
-            ResourceGranteeType.group,
-            accessData.groupIds.map((gid) => ({ granteeId: gid, permission: ResourcePermission.view }))
-          )
-        }
-
-        // Return the updated inbox with all its relations
-        const updatedInbox = await tx.query.Inbox.findFirst({
-          where: eq(schema.Inbox.id, inboxId),
-          with: DefaultInboxWith,
-        })
-
-        if (!updatedInbox) {
-          throw new Error('Inbox not found after update')
-        }
-
-        return updatedInbox
-      })
-
-      // Invalidate caches after successful access update
-      await this.invalidateAllInboxCaches()
-
-      return result
-    } catch (error) {
-      logger.error('Error updating inbox access', {
-        error,
-        inboxId,
-        organizationId: this.organizationId,
-        accessData,
-      })
-      throw error
-    }
-  }
-
-  /**
-   * Check if a user has access to an inbox
-   * @param inboxId The inbox ID
-   * @param userId The user ID
-   * @returns Boolean indicating if the user has access
-   */
-  async hasUserAccess(inboxId: string, userId: string): Promise<boolean> {
-    try {
-      // Check cache first
-      const cacheKey = `inbox:access:${inboxId}:user:${userId}`
-      const cachedAccess = await this.getFromCache<boolean>(cacheKey)
-
-      if (cachedAccess !== null) {
-        return cachedAccess
-      }
-
-      // Get the inbox with direct access fields
-      const inbox = await db.query.Inbox.findFirst({
-        where: eq(schema.Inbox.id, inboxId),
-      })
-
-      if (!inbox || inbox.organizationId !== this.organizationId) {
-        await this.setInCache(cacheKey, false)
-        return false
-      }
-
-      // If all members are allowed, user has access
-      if (inbox.allowAllMembers) {
-        await this.setInCache(cacheKey, true)
-        return true
-      }
-
-      // Get user's organization membership
-      const orgMember = await db.query.OrganizationMember.findFirst({
-        where: and(
-          eq(schema.OrganizationMember.organizationId, this.organizationId),
-          eq(schema.OrganizationMember.userId, userId)
-        ),
-      })
-
-      if (!orgMember) {
-        await this.setInCache(cacheKey, false)
-        return false
-      }
-
-      // Check direct member access
-      if (inbox.enableMemberAccess) {
-        const memberAccess = await db.query.InboxMemberAccess.findFirst({
-          where: and(
-            eq(schema.InboxMemberAccess.inboxId, inboxId),
-            eq(schema.InboxMemberAccess.organizationMemberId, orgMember.id)
-          ),
-        })
-
-        if (memberAccess) {
-          await this.setInCache(cacheKey, true)
-          return true
-        }
-      }
-
-      // Check group-based access via ResourceAccess
-      if (inbox.enableGroupAccess) {
-        // Get all groups with access to this inbox via ResourceAccess
-        const accessRecords = await getInstanceAccess(
-          { db, organizationId: this.organizationId },
-          toRecordId(BuiltInEntityType.inbox, inboxId)
-        )
-        const groupIds = accessRecords
-          .filter((a) => a.granteeType === ResourceGranteeType.group)
-          .map((a) => a.granteeId)
-
-        if (groupIds.length) {
-          // Check if user is a member of any of these groups (via EntityGroupMember)
-          const userInGroup = await db.query.EntityGroupMember.findFirst({
-            where: and(
-              eq(schema.EntityGroupMember.memberType, MemberType.user),
-              eq(schema.EntityGroupMember.memberRefId, userId),
-              inArray(schema.EntityGroupMember.groupInstanceId, groupIds)
-            ),
-          })
-
-          if (userInGroup) {
-            await this.setInCache(cacheKey, true)
-            return true
-          }
-        }
-      }
-
-      await this.setInCache(cacheKey, false)
-      return false
-    } catch (error) {
-      logger.error('Error checking user access to inbox', { error, inboxId, userId })
-      return false
-    }
-  }
-
-  /**
-   * Get all inboxes a user has access to
-   * @param userId The user ID
-   * @returns Array of inboxes the user has access to
-   */
-  async getInboxesForUser(userId: string): Promise<InboxWithRelations[]> {
-    try {
-      const cacheKey = this.getUserInboxesCacheKey(userId)
-
-      // Try to get from cache first
-      const cachedInboxes = await this.getFromCache<InboxWithRelations[]>(cacheKey)
-      if (cachedInboxes) {
-        logger.info('Retrieved user inboxes from cache', { userId })
-        return cachedInboxes
-      }
-
-      logger.info('Getting inboxes for user from database', {
-        userId,
-        organizationId: this.organizationId,
-      })
-
-      // Get user's organization member record
-      const [orgMember] = await db
-        .select({ id: schema.OrganizationMember.id })
-        .from(schema.OrganizationMember)
-        .where(
-          and(
-            eq(schema.OrganizationMember.organizationId, this.organizationId),
-            eq(schema.OrganizationMember.userId, userId)
-          )
-        )
-        .limit(1)
-
-      if (!orgMember) return []
-
-      // Get user's group IDs (from EntityGroupMember)
-      const userGroups = await db
-        .select({ groupId: schema.EntityGroupMember.groupInstanceId })
-        .from(schema.EntityGroupMember)
-        .innerJoin(schema.EntityInstance, eq(schema.EntityGroupMember.groupInstanceId, schema.EntityInstance.id))
-        .where(
-          and(
-            eq(schema.EntityGroupMember.memberType, MemberType.user),
-            eq(schema.EntityGroupMember.memberRefId, userId),
-            eq(schema.EntityInstance.organizationId, this.organizationId)
-          )
-        )
-
-      const userGroupIds = userGroups.map((g) => g.groupId)
-
-      // Get all inboxes where user has access
-      // 1. All members allowed
-      const allMemberInboxes = await db
-        .select()
-        .from(schema.Inbox)
-        .where(
-          and(
-            eq(schema.Inbox.organizationId, this.organizationId),
-            eq(schema.Inbox.allowAllMembers, true)
-          )
-        )
-
-      // 2. Specific member access
-      const memberAccessInboxes = await db
-        .select()
-        .from(schema.Inbox)
-        .innerJoin(schema.InboxMemberAccess, eq(schema.Inbox.id, schema.InboxMemberAccess.inboxId))
-        .where(
-          and(
-            eq(schema.Inbox.organizationId, this.organizationId),
-            eq(schema.Inbox.enableMemberAccess, true),
-            eq(schema.InboxMemberAccess.organizationMemberId, orgMember.id)
-          )
-        )
-        .then((rows) => rows.map((row) => row.Inbox))
-
-      // 3. Group access via ResourceAccess (if user has groups)
-      let groupAccessInboxes: any[] = []
-      if (userGroupIds.length > 0) {
-        // Get all inbox access records for user's groups from ResourceAccess
-        const groupAccessRecords = await db
-          .select({ entityInstanceId: schema.ResourceAccess.entityInstanceId })
-          .from(schema.ResourceAccess)
-          .where(
-            and(
-              eq(schema.ResourceAccess.organizationId, this.organizationId),
-              eq(schema.ResourceAccess.entityDefinitionId, BuiltInEntityType.inbox),
-              eq(schema.ResourceAccess.granteeType, ResourceGranteeType.group),
-              inArray(schema.ResourceAccess.granteeId, userGroupIds)
-            )
-          )
-
-        const inboxIdsWithGroupAccess = groupAccessRecords.map((r) => r.entityInstanceId)
-
-        if (inboxIdsWithGroupAccess.length > 0) {
-          groupAccessInboxes = await db
-            .select()
-            .from(schema.Inbox)
-            .where(
-              and(
-                eq(schema.Inbox.organizationId, this.organizationId),
-                eq(schema.Inbox.enableGroupAccess, true),
-                inArray(schema.Inbox.id, inboxIdsWithGroupAccess)
-              )
-            )
-        }
-      }
-
-      // Combine and deduplicate inboxes
-      const allInboxes = [...allMemberInboxes, ...memberAccessInboxes, ...groupAccessInboxes]
-      const uniqueInboxes = allInboxes.filter(
-        (inbox, index, arr) => arr.findIndex((i) => i.id === inbox.id) === index
       )
-
-      // Store in cache for future requests
-      await this.setInCache(cacheKey, uniqueInboxes)
-
-      return uniqueInboxes
-    } catch (error) {
-      logger.error('Error getting inboxes for user', {
-        error,
-        userId,
-        organizationId: this.organizationId,
-      })
-      throw error
-    }
+    return true
   }
 
   /**
-   * Get inboxes with detailed group information for a user
-   * @param userId The user ID
-   * @returns Array of inboxes with detailed group info
+   * Add integration to default inbox (creates inbox if needed)
    */
-  async getInboxesWithGroupDetails(userId: string) {
-    try {
-      const inboxes = await this.getInboxesForUser(userId)
-
-      // Get detailed group information (from EntityGroupMember)
-      const userGroups = await db.query.EntityGroupMember.findMany({
-        where: and(
-          eq(schema.EntityGroupMember.memberType, MemberType.user),
-          eq(schema.EntityGroupMember.memberRefId, userId)
-        ),
-        with: {
-          groupInstance: true,
-        },
-      })
-
-      // Filter out groups that don't belong to this organization
-      const filteredUserGroups = userGroups.filter(
-        (membership) => membership.groupInstance.organizationId === this.organizationId
-      )
-
-      const userGroupIds = filteredUserGroups.map((m) => m.groupInstanceId)
-
-      // Get all inbox access records from ResourceAccess for this organization
-      const inboxAccessRecords = await db
-        .select({
-          inboxId: schema.ResourceAccess.entityInstanceId,
-          groupId: schema.ResourceAccess.granteeId,
-        })
-        .from(schema.ResourceAccess)
-        .where(
-          and(
-            eq(schema.ResourceAccess.organizationId, this.organizationId),
-            eq(schema.ResourceAccess.entityDefinitionId, BuiltInEntityType.inbox),
-            eq(schema.ResourceAccess.granteeType, ResourceGranteeType.group),
-            inArray(schema.ResourceAccess.granteeId, userGroupIds.length > 0 ? userGroupIds : [''])
-          )
-        )
-
-      // Enhance inbox objects with detailed group information
-      return inboxes.map((inbox) => {
-        // Find which groups gave access to this inbox
-        const inboxGroupIds = inboxAccessRecords
-          .filter((r) => r.inboxId === inbox.id)
-          .map((r) => r.groupId)
-
-        const accessGroups = filteredUserGroups
-          .filter((membership) => inboxGroupIds.includes(membership.groupInstanceId))
-          .map((g) => g.groupInstance)
-
-        return { ...inbox, accessGroups }
-      })
-    } catch (error) {
-      logger.error('Error getting inboxes with group details', {
-        error,
-        userId,
-        organizationId: this.organizationId,
-      })
-      throw error
-    }
-  }
-
   async addIntegrationToDefaultInbox(integrationId: string) {
-    let defaultInbox = await db.query.Inbox.findFirst({
-      where: eq(schema.Inbox.organizationId, this.organizationId),
-      columns: { id: true },
-    })
+    // Find existing default inbox by name
+    const existingInboxes = await this.getInboxes()
+    let defaultInbox = existingInboxes.find((i) => i.name === 'Default Inbox')
 
     if (!defaultInbox) {
       defaultInbox = await this.createInbox({
         name: 'Default Inbox',
         description: 'Default inbox for all incoming emails',
-        color: '#A7C1F2', // Light Blue
-        status: InboxStatus.ACTIVE,
+        color: '#A7C1F2',
+        status: 'ACTIVE',
       })
     }
 
-    if (!defaultInbox) {
-      throw new Error('Failed to create or retrieve default inbox')
+    return this.addIntegration(defaultInbox.recordId, integrationId, true)
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // HELPERS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Resolve EntityInstance + FieldValues to Inbox type
+   */
+  private async resolveInbox(recordId: RecordId): Promise<Inbox> {
+    const instanceId = getInstanceId(recordId)
+    const values = await this.crudHandler.getFieldValues(recordId)
+
+    const instance = await this.db.query.EntityInstance.findFirst({
+      where: eq(schema.EntityInstance.id, instanceId),
+    })
+
+    if (!instance) {
+      throw new Error(`Inbox not found: ${recordId}`)
     }
 
-    try {
-      const connection = await this.addIntegration(defaultInbox.id, integrationId, true)
-      return connection
-    } catch (error) {
-      logger.error('Error adding integration to default inbox', {
-        error,
-        integrationId,
-        inboxId: defaultInbox.id,
-      })
-      throw error
+    // Helper to get text value from field values map
+    const getValue = (fieldId: string): unknown => {
+      const entry = values.get(fieldId)
+      return entry?.value ?? null
     }
+
+    return {
+      id: instance.id,
+      recordId,
+      name: instance.displayName ?? '',
+      description: (getValue('description') as string) ?? null,
+      color: (getValue('color') as string) ?? '#4F46E5',
+      status: ((getValue('status') as string) ?? 'ACTIVE') as Inbox['status'],
+      visibility: ((getValue('visibility') as string) ?? 'org_members') as Inbox['visibility'],
+      settings: (getValue('settings') as Record<string, unknown>) ?? {},
+      organizationId: instance.organizationId,
+      createdAt: instance.createdAt,
+      updatedAt: instance.updatedAt,
+      createdById: instance.createdById,
+    }
+  }
+
+  /**
+   * Get inbox with integrations
+   */
+  async getInboxWithIntegrations(recordId: RecordId): Promise<InboxWithIntegrations | null> {
+    const inbox = await this.getInbox(recordId)
+    if (!inbox) return null
+
+    const instanceId = getInstanceId(recordId)
+    const integrations = await this.db.query.InboxIntegration.findMany({
+      where: eq(schema.InboxIntegration.inboxId, instanceId),
+      with: {
+        integration: {
+          columns: { id: true, name: true, email: true, provider: true },
+        },
+      },
+    })
+
+    return {
+      ...inbox,
+      integrations: integrations.map((i) => ({
+        id: i.id,
+        integrationId: i.integrationId,
+        isDefault: i.isDefault,
+        settings: i.settings as Record<string, unknown>,
+        integration: i.integration,
+      })),
+    }
+  }
+
+  /**
+   * Get inbox with integrations by raw ID (convenience method)
+   */
+  async getInboxWithIntegrationsById(inboxId: string): Promise<InboxWithIntegrations | null> {
+    return this.getInboxWithIntegrations(toRecordId('inbox', inboxId))
   }
 }

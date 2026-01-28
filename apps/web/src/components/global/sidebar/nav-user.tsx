@@ -171,6 +171,15 @@ export function NavUser({ user }: Prop) {
                             ))}
                       </DropdownMenuRadioGroup>
                       <DropdownMenuSeparator />
+                      <Link href="/app/settings/organization">
+                        <DropdownMenuItem>
+                          <div className="flex size-5 -ml-1 items-center justify-center rounded-full border bg-background">
+                            <Building2 className="size-3" />
+                          </div>
+                          <div className="">View all</div>
+                        </DropdownMenuItem>
+                      </Link>
+                      <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={() => setShowNewOrgDialog(true)}>
                         <div className="flex size-5 -ml-1 items-center justify-center rounded-full border bg-background">
                           <Plus className="size-3" />

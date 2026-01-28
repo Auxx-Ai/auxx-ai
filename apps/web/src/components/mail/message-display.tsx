@@ -35,7 +35,7 @@ import { type EmailActions } from './email-actions'
 import { SendStatusIndicator } from './send-status-indicator'
 import { toastError } from '@auxx/ui/components/toast'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { useMessage, useParticipant } from '~/components/threads/hooks'
+import { useMessage, useMessageParticipants } from '~/components/threads/hooks'
 import type { MessageMeta } from '~/components/threads/store'
 
 interface MessageDisplayProps {
@@ -58,11 +58,8 @@ const MessageDisplay = ({ messageId, messageActions, isOpen }: MessageDisplayPro
   // Fetch message from store
   const { message, isLoading } = useMessage({ messageId })
 
-  // Fetch sender participant
-  const { participant: sender } = useParticipant({
-    participantId: message?.fromParticipantId ?? null,
-    enabled: !!message?.fromParticipantId,
-  })
+  // Fetch sender participant using the new hook
+  const { from: sender } = useMessageParticipants(message?.participants ?? [])
 
   // Retry send mutation
   const retrySendMessage = api.thread.retrySendMessage.useMutation({
@@ -111,7 +108,7 @@ const MessageDisplay = ({ messageId, messageActions, isOpen }: MessageDisplayPro
   }
 
   const isInbound = message.isInbound
-  const senderName = sender?.displayName ?? message.from?.displayName ?? 'Unknown'
+  const senderName = sender?.displayName ?? 'Unknown'
   const senderInitials = sender?.initials ?? senderName.charAt(0).toUpperCase()
   const contactId = sender?.entityInstanceId
 

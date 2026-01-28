@@ -1,5 +1,6 @@
 // packages/lib/src/messages/types/message-query.types.ts
 
+import type { ParticipantId } from '@auxx/types'
 import { MessageType } from '../../providers/types'
 
 /**
@@ -17,14 +18,6 @@ export type SendStatus = 'PENDING' | 'SENT' | 'FAILED'
  */
 export { MessageType }
 
-/** Inline sender/recipient summary for display */
-export interface ParticipantSummary {
-  id: string
-  name: string | null
-  displayName: string | null
-  identifier: string | null
-}
-
 /**
  * Attachment metadata for display.
  */
@@ -38,7 +31,7 @@ export interface AttachmentMeta {
 
 /**
  * Message metadata for display.
- * Used by the frontend message store for batch-fetched messages.
+ * Simplified structure using ParticipantId[] for all participant references.
  */
 export interface MessageMeta {
   id: string
@@ -56,18 +49,11 @@ export interface MessageMeta {
   receivedAt: string | null // ISO date
   createdAt: string // ISO date
 
-  // Inline sender info for display (avoids extra participant fetch)
-  from: ParticipantSummary | null
-  replyTo: ParticipantSummary | null
-
-  // Sender/recipient as participant IDs (for detail views needing full participant data)
-  fromParticipantId: string | null
-  replyToParticipantId: string | null
-
-  // Recipients as participant IDs
-  toParticipantIds: string[]
-  ccParticipantIds: string[]
-  bccParticipantIds: string[]
+  /**
+   * All participants as tagged IDs.
+   * Format: ["from:abc123", "to:xyz789", "cc:def456", "bcc:ghi789", "replyto:jkl012"]
+   */
+  participants: ParticipantId[]
 
   // Draft state
   draftMode: DraftMode
@@ -86,16 +72,16 @@ export interface MessageMeta {
 }
 
 /**
- * Options for listing message IDs for a thread.
+ * Options for listing messages.
  */
 export interface ListMessageIdsOptions {
   includeDrafts?: boolean
 }
 
 /**
- * Result of listing messages by thread.
+ * Result from listing messages by thread.
  */
 export interface ListMessagesByThreadResult {
-  ids: string[]
+  messages: MessageMeta[]
   total: number
 }

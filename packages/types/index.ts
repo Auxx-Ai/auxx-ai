@@ -21,3 +21,15 @@ export {
   isGroupActor,
 } from './actor'
 export { actorIdSchema, actorTypeSchema } from './actor/schema'
+export {
+  type ParticipantId,
+  type ParticipantRole,
+  PARTICIPANT_ROLES,
+  parseParticipantId,
+  toParticipantId,
+  isParticipantId,
+  getParticipantRawId,
+  getParticipantRole,
+  extractUniqueParticipantIds,
+  groupParticipantsByRole,
+} from './participant'

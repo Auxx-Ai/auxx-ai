@@ -1,6 +1,6 @@
 // src/components/mail/thread-header.tsx
 'use client'
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { EditableText } from '../editor/editable-text'
@@ -18,7 +18,6 @@ import {
 import { InboxPicker } from '../pickers/inbox-picker'
 import { TagPicker } from '../pickers/tag-picker'
 import { AssigneePicker } from '../pickers/assignee-picker'
-import { Popover, PopoverTrigger } from '@auxx/ui/components/popover'
 import { useThreadContext, useThreadTags } from './thread-provider'
 import { useThread, useInboxById } from '~/components/threads/hooks'
 import { useActor } from '~/components/resources/hooks/use-actor'
@@ -78,6 +77,7 @@ export function ThreadHeader({
 
   // Local state for tag popover
   const [open, setOpen] = useState(false)
+  const tagButtonRef = useRef<HTMLButtonElement>(null)
 
   if (!thread) return null
   const fetchedTagsData = availableTags
@@ -134,28 +134,28 @@ export function ThreadHeader({
               </Button>
             </Tooltip>
 
-            <Popover open={open} onOpenChange={setOpen}>
-              <Tooltip content="Apply Tags">
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    disabled={!thread}
-                    className="rounded-full hover:bg-foreground/10">
-                    <Tags />
-                    <span className="sr-only">Add Tags</span>
-                  </Button>
-                </PopoverTrigger>
-              </Tooltip>
-
+            <Tooltip content="Apply Tags">
+              <Button
+                ref={tagButtonRef}
+                variant="ghost"
+                size="icon"
+                disabled={!thread}
+                onClick={() => setOpen(true)}
+                className="rounded-full hover:bg-foreground/10">
+                <Tags />
+                <span className="sr-only">Add Tags</span>
+              </Button>
+            </Tooltip>
+            {open && (
               <TagPicker
                 open={open}
                 onOpenChange={setOpen}
+                anchorRef={tagButtonRef}
                 selectedTags={selectedTags}
                 onChange={updateTags}
                 allowMultiple={true}
               />
-            </Popover>
+            )}
             <ManualTriggerButton recordId={toRecordId('thread', thread.id)}>
               <Tooltip content="Run workflow">
                 <Button
@@ -244,8 +244,8 @@ export function ThreadHeader({
           </div>
           {fetchedTagsData && fetchedTagsData.length > 0 && (
             <div className="flex flex-row no-wrap gap-2 shrink-0">
-              {fetchedTagsData.map((tagRel) => (
-                <ThreadTag tag={tagRel} threadId={threadId} key={tagRel.tag.id} />
+              {fetchedTagsData.map((tag) => (
+                <ThreadTag tag={tag} threadId={threadId} key={tag.id} />
               ))}
             </div>
           )}

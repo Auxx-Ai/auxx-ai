@@ -118,9 +118,14 @@ export function getOptionColor(colorId: SelectOptionColor): OptionColor {
   return OPTION_COLORS.find((c) => c.id === colorId) ?? OPTION_COLORS[0]!
 }
 
-/** Get swatch class for a color (for picker dots) */
-export function getColorSwatch(colorId: SelectOptionColor): string {
-  return getOptionColor(colorId).swatch
+/** Get swatch class for a color (for picker dots). Supports named colors and hex. */
+export function getColorSwatch(color: string): string {
+  // Handle hex colors with Tailwind arbitrary value
+  if (color.startsWith('#')) {
+    return `bg-[${color}]`
+  }
+  // Named color lookup
+  return getOptionColor(color as SelectOptionColor).swatch
 }
 
 /** Get badge classes for a color (for displaying option values) */

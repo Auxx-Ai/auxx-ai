@@ -26,6 +26,8 @@ interface BaseResource {
   /** Field definitions for this resource */
   fields: ResourceField[]
   entityType?: string
+  /** Whether this entity should appear in the sidebar (default: true) */
+  isVisible: boolean
 }
 
 /** System resource with static display config */

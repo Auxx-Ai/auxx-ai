@@ -1,7 +1,16 @@
 // packages/database/src/db/schema/entity-definition.ts
 // Drizzle table for EntityDefinition
 
-import { pgTable, uniqueIndex, index, text, timestamp, type AnyPgColumn, sql } from './_shared'
+import {
+  pgTable,
+  uniqueIndex,
+  index,
+  text,
+  timestamp,
+  boolean,
+  type AnyPgColumn,
+  sql,
+} from './_shared'
 import { createId } from '@paralleldrive/cuid2'
 import { Organization } from './organization'
 import { CustomField } from './custom-field'
@@ -58,6 +67,9 @@ export const EntityDefinition = pgTable(
       onUpdate: 'cascade',
       onDelete: 'set null',
     }),
+
+    /** Whether this entity should appear in the sidebar (default: true) */
+    isVisible: boolean().notNull().default(true),
   },
   (table) => [
     // Unique constraint: apiSlug must be unique per organization

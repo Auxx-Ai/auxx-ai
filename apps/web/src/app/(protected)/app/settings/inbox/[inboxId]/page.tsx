@@ -1,5 +1,5 @@
-// /app/settings/inbox/[inboxId]/page.tsx
-import { InboxDetail } from '../_components/inbox-detail'
+// apps/web/src/app/(protected)/app/settings/inbox/[inboxId]/page.tsx
+import { InboxDetail } from '~/components/inbox'
 
 export default async function InboxDetailPage({
   params,
@@ -8,9 +8,5 @@ export default async function InboxDetailPage({
 }) {
   const { inboxId } = await params
 
-  return (
-    // <div className='container mx-auto py-6'>
-    <InboxDetail inboxId={inboxId} />
-    // </div>
-  )
+  return <InboxDetail inboxId={inboxId} />
 }

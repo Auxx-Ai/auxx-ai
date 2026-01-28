@@ -61,20 +61,22 @@ export function useEntitySidebar({ scope = 'SIDEBAR' }: UseEntitySidebarOptions 
     const visibilitySettings =
       (getSetting(ENTITY_VISIBILITY_SETTING_KEY) as Record<string, boolean>) || {}
 
-    // Convert custom resources to processed entities
-    const dynamicEntities: ProcessedEntity[] = (customResources || []).map((resource) => ({
-      id: resource.id,
-      apiSlug: resource.apiSlug,
-      label: resource.label,
-      plural: resource.plural,
-      icon: resource.icon,
-      color: resource.color,
-      entityType: resource.entityType,
-      isStatic: false,
-      isLocked: false,
-      isVisible: visibilitySettings[resource.id] !== false,
-      href: `/app/custom/${resource.apiSlug}`,
-    }))
+    // Convert custom resources to processed entities, filtering out hidden entities
+    const dynamicEntities: ProcessedEntity[] = (customResources || [])
+      .filter((resource) => resource.isVisible !== false)
+      .map((resource) => ({
+        id: resource.id,
+        apiSlug: resource.apiSlug,
+        label: resource.label,
+        plural: resource.plural,
+        icon: resource.icon,
+        color: resource.color,
+        entityType: resource.entityType,
+        isStatic: false,
+        isLocked: false,
+        isVisible: visibilitySettings[resource.id] !== false,
+        href: `/app/custom/${resource.apiSlug}`,
+      }))
 
     // Combine static + dynamic entities
     const allEntities = [STATIC_TICKETS_ENTITY, ...dynamicEntities]

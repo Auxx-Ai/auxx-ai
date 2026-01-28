@@ -505,6 +505,20 @@
       "when": 1769484692633,
       "tag": "0071_superb_infant_terrible",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1769550189464,
+      "tag": "0072_remove_inbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1769554402354,
+      "tag": "0073_colossal_madame_web",
+      "breakpoints": true
     }
   ]
 }

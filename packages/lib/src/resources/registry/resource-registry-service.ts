@@ -78,6 +78,7 @@ type EntityDefinitionWithFields = {
   color: string | null
   organizationId: string
   entityType: string | null
+  isVisible: boolean
   primaryDisplayField: { id: string; name: string; type: string } | null
   secondaryDisplayField: { id: string; name: string; type: string } | null
   avatarField: { id: string; name: string; type: string } | null
@@ -118,6 +119,7 @@ function toCustomResourceBase(
     color: def.color ?? 'gray',
     entityDefinitionId: def.id,
     organizationId: def.organizationId,
+    isVisible: def.isVisible,
     display: {
       primaryDisplayField: toDisplayFieldConfig(def.primaryDisplayField),
       secondaryDisplayField: toDisplayFieldConfig(def.secondaryDisplayField),
@@ -162,6 +164,7 @@ function toSystemResourceBase(tableId: TableId): Omit<SystemResource, 'fields'> 
     color: entry.color,
     apiSlug: entry.apiSlug,
     dbName: entry.dbName,
+    isVisible: false, // System resources from registry are hidden from sidebar
     display: {
       identifierField: displayConfig.identifierField,
       primaryDisplayField: getDisplayFieldConfig(displayConfig.primaryDisplayFieldId),

@@ -1,7 +1,7 @@
-// /app/settings/inbox/_components/inbox-access-tab.tsx
+// apps/web/src/components/inbox/inbox-access-tab.tsx
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { api } from '~/trpc/react'
 import {
@@ -19,21 +19,22 @@ import { Form } from '@auxx/ui/components/form'
 import { X } from 'lucide-react'
 import { toastError } from '@auxx/ui/components/toast'
 import { useConfirm } from '~/hooks/use-confirm'
-import { InboxWithRelations } from '@auxx/lib/types'
 import { useResourceAccess } from '~/components/resources/hooks'
 import { ActorBadge } from '~/components/resources/ui/actor-badge'
 import { ActorFormField } from '~/components/pickers/actor-picker'
-import { toActorId, parseActorId, type ActorId } from '@auxx/types/actor'
+import { parseActorId, type ActorId } from '@auxx/types/actor'
 import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import type { Inbox } from '@auxx/lib/inboxes'
 
 /** Form data shape */
 interface FormData {
   actorIds: ActorId[]
 }
 
-export function InboxAccessTab({ inbox }: { inbox: InboxWithRelations }) {
-  // Track local state of allowAllMembers to ensure immediate UI updates
-  const [allowAllMembers, setAllowAllMembers] = useState(inbox.allowAllMembers)
+/** Tab component for managing inbox access permissions */
+export function InboxAccessTab({ inbox }: { inbox: Inbox }) {
+  // Track local visibility state for immediate UI updates
+  const [visibility, setVisibility] = useState(inbox.visibility)
   const [isUpdating, setIsUpdating] = useState(false)
 
   // Use the confirm hook for confirmation dialogs
@@ -46,41 +47,30 @@ export function InboxAccessTab({ inbox }: { inbox: InboxWithRelations }) {
   const form = useForm<FormData>({ defaultValues: { actorIds: [] } })
 
   // RecordId for resource access (inbox:{id} format)
-  const recordId = `inbox:${inbox.id}`
+  const recordId = inbox.recordId
 
-  // Get group access from ResourceAccess system
-  const { granteeActorIds: groupActorIds, isLoading: isLoadingGroups } = useResourceAccess({
+  // Get all access grants from ResourceAccess system
+  const { granteeActorIds, isLoading: isLoadingAccess } = useResourceAccess({
     recordId,
-    enabled: !allowAllMembers,
+    enabled: visibility !== 'org_members',
   })
 
-  // Convert member access to ActorIds
-  const memberActorIds = useMemo(
-    () => inbox.memberAccess.map((m) => toActorId('user', m.organizationMemberId)),
-    [inbox.memberAccess]
-  )
-
-  // Combine all access into single array of ActorIds
-  const allActorIds = useMemo(
-    () => [...memberActorIds, ...groupActorIds],
-    [memberActorIds, groupActorIds]
-  )
-
-  // Update inbox access mutation (for members and allowAllMembers toggle)
+  // Update inbox access mutation
   const updateAccess = api.inbox.updateAccess.useMutation({
     onSuccess: () => {
       setIsUpdating(false)
       form.reset({ actorIds: [] })
       utils.inbox.getById.invalidate({ inboxId: inbox.id })
+      utils.resourceAccess.forInstance.invalidate({ recordId })
     },
     onError: (error) => {
-      setAllowAllMembers(inbox.allowAllMembers)
+      setVisibility(inbox.visibility)
       setIsUpdating(false)
       toastError({ title: 'Error updating access', description: error.message })
     },
   })
 
-  // Grant resource access (for groups)
+  // Grant resource access
   const grantAccess = api.resourceAccess.grantInstance.useMutation({
     onSuccess: () => {
       setIsUpdating(false)
@@ -93,7 +83,7 @@ export function InboxAccessTab({ inbox }: { inbox: InboxWithRelations }) {
     },
   })
 
-  // Revoke resource access (for groups)
+  // Revoke resource access
   const revokeAccess = api.resourceAccess.revokeInstance.useMutation({
     onSuccess: () => {
       setIsUpdating(false)
@@ -105,11 +95,15 @@ export function InboxAccessTab({ inbox }: { inbox: InboxWithRelations }) {
     },
   })
 
-  /** Handle allow all members toggle with optimistic update */
-  const handleAllowAllMembersChange = (checked: boolean) => {
+  /** Handle visibility toggle with optimistic update */
+  const handleVisibilityChange = (allowAll: boolean) => {
     setIsUpdating(true)
-    setAllowAllMembers(checked)
-    updateAccess.mutate({ inboxId: inbox.id, allowAllMembers: checked })
+    const newVisibility = allowAll ? 'org_members' : 'custom'
+    setVisibility(newVisibility)
+    updateAccess.mutate({
+      inboxId: inbox.id,
+      visibility: newVisibility,
+    })
   }
 
   /** Handle removing an actor from access with confirmation */
@@ -128,19 +122,13 @@ export function InboxAccessTab({ inbox }: { inbox: InboxWithRelations }) {
 
     setIsUpdating(true)
 
-    if (type === 'user') {
-      // Remove member from inbox.memberAccess
-      const currentMemberIds = inbox.memberAccess.map((m) => m.organizationMemberId)
-      const updatedMemberIds = currentMemberIds.filter((mid) => mid !== id)
-      updateAccess.mutate({ inboxId: inbox.id, memberIds: updatedMemberIds })
-    } else {
-      // Remove group via ResourceAccess
-      revokeAccess.mutate({
-        recordId,
-        granteeType: ResourceGranteeType.group,
-        granteeId: id,
-      })
-    }
+    // Both users and groups now use ResourceAccess
+    const granteeType = type === 'user' ? ResourceGranteeType.user : ResourceGranteeType.group
+    revokeAccess.mutate({
+      recordId,
+      granteeType,
+      granteeId: id,
+    })
   }
 
   /** Handle adding selected actors */
@@ -155,44 +143,24 @@ export function InboxAccessTab({ inbox }: { inbox: InboxWithRelations }) {
 
     setIsUpdating(true)
 
-    // Separate users and groups
-    const newUserIds: string[] = []
-    const newGroupIds: string[] = []
-
+    // Grant access to each actor via ResourceAccess
     for (const actorId of data.actorIds) {
       const { type, id } = parseActorId(actorId)
-      if (type === 'user') {
-        newUserIds.push(id)
-      } else {
-        newGroupIds.push(id)
-      }
-    }
+      const granteeType = type === 'user' ? ResourceGranteeType.user : ResourceGranteeType.group
 
-    // Add users to member access (if any)
-    if (newUserIds.length > 0) {
-      const currentMemberIds = inbox.memberAccess.map((m) => m.organizationMemberId)
-      const updatedMemberIds = [...new Set([...currentMemberIds, ...newUserIds])]
-      updateAccess.mutate({ inboxId: inbox.id, memberIds: updatedMemberIds })
-    }
-
-    // Add groups via ResourceAccess (if any)
-    for (const groupId of newGroupIds) {
       grantAccess.mutate({
         recordId,
-        granteeType: ResourceGranteeType.group,
-        granteeId: groupId,
+        granteeType,
+        granteeId: id,
         permission: ResourcePermission.view,
       })
     }
 
-    // If only groups were added and no users, reset form here
-    if (newUserIds.length === 0 && newGroupIds.length > 0) {
-      form.reset({ actorIds: [] })
-    }
+    form.reset({ actorIds: [] })
   }
 
-  // Use local state for rendering decisions
-  const showRestrictedAccess = !allowAllMembers
+  // Show restricted access UI when not allowing all members
+  const showRestrictedAccess = visibility !== 'org_members'
 
   return (
     <div className="p-6 space-y-6">
@@ -202,8 +170,8 @@ export function InboxAccessTab({ inbox }: { inbox: InboxWithRelations }) {
       <div className="flex items-center space-x-2">
         <Switch
           id="allowAllMembers"
-          checked={allowAllMembers}
-          onCheckedChange={handleAllowAllMembersChange}
+          checked={visibility === 'org_members'}
+          onCheckedChange={handleVisibilityChange}
           disabled={isUpdating}
         />
         <Label htmlFor="allowAllMembers">Allow all organization members to access this inbox</Label>
@@ -223,8 +191,8 @@ export function InboxAccessTab({ inbox }: { inbox: InboxWithRelations }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {allActorIds.length > 0 ? (
-                  allActorIds.map((actorId) => (
+                {granteeActorIds.length > 0 ? (
+                  granteeActorIds.map((actorId) => (
                     <TableRow key={actorId}>
                       <TableCell>
                         <ActorBadge actorId={actorId} />
@@ -244,7 +212,7 @@ export function InboxAccessTab({ inbox }: { inbox: InboxWithRelations }) {
                 ) : (
                   <TableRow>
                     <TableCell colSpan={2} className="py-4 text-center text-muted-foreground">
-                      {isLoadingGroups
+                      {isLoadingAccess
                         ? 'Loading...'
                         : 'No members or groups have been added. Add access to grant permissions.'}
                     </TableCell>

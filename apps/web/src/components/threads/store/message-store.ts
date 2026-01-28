@@ -4,6 +4,7 @@ import '~/lib/immer-config'
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { subscribeWithSelector } from 'zustand/middleware'
+import type { ParticipantId } from '@auxx/types'
 
 /** Batching configuration */
 const BATCH_DELAY = 50
@@ -24,14 +25,6 @@ export type MessageType =
   | 'WHATSAPP'
   | 'CALL'
   | 'CHAT'
-
-/** Inline sender/recipient summary for display */
-export interface ParticipantSummary {
-  id: string
-  name: string | null
-  displayName: string | null
-  identifier: string | null
-}
 
 /** Attachment metadata for display */
 export interface AttachmentMeta {
@@ -62,18 +55,8 @@ export interface MessageMeta {
   receivedAt: string | null // ISO date
   createdAt: string // ISO date
 
-  // Inline sender info for display (avoids extra participant fetch)
-  from: ParticipantSummary | null
-  replyTo: ParticipantSummary | null
-
-  // Sender/recipient as participant IDs (for detail views needing full participant data)
-  fromParticipantId: string | null
-  replyToParticipantId: string | null
-
-  // Recipients as participant IDs
-  toParticipantIds: string[]
-  ccParticipantIds: string[]
-  bccParticipantIds: string[]
+  /** All participants as tagged IDs: ["from:abc", "to:xyz", ...] */
+  participants: ParticipantId[]
 
   // Draft state
   draftMode: DraftMode

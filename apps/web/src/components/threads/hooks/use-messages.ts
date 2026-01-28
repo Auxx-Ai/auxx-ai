@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect } from 'react'
 import { useShallow } from 'zustand/shallow'
-import { useMessageListStore, useMessageStore, type MessageMeta } from '../store'
+import { extractUniqueParticipantIds } from '@auxx/types'
+import { useMessageListStore, useMessageStore, useParticipantStore, type MessageMeta } from '../store'
 import { api } from '~/trpc/react'
 
 interface UseMessagesOptions {
@@ -25,6 +26,8 @@ interface UseMessagesResult {
 
 /**
  * Hook to get all messages for a thread.
+ * Single API call returns full messages.
+ * Automatically triggers participant fetch for display.
  *
  * @example
  * const { messages, isLoading } = useMessages({ threadId: 'thread123' })
@@ -46,9 +49,10 @@ export function useMessages({ threadId, enabled = true }: UseMessagesOptions): U
 
   // Store actions
   const setList = useMessageListStore((s) => s.setList)
-  const requestMessage = useMessageStore((s) => s.requestMessage)
+  const setMessages = useMessageStore((s) => s.setMessages)
+  const requestParticipant = useParticipantStore((s) => s.requestParticipant)
 
-  // Fetch message IDs for thread
+  // Fetch messages for thread (single API call now returns full messages)
   const { data, isLoading, refetch } = api.message.listByThread.useQuery(
     { threadId: threadId! },
     {
@@ -57,20 +61,27 @@ export function useMessages({ threadId, enabled = true }: UseMessagesOptions): U
     }
   )
 
-  // Sync to store and queue message fetches
+  // Sync to stores and queue participant fetches
   useEffect(() => {
     if (!data || !threadId) return
 
+    // Populate message store
+    setMessages(data.messages)
+
+    // Populate list store
     setList(threadId, {
-      messageIds: data.ids,
+      messageIds: data.messages.map((m) => m.id),
       total: data.total,
       fetchedAt: Date.now(),
     })
 
-    for (const id of data.ids) {
-      requestMessage(id)
+    // Extract unique participant IDs and queue fetches
+    const allParticipantIds = data.messages.flatMap((m) => m.participants)
+    const uniqueIds = extractUniqueParticipantIds(allParticipantIds)
+    for (const id of uniqueIds) {
+      requestParticipant(id)
     }
-  }, [data, threadId, setList, requestMessage])
+  }, [data, threadId, setList, setMessages, requestParticipant])
 
   return {
     messages,

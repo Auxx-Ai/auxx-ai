@@ -1,19 +1,17 @@
 // src/hooks/use-thread-tags.tsx
 import { useState, useEffect, useMemo } from 'react'
-import { api, type RouterOutputs } from '~/trpc/react'
+import { api } from '~/trpc/react'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-
-// Type for thread with tags
-type Thread = RouterOutputs['thread']['getById']
+import type { ThreadMeta } from '~/components/threads/store'
 
 /**
- * Optimized hook for managing thread tags using existing thread data
- * @param thread The thread object (with tags already loaded)
+ * Optimized hook for managing thread tags using existing thread data from store
+ * @param thread The thread object from store (with flat tags structure)
  * @param contextParams Context parameters for invalidation
  * @returns Tag state and operations
  */
 export function useThreadTags(
-  thread: Thread | null,
+  thread: ThreadMeta | null | undefined,
   contextParams: {
     contextType: string
     contextId?: string
@@ -47,10 +45,10 @@ export function useThreadTags(
     return thread?.tags || []
   }, [thread?.tags])
 
-  // Sync local tag state with thread tags
+  // Sync local tag state with thread tags (flat structure from store)
   useEffect(() => {
     if (thread?.tags) {
-      const tagIds = thread.tags.map((tagRel) => tagRel.tag.id)
+      const tagIds = thread.tags.map((tag) => tag.id)
       setSelectedTags(tagIds)
       setSelectedTagIds(tagIds)
     } else {
@@ -69,7 +67,9 @@ export function useThreadTags(
       // Snapshot previous data
       const previousThread = utils.thread.getById.getData({ threadId: thread.id })
 
-      // Optimistically update thread with new tags
+      // Optimistically update React Query cache (nested structure for getById endpoint)
+      // Note: This hook receives data from Zustand store (flat), but we maintain
+      // the correct nested structure here for React Query cache consistency
       utils.thread.getById.setData({ threadId: thread.id }, (old) => {
         if (!old) return old
         return {

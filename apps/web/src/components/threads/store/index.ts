@@ -23,7 +23,6 @@ export {
   type DraftMode,
   type SendStatus,
   type MessageType,
-  type ParticipantSummary,
   type AttachmentMeta,
 } from './message-store'
 
