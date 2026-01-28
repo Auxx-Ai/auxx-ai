@@ -1,7 +1,8 @@
-// src/components/mail/searchbar/advanced-filter-mode.tsx
+// apps/web/src/components/mail/searchbar/advanced-filter-mode.tsx
 'use client'
 
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useMemo } from 'react'
+import { v4 as generateId } from 'uuid'
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
@@ -20,92 +21,128 @@ import { ParticipantPicker } from '~/components/pickers/participant-picker'
 import { TagPicker } from '~/components/pickers/tag-picker'
 import { SelectedTagsDisplay } from '~/components/pickers/tag-display'
 import { InboxPicker } from '~/components/pickers/inbox-picker'
-import { CalendarIcon, Filter, Search, X } from 'lucide-react'
+import { CalendarIcon, Search, X } from 'lucide-react'
 import { format } from 'date-fns'
 import { cn } from '@auxx/ui/lib/utils'
 import { IsOperatorValue } from '@auxx/lib/mail-query/client'
-import { type FilterValue } from './_hooks/use-query-to-filters'
 import { useInbox } from '~/hooks/use-inbox'
 import { Badge } from '@auxx/ui/components/badge'
+import type { SearchCondition } from './store'
 
+/**
+ * Props for AdvancedFilterMode component
+ */
 interface AdvancedFilterModeProps {
-  initialFilters?: FilterValue
-  onApply: (filters: FilterValue) => void
+  initialConditions?: SearchCondition[]
+  onApply: (conditions: SearchCondition[]) => void
   onCancel: () => void
-  onFiltersChange?: (filters: FilterValue) => void // New: real-time updates
   className?: string
 }
 
+/**
+ * Helper to find a condition value by fieldId
+ */
+function getConditionValue(conditions: SearchCondition[], fieldId: string): any {
+  const condition = conditions.find((c) => c.fieldId === fieldId)
+  return condition?.value
+}
+
+/**
+ * Helper to create or update a condition
+ */
+function setConditionValue(
+  conditions: SearchCondition[],
+  fieldId: string,
+  operator: string,
+  value: any,
+  displayLabel?: string
+): SearchCondition[] {
+  // Remove condition if value is empty
+  if (value === undefined || value === null || value === '' || (Array.isArray(value) && value.length === 0)) {
+    return conditions.filter((c) => c.fieldId !== fieldId)
+  }
+
+  const existingIndex = conditions.findIndex((c) => c.fieldId === fieldId)
+  if (existingIndex !== -1) {
+    // Update existing
+    const updated = [...conditions]
+    updated[existingIndex] = { ...updated[existingIndex], value, displayLabel }
+    return updated
+  }
+
+  // Add new
+  return [
+    ...conditions,
+    {
+      id: generateId(),
+      fieldId,
+      operator,
+      value,
+      displayLabel,
+    },
+  ]
+}
+
+/**
+ * AdvancedFilterMode - Form-based filter interface for advanced searching.
+ * Works with SearchCondition[] format.
+ */
 export function AdvancedFilterMode({
-  initialFilters = {},
+  initialConditions = [],
   onApply,
   onCancel,
-  onFiltersChange,
   className,
 }: AdvancedFilterModeProps) {
-  const [filters, setFilters] = useState<FilterValue>(initialFilters)
+  const [conditions, setConditions] = useState<SearchCondition[]>(initialConditions)
   const [datePickerOpen, setDatePickerOpen] = useState<'before' | 'after' | null>(null)
   const [isTagOpen, setIsTagOpen] = useState(false)
   const tagButtonRef = useRef<HTMLButtonElement>(null)
 
   const { inboxes } = useInbox()
 
-  // Helper functions for equality checking
-  function eqArrays(a?: string[], b?: string[]) {
-    if (!a && !b) return true
-    if (!a || !b || a.length !== b.length) return false
-    const A = [...a].sort(),
-      B = [...b].sort()
-    return A.every((v, i) => v === B[i])
+  // Derived values from conditions
+  const fromValue = getConditionValue(conditions, 'from') as string[] | undefined
+  const toValue = getConditionValue(conditions, 'to') as string[] | undefined
+  const subjectValue = getConditionValue(conditions, 'subject') as string | undefined
+  const bodyValue = getConditionValue(conditions, 'body') as string | undefined
+  const assigneeValue = getConditionValue(conditions, 'assignee') as string[] | undefined
+  const tagValue = getConditionValue(conditions, 'tag') as string[] | undefined
+  const inboxValue = getConditionValue(conditions, 'inbox') as string[] | undefined
+  const statusValue = getConditionValue(conditions, 'status') as string | undefined
+  const beforeValue = getConditionValue(conditions, 'before') as string | undefined
+  const afterValue = getConditionValue(conditions, 'after') as string | undefined
+  const hasAttachmentsValue = getConditionValue(conditions, 'hasAttachments') as boolean | undefined
+
+  // Parse date strings to Date objects
+  const beforeDate = beforeValue ? new Date(beforeValue) : undefined
+  const afterDate = afterValue ? new Date(afterValue) : undefined
+
+  /** Update a filter field */
+  const updateField = (fieldId: string, operator: string, value: any, displayLabel?: string) => {
+    setConditions((prev) => setConditionValue(prev, fieldId, operator, value, displayLabel))
   }
 
-  function shallowEq(a: FilterValue, b: FilterValue) {
-    return (
-      a.subject === b.subject &&
-      a.body === b.body &&
-      a.hasAttachment === b.hasAttachment &&
-      eqArrays(a.from, b.from) &&
-      eqArrays(a.to, b.to) &&
-      eqArrays(a.assignee, b.assignee) &&
-      eqArrays(a.tag, b.tag) &&
-      eqArrays(a.inbox, b.inbox) &&
-      eqArrays(a.is, b.is) &&
-      (a.before?.toDateString() ?? '') === (b.before?.toDateString() ?? '') &&
-      (a.after?.toDateString() ?? '') === (b.after?.toDateString() ?? '')
-    )
-  }
-
-  // Update filters when initialFilters change (for synchronization)
-  React.useEffect(() => {
-    setFilters((prev) => (shallowEq(prev, initialFilters) ? prev : initialFilters))
-  }, [initialFilters])
-  const updateFilter = <K extends keyof FilterValue>(key: K, value: FilterValue[K]) => {
-    setFilters((prev) => {
-      const newFilters = { ...prev, [key]: value }
-      // Notify parent of changes for real-time sync
-      onFiltersChange?.(newFilters)
-      return newFilters
-    })
-  }
-
+  /** Handle apply */
   const handleApply = () => {
-    let next = { ...filters }
-    if (next.before && next.after && next.after > next.before) {
-      // Auto-swap inverted dates
-      const tmp = next.after
-      next.after = next.before
-      next.before = tmp
+    let next = [...conditions]
+
+    // Auto-swap inverted dates
+    const beforeCond = next.find((c) => c.fieldId === 'before')
+    const afterCond = next.find((c) => c.fieldId === 'after')
+    if (beforeCond && afterCond) {
+      const beforeDt = new Date(beforeCond.value)
+      const afterDt = new Date(afterCond.value)
+      if (afterDt > beforeDt) {
+        beforeCond.value = afterCond.value
+        afterCond.value = beforeCond.value
+      }
     }
+
     onApply(next)
   }
 
   // Check if any filters are active
-  const hasActiveFilters = Object.values(filters).some((value) => {
-    if (Array.isArray(value)) return value.length > 0
-    if (typeof value === 'boolean') return value
-    if (value instanceof Date) return true
-    return !!value
-  })
+  const hasActiveFilters = conditions.length > 0
 
   return (
     <>
@@ -120,7 +157,8 @@ export function AdvancedFilterMode({
           className={cn(
             'absolute right-[4px] size-6 rounded-full bg-primary-200 hover:bg-primary-200'
           )}
-          onClick={onCancel}>
+          onClick={onCancel}
+        >
           <X className="size-4 shrink-0 opacity-50" />
         </Button>
       </div>
@@ -131,10 +169,8 @@ export function AdvancedFilterMode({
             <div className="flex items-center gap-2">
               <Label className="w-20 text-sm">From</Label>
               <ParticipantPicker
-                selected={filters.from}
-                onChange={(selected) =>
-                  updateFilter('from', selected.length > 0 ? selected : undefined)
-                }
+                selected={fromValue}
+                onChange={(selected) => updateField('from', 'contains', selected.length > 0 ? selected : undefined)}
                 allowMultiple
                 style={{ width: 'var(--radix-popover-trigger-width)' }}
                 sideOffset={-30}
@@ -149,10 +185,8 @@ export function AdvancedFilterMode({
             <div className="flex items-center gap-2">
               <Label className="w-20 text-sm">To</Label>
               <ParticipantPicker
-                selected={filters.to}
-                onChange={(selected) =>
-                  updateFilter('to', selected.length > 0 ? selected : undefined)
-                }
+                selected={toValue}
+                onChange={(selected) => updateField('to', 'contains', selected.length > 0 ? selected : undefined)}
                 allowMultiple
                 type="to"
                 style={{ width: 'var(--radix-popover-trigger-width)' }}
@@ -171,8 +205,8 @@ export function AdvancedFilterMode({
           <div className="flex items-center gap-2">
             <Label className="w-20 text-sm">Subject</Label>
             <Input
-              value={filters.subject || ''}
-              onChange={(e) => updateFilter('subject', e.target.value || undefined)}
+              value={subjectValue || ''}
+              onChange={(e) => updateField('subject', 'contains', e.target.value || undefined)}
               placeholder="Enter subject text..."
               className="flex-1"
               size="sm"
@@ -182,8 +216,8 @@ export function AdvancedFilterMode({
           <div className="flex items-center gap-2">
             <Label className="w-20 text-sm">Body</Label>
             <Input
-              value={filters.body || ''}
-              onChange={(e) => updateFilter('body', e.target.value || undefined)}
+              value={bodyValue || ''}
+              onChange={(e) => updateField('body', 'contains', e.target.value || undefined)}
               placeholder="Enter body text..."
               className="flex-1"
               size="sm"
@@ -196,10 +230,10 @@ export function AdvancedFilterMode({
           <div className="flex items-center gap-2">
             <Label className="w-20 text-sm">Assignee</Label>
             <AssigneePicker
-              selected={filters.assignee}
+              selected={assigneeValue}
               onChange={(selected) => {
                 const assigneeValues = selected.map((m) => m.email || m.id)
-                updateFilter('assignee', assigneeValues.length > 0 ? assigneeValues : undefined)
+                updateField('assignee', 'in', assigneeValues.length > 0 ? assigneeValues : undefined)
               }}
               allowMultiple
               align="start"
@@ -220,10 +254,11 @@ export function AdvancedFilterMode({
                   variant="input"
                   className="w-full justify-start overflow-y-auto flex-nowrap flex-row"
                   size="sm"
-                  onClick={() => setIsTagOpen(true)}>
-                  {filters.tag && filters.tag.length > 0 ? (
+                  onClick={() => setIsTagOpen(true)}
+                >
+                  {tagValue && tagValue.length > 0 ? (
                     <SelectedTagsDisplay
-                      tagIds={filters.tag}
+                      tagIds={tagValue}
                       maxDisplay={2}
                       className="flex-1 flex-nowrap"
                     />
@@ -236,9 +271,9 @@ export function AdvancedFilterMode({
                     open={isTagOpen}
                     onOpenChange={setIsTagOpen}
                     anchorRef={tagButtonRef}
-                    selectedTags={filters.tag || []}
+                    selectedTags={tagValue || []}
                     onChange={(tags) => {
-                      updateFilter('tag', tags.length > 0 ? tags : undefined)
+                      updateField('tag', 'in', tags.length > 0 ? tags : undefined)
                     }}
                     align="start"
                     style={{ width: 'var(--radix-popover-trigger-width)' }}
@@ -249,41 +284,28 @@ export function AdvancedFilterMode({
                 )}
               </div>
             </div>
-
-            {/* Display all selected tags with remove option */}
-            {/* {filters.tag && filters.tag.length > 0 && (
-            <div className="ml-[5rem]">
-              <SelectedTagsDisplay
-                tagIds={filters.tag}
-                showRemove
-                onRemove={(tagId) => {
-                  const updatedTags = filters.tag?.filter((id) => id !== tagId) || []
-                  updateFilter('tag', updatedTags.length > 0 ? updatedTags : undefined)
-                }}
-                className="flex-wrap"
-              />
-            </div>
-          )} */}
           </div>
 
           <div className="flex items-center gap-2">
             <Label className="w-20 text-sm">Inbox</Label>
             <div className="flex-1">
               <InboxPicker
-                selected={filters.inbox}
-                onChange={(inbox) => updateFilter('inbox', inbox.length > 0 ? inbox : undefined)}
+                selected={inboxValue}
+                onChange={(inbox) => updateField('inbox', 'in', inbox.length > 0 ? inbox : undefined)}
                 align="start"
                 style={{ width: 'var(--radix-popover-trigger-width)' }}
                 sideOffset={-30}
                 allowMultiple
-                className="flex-1">
+                className="flex-1"
+              >
                 <Button
                   variant="input"
                   size="sm"
-                  className="w-full justify-start overflow-y-auto flex-nowrap ">
-                  {filters.inbox && filters.inbox.length > 0 ? (
+                  className="w-full justify-start overflow-y-auto flex-nowrap "
+                >
+                  {inboxValue && inboxValue.length > 0 ? (
                     <span className="shrink-0 flex-row gap-0.5 flex">
-                      {filters.inbox.map((inboxId) => {
+                      {inboxValue.map((inboxId) => {
                         const inbox = inboxes?.find((i) => i.id === inboxId)
                         return (
                           <Badge key={inboxId} variant="pill" size="sm">
@@ -305,10 +327,11 @@ export function AdvancedFilterMode({
         <div className="flex items-center gap-2">
           <Label className="w-20 text-sm">Status</Label>
           <Select
-            value={filters.is?.[0] || ''}
+            value={statusValue || ''}
             onValueChange={(value) =>
-              updateFilter('is', value && value !== 'any' ? [value] : undefined)
-            }>
+              updateField('status', 'is', value && value !== 'any' ? value : undefined)
+            }
+          >
             <SelectTrigger className="flex-1">
               <SelectValue placeholder="Select status..." />
             </SelectTrigger>
@@ -329,24 +352,26 @@ export function AdvancedFilterMode({
             <Label className="w-20 text-sm">After</Label>
             <Popover
               open={datePickerOpen === 'after'}
-              onOpenChange={(open) => setDatePickerOpen(open ? 'after' : null)}>
+              onOpenChange={(open) => setDatePickerOpen(open ? 'after' : null)}
+            >
               <PopoverTrigger asChild>
                 <Button
                   variant="input"
                   className={cn(
                     'flex-1 justify-start text-left font-normal',
-                    !filters.after && 'text-muted-foreground'
-                  )}>
+                    !afterDate && 'text-muted-foreground'
+                  )}
+                >
                   <CalendarIcon className="mr-2 h-4 w-4" />
-                  {filters.after ? format(filters.after, 'PPP') : 'Pick a date'}
+                  {afterDate ? format(afterDate, 'PPP') : 'Pick a date'}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0">
                 <Calendar
                   mode="single"
-                  selected={filters.after}
+                  selected={afterDate}
                   onSelect={(date) => {
-                    updateFilter('after', date || undefined)
+                    updateField('after', 'after', date ? date.toISOString() : undefined)
                     setDatePickerOpen(null)
                   }}
                   initialFocus
@@ -359,24 +384,26 @@ export function AdvancedFilterMode({
             <Label className="w-20 text-sm">Before</Label>
             <Popover
               open={datePickerOpen === 'before'}
-              onOpenChange={(open) => setDatePickerOpen(open ? 'before' : null)}>
+              onOpenChange={(open) => setDatePickerOpen(open ? 'before' : null)}
+            >
               <PopoverTrigger asChild>
                 <Button
                   variant="input"
                   className={cn(
                     'flex-1 justify-start text-left font-normal',
-                    !filters.before && 'text-muted-foreground'
-                  )}>
+                    !beforeDate && 'text-muted-foreground'
+                  )}
+                >
                   <CalendarIcon className="mr-2 h-4 w-4" />
-                  {filters.before ? format(filters.before, 'PPP') : 'Pick a date'}
+                  {beforeDate ? format(beforeDate, 'PPP') : 'Pick a date'}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0">
                 <Calendar
                   mode="single"
-                  selected={filters.before}
+                  selected={beforeDate}
                   onSelect={(date) => {
-                    updateFilter('before', date || undefined)
+                    updateField('before', 'before', date ? date.toISOString() : undefined)
                     setDatePickerOpen(null)
                   }}
                   initialFocus
@@ -390,8 +417,10 @@ export function AdvancedFilterMode({
         <div className="flex items-center gap-2">
           <Checkbox
             id="has-attachment"
-            checked={filters.hasAttachment || false}
-            onCheckedChange={(checked) => updateFilter('hasAttachment', checked ? true : undefined)}
+            checked={hasAttachmentsValue || false}
+            onCheckedChange={(checked) =>
+              updateField('hasAttachments', 'is', checked ? true : undefined)
+            }
           />
           <Label htmlFor="has-attachment" className="text-sm cursor-pointer">
             Has attachments
@@ -405,10 +434,8 @@ export function AdvancedFilterMode({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => {
-                  setFilters({})
-                  onFiltersChange?.({})
-                }}>
+                onClick={() => setConditions([])}
+              >
                 Clear All
               </Button>
             )}
@@ -421,15 +448,7 @@ export function AdvancedFilterMode({
               Apply Filters
               {hasActiveFilters && (
                 <span className="px-1.5 py-0.5 bg-white/30 text-background text-xs rounded">
-                  {
-                    Object.keys(filters).filter((key) => {
-                      const value = filters[key as keyof FilterValue]
-                      if (Array.isArray(value)) return value.length > 0
-                      if (typeof value === 'boolean') return value
-                      if (value instanceof Date) return true
-                      return !!value
-                    }).length
-                  }
+                  {conditions.length}
                 </span>
               )}
             </Button>

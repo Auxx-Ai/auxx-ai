@@ -5,12 +5,13 @@ import { useMemo, useEffect } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import {
   useSearchStore,
-  selectHasActiveFilters,
-  selectActiveFilterCount,
+  selectHasActiveConditions,
+  selectConditionCount,
   selectDisplayText,
   buildFilterChips,
   EMPTY_CHIPS,
   type FilterChip,
+  type SearchCondition,
 } from './search-store'
 
 /**
@@ -18,59 +19,40 @@ import {
  * Reuses shared buildFilterChips utility.
  */
 export function useFilterChips(): FilterChip[] {
-  const filters = useSearchStore(useShallow((s) => s.filters))
-  const hasFilters = useSearchStore(selectHasActiveFilters)
+  const conditions = useSearchStore(useShallow((s) => s.conditions))
+  const hasConditions = useSearchStore(selectHasActiveConditions)
 
   return useMemo(() => {
-    if (!hasFilters) return EMPTY_CHIPS
-    return buildFilterChips(filters)
-  }, [filters, hasFilters])
+    if (!hasConditions) return EMPTY_CHIPS
+    return buildFilterChips(conditions)
+  }, [conditions, hasConditions])
+}
+
+/**
+ * Hook for conditions with stable reference.
+ */
+export function useSearchConditions(): SearchCondition[] {
+  return useSearchStore(useShallow((s) => s.conditions))
 }
 
 /**
  * Hook for all search store actions.
- * Actions are stable references, but batching prevents multiple subscriptions.
  */
 export function useSearchActions() {
   return useSearchStore(
     useShallow((s) => ({
-      // Tag actions
-      addTag: s.addTag,
-      removeTag: s.removeTag,
-      // Assignee actions
-      addAssignee: s.addAssignee,
-      removeAssignee: s.removeAssignee,
-      // Inbox actions
-      addInbox: s.addInbox,
-      removeInbox: s.removeInbox,
-      // Email participant actions
-      addFrom: s.addFrom,
-      removeFrom: s.removeFrom,
-      addTo: s.addTo,
-      removeTo: s.removeTo,
-      // Text filter actions
-      setFreeText: s.setFreeText,
-      setSubject: s.setSubject,
-      setBody: s.setBody,
-      // Status actions
-      toggleIs: s.toggleIs,
-      // Property actions
-      setHasAttachments: s.setHasAttachments,
-      // Date actions
-      setBefore: s.setBefore,
-      setAfter: s.setAfter,
-      // Bulk actions
-      clearFilters: s.clearFilters,
-      setFilters: s.setFilters,
-      setContext: s.setContext,
+      // Condition actions
+      addCondition: s.addCondition,
+      updateCondition: s.updateCondition,
+      removeCondition: s.removeCondition,
+      clearConditions: s.clearConditions,
+      setConditions: s.setConditions,
       // UI actions
       setOpen: s.setOpen,
       toggleAdvanced: s.toggleAdvanced,
-      // Badge editing actions
-      setEditingFilter: s.setEditingFilter,
-      setHighlightedBadgeIndex: s.setHighlightedBadgeIndex,
-      updateFilterValue: s.updateFilterValue,
-      removeFilter: s.removeFilter,
+      setEditingConditionId: s.setEditingConditionId,
+      setHighlightedIndex: s.setHighlightedIndex,
+      setContext: s.setContext,
       // Recent searches
       saveToRecent: s.saveToRecent,
       clearRecentSearches: s.clearRecentSearches,
@@ -79,15 +61,15 @@ export function useSearchActions() {
 }
 
 /**
- * Hook for search UI state (non-filter state).
+ * Hook for search UI state (non-condition state).
  */
 export function useSearchUIState() {
   return useSearchStore(
     useShallow((s) => ({
       isOpen: s.isOpen,
       showAdvanced: s.showAdvanced,
-      editingFilter: s.editingFilter,
-      highlightedBadgeIndex: s.highlightedBadgeIndex,
+      editingConditionId: s.editingConditionId,
+      highlightedIndex: s.highlightedIndex,
     }))
   )
 }
@@ -97,11 +79,18 @@ export function useSearchUIState() {
  * These are primitives so they don't need useShallow.
  */
 export function useSearchStatus() {
-  const hasActiveFilters = useSearchStore(selectHasActiveFilters)
-  const activeFilterCount = useSearchStore(selectActiveFilterCount)
+  const hasActiveConditions = useSearchStore(selectHasActiveConditions)
+  const conditionCount = useSearchStore(selectConditionCount)
   const displayText = useSearchStore(selectDisplayText)
 
-  return { hasActiveFilters, activeFilterCount, displayText }
+  return {
+    hasActiveConditions,
+    conditionCount,
+    displayText,
+    // Legacy aliases
+    hasActiveFilters: hasActiveConditions,
+    activeFilterCount: conditionCount,
+  }
 }
 
 /**
@@ -113,10 +102,7 @@ export function useRecentSearches() {
 
 /**
  * Hook to sync search context with current mailbox context.
- * Call this at the top of your mailbox component to reset filters on context change.
- *
- * @param contextType - 'inbox' | 'organization' | etc.
- * @param contextId - The specific ID (inbox ID, org ID, etc.)
+ * Call this at the top of your mailbox component to reset conditions on context change.
  */
 export function useSearchContext(contextType: string, contextId?: string) {
   const setContext = useSearchStore((s) => s.setContext)
@@ -128,8 +114,9 @@ export function useSearchContext(contextType: string, contextId?: string) {
 }
 
 /**
- * Hook for filters state (for direct access when needed).
+ * Hook for conditions state (for direct access when needed).
+ * @deprecated Use useSearchConditions instead
  */
 export function useSearchFilters() {
-  return useSearchStore(useShallow((s) => s.filters))
+  return useSearchStore(useShallow((s) => s.conditions))
 }

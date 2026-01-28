@@ -42,7 +42,7 @@ const ConditionOperator = ({
           disabled={disabled}
           className={cn('h-6 justify-between px-2 text-xs', className)}>
           {selectedOption?.label || 'Select operator'}
-          <ChevronDown className="ml-1 h-3 w-3" />
+          <ChevronDown className="ml-1 size-3 [[data-slot=condition-badge]_&]:hidden" />
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-48 p-0">

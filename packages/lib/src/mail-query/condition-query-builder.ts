@@ -84,8 +84,22 @@ function buildConditionQuery(condition: Condition): SQL<unknown> | null {
         return buildDateQuery(op, value, metadata?.field)
       case 'sender':
         return buildSenderQuery(op, value)
+      case 'from':
+        return buildFromQuery(op, value)
+      case 'to':
+        return buildToQuery(op, value)
       case 'subject':
         return buildSubjectQuery(op, value)
+      case 'body':
+        return buildBodyQuery(op, value)
+      case 'before':
+        return buildBeforeQuery(op, value)
+      case 'after':
+        return buildAfterQuery(op, value)
+      case 'hasAttachments':
+        return buildHasAttachmentsQuery(op, value)
+      case 'freeText':
+        return buildFreeTextQuery(op, value)
       default:
         logger.warn(`Unknown fieldId: ${fieldId}`)
         return null
@@ -417,4 +431,179 @@ function buildSubjectQuery(operator: Operator, value: any): SQL<unknown> | null 
     default:
       return null
   }
+}
+
+/**
+ * Build from (sender) condition query.
+ * Filters through Message and MessageParticipant joins with role='FROM'.
+ */
+function buildFromQuery(operator: Operator, value: any): SQL<unknown> | null {
+  // Reuse sender query logic as they're functionally the same
+  return buildSenderQuery(operator, value)
+}
+
+/**
+ * Build to (recipient) condition query.
+ * Filters through Message and MessageParticipant joins with role='TO', 'CC', or 'BCC'.
+ */
+function buildToQuery(operator: Operator, value: any): SQL<unknown> | null {
+  const { Message, MessageParticipant, Participant } = schema
+
+  switch (operator) {
+    case 'empty':
+      return not(exists(
+        db.select({ id: sql`1` }).from(Message)
+          .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
+          .where(and(
+            eq(Message.threadId, Thread.id),
+            inArray(MessageParticipant.role, ['TO', 'CC', 'BCC'])
+          ))
+      ))
+    case 'not empty':
+      return exists(
+        db.select({ id: sql`1` }).from(Message)
+          .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
+          .where(and(
+            eq(Message.threadId, Thread.id),
+            inArray(MessageParticipant.role, ['TO', 'CC', 'BCC'])
+          ))
+      )
+    case 'is':
+      return exists(
+        db.select({ id: sql`1` }).from(Message)
+          .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
+          .innerJoin(Participant, eq(Participant.id, MessageParticipant.participantId))
+          .where(and(
+            eq(Message.threadId, Thread.id),
+            inArray(MessageParticipant.role, ['TO', 'CC', 'BCC']),
+            ilike(Participant.identifier, value)
+          ))
+      )
+    case 'is not':
+      return not(exists(
+        db.select({ id: sql`1` }).from(Message)
+          .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
+          .innerJoin(Participant, eq(Participant.id, MessageParticipant.participantId))
+          .where(and(
+            eq(Message.threadId, Thread.id),
+            inArray(MessageParticipant.role, ['TO', 'CC', 'BCC']),
+            ilike(Participant.identifier, value)
+          ))
+      ))
+    case 'contains':
+      return exists(
+        db.select({ id: sql`1` }).from(Message)
+          .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
+          .innerJoin(Participant, eq(Participant.id, MessageParticipant.participantId))
+          .where(and(
+            eq(Message.threadId, Thread.id),
+            inArray(MessageParticipant.role, ['TO', 'CC', 'BCC']),
+            ilike(Participant.identifier, `%${value}%`)
+          ))
+      )
+    case 'not contains':
+      return not(exists(
+        db.select({ id: sql`1` }).from(Message)
+          .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
+          .innerJoin(Participant, eq(Participant.id, MessageParticipant.participantId))
+          .where(and(
+            eq(Message.threadId, Thread.id),
+            inArray(MessageParticipant.role, ['TO', 'CC', 'BCC']),
+            ilike(Participant.identifier, `%${value}%`)
+          ))
+      ))
+    default:
+      return null
+  }
+}
+
+/**
+ * Build body condition query.
+ * Searches through Message bodyText field.
+ */
+function buildBodyQuery(operator: Operator, value: any): SQL<unknown> | null {
+  const { Message } = schema
+
+  switch (operator) {
+    case 'contains':
+      return exists(
+        db.select({ id: sql`1` }).from(Message)
+          .where(and(
+            eq(Message.threadId, Thread.id),
+            ilike(Message.bodyText, `%${value}%`)
+          ))
+      )
+    case 'not contains':
+      return not(exists(
+        db.select({ id: sql`1` }).from(Message)
+          .where(and(
+            eq(Message.threadId, Thread.id),
+            ilike(Message.bodyText, `%${value}%`)
+          ))
+      ))
+    default:
+      return null
+  }
+}
+
+/**
+ * Build before date condition query.
+ * Filters threads with lastMessageAt before the given date.
+ */
+function buildBeforeQuery(operator: Operator, value: any): SQL<unknown> | null {
+  return buildDateQuery('before', value, 'lastMessageAt')
+}
+
+/**
+ * Build after date condition query.
+ * Filters threads with lastMessageAt after the given date.
+ */
+function buildAfterQuery(operator: Operator, value: any): SQL<unknown> | null {
+  return buildDateQuery('after', value, 'lastMessageAt')
+}
+
+/**
+ * Build hasAttachments condition query.
+ * Filters threads that have at least one message with attachments.
+ */
+function buildHasAttachmentsQuery(operator: Operator, value: any): SQL<unknown> | null {
+  const { Message, MessageAttachment } = schema
+  const hasAttachments = value === true || value === 'true'
+
+  if (hasAttachments) {
+    return exists(
+      db.select({ id: sql`1` }).from(Message)
+        .innerJoin(MessageAttachment, eq(MessageAttachment.messageId, Message.id))
+        .where(eq(Message.threadId, Thread.id))
+    )
+  } else {
+    return not(exists(
+      db.select({ id: sql`1` }).from(Message)
+        .innerJoin(MessageAttachment, eq(MessageAttachment.messageId, Message.id))
+        .where(eq(Message.threadId, Thread.id))
+    ))
+  }
+}
+
+/**
+ * Build free text search query.
+ * Searches across subject and body fields.
+ */
+function buildFreeTextQuery(operator: Operator, value: any): SQL<unknown> | null {
+  if (!value) return null
+
+  const { Message } = schema
+  const searchTerm = `%${value}%`
+
+  // Search in subject OR body
+  return or(
+    ilike(Thread.subject, searchTerm),
+    exists(
+      db.select({ id: sql`1` }).from(Message)
+        .where(and(
+          eq(Message.threadId, Thread.id),
+          ilike(Message.bodyText, searchTerm)
+        ))
+    )
+  )
 }

@@ -83,14 +83,14 @@ const ConditionItem = ({
       if (
         ['isEmpty', 'isNotEmpty', 'empty', 'not empty', 'exists', 'not exists'].includes(operator)
       ) {
-        newValue = ''
+        newValue = undefined
       } else if (['in', 'not in'].includes(oldOperator) && !['in', 'not in'].includes(operator)) {
         if (Array.isArray(newValue)) {
-          newValue = newValue.length > 0 && newValue[0] ? newValue[0] : ''
+          newValue = newValue.length > 0 && newValue[0] ? newValue[0] : undefined
         }
       } else if (!['in', 'not in'].includes(oldOperator) && ['in', 'not in'].includes(operator)) {
         if (!Array.isArray(newValue)) {
-          newValue = newValue ? [newValue] : ['']
+          newValue = newValue ? [newValue] : []
         }
       }
 

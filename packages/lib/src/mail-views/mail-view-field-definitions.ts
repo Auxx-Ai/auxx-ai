@@ -84,6 +84,24 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
     description: 'Filter by sender email address',
   },
   {
+    id: 'from',
+    label: 'From',
+    type: BaseType.EMAIL,
+    fieldType: FieldType.EMAIL,
+    operators: ['is', 'is not', 'contains', 'not contains', 'empty', 'not empty'],
+    placeholder: 'Sender email...',
+    description: 'Filter by sender email address',
+  },
+  {
+    id: 'to',
+    label: 'To',
+    type: BaseType.EMAIL,
+    fieldType: FieldType.EMAIL,
+    operators: ['is', 'is not', 'contains', 'not contains', 'empty', 'not empty'],
+    placeholder: 'Recipient email...',
+    description: 'Filter by recipient email address',
+  },
+  {
     id: 'subject',
     label: 'Subject',
     type: BaseType.STRING,
@@ -91,6 +109,15 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
     operators: ['is', 'is not', 'contains', 'not contains', 'empty', 'not empty'],
     placeholder: 'Subject text...',
     description: 'Filter by thread subject',
+  },
+  {
+    id: 'body',
+    label: 'Body',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    operators: ['contains', 'not contains'],
+    placeholder: 'Body text...',
+    description: 'Filter by email body content',
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -112,7 +139,7 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // DATE FIELD
+  // DATE FIELDS
   // ═══════════════════════════════════════════════════════════════════════════
   {
     id: 'date',
@@ -122,6 +149,49 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
     operators: ['before', 'after', 'on', 'empty', 'not empty'],
     placeholder: 'Select date...',
     description: 'Filter by date',
+  },
+  {
+    id: 'before',
+    label: 'Before',
+    type: BaseType.DATE,
+    fieldType: FieldType.DATE,
+    operators: ['before'],
+    placeholder: 'Select date...',
+    description: 'Filter messages before date',
+  },
+  {
+    id: 'after',
+    label: 'After',
+    type: BaseType.DATE,
+    fieldType: FieldType.DATE,
+    operators: ['after'],
+    placeholder: 'Select date...',
+    description: 'Filter messages after date',
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BOOLEAN FIELDS
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    id: 'hasAttachments',
+    label: 'Has Attachments',
+    type: BaseType.BOOLEAN,
+    fieldType: FieldType.CHECKBOX,
+    operators: ['is'],
+    description: 'Filter by attachment presence',
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FREE TEXT FIELD
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    id: 'freeText',
+    label: 'Search',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    operators: ['contains'],
+    placeholder: 'Search text...',
+    description: 'Free text search across all fields',
   },
 ]
 

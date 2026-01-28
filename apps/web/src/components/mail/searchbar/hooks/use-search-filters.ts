@@ -2,24 +2,24 @@
 'use client'
 
 import { useMemo } from 'react'
-import { useSearchStore, selectHasActiveFilters } from '../store'
+import { useSearchStore, selectHasActiveConditions } from '../store'
 import {
-  filtersToApiFilter,
+  conditionsToApiFilter,
   type ApiSearchFilter,
 } from '@auxx/lib/mail-query/client'
 
 /**
- * Convert search store filters to tRPC API filter format.
- * Extracts IDs from FilterRef objects.
+ * Convert search store conditions to tRPC API filter format.
+ * This hook bridges the condition-based store with the API filter format.
  *
  * Use this hook in components that need to pass filters to the thread list query.
  */
 export function useSearchFiltersForQuery(): ApiSearchFilter | undefined {
-  const filters = useSearchStore((s) => s.filters)
-  const hasFilters = useSearchStore(selectHasActiveFilters)
+  const conditions = useSearchStore((s) => s.conditions)
+  const hasConditions = useSearchStore(selectHasActiveConditions)
 
   return useMemo(() => {
-    if (!hasFilters) return undefined
-    return filtersToApiFilter(filters)
-  }, [filters, hasFilters])
+    if (!hasConditions) return undefined
+    return conditionsToApiFilter(conditions)
+  }, [conditions, hasConditions])
 }

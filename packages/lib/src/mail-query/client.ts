@@ -7,8 +7,11 @@ export {
   type FilterRef,
   type SearchFilters,
   type ApiSearchFilter,
+  type SearchCondition,
   hasActiveFilters,
   filtersToApiFilter,
+  conditionsToApiFilter,
+  hasActiveConditions,
 } from './search-filters'
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -1,12 +1,10 @@
 // apps/web/src/components/mail/searchbar/search-filter-input.tsx
 'use client'
 
-import { useRef, useCallback, useMemo } from 'react'
-import { useShallow } from 'zustand/shallow'
-import { useSearchStore, buildFilterChips, type FilterChip } from './store'
-import { FilterBadge } from './filter-badge'
+import { useRef, useCallback } from 'react'
 import { cn } from '@auxx/ui/lib/utils'
-import type { SearchFilters } from '@auxx/lib/mail-query/client'
+import { useSearchStore, type SearchCondition } from './store'
+import { ConditionBadge } from '~/components/conditions/components/condition-badge'
 
 /**
  * Props for SearchFilterInput component
@@ -27,8 +25,9 @@ interface SearchFilterInputProps {
 }
 
 /**
- * SearchFilterInput displays filter badges and a text input.
- * Orchestrates badge editing/navigation with keyboard support.
+ * SearchFilterInput displays ConditionBadge components and a text input.
+ * Each badge has: [Field ▾] │ [Operator ▾] │ [Value Input] │ [X]
+ * Requires ConditionProvider to be wrapped around the parent component.
  */
 export function SearchFilterInput({
   onInputChange,
@@ -42,19 +41,14 @@ export function SearchFilterInput({
   const inputRef = externalInputRef || internalInputRef
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Get filter chips from store
-  const filters = useSearchStore(useShallow((s) => s.filters))
-  const chips = useMemo(() => buildFilterChips(filters), [filters])
-
-  // UI state
-  const editingFilter = useSearchStore((s) => s.editingFilter)
-  const highlightedIndex = useSearchStore((s) => s.highlightedBadgeIndex)
+  // Get conditions from store
+  const conditions = useSearchStore((s) => s.conditions)
+  const highlightedIndex = useSearchStore((s) => s.highlightedIndex)
 
   // Actions
-  const setEditingFilter = useSearchStore((s) => s.setEditingFilter)
-  const setHighlightedBadgeIndex = useSearchStore((s) => s.setHighlightedBadgeIndex)
-  const removeFilter = useSearchStore((s) => s.removeFilter)
-  const updateFilterValue = useSearchStore((s) => s.updateFilterValue)
+  const setHighlightedIndex = useSearchStore((s) => s.setHighlightedIndex)
+  const removeCondition = useSearchStore((s) => s.removeCondition)
+  const updateCondition = useSearchStore((s) => s.updateCondition)
 
   /** Focus input when clicking container background */
   const handleContainerClick = useCallback(
@@ -70,36 +64,23 @@ export function SearchFilterInput({
   const handleInputKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       // Backspace on empty input
-      if (e.key === 'Backspace' && inputValue === '' && chips.length > 0) {
+      if (e.key === 'Backspace' && inputValue === '' && conditions.length > 0) {
         e.preventDefault()
-        if (highlightedIndex === chips.length - 1) {
-          // Second backspace: delete highlighted badge
-          const chip = chips[highlightedIndex]
-          removeFilter(chip.type, chip.id || chip.value)
-          setHighlightedBadgeIndex(null)
+        if (highlightedIndex === conditions.length - 1) {
+          // Second backspace: delete highlighted condition
+          const condition = conditions[highlightedIndex]
+          removeCondition(condition.id)
+          setHighlightedIndex(null)
         } else {
-          // First backspace: highlight last badge
-          setHighlightedBadgeIndex(chips.length - 1)
+          // First backspace: highlight last condition
+          setHighlightedIndex(conditions.length - 1)
         }
-        return
-      }
-
-      // Arrow left at start of input
-      if (
-        e.key === 'ArrowLeft' &&
-        inputRef.current?.selectionStart === 0 &&
-        chips.length > 0
-      ) {
-        e.preventDefault()
-        // Start editing last badge
-        const lastChip = chips[chips.length - 1]
-        setEditingFilter({ type: lastChip.type, index: chips.length - 1 })
         return
       }
 
       // Clear highlight when typing
       if (highlightedIndex !== null && e.key.length === 1) {
-        setHighlightedBadgeIndex(null)
+        setHighlightedIndex(null)
       }
 
       // Forward to parent for suggestion navigation
@@ -107,77 +88,12 @@ export function SearchFilterInput({
     },
     [
       inputValue,
-      chips,
+      conditions,
       highlightedIndex,
-      inputRef,
-      removeFilter,
-      setHighlightedBadgeIndex,
-      setEditingFilter,
+      removeCondition,
+      setHighlightedIndex,
       onInputKeyDown,
     ]
-  )
-
-  /** Start editing a badge */
-  const handleBadgeEditStart = useCallback(
-    (index: number) => {
-      setEditingFilter({ type: chips[index].type, index })
-      setHighlightedBadgeIndex(null)
-    },
-    [chips, setEditingFilter, setHighlightedBadgeIndex]
-  )
-
-  /** End editing a badge */
-  const handleBadgeEditEnd = useCallback(() => {
-    setEditingFilter(null)
-    // Focus main input after edit
-    setTimeout(() => inputRef.current?.focus(), 0)
-  }, [setEditingFilter, inputRef])
-
-  /** Update a badge value */
-  const handleBadgeEdit = useCallback(
-    (index: number, newValue: string) => {
-      const chip = chips[index]
-      if (newValue !== chip.value) {
-        updateFilterValue(chip.type, chip.id || chip.value, newValue)
-      }
-    },
-    [chips, updateFilterValue]
-  )
-
-  /** Delete a badge */
-  const handleBadgeDelete = useCallback(
-    (index: number) => {
-      const chip = chips[index]
-      removeFilter(chip.type, chip.id || chip.value)
-      setEditingFilter(null)
-      inputRef.current?.focus()
-    },
-    [chips, removeFilter, setEditingFilter, inputRef]
-  )
-
-  /** Navigate to next badge or input */
-  const handleBadgeNavigateRight = useCallback(
-    (index: number) => {
-      if (index < chips.length - 1) {
-        // Move to next badge
-        setEditingFilter({ type: chips[index + 1].type, index: index + 1 })
-      } else {
-        // Move to input
-        setEditingFilter(null)
-        inputRef.current?.focus()
-      }
-    },
-    [chips, setEditingFilter, inputRef]
-  )
-
-  /** Navigate to previous badge */
-  const handleBadgeNavigateLeft = useCallback(
-    (index: number) => {
-      if (index > 0) {
-        setEditingFilter({ type: chips[index - 1].type, index: index - 1 })
-      }
-    },
-    [chips, setEditingFilter]
   )
 
   return (
@@ -189,20 +105,18 @@ export function SearchFilterInput({
         className
       )}
     >
-      {/* Filter badges */}
-      {chips.map((chip, index) => (
-        <FilterBadge
-          key={chip.key}
-          operator={chip.type}
-          value={chip.value}
-          isEditing={editingFilter?.index === index}
+      {/* Condition badges - full editable badges with field/operator/value/remove */}
+      {conditions.map((condition, index) => (
+        <ConditionBadge
+          key={condition.id}
+          condition={condition}
           isHighlighted={highlightedIndex === index}
-          onEdit={(newValue) => handleBadgeEdit(index, newValue)}
-          onDelete={() => handleBadgeDelete(index)}
-          onEditStart={() => handleBadgeEditStart(index)}
-          onEditEnd={handleBadgeEditEnd}
-          onNavigateLeft={() => handleBadgeNavigateLeft(index)}
-          onNavigateRight={() => handleBadgeNavigateRight(index)}
+          showRemoveButton={true}
+          onUpdate={(updates) => updateCondition(condition.id, updates)}
+          onRemove={() => {
+            removeCondition(condition.id)
+            inputRef.current?.focus()
+          }}
         />
       ))}
 
@@ -213,7 +127,7 @@ export function SearchFilterInput({
         value={inputValue}
         onChange={(e) => onInputChange(e.target.value)}
         onKeyDown={handleInputKeyDown}
-        placeholder={chips.length === 0 ? placeholder : ''}
+        placeholder={conditions.length === 0 ? placeholder : ''}
         className="flex-1 min-w-[100px] bg-transparent outline-none text-sm"
       />
     </div>

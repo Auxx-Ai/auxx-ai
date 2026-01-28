@@ -125,3 +125,118 @@ export function filtersToApiFilter(
 
   return result
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONDITION-BASED FILTER CONVERSION
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Condition interface for the searchbar.
+ * Mirrors the condition type from @auxx/lib/conditions/types.
+ */
+export interface SearchCondition {
+  id: string
+  fieldId: string
+  operator: string
+  value: any
+}
+
+/**
+ * Convert Condition[] to ApiSearchFilter format.
+ * Used by useSearchFiltersForQuery hook.
+ */
+export function conditionsToApiFilter(conditions: SearchCondition[]): ApiSearchFilter | undefined {
+  if (conditions.length === 0) return undefined
+
+  const result: ApiSearchFilter = {}
+
+  for (const condition of conditions) {
+    switch (condition.fieldId) {
+      case 'tag':
+        result.tagIds = result.tagIds || []
+        if (Array.isArray(condition.value)) {
+          result.tagIds.push(...condition.value)
+        } else if (condition.value) {
+          result.tagIds.push(condition.value)
+        }
+        break
+
+      case 'assignee':
+        result.assigneeIds = result.assigneeIds || []
+        if (Array.isArray(condition.value)) {
+          result.assigneeIds.push(...condition.value)
+        } else if (condition.value) {
+          result.assigneeIds.push(condition.value)
+        }
+        break
+
+      case 'inbox':
+        result.inboxIds = result.inboxIds || []
+        if (Array.isArray(condition.value)) {
+          result.inboxIds.push(...condition.value)
+        } else if (condition.value) {
+          result.inboxIds.push(condition.value)
+        }
+        break
+
+      case 'from':
+      case 'sender':
+        result.from = result.from || []
+        if (condition.value) {
+          result.from.push(condition.value)
+        }
+        break
+
+      case 'to':
+        result.to = result.to || []
+        if (condition.value) {
+          result.to.push(condition.value)
+        }
+        break
+
+      case 'subject':
+        result.subject = condition.value
+        break
+
+      case 'body':
+        result.body = condition.value
+        break
+
+      case 'status':
+        result.is = result.is || []
+        if (condition.value) {
+          result.is.push(condition.value)
+        }
+        break
+
+      case 'before':
+        result.before = condition.value instanceof Date
+          ? condition.value.toISOString()
+          : condition.value
+        break
+
+      case 'after':
+        result.after = condition.value instanceof Date
+          ? condition.value.toISOString()
+          : condition.value
+        break
+
+      case 'hasAttachments':
+        result.hasAttachments = condition.value === true || condition.value === 'true'
+        break
+
+      case 'freeText':
+        result.search = condition.value
+        break
+    }
+  }
+
+  return result
+}
+
+/**
+ * Check if conditions array has any active values.
+ */
+export function hasActiveConditions(conditions: SearchCondition[]): boolean {
+  return conditions.length > 0 && conditions.some(c => c.value !== undefined && c.value !== '')
+}
