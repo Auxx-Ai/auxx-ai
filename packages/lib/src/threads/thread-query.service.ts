@@ -24,6 +24,7 @@ import { type MailViewFilter } from '../mail-query/types'
 import { parseSearchQuery } from '../mail-query/search-query-parser'
 import { MessageAttachmentService } from '../messages/message-attachment.service'
 import { spliceAttachmentsIntoMessages } from '../messages/attachment-transformers'
+import { toActorId } from '@auxx/types/actor'
 
 import {
   type ThreadListItem,
@@ -496,11 +497,8 @@ export class ThreadQueryService {
               label: true,
             },
           },
-          tags: {
-            with: {
-              tag: true,
-            },
-          },
+          // tags: TEMPORARILY DISABLED - migration to FieldValue in progress
+          // tags: { with: { tag: true } },
           assignee: true,
           // Note: inbox relation removed - Thread.inboxId was removed in migration 0028
           integration: true, // Added to support provider-based type derivation
@@ -839,7 +837,8 @@ export class ThreadQueryService {
       ),
       with: {
         integration: { columns: { provider: true } },
-        tags: { with: { tag: true } },
+        // tags: TEMPORARILY DISABLED - migration to FieldValue in progress
+        // tags: { with: { tag: true } },
       },
     })
 
@@ -895,16 +894,13 @@ export class ThreadQueryService {
           participantCount: t.participantCount,
           integrationId: t.integrationId,
           integrationProvider: (t.integration?.provider as IntegrationProvider) ?? null,
-          assigneeActorId: t.assigneeId ? { type: 'user' as const, id: t.assigneeId } : null,
+          assigneeId: t.assigneeId ? toActorId('user', t.assigneeId) : null,
           latestMessageId: t.latestMessageId ?? null,
           latestCommentId: t.latestCommentId ?? null,
           inboxId: t.inboxId ?? null,
           externalId: t.externalId ?? null,
-          tags: (t.tags ?? [])
-            .map((tt: { tag?: { id: string; title: string; color?: string | null; emoji?: string | null } }) =>
-              tt.tag ? this.toTagSummary(tt.tag) : null
-            )
-            .filter((tag): tag is ThreadTagSummary => tag !== null),
+          // tags: TEMPORARILY returning empty array - migration to FieldValue in progress
+          tags: [],
           isUnread,
         } satisfies ThreadMeta
       })
@@ -1024,13 +1020,8 @@ export class ThreadQueryService {
 
           this.fetchLatestCommentsForThreads(orderedThreadIds),
 
-          // Fetch tags
-          this.db.query.TagsOnThread.findMany({
-            where: inArray(schema.TagsOnThread.threadId, orderedThreadIds),
-            with: {
-              tag: true,
-            },
-          }),
+          // tags: TEMPORARILY returning empty array - migration to FieldValue in progress
+          Promise.resolve([]),
 
           // Fetch read status if userId provided
           userId

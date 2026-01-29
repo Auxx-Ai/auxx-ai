@@ -49,7 +49,7 @@ export interface ThreadMeta {
   // Foreign keys (IDs only - frontend resolves via separate stores)
   integrationId: string
   integrationProvider: IntegrationProvider | null
-  assigneeActorId: ActorId | null
+  assigneeId: ActorId | null
 
   // Denormalized for performance (avoid extra fetches for list display)
   latestMessageId: string | null

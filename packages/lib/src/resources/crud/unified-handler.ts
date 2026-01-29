@@ -19,7 +19,11 @@ import {
   queryEntityInstanceIds,
   querySystemResourceIds,
   isSystemResource,
+  resolveEntityId,
+  listAll as listAllQuery,
   type ListFilteredResult,
+  type ListAllInput,
+  type ListAllResult,
 } from './unified-handler-queries'
 import {
   createEntity,
@@ -405,6 +409,30 @@ export class UnifiedCrudHandler {
     })
 
     return unwrapResult(result)
+  }
+
+  /**
+   * Resolve entityDefinitionId or apiSlug to actual entityDefinitionId UUID.
+   * Delegates to standalone function for reusability.
+   *
+   * @param params - Must provide either entityDefinitionId or apiSlug
+   */
+  async resolveEntityId(params: { entityDefinitionId?: string; apiSlug?: string }): Promise<string> {
+    return resolveEntityId(this.registryService, params)
+  }
+
+  /**
+   * List all entities with field values for small datasets (no pagination).
+   * Suitable for tags, inboxes, and other small entity collections.
+   * Delegates to standalone function.
+   *
+   * @param params - List all parameters (entityDefinitionId or apiSlug required)
+   */
+  async listAll(params: ListAllInput): Promise<ListAllResult> {
+    return listAllQuery(
+      { db: this.db, organizationId: this.organizationId, userId: this.userId },
+      params
+    )
   }
 
   /**

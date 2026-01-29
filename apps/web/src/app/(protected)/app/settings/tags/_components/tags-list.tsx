@@ -1,4 +1,4 @@
-// components/tags/tag-tree-view.tsx
+// apps/web/src/app/(protected)/app/settings/tags/_components/tags-list.tsx
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
@@ -13,6 +13,9 @@ import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { useUser } from '~/hooks/use-user'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useTagHierarchy } from '~/components/tags/hooks/use-tag-hierarchy'
+import { filterHierarchy } from '~/components/tags/utils/hierarchy'
+import type { TagNode } from '~/components/tags/types'
 
 export function TagTreeView() {
   const [confirm, ConfirmDialog] = useConfirm()
@@ -30,8 +33,8 @@ export function TagTreeView() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [editingTag, setEditingTag] = useState<any>(null)
 
-  // Fetch tag hierarchy
-  const { data: tagHierarchy, isLoading, refetch } = api.tag.getHierarchy.useQuery()
+  // Fetch tag hierarchy using useTagHierarchy
+  const { hierarchy: tagHierarchy, isLoading, refresh: refetch } = useTagHierarchy()
 
   // Delete tag mutation
   const deleteTag = api.tag.delete.useMutation({
@@ -44,30 +47,11 @@ export function TagTreeView() {
     },
   })
 
-  // Filter tags based on search query
-  const filterTags = useCallback((tags: any[], query: string) => {
+  // Filter tags based on search query using filterHierarchy utility
+  const filterTags = useCallback((tags: TagNode[], query: string): TagNode[] => {
     if (!query) return tags
-
-    const lowerQuery = query.toLowerCase()
-
-    // Helper function to check if a tag or any of its children match the query
-    const tagMatches = (tag: any): boolean => {
-      const titleMatches = tag.title.toLowerCase().includes(lowerQuery)
-      const descriptionMatches = tag.description?.toLowerCase().includes(lowerQuery)
-
-      // Direct match
-      if (titleMatches || descriptionMatches) return true
-
-      // Check children
-      if (tag.tags?.length) {
-        return tag.tags.some(tagMatches)
-      }
-
-      return false
-    }
-
-    // Filter tags where either the tag or any child matches
-    return tags.filter(tagMatches)
+    const { filtered } = filterHierarchy(tags, query)
+    return filtered
   }, [])
 
   // Filtered tags based on search
@@ -77,7 +61,7 @@ export function TagTreeView() {
   useEffect(() => {
     if (searchQuery && tagHierarchy) {
       // Helper to collect all parent tag IDs that have children matching search
-      const collectMatchingParentIds = (tags: any[]): string[] => {
+      const collectMatchingParentIds = (tags: TagNode[]): string[] => {
         let parentIds: string[] = []
 
         tags.forEach((tag) => {
@@ -85,9 +69,9 @@ export function TagTreeView() {
           if (filterTags([tag], searchQuery).length > 0) {
             parentIds.push(tag.id)
 
-            // Also expand its parent
-            if (tag.tags?.length) {
-              parentIds = [...parentIds, ...collectMatchingParentIds(tag.tags)]
+            // Also expand its children
+            if (tag.children?.length) {
+              parentIds = [...parentIds, ...collectMatchingParentIds(tag.children)]
             }
           }
         })
@@ -112,14 +96,14 @@ export function TagTreeView() {
   }
 
   // Handle tag edit click
-  const handleEditTag = (tag: any) => {
+  const handleEditTag = (tag: TagNode) => {
     setEditingTag(tag)
     setIsCreateDialogOpen(true)
   }
 
   // Handle tag delete click
-  const handleDeleteTag = async (tag: any) => {
-    if (tag.tags?.length > 0) {
+  const handleDeleteTag = async (tag: TagNode) => {
+    if (tag.children?.length > 0) {
       const confirmed = await confirm({
         title: 'Cannot Delete Tag',
         description: 'This tag has child tags. You must move or delete its children first.',
@@ -144,8 +128,8 @@ export function TagTreeView() {
   }
 
   /** Recursive component to render tag tree */
-  const TagTreeItem = ({ tag, depth = 0 }: { tag: any; depth?: number }) => {
-    const hasChildren = tag.tags?.length > 0
+  const TagTreeItem = ({ tag, depth = 0 }: { tag: TagNode; depth?: number }) => {
+    const hasChildren = tag.children?.length > 0
     const isExpanded = expandedTags[tag.id]
 
     return (
@@ -219,7 +203,7 @@ export function TagTreeView() {
         {/* Render children if expanded */}
         {hasChildren && isExpanded && (
           <div className="ml-4 mt-0 border-l border-l-border pl-2">
-            {tag.tags.map((child: any) => (
+            {tag.children.map((child) => (
               <TagTreeItem key={child.id} tag={child} depth={depth + 1} />
             ))}
           </div>

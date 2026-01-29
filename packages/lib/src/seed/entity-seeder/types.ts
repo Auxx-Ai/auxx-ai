@@ -60,6 +60,6 @@ export interface SystemEntityConfig {
 export interface DisplayFieldConfig {
   /** field.id for primary display (e.g., 'fullName', 'title') */
   primaryDisplayField: string
-  /** field.id for secondary display (e.g., 'primaryEmail', 'number') */
-  secondaryDisplayField: string
+  /** field.id for secondary display (e.g., 'primaryEmail', 'number'), undefined if none */
+  secondaryDisplayField?: string
 }

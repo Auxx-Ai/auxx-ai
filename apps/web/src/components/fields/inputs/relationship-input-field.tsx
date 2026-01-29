@@ -13,11 +13,14 @@ import {
 import {
   getRelatedEntityDefinitionId,
   getInverseFieldId,
+  isSelfReferentialRelationship,
   type RelationshipConfig,
 } from '@auxx/types/custom-field'
+import { toResourceFieldId } from '@auxx/types/field'
 import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
 import { RecordPickerContent } from '~/components/pickers/record-picker'
 import { isSingleRelationship } from '@auxx/utils'
+import { api } from '~/trpc/react'
 
 /**
  * Input component for RELATIONSHIP field type.
@@ -48,6 +51,52 @@ export function RelationshipInputField() {
   }, [relationship])
 
   const { resource: relatedResource } = useResource(relatedEntityDefinitionId)
+
+  // Detect if this is a self-referential relationship
+  const isSelfReferential = useMemo(() => {
+    if (!relationship || !recordId) return false
+    const { entityDefinitionId } = parseRecordId(recordId)
+    return isSelfReferentialRelationship(entityDefinitionId, relationship)
+  }, [relationship, recordId])
+
+  // Build ResourceFieldId for the parent field (e.g., "tag:parent")
+  const resourceFieldId = useMemo(() => {
+    if (!isSelfReferential || !field.key || !recordId) return undefined
+    const { entityDefinitionId } = parseRecordId(recordId)
+    return toResourceFieldId(entityDefinitionId, field.key)
+  }, [isSelfReferential, field.key, recordId])
+
+  // Fetch descendants for self-referential exclusion
+  // Returns RecordIds of all descendants (e.g., ["tag:child1", "tag:child2"])
+  const { data: descendantRecordIds } = api.record.getDescendantRecordIds.useQuery(
+    {
+      recordId: recordId!,
+      resourceFieldId: resourceFieldId!,
+    },
+    {
+      enabled: isSelfReferential && !!recordId && !!resourceFieldId,
+      staleTime: 30_000,
+    }
+  )
+
+  // Combine excludeRecordIds: self + descendants
+  const excludeRecordIds = useMemo(() => {
+    const ids: RecordId[] = []
+
+    // Exclude self
+    if (isSelfReferential && recordId) {
+      ids.push(recordId)
+    }
+
+    // Exclude descendants
+    if (descendantRecordIds) {
+      for (const id of descendantRecordIds) {
+        ids.push(id as RecordId)
+      }
+    }
+
+    return ids
+  }, [isSelfReferential, recordId, descendantRecordIds])
 
   // Dialog state for inline create
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
@@ -183,6 +232,7 @@ export function RelationshipInputField() {
         onCreate={handleOpenCreateDialog}
         createLabel={`Create ${relatedResource?.label ?? 'Item'}`}
         placeholder="Search..."
+        excludeIds={excludeRecordIds}
       />
 
       {/* Inline Create Dialog */}

@@ -91,7 +91,7 @@ import {
   TableView,
   Tag,
   TagsOnArticle,
-  TagsOnThread,
+  // TagsOnThread, // DEPRECATED: Tags now use FieldValue via RELATIONSHIP field
   Thread,
   ThreadReadStatus,
   Ticket,
@@ -631,7 +631,7 @@ export const tagRelations = relations(Tag, ({ one, many }) => ({
     relationName: 'tag_parentId_tag_id',
   }),
   integrationTagLabels: many(IntegrationTagLabel),
-  tagsOnThreads: many(TagsOnThread),
+  // tagsOnThreads: many(TagsOnThread), // DEPRECATED: Tags now use FieldValue via RELATIONSHIP field
 }))
 
 export const notificationRelations = relations(Notification, ({ one }) => ({

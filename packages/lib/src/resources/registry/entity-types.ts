@@ -11,6 +11,8 @@ export const NEW_SYSTEM_ENTITY_TYPES = [
   'ticket',
   'entity_group',
   'inbox',
+  'tag',
+  'thread',
 ] as const
 
 /** Type for new system entity types */

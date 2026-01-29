@@ -11,8 +11,16 @@ export {
   querySystemResourceIds,
   getTableSchema,
   isSystemResource,
+  resolveEntityId,
+  listAll,
 } from './unified-handler-queries'
-export type { ListFilteredInput, ListFilteredResult } from './unified-handler-queries'
+export type {
+  ListFilteredInput,
+  ListFilteredResult,
+  ListAllInput,
+  ListAllItem,
+  ListAllResult,
+} from './unified-handler-queries'
 
 // Mutation utilities (for advanced use cases)
 export type { MutationContext, CreateEntityResult } from './unified-handler-mutations'

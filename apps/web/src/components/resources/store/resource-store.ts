@@ -341,12 +341,16 @@ export const useResourceStore = create<ResourceStoreState>()(
     setResources: (resources) => {
       const state = get()
 
-      // Build map for O(1) lookups
+      // Build map for O(1) lookups by id, apiSlug, and entityType
       const resourceMap = new Map<string, Resource>()
       resources.forEach((r) => {
         resourceMap.set(r.id, r)
         if (r.apiSlug) {
           resourceMap.set(r.apiSlug, r)
+        }
+        // Index by entityType for system resources (enables getResourceById('tag'))
+        if (r.entityType) {
+          resourceMap.set(r.entityType, r)
         }
       })
 

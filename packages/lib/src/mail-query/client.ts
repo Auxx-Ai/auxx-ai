@@ -19,6 +19,15 @@ export {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
+ * Actor ID object format for client-side filtering.
+ * Matches the thread store's ActorId interface.
+ */
+export interface ActorIdObject {
+  type: 'user' | 'contact'
+  id: string
+}
+
+/**
  * Supported thread status values.
  * Matches ThreadStatus enum from @auxx/database/enums
  */
@@ -43,8 +52,8 @@ export interface ThreadClientFilter {
   /** Filter by assignment presence: true = has assignee, false = unassigned */
   hasAssignee?: boolean
 
-  /** Filter by specific assignee actor ID */
-  assigneeActorId?: string | null
+  /** Filter by specific assignee (ActorIdObject for type+id matching) */
+  assigneeId?: ActorIdObject | null
 
   /** Filter by unread status */
   isUnread?: boolean
@@ -86,6 +95,7 @@ export function mapStatusSlugToClientFilter(slug?: string): Partial<ThreadClient
 
     case 'done':
     case 'resolved':
+    case 'archived': // Alias used by IsOperatorValue in searchbar
       return { status: 'ARCHIVED' }
 
     case 'trash':
@@ -127,7 +137,7 @@ export function mapStatusSlugToClientFilter(slug?: string): Partial<ThreadClient
 export interface FilterableThread {
   id: string
   status: string
-  assigneeActorId: { id: string } | string | null
+  assigneeId: ActorIdObject | null
   isUnread?: boolean
   tags?: Array<{ id: string }>
   inboxId?: string | null
@@ -175,29 +185,30 @@ export function threadMatchesFilter(thread: FilterableThread, filter: ThreadClie
   // Assignment presence filter (for assigned/unassigned slugs)
   // ─────────────────────────────────────────────────────────────────
   if (filter.hasAssignee !== undefined) {
-    const hasAssignee = thread.assigneeActorId !== null
+    const hasAssignee = thread.assigneeId !== null
     if (filter.hasAssignee !== hasAssignee) {
       return false
     }
   }
 
   // ─────────────────────────────────────────────────────────────────
-  // Specific assignee filter (for personal_assigned context)
-  // Handles both ActorId object and string ID formats
+  // Specific assignee filter (for personal_inbox/personal_assigned contexts)
+  // Compares ActorIdObject (type and id must both match)
   // ─────────────────────────────────────────────────────────────────
-  if (filter.assigneeActorId !== undefined) {
-    if (filter.assigneeActorId === null) {
+  if (filter.assigneeId !== undefined) {
+    if (filter.assigneeId === null) {
       // Filter for unassigned threads
-      if (thread.assigneeActorId !== null) {
+      if (thread.assigneeId !== null) {
         return false
       }
     } else {
-      // Filter for specific assignee
-      const threadAssigneeId =
-        typeof thread.assigneeActorId === 'object'
-          ? thread.assigneeActorId?.id
-          : thread.assigneeActorId
-      if (threadAssigneeId !== filter.assigneeActorId) {
+      // Filter for specific assignee - compare both type and id
+      const threadActorId = thread.assigneeId
+      if (
+        !threadActorId ||
+        threadActorId.type !== filter.assigneeId.type ||
+        threadActorId.id !== filter.assigneeId.id
+      ) {
         return false
       }
     }

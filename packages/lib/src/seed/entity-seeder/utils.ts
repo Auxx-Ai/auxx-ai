@@ -39,6 +39,8 @@ export function buildFieldOptions(field: ResourceField): FieldOptions {
       inverseResourceFieldId: null, // Static ref resolved in Pass 3
       relationshipType: field.relationship.relationshipType,
       isInverse: field.relationship.isInverse ?? false,
+      // Include constraints if defined (for self-referential validation)
+      constraints: field.relationship.constraints,
     }
   }
 

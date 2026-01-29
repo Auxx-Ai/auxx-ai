@@ -59,7 +59,7 @@ describe('threadMatchesFilter', () => {
   const baseThread = {
     id: 'thread-1',
     status: 'OPEN',
-    assigneeActorId: null,
+    assigneeId: null,
     isUnread: true,
     tags: [{ id: 'tag-1' }],
     inboxId: 'inbox-1',
@@ -90,36 +90,29 @@ describe('threadMatchesFilter', () => {
       expect(threadMatchesFilter(baseThread, { hasAssignee: true })).toBe(false)
     })
 
-    it('matches assigned threads with object assigneeActorId', () => {
-      const assigned = { ...baseThread, assigneeActorId: { id: 'user-1' } }
-      expect(threadMatchesFilter(assigned, { hasAssignee: true })).toBe(true)
-      expect(threadMatchesFilter(assigned, { hasAssignee: false })).toBe(false)
-    })
-
-    it('matches assigned threads with string assigneeActorId', () => {
-      const assigned = { ...baseThread, assigneeActorId: 'user-1' }
+    it('matches assigned threads with ActorIdObject', () => {
+      const assigned = { ...baseThread, assigneeId: { type: 'user' as const, id: 'user-1' } }
       expect(threadMatchesFilter(assigned, { hasAssignee: true })).toBe(true)
       expect(threadMatchesFilter(assigned, { hasAssignee: false })).toBe(false)
     })
   })
 
-  describe('assigneeActorId filter', () => {
-    it('matches specific assignee with object format', () => {
-      const assigned = { ...baseThread, assigneeActorId: { id: 'user-1' } }
-      expect(threadMatchesFilter(assigned, { assigneeActorId: 'user-1' })).toBe(true)
-      expect(threadMatchesFilter(assigned, { assigneeActorId: 'user-2' })).toBe(false)
+  describe('assigneeId filter', () => {
+    it('matches specific assignee with ActorIdObject (type and id match)', () => {
+      const assigned = { ...baseThread, assigneeId: { type: 'user' as const, id: 'user-1' } }
+      expect(threadMatchesFilter(assigned, { assigneeId: { type: 'user', id: 'user-1' } })).toBe(true)
+      expect(threadMatchesFilter(assigned, { assigneeId: { type: 'user', id: 'user-2' } })).toBe(false)
     })
 
-    it('matches specific assignee with string format', () => {
-      const assigned = { ...baseThread, assigneeActorId: 'user-1' }
-      expect(threadMatchesFilter(assigned, { assigneeActorId: 'user-1' })).toBe(true)
-      expect(threadMatchesFilter(assigned, { assigneeActorId: 'user-2' })).toBe(false)
+    it('does not match when type differs', () => {
+      const assigned = { ...baseThread, assigneeId: { type: 'user' as const, id: 'user-1' } }
+      expect(threadMatchesFilter(assigned, { assigneeId: { type: 'contact', id: 'user-1' } })).toBe(false)
     })
 
-    it('matches null assigneeActorId filter for unassigned', () => {
-      expect(threadMatchesFilter(baseThread, { assigneeActorId: null })).toBe(true)
-      const assigned = { ...baseThread, assigneeActorId: { id: 'user-1' } }
-      expect(threadMatchesFilter(assigned, { assigneeActorId: null })).toBe(false)
+    it('matches null assigneeId filter for unassigned', () => {
+      expect(threadMatchesFilter(baseThread, { assigneeId: null })).toBe(true)
+      const assigned = { ...baseThread, assigneeId: { type: 'user' as const, id: 'user-1' } }
+      expect(threadMatchesFilter(assigned, { assigneeId: null })).toBe(false)
     })
   })
 
@@ -178,7 +171,7 @@ describe('threadMatchesFilter', () => {
     it('handles complex filter combinations', () => {
       const assigned = {
         ...baseThread,
-        assigneeActorId: { id: 'user-1' },
+        assigneeId: { type: 'user' as const, id: 'user-1' },
         isUnread: false,
         tags: [{ id: 'priority' }, { id: 'bug' }],
       }
@@ -187,7 +180,7 @@ describe('threadMatchesFilter', () => {
         threadMatchesFilter(assigned, {
           status: 'OPEN',
           hasAssignee: true,
-          assigneeActorId: 'user-1',
+          assigneeId: { type: 'user', id: 'user-1' },
           isUnread: false,
           tagIds: ['priority'],
           inboxId: 'inbox-1',
@@ -203,11 +196,11 @@ describe('threadMatchesFilter', () => {
 
 describe('filterThreads', () => {
   const threads = [
-    { id: '1', status: 'OPEN', assigneeActorId: null },
-    { id: '2', status: 'OPEN', assigneeActorId: { id: 'user-1' } },
-    { id: '3', status: 'ARCHIVED', assigneeActorId: null },
-    { id: '4', status: 'ARCHIVED', assigneeActorId: { id: 'user-2' } },
-    { id: '5', status: 'TRASH', assigneeActorId: null },
+    { id: '1', status: 'OPEN', assigneeId: null },
+    { id: '2', status: 'OPEN', assigneeId: { type: 'user' as const, id: 'user-1' } },
+    { id: '3', status: 'ARCHIVED', assigneeId: null },
+    { id: '4', status: 'ARCHIVED', assigneeId: { type: 'user' as const, id: 'user-2' } },
+    { id: '5', status: 'TRASH', assigneeId: null },
   ]
 
   it('filters array by status', () => {
@@ -245,10 +238,10 @@ describe('filterThreads', () => {
     interface ExtendedThread {
       id: string
       status: string
-      assigneeActorId: null
+      assigneeId: null
       customField: string
     }
-    const extended: ExtendedThread[] = [{ id: '1', status: 'OPEN', assigneeActorId: null, customField: 'test' }]
+    const extended: ExtendedThread[] = [{ id: '1', status: 'OPEN', assigneeId: null, customField: 'test' }]
 
     const result = filterThreads(extended, { status: 'OPEN' })
     expect(result[0].customField).toBe('test')

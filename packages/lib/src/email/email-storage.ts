@@ -1617,7 +1617,8 @@ export class MessageStorageService {
           and(eq(threads.id, threadId), eq(threads.organizationId, organizationId)),
         with: {
           labels: { with: { label: true } },
-          tags: { with: { tag: true } },
+          // tags: TEMPORARILY DISABLED - migration to FieldValue in progress
+          // tags: { with: { tag: true } },
           assignee: true,
           // Note: inbox relation removed - Thread.inboxId was removed in migration 0028
           integration: true, // Added to support provider-based type derivation

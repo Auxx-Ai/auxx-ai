@@ -15,6 +15,8 @@ export type {
   ThreadDetail,
   ThreadStatus,
   IntegrationProvider,
-  ActorId,
   ThreadFilter,
 } from './types'
+
+// Re-export ActorId from canonical location for convenience
+export type { ActorId } from '@auxx/types/actor'

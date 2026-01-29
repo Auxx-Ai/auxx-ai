@@ -113,8 +113,8 @@ export default function ThreadDetails() {
       const newAssigneeId = firstAssignee?.id ?? null // Use optional chaining and nullish coalescing
 
       // Avoid mutation if assignee hasn't changed
-      // Compare with assigneeActorId from store
-      const currentAssigneeId = thread?.assigneeActorId?.id ?? null
+      // Compare with assigneeId from store
+      const currentAssigneeId = thread?.assigneeId?.id ?? null
       if (newAssigneeId === currentAssigneeId) {
         console.log('Assignee unchanged, skipping update.', { newAssigneeId })
         return

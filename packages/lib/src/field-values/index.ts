@@ -116,6 +116,26 @@ export {
   type BulkSyncInput,
 } from './relationship-sync'
 
+// Relationship validators (self-referential constraints)
+export {
+  getDescendantIds,
+  hasCircularReference,
+  calculateDepth,
+  validateSelfReferentialChange,
+  validateSelfReferentialDelete,
+  type ValidationContext,
+  type ValidationResult,
+} from './relationship-validators'
+
+// Relationship error types
+export {
+  RelationshipValidationError,
+  createCircularReferenceError,
+  createMaxDepthError,
+  createHasChildrenError,
+  type RelationshipErrorCode,
+} from './relationship-errors'
+
 // Display field types and config
 export type {
   DisplayFieldType,

@@ -159,6 +159,9 @@ function MailboxInner({
     shallow: false,
   })
 
+  // Get current user ID for personal inbox/assigned filtering
+  const { userId } = useUser()
+
   // Dock state for contact drawer
   const isDocked = useEffectiveDockState()
   const dockedWidth = useDockStore((state) => state.dockedWidth)
@@ -244,11 +247,11 @@ function MailboxInner({
     () => ({
       contextType: contextType,
       contextId: contextId,
-      // If user has search filters, let them override URL-based statusSlug
-      // This prevents redundant filtering (statusSlug + filter.is both being sent)
-      statusSlug: storeApiFilter
-        ? undefined
-        : (activeStatusSlug === 'all' ? undefined : activeStatusSlug),
+      // Pass current user's ActorId for client-side filtering in personal contexts
+      actorId: userId ? { type: 'user' as const, id: userId } : undefined,
+      // Always pass URL-based statusSlug as default constraint
+      // Server/client will use filter.is if user explicitly adds status condition (override)
+      statusSlug: activeStatusSlug === 'all' ? undefined : activeStatusSlug,
       // Prefer store API filter, fall back to legacy search query
       filter: storeApiFilter,
       searchQuery: !storeApiFilter ? deferredSearchQuery || undefined : undefined,
@@ -256,7 +259,7 @@ function MailboxInner({
       sortBy: sortBy,
       sortDirection: sortDirection,
     }),
-    [contextType, contextId, activeStatusSlug, storeApiFilter, deferredSearchQuery, sortBy, sortDirection]
+    [contextType, contextId, userId, activeStatusSlug, storeApiFilter, deferredSearchQuery, sortBy, sortDirection]
   )
 
   // Calculate the base path for constructing links within the ThreadList using utility

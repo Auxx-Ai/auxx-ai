@@ -1,4 +1,4 @@
-// components/tags/tag-form-dialog.tsx
+// apps/web/src/app/(protected)/app/settings/tags/_components/tags-form.tsx
 'use client'
 
 import { useForm } from 'react-hook-form'
@@ -33,13 +33,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-// import { ColorPicker } from '@auxx/ui/components/color-picker'
 import { FormEmojiPicker } from '~/components/pickers/emoji-picker'
 import { api } from '~/trpc/react'
 import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 import React, { useEffect } from 'react'
 import { Loader2, Tag } from 'lucide-react'
-import { FormColorTagPicker } from '~/components/pickers/color-tag-picker'
+import { FormColorTagPicker } from '~/components/tags/ui/color-tag-picker'
+import { useTagHierarchy } from '~/components/tags/hooks/use-tag-hierarchy'
+import type { TagNode } from '~/components/tags/types'
 
 // Schema for tag form validation
 const tagFormSchema = z.object({
@@ -93,8 +94,8 @@ function TagFormDialogContent({
 }: Omit<TagFormDialogProps, 'open'>) {
   const isEditing = !!editingTag
 
-  // Fetch tags for parent selection dropdown
-  const { data: tags, isLoading: isLoadingTags } = api.tag.getHierarchy.useQuery()
+  // Fetch tags for parent selection dropdown using useTagHierarchy
+  const { hierarchy: tags, isLoading: isLoadingTags } = useTagHierarchy()
 
   // Form setup with react-hook-form and zod validation
   const form = useForm<TagFormValues>({
@@ -163,10 +164,10 @@ function TagFormDialogContent({
   const isSubmitting = createTag.isPending || updateTag.isPending
 
   // Recursive function to render tag options with proper indentation
-  const renderTagOptions = (tags: any[], depth = 0, path: string[] = [], excludeId?: string) => {
-    if (!tags) return null
+  const renderTagOptions = (tagNodes: TagNode[], depth = 0, path: string[] = [], excludeId?: string) => {
+    if (!tagNodes) return null
 
-    return tags.map((tag) => {
+    return tagNodes.map((tag) => {
       // Skip the current tag and its children when editing to prevent circular references
       if (excludeId && tag.id === excludeId) return null
 

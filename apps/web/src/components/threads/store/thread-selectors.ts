@@ -3,6 +3,7 @@
 import {
   threadMatchesFilter,
   type ThreadClientFilter,
+  type ActorIdObject,
 } from '@auxx/lib/mail-query/client'
 import type { ThreadMeta, ThreadSort } from './thread-store'
 
@@ -101,8 +102,11 @@ export function createInboxThreadsSelector(inboxId: string, status?: ThreadMeta[
 /**
  * Create selector for user's assigned threads with optional status filter.
  */
-export function createAssignedThreadsSelector(assigneeActorId: string, status?: ThreadMeta['status']) {
-  return createThreadSelector({ assigneeActorId, status }, DEFAULT_SORT)
+export function createAssignedThreadsSelector(
+  assigneeId: ActorIdObject,
+  status?: ThreadMeta['status']
+) {
+  return createThreadSelector({ assigneeId, status }, DEFAULT_SORT)
 }
 
 /**

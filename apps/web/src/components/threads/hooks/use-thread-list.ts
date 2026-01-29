@@ -8,12 +8,19 @@ import {
   createThreadSelector,
   type ThreadFilter,
 } from '../store/thread-selectors'
-import { mapStatusSlugToClientFilter, type ThreadClientFilter, type ApiSearchFilter } from '@auxx/lib/mail-query/client'
+import {
+  mapStatusSlugToClientFilter,
+  type ThreadClientFilter,
+  type ApiSearchFilter,
+  type ActorIdObject,
+} from '@auxx/lib/mail-query/client'
 import { api } from '~/trpc/react'
 
 interface ThreadListFilter {
   contextType: string
   contextId?: string
+  /** Current user's ActorId for personal_inbox/personal_assigned filtering */
+  actorId?: ActorIdObject
   statusSlug?: string
   /** Legacy search query string (deprecated, use filter instead) */
   searchQuery?: string
@@ -88,8 +95,11 @@ export function useThreadList(filter: ThreadListFilter): UseThreadListResult {
   // Build client-side filter for derived view using shared utility
   // This mirrors server-side behavior for consistent optimistic updates
   const clientFilter = useMemo((): ThreadClientFilter => {
-    // Start with status slug filter (may include status and/or hasAssignee)
-    const slugFilter = mapStatusSlugToClientFilter(filter.statusSlug)
+    // If user explicitly set status in search conditions (filter.filter.is), use that (override)
+    // Otherwise use URL-based statusSlug as default constraint
+    // This mirrors the server-side logic in thread.ts:370-378
+    const statusSource = filter.filter?.is?.[0] ?? filter.statusSlug
+    const slugFilter = mapStatusSlugToClientFilter(statusSource)
 
     const f: ThreadClientFilter = { ...slugFilter }
 
@@ -98,8 +108,16 @@ export function useThreadList(filter: ThreadListFilter): UseThreadListResult {
       f.inboxId = filter.contextId
     }
 
+    // Assignee filter for personal contexts (mirrors backend mail-query-builder.ts:282-286)
+    if (
+      (filter.contextType === 'personal_inbox' || filter.contextType === 'personal_assigned') &&
+      filter.actorId
+    ) {
+      f.assigneeId = filter.actorId
+    }
+
     return f
-  }, [filter.contextType, filter.contextId, filter.statusSlug])
+  }, [filter.contextType, filter.contextId, filter.statusSlug, filter.filter?.is, filter.actorId])
 
   const sortOption = useMemo(
     () => mapSortOption(filter.sortBy, filter.sortDirection),

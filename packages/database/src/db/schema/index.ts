@@ -132,7 +132,7 @@ export * from './attachment'
 export * from './folder-file'
 export * from './labels-on-thread'
 export * from './tags-on-article'
-export * from './tags-on-thread'
+// export * from './tags-on-thread' // DEPRECATED: Tags now use FieldValue via RELATIONSHIP field
 export * from './timeline-event'
 export * from './developer-account'
 export * from './developer-account-member'

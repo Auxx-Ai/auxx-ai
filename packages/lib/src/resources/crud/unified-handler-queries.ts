@@ -11,11 +11,22 @@ import {
 import { ResourceRegistryService, RESOURCE_TABLE_MAP, RESOURCE_TABLE_REGISTRY } from '../registry'
 import type { TableId } from '../registry/field-registry'
 import type { ResourceField } from '../registry'
-import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
+import {
+  parseResourceFieldId,
+  toResourceFieldId,
+  type FieldId,
+  type FieldReference,
+  type ResourceFieldId,
+} from '@auxx/types/field'
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import { createScopedLogger } from '@auxx/logger'
+import { toRecordId, type RecordId } from '../resource-id'
+import { FieldValueService } from '../../field-values'
 
 const logger = createScopedLogger('unified-handler-queries')
+
+/** Type for EntityInstance select */
+type EntityInstanceEntity = typeof schema.EntityInstance.$inferSelect
 
 /**
  * Input for listFiltered query
@@ -254,4 +265,183 @@ export function getTableSchema(tableId: TableId) {
  */
 export function isSystemResource(resourceId: string): boolean {
   return RESOURCE_TABLE_REGISTRY.some((r) => r.id === resourceId)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LIST ALL TYPES
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Input for listAll query
+ */
+export interface ListAllInput {
+  /** Entity definition ID - can be UUID or type like 'tag', 'contact' */
+  entityDefinitionId?: string
+  /** API slug like 'tags', 'contacts' */
+  apiSlug?: string
+  /** Specific field IDs to fetch (all fields if undefined) */
+  fieldIds?: FieldId[]
+  /** Include archived records */
+  includeArchived?: boolean
+}
+
+/**
+ * Record with field values
+ */
+export type ListAllItem = EntityInstanceEntity & {
+  fieldValues: Record<string, unknown>
+}
+
+/**
+ * Result from listAll query
+ */
+export interface ListAllResult {
+  /** Records with field values (inherits displayName, secondaryDisplayValue, avatarUrl from EntityInstanceEntity) */
+  items: ListAllItem[]
+  /** Resolved entityDefinitionId UUID */
+  entityDefinitionId: string
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RESOLUTION
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Resolve entityDefinitionId or apiSlug to actual entityDefinitionId UUID.
+ *
+ * @param registryService - Resource registry service
+ * @param params - Must provide either entityDefinitionId or apiSlug
+ * @param params.entityDefinitionId - Can be UUID or entity type ('tag', 'contact')
+ * @param params.apiSlug - API slug ('tags', 'contacts', 'products')
+ * @returns Resolved entityDefinitionId UUID
+ * @throws Error if neither provided or not found
+ */
+export async function resolveEntityId(
+  registryService: ResourceRegistryService,
+  params: { entityDefinitionId?: string; apiSlug?: string }
+): Promise<string> {
+  const { entityDefinitionId, apiSlug } = params
+
+  // Resolve from apiSlug if provided
+  if (apiSlug) {
+    return registryService.resolveEntityDefIdFromApiSlug(apiSlug)
+  }
+
+  // Resolve entityDefinitionId (handles 'tag' → UUID, or UUID → UUID)
+  if (entityDefinitionId) {
+    return registryService.resolveEntityDefId(entityDefinitionId)
+  }
+
+  throw new Error('Must provide entityDefinitionId or apiSlug')
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LIST ALL QUERY
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * List all entities with field values for small datasets (no pagination).
+ * Resolves entityDefinitionId (can be 'tag', 'contact', or UUID) or apiSlug to actual UUID.
+ *
+ * @param ctx - Query context
+ * @param params - List all parameters
+ * @returns Items with field values and resolved entityDefinitionId
+ */
+export async function listAll(
+  ctx: {
+    db: Database
+    organizationId: string
+    userId: string
+  },
+  params: ListAllInput
+): Promise<ListAllResult> {
+  const { db, organizationId, userId } = ctx
+
+  // Create services
+  const registryService = new ResourceRegistryService(organizationId, db)
+  const fieldValueService = new FieldValueService(organizationId, userId, db, registryService)
+
+  // Resolve to actual entityDefinitionId UUID
+  const entityDefId = await resolveEntityId(registryService, {
+    entityDefinitionId: params.entityDefinitionId,
+    apiSlug: params.apiSlug,
+  })
+
+  // Fetch all records (safety limit for "all")
+  const records = await db.query.EntityInstance.findMany({
+    where: (ei, { eq, and, isNull }) => {
+      const conditions = [
+        eq(ei.entityDefinitionId, entityDefId),
+        eq(ei.organizationId, organizationId),
+      ]
+      if (!params.includeArchived) {
+        conditions.push(isNull(ei.archivedAt))
+      }
+      return and(...conditions)
+    },
+    orderBy: (ei, { desc }) => [desc(ei.updatedAt)],
+    limit: 1000,
+  })
+
+  if (records.length === 0) {
+    return { items: [], entityDefinitionId: entityDefId }
+  }
+
+  // Build field references - either from params.fieldIds or from all fields
+  let fieldReferences: FieldReference[]
+
+  if (params.fieldIds && params.fieldIds.length > 0) {
+    // Use specific fields provided
+    fieldReferences = params.fieldIds.map(
+      (fieldId) => toResourceFieldId(entityDefId, fieldId) as ResourceFieldId
+    )
+  } else {
+    // Get all fields for this entity and build references
+    const fields = await registryService.getFieldsForResource(entityDefId)
+    fieldReferences = fields
+      .filter((f) => f.resourceFieldId) // Only fields with resourceFieldId
+      .map((f) => f.resourceFieldId as ResourceFieldId)
+  }
+
+  // If no fields, return records without field values
+  if (fieldReferences.length === 0) {
+    return {
+      items: records.map((r) => ({ ...r, fieldValues: {} })),
+      entityDefinitionId: entityDefId,
+    }
+  }
+
+  // Fetch field values for all records
+  const recordIds = records.map((r) => toRecordId(entityDefId, r.id))
+  const { values } = await fieldValueService.batchGetValues({
+    recordIds,
+    fieldReferences,
+  })
+
+  // Group field values by recordId
+  const fieldValuesByRecord = new Map<string, Record<string, unknown>>()
+  for (const recordId of recordIds) {
+    fieldValuesByRecord.set(recordId, {})
+  }
+
+  for (const result of values) {
+    const existing = fieldValuesByRecord.get(result.recordId) ?? {}
+    // Use the fieldReference as key (ResourceFieldId string)
+    const fieldKey = Array.isArray(result.fieldReference)
+      ? result.fieldReference.join('::')
+      : result.fieldReference
+    existing[fieldKey] = result.value
+    fieldValuesByRecord.set(result.recordId, existing)
+  }
+
+  // Merge field values into records
+  const items = records.map((record) => ({
+    ...record,
+    fieldValues: fieldValuesByRecord.get(toRecordId(entityDefId, record.id)) ?? {},
+  }))
+
+  return {
+    items,
+    entityDefinitionId: entityDefId,
+  }
 }

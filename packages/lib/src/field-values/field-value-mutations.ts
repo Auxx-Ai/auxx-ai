@@ -58,6 +58,65 @@ import {
   maybeUpdateDisplayValue,
 } from './field-value-helpers'
 import { getValue } from './field-value-queries'
+import {
+  validateSelfReferentialChange,
+  type ValidationContext,
+} from './relationship-validators'
+import { isSelfReferentialRelationship, type RelationshipConfig } from '@auxx/types/custom-field'
+
+// =============================================================================
+// SELF-REFERENTIAL VALIDATION
+// =============================================================================
+
+/**
+ * Validate self-referential relationship constraints before saving.
+ * Checks for circular references and max depth violations.
+ */
+async function validateRelationshipValue(
+  ctx: FieldValueContext,
+  params: {
+    entityId: string
+    entityDefinitionId: string
+    fieldId: string
+    field: FieldWithDefinition
+    newValue: TypedFieldValueInput | TypedFieldValueInput[] | null
+  }
+): Promise<void> {
+  const relationship = params.field.options?.relationship as RelationshipConfig | undefined
+  if (!relationship) return
+
+  // Only validate self-referential relationships
+  if (!isSelfReferentialRelationship(params.entityDefinitionId, relationship)) {
+    return
+  }
+
+  // Extract related entity ID from typed input
+  const extractRelatedId = (v: TypedFieldValueInput | null): string | null => {
+    if (!v || v.type !== 'relationship') return null
+    return parseRecordId(v.recordId).entityInstanceId
+  }
+
+  const newRelatedId = Array.isArray(params.newValue)
+    ? extractRelatedId(params.newValue[0] ?? null)
+    : extractRelatedId(params.newValue)
+
+  const validationCtx: ValidationContext = {
+    db: ctx.db,
+    organizationId: ctx.organizationId,
+  }
+
+  const result = await validateSelfReferentialChange(validationCtx, {
+    entityId: params.entityId,
+    entityDefinitionId: params.entityDefinitionId,
+    fieldId: params.fieldId,
+    newRelatedId,
+    relationship,
+  })
+
+  if (!result.valid) {
+    throw new Error(result.error ?? 'Invalid relationship value')
+  }
+}
 
 // =============================================================================
 // CORE MUTATIONS
@@ -130,26 +189,38 @@ export async function setValueWithType(
 ): Promise<TypedFieldValue[]> {
   const { recordId, fieldId, fieldType, value, skipInverseSync = false } = params
 
-  // Parse RecordId to get entityInstanceId for DB queries
-  const { entityInstanceId } = parseRecordId(recordId)
+  // Parse RecordId to get both parts for DB queries
+  const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
   // Get field definition for displayName update (cached)
   const field = await getField(ctx, fieldId)
 
-  // For relationships: capture old values and get inverse info
+  // For relationships: validate self-referential constraints, capture old values, get inverse info
   let oldRelatedIds: string[] = []
   let inverseInfo: InverseFieldInfo | null = null
 
-  if (fieldType === 'RELATIONSHIP' && !skipInverseSync) {
-    inverseInfo = await getInverseInfoFromField(ctx, field)
+  if (fieldType === 'RELATIONSHIP') {
+    // Validate self-referential constraints (circular reference, max depth)
+    await validateRelationshipValue(ctx, {
+      entityId: entityInstanceId,
+      entityDefinitionId,
+      fieldId,
+      field,
+      newValue: value,
+    })
 
-    // Only capture old values if we have an inverse to sync
-    if (inverseInfo) {
-      oldRelatedIds = await getExistingRelatedIds(
-        { db: ctx.db, organizationId: ctx.organizationId },
-        entityInstanceId,
-        fieldId
-      )
+    // Existing inverse sync logic (unchanged)
+    if (!skipInverseSync) {
+      inverseInfo = await getInverseInfoFromField(ctx, field)
+
+      // Only capture old values if we have an inverse to sync
+      if (inverseInfo) {
+        oldRelatedIds = await getExistingRelatedIds(
+          { db: ctx.db, organizationId: ctx.organizationId },
+          entityInstanceId,
+          fieldId
+        )
+      }
     }
   }
 

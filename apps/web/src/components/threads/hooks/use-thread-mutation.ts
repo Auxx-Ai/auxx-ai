@@ -155,17 +155,17 @@ export function useThreadMutation() {
    * Convenience method for assignment changes.
    */
   const updateAssignee = useCallback(
-    <TInput extends { threadId: string; assigneeActorId: ThreadMeta['assigneeActorId'] }, TOutput>(
+    <TInput extends { threadId: string; assigneeId: ThreadMeta['assigneeId'] }, TOutput>(
       threadId: string,
-      assigneeActorId: ThreadMeta['assigneeActorId'],
+      assigneeId: ThreadMeta['assigneeId'],
       mutation: MutationLike<TInput, TOutput>,
       options?: UseThreadMutationOptions
     ) => {
       mutateThread(
         threadId,
-        { assigneeActorId },
+        { assigneeId },
         mutation,
-        { threadId, assigneeActorId } as TInput,
+        { threadId, assigneeId } as TInput,
         options
       )
     },

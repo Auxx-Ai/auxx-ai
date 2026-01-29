@@ -1,11 +1,17 @@
-// src/hooks/use-thread-tags.tsx
+// apps/web/src/hooks/use-thread-tags.tsx
+// NOTE: This hook uses the legacy api.tag.updateEntityTags mutation.
+// For new code, consider using useThreadTags from '~/components/tags/hooks/use-thread-tags'
+// which uses useSaveFieldValue for the RELATIONSHIP field type.
+
 import { useState, useEffect, useMemo } from 'react'
 import { api } from '~/trpc/react'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import type { ThreadMeta } from '~/components/threads/store'
 
 /**
- * Optimized hook for managing thread tags using existing thread data from store
+ * Hook for managing thread tags using the legacy api.tag.updateEntityTags mutation.
+ * For new code, consider using useThreadTags from '~/components/tags/hooks/use-thread-tags'.
+ *
  * @param thread The thread object from store (with flat tags structure)
  * @param contextParams Context parameters for invalidation
  * @returns Tag state and operations

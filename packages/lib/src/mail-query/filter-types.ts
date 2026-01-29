@@ -28,6 +28,7 @@ export function mapUrlSlugToStatusFilter(
       return UrlBasedStatusFilter.OPEN
     case 'done':
     case 'resolved':
+    case 'archived': // Alias used by IsOperatorValue in searchbar
       return UrlBasedStatusFilter.DONE
     case 'trashed': // Accept 'trashed' from URL
     case 'trash':

@@ -104,7 +104,7 @@ export * from './task'
 export * from './task-assignment'
 export * from './task-reference'
 export * from './tags-on-article'
-export * from './tags-on-thread'
+// export * from './tags-on-thread' // DEPRECATED: Tags now use FieldValue via RELATIONSHIP field
 export * from './thread-participant'
 export * from './thread-read-status'
 export * from './thread'

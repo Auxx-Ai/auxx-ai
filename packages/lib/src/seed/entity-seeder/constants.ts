@@ -48,6 +48,24 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     color: 'indigo',
     isVisible: false,
   },
+  {
+    entityType: 'tag',
+    apiSlug: 'tags',
+    singular: 'Tag',
+    plural: 'Tags',
+    icon: 'tag',
+    color: 'amber',
+    isVisible: false,
+  },
+  {
+    entityType: 'thread',
+    apiSlug: 'threads',
+    singular: 'Thread',
+    plural: 'Threads',
+    icon: 'mail',
+    color: 'blue',
+    isVisible: false,
+  },
 ]
 
 /**
@@ -69,6 +87,14 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
   },
   inbox: {
     primaryDisplayField: 'name',
+    secondaryDisplayField: undefined,
+  },
+  tag: {
+    primaryDisplayField: 'title',
+    secondaryDisplayField: undefined,
+  },
+  thread: {
+    primaryDisplayField: 'subject',
     secondaryDisplayField: undefined,
   },
 }

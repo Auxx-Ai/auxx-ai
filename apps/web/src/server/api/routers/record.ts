@@ -5,8 +5,11 @@ import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { TRPCError } from '@trpc/server'
 import { UnifiedCrudHandler, RESOURCE_TABLE_REGISTRY } from '@auxx/lib/resources'
 import { conditionGroupSchema } from '@auxx/lib/conditions'
-import { recordIdSchema, type RecordId } from '@auxx/types/resource'
-import { toRecordId } from '@auxx/types/resource'
+import { recordIdSchema, type RecordId, parseRecordId, toRecordId } from '@auxx/types/resource'
+import { resourceFieldIdSchema, parseResourceFieldId, type FieldId } from '@auxx/types/field'
+import { getDescendantIds } from '@auxx/lib/field-values'
+import { schema } from '@auxx/database'
+import { eq, and } from 'drizzle-orm'
 
 /**
  * Validate entity definition ID - accepts system TableId or custom entity UUID
@@ -220,6 +223,44 @@ export const recordRouter = createTRPCRouter({
       })
     }),
 
+  /**
+   * List all records with field values (for small datasets like tags, inboxes)
+   * Supports resolution of entityDefinitionId ('tag' → UUID) or apiSlug ('tags' → UUID)
+   */
+  listAll: protectedProcedure
+    .input(
+      z.object({
+        /** Entity definition ID - can be UUID or type like 'tag', 'contact' */
+        entityDefinitionId: z.string().optional(),
+        /** API slug like 'tags', 'contacts' */
+        apiSlug: z.string().optional(),
+        /** Specific field IDs to fetch (all if undefined) - branded FieldId type */
+        fieldIds: z.array(z.string() as z.ZodType<FieldId>).optional(),
+        /** Include archived records */
+        includeArchived: z.boolean().optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { organizationId, user } = ctx.session
+
+      try {
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db)
+        return await handler.listAll(input)
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        if (message.includes('not found')) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message,
+          })
+        }
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Failed to list records: ${message}`,
+        })
+      }
+    }),
+
   // ─────────────────────────────────────────────────────────────────
   // MUTATIONS
   // ─────────────────────────────────────────────────────────────────
@@ -425,6 +466,56 @@ export const recordRouter = createTRPCRouter({
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: `Failed to invalidate cache: ${message}`,
+        })
+      }
+    }),
+
+  /**
+   * Get all descendant RecordIds for self-referential relationship filtering.
+   * Used by UI to exclude invalid options (self + descendants) from picker.
+   */
+  getDescendantRecordIds: protectedProcedure
+    .input(
+      z.object({
+        recordId: recordIdSchema,
+        resourceFieldId: resourceFieldIdSchema,
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+
+      try {
+        // Parse composite IDs to get raw values for DB query
+        const { entityDefinitionId, entityInstanceId } = parseRecordId(input.recordId as RecordId)
+        const { fieldId } = parseResourceFieldId(input.resourceFieldId)
+
+        // Get field to find the CustomField.id from the field key
+        const field = await ctx.db.query.CustomField.findFirst({
+          where: and(
+            eq(schema.CustomField.entityDefinitionId, entityDefinitionId),
+            eq(schema.CustomField.key, fieldId),
+            eq(schema.CustomField.organizationId, organizationId)
+          ),
+          columns: { id: true },
+        })
+
+        if (!field) return []
+
+        const descendantInstanceIds = await getDescendantIds(
+          { db: ctx.db, organizationId },
+          entityInstanceId,
+          field.id
+        )
+
+        // Convert back to RecordIds for client
+        return [...descendantInstanceIds].map((instanceId) =>
+          toRecordId(entityDefinitionId, instanceId)
+        )
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Failed to get descendant record IDs: ${message}`,
         })
       }
     }),

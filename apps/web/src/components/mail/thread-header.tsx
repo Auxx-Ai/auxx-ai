@@ -67,8 +67,8 @@ export function ThreadHeader({
 
   // Get assignee details via actor store
   // Convert ActorId object to string format expected by useActor (e.g., 'user:abc123')
-  const assigneeActorId: ActorIdString | null = thread?.assigneeActorId
-    ? (`${thread.assigneeActorId.type}:${thread.assigneeActorId.id}` as ActorIdString)
+  const assigneeActorId: ActorIdString | null = thread?.assigneeId
+    ? (`${thread.assigneeId.type}:${thread.assigneeId.id}` as ActorIdString)
     : null
   const { actor: assignee } = useActor({ actorId: assigneeActorId })
 

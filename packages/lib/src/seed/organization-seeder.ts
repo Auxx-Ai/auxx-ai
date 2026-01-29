@@ -100,7 +100,6 @@ export class OrganizationSeeder {
    * Seed a new organization with all necessary default data
    * This method should be called whenever a new organization is created
    * @param organizationId The organization ID to seed
-   * @param userId The user ID to associate with the organization
    */
   async seedNewOrganization(organizationId: string): Promise<void> {
     logger.info('Starting seeding process for new organization', { organizationId })
@@ -172,68 +171,28 @@ export class OrganizationSeeder {
 
   private async seedTags(organizationId: string) {
     const tagService = new TagService(organizationId, this.userId, this.db)
+
     // Topic Categorization parent tag
     const topicCategorizationTag = await tagService.createTag({
       title: 'Topic Categorization',
       description: 'Top-level categorization for support tickets',
       emoji: '🏷️',
-      color: '#A7C1F2', // Light Blue
+      color: '#A7C1F2',
     })
+
     // Sub-tags under Topic Categorization
     const topicSubTags = [
-      {
-        title: 'Account Management',
-        emoji: '👤',
-        color: '#F2A99B', // Coral
-        parentId: topicCategorizationTag.id,
-      },
-      {
-        title: 'Billing',
-        emoji: '💳',
-        color: '#B9E3B9', // Light Green
-        parentId: topicCategorizationTag.id,
-      },
-      {
-        title: 'Customer Feedback',
-        emoji: '💬',
-        color: '#F5C8A3', // Peach
-        parentId: topicCategorizationTag.id,
-      },
-      {
-        title: 'Legal',
-        emoji: '⚖️',
-        color: '#8D8D8D', // Gray
-        parentId: topicCategorizationTag.id,
-      },
-      {
-        title: 'Sales',
-        emoji: '💼',
-        color: '#D7A4D3', // Pink
-        parentId: topicCategorizationTag.id,
-      },
-      {
-        title: 'Security',
-        emoji: '🔒',
-        color: '#C9B6F2', // Purple
-        parentId: topicCategorizationTag.id,
-      },
-      {
-        title: 'Shipping',
-        emoji: '🚚',
-        color: '#F5E7A3', // Light Yellow
-        parentId: topicCategorizationTag.id,
-      },
-      {
-        title: 'Troubleshooting',
-        emoji: '🛠️',
-        color: '#A7D8E2', // Light Blue
-        parentId: topicCategorizationTag.id,
-      },
+      { title: 'Account Management', emoji: '👤', color: '#F2A99B', parentId: topicCategorizationTag.id },
+      { title: 'Billing', emoji: '💳', color: '#B9E3B9', parentId: topicCategorizationTag.id },
+      { title: 'Customer Feedback', emoji: '💬', color: '#F5C8A3', parentId: topicCategorizationTag.id },
+      { title: 'Legal', emoji: '⚖️', color: '#8D8D8D', parentId: topicCategorizationTag.id },
+      { title: 'Sales', emoji: '💼', color: '#D7A4D3', parentId: topicCategorizationTag.id },
+      { title: 'Security', emoji: '🔒', color: '#C9B6F2', parentId: topicCategorizationTag.id },
+      { title: 'Shipping', emoji: '🚚', color: '#F5E7A3', parentId: topicCategorizationTag.id },
+      { title: 'Troubleshooting', emoji: '🛠️', color: '#A7D8E2', parentId: topicCategorizationTag.id },
     ]
-    // Create sub-tags
-    const createdTopicSubTags = await Promise.all(
-      topicSubTags.map((tag) => tagService.createTag(tag))
-    )
+    await Promise.all(topicSubTags.map((tag) => tagService.createTag(tag)))
+
     // Independent tags
     const independentTags = [
       { title: 'Support', emoji: '🆘', color: '#F2A99B' },
@@ -241,15 +200,7 @@ export class OrganizationSeeder {
       { title: 'Orders', emoji: '📦', color: '#F5E7A3' },
       { title: 'VIP', emoji: '⭐', color: '#F5C8A3' },
     ]
-    // Create independent tags
-    const createdIndependentTags = await Promise.all(
-      independentTags.map((tag) => tagService.createTag(tag))
-    )
-    logger.info(`Seeded tags for organization: ${organizationId}`, {
-      topicCategorizationTag: topicCategorizationTag.id,
-      topicSubTags: createdTopicSubTags.map((t) => t.id),
-      independentTags: createdIndependentTags.map((t) => t.id),
-    })
+    await Promise.all(independentTags.map((tag) => tagService.createTag(tag)))
   }
   // Create ticket sequence for the organization
   /**
@@ -406,7 +357,7 @@ export class OrganizationSeeder {
     const entityTypes = existingEntities.map((e) => e.entityType)
 
     // If any system entities are missing, seed them all
-    const requiredEntities = ['contact', 'ticket', 'part', 'inbox']
+    const requiredEntities = ['contact', 'ticket', 'part', 'inbox', 'tag', 'thread']
     if (requiredEntities.some((et) => !entityTypes.includes(et))) {
       logger.info('System entities missing, seeding for existing organization', { organizationId })
       const entitySeeder = new EntitySeeder(this.db, organizationId)

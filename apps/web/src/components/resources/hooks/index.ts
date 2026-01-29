@@ -21,12 +21,14 @@ export { useRecord, useIsRecordLoading, useIsRecordPending } from './use-record'
 export { useRecords } from './use-records'
 export { useRecordInvalidation } from './use-record-invalidation'
 export { useRecordBatchFetcher } from './use-record-batch-fetcher'
+export { useAllRecords } from './use-all-records'
 
 // Entity field values hook
 export { useEntityValues } from './use-entity-values'
 
 // Field value hooks (extracted from store)
 export { useFieldValue, useResourceFieldValues } from './use-field-values'
+export { useSaveFieldValue } from './use-save-field-value'
 
 // Record hydration hook
 export { useRecordHydration } from './use-record-hydration'
@@ -43,3 +45,6 @@ export {
 
 // Resource access hooks
 export { useResourceAccess } from './use-resource-access'
+
+// Entity ID resolution hooks
+export { useResolveEntityDefinitionId } from './use-resolve-entity-id'

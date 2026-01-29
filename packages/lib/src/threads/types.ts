@@ -3,6 +3,7 @@
 import type { MessageAttachmentInfo } from '../messages/attachment-transformers'
 import { InternalFilterContextType } from '../mail-query/types'
 import { UrlBasedStatusFilter } from '../mail-query/filter-types'
+import type { ActorId } from '@auxx/types/actor'
 
 /** Allowed fields that can be used when sorting thread lists. */
 export type ThreadSortField = 'lastMessageAt' | 'subject' | 'sender'
@@ -219,12 +220,6 @@ export type ThreadStatus = 'OPEN' | 'ARCHIVED' | 'SPAM' | 'TRASH'
 /** Integration provider enum type. */
 export type IntegrationProvider = 'GMAIL' | 'OUTLOOK' | 'FACEBOOK' | 'INSTAGRAM' | 'OPENPHONE'
 
-/** Actor ID with type discriminator. */
-export interface ActorId {
-  type: 'user' | 'contact'
-  id: string
-}
-
 /**
  * Core thread metadata for batch fetching.
  * Contains minimal data needed for list display - frontend resolves related entities separately.
@@ -241,7 +236,13 @@ export interface ThreadMeta {
   // Foreign keys (IDs only - frontend resolves via separate stores)
   integrationId: string
   integrationProvider: IntegrationProvider | null
-  assigneeActorId: ActorId | null
+
+  /**
+   * Assignee as branded ActorId string (e.g., "user:abc123").
+   * Null if thread is unassigned.
+   * Use parseActorId() from @auxx/types/actor to extract type and raw ID.
+   */
+  assigneeId: ActorId | null
 
   // Denormalized for performance (avoid extra fetches for list display)
   latestMessageId: string | null

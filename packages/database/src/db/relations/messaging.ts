@@ -22,8 +22,8 @@ import {
   Participant,
   PromptHistory,
   Signature,
-  Tag,
-  TagsOnThread,
+  // Tag, // Only used by TagsOnThread relations (deprecated)
+  // TagsOnThread, // DEPRECATED: Tags now use FieldValue via RELATIONSHIP field
   Thread,
   ThreadParticipant,
   ThreadReadStatus,
@@ -80,7 +80,7 @@ export const threadRelations = relations(Thread, ({ one, many }) => ({
   chatSessions: many(ChatSession),
   chatMessages: many(ChatMessage),
   labels: many(LabelsOnThread),
-  tags: many(TagsOnThread),
+  // tags: many(TagsOnThread), // DEPRECATED: Tags now use FieldValue via RELATIONSHIP field
 }))
 
 /**
@@ -254,13 +254,14 @@ export const labelsOnThreadRelations = relations(LabelsOnThread, ({ one }) => ({
   }),
 }))
 
-export const tagsOnThreadRelations = relations(TagsOnThread, ({ one }) => ({
-  tag: one(Tag, {
-    fields: [TagsOnThread.tagId],
-    references: [Tag.id],
-  }),
-  thread: one(Thread, {
-    fields: [TagsOnThread.threadId],
-    references: [Thread.id],
-  }),
-}))
+// DEPRECATED: Tags now use FieldValue via RELATIONSHIP field
+// export const tagsOnThreadRelations = relations(TagsOnThread, ({ one }) => ({
+//   tag: one(Tag, {
+//     fields: [TagsOnThread.tagId],
+//     references: [Tag.id],
+//   }),
+//   thread: one(Thread, {
+//     fields: [TagsOnThread.threadId],
+//     references: [Thread.id],
+//   }),
+// }))

@@ -284,6 +284,47 @@ export const relationshipTypeSchema = z.enum(RELATIONSHIP_TYPES)
 /** Supported relationship cardinality types */
 export type RelationshipType = (typeof RELATIONSHIP_TYPES)[number]
 
+// =============================================================================
+// RELATIONSHIP CONSTRAINTS (Self-Referential Validation)
+// =============================================================================
+
+/**
+ * Constraints for relationship validation.
+ * These constraints are primarily used for self-referential relationships
+ * to prevent circular references and enforce hierarchy rules.
+ */
+export interface RelationshipConstraints {
+  /**
+   * Prevent circular references in self-referential relationships.
+   * Only applies when auto-detected as self-referential.
+   * Default: true for self-referential, ignored for others.
+   */
+  preventCircular?: boolean
+
+  /**
+   * Maximum hierarchy depth for self-referential relationships.
+   * Only applies when auto-detected as self-referential.
+   * Default: undefined (no limit)
+   */
+  maxDepth?: number
+
+  /**
+   * Behavior when deleting an entity with children.
+   * Only applies to self-referential relationships.
+   * - 'prevent': Block deletion if children exist (default)
+   * - 'cascade': Delete all descendants
+   * - 'nullify': Set children's parent to null (orphan them)
+   */
+  onDeleteWithChildren?: 'prevent' | 'cascade' | 'nullify'
+}
+
+/** Zod schema for RelationshipConstraints */
+export const relationshipConstraintsSchema = z.object({
+  preventCircular: z.boolean().optional(),
+  maxDepth: z.number().int().positive().optional(),
+  onDeleteWithChildren: z.enum(['prevent', 'cascade', 'nullify']).optional(),
+})
+
 /**
  * Relationship configuration stored in options.relationship
  * This is the stored/persisted config for relationship fields
@@ -302,6 +343,8 @@ export interface RelationshipConfig {
   relationshipType: RelationshipType
   /** Whether this field is the inverse side of the relationship */
   isInverse: boolean
+  /** Validation constraints for this relationship */
+  constraints?: RelationshipConstraints
 }
 
 /** Zod schema for RelationshipConfig validation */
@@ -309,7 +352,25 @@ export const relationshipConfigSchema = z.object({
   inverseResourceFieldId: z.string().nullable(),
   relationshipType: relationshipTypeSchema,
   isInverse: z.boolean(),
+  constraints: relationshipConstraintsSchema.optional(),
 })
+
+/**
+ * Check if a relationship is self-referential.
+ * Self-referential means the relationship points back to the same entity type.
+ *
+ * @param entityDefinitionId - The entity definition ID of the field's owner
+ * @param config - The relationship configuration
+ * @returns true if the relationship points to the same entity type
+ */
+export function isSelfReferentialRelationship(
+  entityDefinitionId: string,
+  config: RelationshipConfig
+): boolean {
+  if (!config.inverseResourceFieldId) return false
+  const relatedEntityDefId = getRelatedEntityDefinitionId(config)
+  return entityDefinitionId === relatedEntityDefId
+}
 
 /**
  * Extract the related entity definition ID from a RelationshipConfig.
