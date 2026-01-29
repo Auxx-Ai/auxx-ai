@@ -2,9 +2,18 @@
 
 import React, { useState, useEffect } from 'react'
 import { AutosizeField } from '@auxx/ui/components/autosize-field'
+import { AutosizeInput } from '@auxx/ui/components/autosize-input'
 import { createNodeInput, type NodeInputProps } from './base-node-input'
 import { Input } from '@auxx/ui/components/input'
+import { cn } from '@auxx/ui/lib/utils'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
+
+/** AutoGrow options for text inputs */
+interface AutoGrowOptions {
+  minWidth?: number
+  maxWidth?: number
+  placeholderIsMinWidth?: boolean
+}
 
 interface StringInputProps extends NodeInputProps {
   /** Field name */
@@ -19,6 +28,10 @@ interface StringInputProps extends NodeInputProps {
   minLength?: number
   /** Max length */
   maxLength?: number
+  /** Additional className for the input */
+  className?: string
+  /** Enable auto-grow for text inputs */
+  autoGrow?: AutoGrowOptions
 }
 
 /**
@@ -37,6 +50,8 @@ export const StringInput = createNodeInput<StringInputProps>(
     validationType,
     minLength,
     maxLength,
+    className,
+    autoGrow,
   }) => {
     // Local state for immediate UI updates
     const [localValue, setLocalValue] = useState(inputs[name] ?? '')
@@ -76,13 +91,14 @@ export const StringInput = createNodeInput<StringInputProps>(
     }
 
     const inputId = `input-${name}`
+    const baseClassName = 'px-0 min-h-8'
 
     // Return just the input component without wrappers or error displays
     if (multiline) {
       return (
         <AutosizeField
           variant="transparent"
-          className="px-0 min-h-8"
+          className={cn(baseClassName, className)}
           id={inputId}
           value={localValue}
           onChange={handleChange}
@@ -94,13 +110,33 @@ export const StringInput = createNodeInput<StringInputProps>(
       )
     }
 
+    // Use AutosizeInput when autoGrow is provided
+    if (autoGrow) {
+      return (
+        <AutosizeInput
+          value={localValue}
+          onChange={handleChange}
+          placeholder={placeholder}
+          disabled={isLoading}
+          type={getInputType(validationType)}
+          minWidth={autoGrow.minWidth}
+          maxWidth={autoGrow.maxWidth}
+          placeholderIsMinWidth={autoGrow.placeholderIsMinWidth}
+          inputClassName={cn(
+            'bg-transparent border-0 outline-none focus:ring-0 text-sm',
+            baseClassName,
+            className
+          )}
+        />
+      )
+    }
+
     return (
       <Input
         variant="transparent"
-        className="px-0 min-h-8"
+        className={cn(baseClassName, className)}
         size="sm"
         autoComplete="off"
-        // className="w-full text-sm input-editor-field focus:outline-none focus:ring-0 h-6.5"
         id={inputId}
         type={getInputType(validationType)}
         value={localValue}

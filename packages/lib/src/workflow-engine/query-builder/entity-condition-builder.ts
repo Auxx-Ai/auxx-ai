@@ -225,14 +225,10 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
           return sql`${column} < ${String(rawValue)}`
         case 'after':
           return sql`${column} > ${String(rawValue)}`
-        case 'on':
-          return sql`${column}::date = ${String(rawValue)}::date`
-        case 'not on':
-          return sql`${column}::date != ${String(rawValue)}::date`
         case 'is':
-          return sql`${column} = ${String(rawValue)}`
+          return sql`${column}::date = ${String(rawValue)}::date`
         case 'is not':
-          return sql`${column} != ${String(rawValue)}`
+          return sql`${column}::date != ${String(rawValue)}::date`
         case 'exists':
           return sql`${column} IS NOT NULL`
         case 'not exists':
@@ -573,6 +569,21 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
       }
     }
 
+    // Handle date columns with day-level comparison
+    if (columnName === 'valueDate') {
+      const dateCol = sql.raw(`related."valueDate"`)
+      switch (operator) {
+        case 'is':
+          return rawValue === null || rawValue === undefined
+            ? sql`${dateCol} IS NULL`
+            : sql`${dateCol}::date = ${String(rawValue)}::date`
+        case 'is not':
+          return rawValue === null || rawValue === undefined
+            ? sql`${dateCol} IS NOT NULL`
+            : sql`${dateCol}::date != ${String(rawValue)}::date`
+      }
+    }
+
     // Handle other typed fields
     switch (operator) {
       case 'is':
@@ -608,16 +619,6 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
         logger.debug(`Building 'after' date condition for related field with value: ${rawValue}`)
         const dateCol = sql.raw(`related."valueDate"`)
         return sql`${dateCol} > ${String(rawValue)}`
-      }
-      case 'on': {
-        logger.debug(`Building 'on' date condition for related field with value: ${rawValue}`)
-        const dateCol = sql.raw(`related."valueDate"`)
-        return sql`${dateCol}::date = ${String(rawValue)}::date`
-      }
-      case 'not on': {
-        logger.debug(`Building 'not on' date condition for related field with value: ${rawValue}`)
-        const dateCol = sql.raw(`related."valueDate"`)
-        return sql`${dateCol}::date != ${String(rawValue)}::date`
       }
       case 'in': {
         const values = Array.isArray(rawValue) ? rawValue : [rawValue]
@@ -849,6 +850,27 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
       }
     }
 
+    // ========================================
+    // DATE FIELDS - use day-level comparison for is/is not
+    // ========================================
+    if (columnName === 'valueDate') {
+      const dateCol = sql.raw(`"FieldValue"."valueDate"`)
+      switch (operator) {
+        case 'is':
+          return rawValue === null || rawValue === undefined
+            ? sql`${dateCol} IS NULL`
+            : sql`${dateCol}::date = ${String(rawValue)}::date`
+        case 'is not':
+          return rawValue === null || rawValue === undefined
+            ? sql`${dateCol} IS NOT NULL`
+            : sql`${dateCol}::date != ${String(rawValue)}::date`
+        case 'before':
+          return sql`${dateCol} < ${String(rawValue)}`
+        case 'after':
+          return sql`${dateCol} > ${String(rawValue)}`
+      }
+    }
+
     // ===== EXISTING CODE FOR OTHER FIELD TYPES =====
     switch (operator) {
       // ===== EQUALITY =====
@@ -915,18 +937,6 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
         logger.debug(`Building 'after' date condition with value: ${rawValue}`)
         const dateCol = sql.raw(`"FieldValue"."valueDate"`)
         return sql`${dateCol} > ${String(rawValue)}`
-      }
-
-      case 'on': {
-        logger.debug(`Building 'on' date condition with value: ${rawValue}`)
-        const dateCol = sql.raw(`"FieldValue"."valueDate"`)
-        return sql`${dateCol}::date = ${String(rawValue)}::date`
-      }
-
-      case 'not on': {
-        logger.debug(`Building 'not on' date condition with value: ${rawValue}`)
-        const dateCol = sql.raw(`"FieldValue"."valueDate"`)
-        return sql`${dateCol}::date != ${String(rawValue)}::date`
       }
 
       // ===== SET =====

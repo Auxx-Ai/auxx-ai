@@ -58,7 +58,12 @@ function setConditionValue(
   displayLabel?: string
 ): SearchCondition[] {
   // Remove condition if value is empty
-  if (value === undefined || value === null || value === '' || (Array.isArray(value) && value.length === 0)) {
+  if (
+    value === undefined ||
+    value === null ||
+    value === '' ||
+    (Array.isArray(value) && value.length === 0)
+  ) {
     return conditions.filter((c) => c.fieldId !== fieldId)
   }
 
@@ -146,22 +151,6 @@ export function AdvancedFilterMode({
 
   return (
     <>
-      <div className="flex items-center border-b ps-3 relative">
-        <Search className="mr-2 size-4 shrink-0 opacity-50 ml-[-1px]" />
-        <div className="flex-1 bg-transparent border-0 focus:ring-0 focus-visible:ring-0 text-sm py-1">
-          Apply filters
-        </div>
-        <Button
-          variant="ghost"
-          aria-selected="true"
-          className={cn(
-            'absolute right-[4px] size-6 rounded-full bg-primary-200 hover:bg-primary-200'
-          )}
-          onClick={onCancel}
-        >
-          <X className="size-4 shrink-0 opacity-50" />
-        </Button>
-      </div>
       <div className={cn('p-4 space-y-4', className)}>
         {/* Participants */}
         <div className="space-y-3">
@@ -170,7 +159,9 @@ export function AdvancedFilterMode({
               <Label className="w-20 text-sm">From</Label>
               <ParticipantPicker
                 selected={fromValue}
-                onChange={(selected) => updateField('from', 'contains', selected.length > 0 ? selected : undefined)}
+                onChange={(selected) =>
+                  updateField('from', 'contains', selected.length > 0 ? selected : undefined)
+                }
                 allowMultiple
                 style={{ width: 'var(--radix-popover-trigger-width)' }}
                 sideOffset={-30}
@@ -186,7 +177,9 @@ export function AdvancedFilterMode({
               <Label className="w-20 text-sm">To</Label>
               <ParticipantPicker
                 selected={toValue}
-                onChange={(selected) => updateField('to', 'contains', selected.length > 0 ? selected : undefined)}
+                onChange={(selected) =>
+                  updateField('to', 'contains', selected.length > 0 ? selected : undefined)
+                }
                 allowMultiple
                 type="to"
                 style={{ width: 'var(--radix-popover-trigger-width)' }}
@@ -233,7 +226,11 @@ export function AdvancedFilterMode({
               selected={assigneeValue}
               onChange={(selected) => {
                 const assigneeValues = selected.map((m) => m.email || m.id)
-                updateField('assignee', 'in', assigneeValues.length > 0 ? assigneeValues : undefined)
+                updateField(
+                  'assignee',
+                  'in',
+                  assigneeValues.length > 0 ? assigneeValues : undefined
+                )
               }}
               allowMultiple
               align="start"
@@ -254,8 +251,7 @@ export function AdvancedFilterMode({
                   variant="input"
                   className="w-full justify-start overflow-y-auto flex-nowrap flex-row"
                   size="sm"
-                  onClick={() => setIsTagOpen(true)}
-                >
+                  onClick={() => setIsTagOpen(true)}>
                   {tagValue && tagValue.length > 0 ? (
                     <SelectedTagsDisplay
                       tagIds={tagValue}
@@ -291,18 +287,18 @@ export function AdvancedFilterMode({
             <div className="flex-1">
               <InboxPicker
                 selected={inboxValue}
-                onChange={(inbox) => updateField('inbox', 'in', inbox.length > 0 ? inbox : undefined)}
+                onChange={(inbox) =>
+                  updateField('inbox', 'in', inbox.length > 0 ? inbox : undefined)
+                }
                 align="start"
                 style={{ width: 'var(--radix-popover-trigger-width)' }}
                 sideOffset={-30}
                 allowMultiple
-                className="flex-1"
-              >
+                className="flex-1">
                 <Button
                   variant="input"
                   size="sm"
-                  className="w-full justify-start overflow-y-auto flex-nowrap "
-                >
+                  className="w-full justify-start overflow-y-auto flex-nowrap ">
                   {inboxValue && inboxValue.length > 0 ? (
                     <span className="shrink-0 flex-row gap-0.5 flex">
                       {inboxValue.map((inboxId) => {
@@ -330,8 +326,7 @@ export function AdvancedFilterMode({
             value={statusValue || ''}
             onValueChange={(value) =>
               updateField('status', 'is', value && value !== 'any' ? value : undefined)
-            }
-          >
+            }>
             <SelectTrigger className="flex-1">
               <SelectValue placeholder="Select status..." />
             </SelectTrigger>
@@ -352,16 +347,14 @@ export function AdvancedFilterMode({
             <Label className="w-20 text-sm">After</Label>
             <Popover
               open={datePickerOpen === 'after'}
-              onOpenChange={(open) => setDatePickerOpen(open ? 'after' : null)}
-            >
+              onOpenChange={(open) => setDatePickerOpen(open ? 'after' : null)}>
               <PopoverTrigger asChild>
                 <Button
                   variant="input"
                   className={cn(
                     'flex-1 justify-start text-left font-normal',
                     !afterDate && 'text-muted-foreground'
-                  )}
-                >
+                  )}>
                   <CalendarIcon className="mr-2 h-4 w-4" />
                   {afterDate ? format(afterDate, 'PPP') : 'Pick a date'}
                 </Button>
@@ -384,16 +377,14 @@ export function AdvancedFilterMode({
             <Label className="w-20 text-sm">Before</Label>
             <Popover
               open={datePickerOpen === 'before'}
-              onOpenChange={(open) => setDatePickerOpen(open ? 'before' : null)}
-            >
+              onOpenChange={(open) => setDatePickerOpen(open ? 'before' : null)}>
               <PopoverTrigger asChild>
                 <Button
                   variant="input"
                   className={cn(
                     'flex-1 justify-start text-left font-normal',
                     !beforeDate && 'text-muted-foreground'
-                  )}
-                >
+                  )}>
                   <CalendarIcon className="mr-2 h-4 w-4" />
                   {beforeDate ? format(beforeDate, 'PPP') : 'Pick a date'}
                 </Button>
@@ -431,11 +422,7 @@ export function AdvancedFilterMode({
         <div className="flex justify-between items-center pt-4 border-t">
           <div>
             {hasActiveFilters && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setConditions([])}
-              >
+              <Button variant="ghost" size="sm" onClick={() => setConditions([])}>
                 Clear All
               </Button>
             )}

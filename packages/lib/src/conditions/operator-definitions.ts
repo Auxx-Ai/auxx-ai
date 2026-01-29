@@ -53,7 +53,7 @@ export const OPERATOR_DEFINITIONS = {
   // ===== EQUALITY OPERATORS =====
   is: {
     key: 'is',
-    label: 'Is',
+    label: 'is',
     requiresValue: true,
     supportedTypes: [
       BaseType.STRING,
@@ -89,7 +89,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   'is not': {
     key: 'is not',
-    label: 'Is not',
+    label: 'is not',
     requiresValue: true,
     supportedTypes: [
       BaseType.STRING,
@@ -127,7 +127,7 @@ export const OPERATOR_DEFINITIONS = {
   // ===== COMPARISON OPERATORS =====
   '>': {
     key: '>',
-    label: 'Greater than',
+    label: 'greater than',
     requiresValue: true,
     supportedTypes: [BaseType.NUMBER, BaseType.CURRENCY],
     supportedFieldTypes: [FieldType.NUMBER, FieldType.CURRENCY],
@@ -136,7 +136,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   '<': {
     key: '<',
-    label: 'Less than',
+    label: 'less than',
     requiresValue: true,
     supportedTypes: [BaseType.NUMBER, BaseType.CURRENCY],
     supportedFieldTypes: [FieldType.NUMBER, FieldType.CURRENCY],
@@ -145,7 +145,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   '>=': {
     key: '>=',
-    label: 'Greater than or equal',
+    label: 'greater than or equal',
     requiresValue: true,
     supportedTypes: [BaseType.NUMBER, BaseType.CURRENCY],
     supportedFieldTypes: [FieldType.NUMBER, FieldType.CURRENCY],
@@ -154,7 +154,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   '<=': {
     key: '<=',
-    label: 'Less than or equal',
+    label: 'less than or equal',
     requiresValue: true,
     supportedTypes: [BaseType.NUMBER, BaseType.CURRENCY],
     supportedFieldTypes: [FieldType.NUMBER, FieldType.CURRENCY],
@@ -165,7 +165,7 @@ export const OPERATOR_DEFINITIONS = {
   // ===== STRING OPERATORS =====
   contains: {
     key: 'contains',
-    label: 'Contains',
+    label: 'contains',
     requiresValue: true,
     supportedTypes: [
       BaseType.STRING,
@@ -200,7 +200,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   'not contains': {
     key: 'not contains',
-    label: 'Does not contain',
+    label: 'does not contain',
     requiresValue: true,
     supportedTypes: [
       BaseType.STRING,
@@ -235,7 +235,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   'starts with': {
     key: 'starts with',
-    label: 'Starts with',
+    label: 'starts with',
     requiresValue: true,
     supportedTypes: [
       BaseType.STRING,
@@ -259,7 +259,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   'ends with': {
     key: 'ends with',
-    label: 'Ends with',
+    label: 'ends with',
     requiresValue: true,
     supportedTypes: [
       BaseType.STRING,
@@ -285,7 +285,7 @@ export const OPERATOR_DEFINITIONS = {
   // ===== SET OPERATORS =====
   in: {
     key: 'in',
-    label: 'Is one of',
+    label: 'is one of',
     requiresValue: true,
     supportedTypes: [
       BaseType.STRING,
@@ -318,7 +318,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   'not in': {
     key: 'not in',
-    label: 'Is not one of',
+    label: 'is not one of',
     requiresValue: true,
     supportedTypes: [
       BaseType.STRING,
@@ -353,7 +353,7 @@ export const OPERATOR_DEFINITIONS = {
   // ===== DATE OPERATORS =====
   before: {
     key: 'before',
-    label: 'Before',
+    label: 'before',
     requiresValue: true,
     supportedTypes: [BaseType.DATE, BaseType.DATETIME, BaseType.TIME],
     supportedFieldTypes: [FieldType.DATE, FieldType.DATETIME, FieldType.TIME],
@@ -362,34 +362,16 @@ export const OPERATOR_DEFINITIONS = {
   },
   after: {
     key: 'after',
-    label: 'After',
+    label: 'after',
     requiresValue: true,
     supportedTypes: [BaseType.DATE, BaseType.DATETIME, BaseType.TIME],
     supportedFieldTypes: [FieldType.DATE, FieldType.DATETIME, FieldType.TIME],
     valueType: 'single',
     category: 'date',
   },
-  on: {
-    key: 'on',
-    label: 'On',
-    requiresValue: true,
-    supportedTypes: [BaseType.DATE, BaseType.DATETIME],
-    supportedFieldTypes: [FieldType.DATE, FieldType.DATETIME],
-    valueType: 'single',
-    category: 'date',
-  },
-  'not on': {
-    key: 'not on',
-    label: 'Not on',
-    requiresValue: true,
-    supportedTypes: [BaseType.DATE, BaseType.DATETIME],
-    supportedFieldTypes: [FieldType.DATE, FieldType.DATETIME],
-    valueType: 'single',
-    category: 'date',
-  },
   within_days: {
     key: 'within_days',
-    label: 'Within days',
+    label: 'within days',
     requiresValue: true,
     supportedTypes: [BaseType.DATE, BaseType.DATETIME],
     supportedFieldTypes: [FieldType.DATE, FieldType.DATETIME],
@@ -399,7 +381,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   older_than_days: {
     key: 'older_than_days',
-    label: 'Older than days',
+    label: 'older than days',
     requiresValue: true,
     supportedTypes: [BaseType.DATE, BaseType.DATETIME],
     supportedFieldTypes: [FieldType.DATE, FieldType.DATETIME],
@@ -409,7 +391,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   today: {
     key: 'today',
-    label: 'Today',
+    label: 'today',
     requiresValue: false,
     supportedTypes: [BaseType.DATE, BaseType.DATETIME],
     supportedFieldTypes: [FieldType.DATE, FieldType.DATETIME],
@@ -418,7 +400,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   yesterday: {
     key: 'yesterday',
-    label: 'Yesterday',
+    label: 'yesterday',
     requiresValue: false,
     supportedTypes: [BaseType.DATE, BaseType.DATETIME],
     supportedFieldTypes: [FieldType.DATE, FieldType.DATETIME],
@@ -427,7 +409,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   this_week: {
     key: 'this_week',
-    label: 'This week',
+    label: 'this week',
     requiresValue: false,
     supportedTypes: [BaseType.DATE, BaseType.DATETIME],
     supportedFieldTypes: [FieldType.DATE, FieldType.DATETIME],
@@ -436,7 +418,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   this_month: {
     key: 'this_month',
-    label: 'This month',
+    label: 'this month',
     requiresValue: false,
     supportedTypes: [BaseType.DATE, BaseType.DATETIME],
     supportedFieldTypes: [FieldType.DATE, FieldType.DATETIME],
@@ -447,7 +429,7 @@ export const OPERATOR_DEFINITIONS = {
   // ===== EXISTENCE OPERATORS =====
   empty: {
     key: 'empty',
-    label: 'Is empty',
+    label: 'is empty',
     requiresValue: false,
     supportedTypes: [
       BaseType.STRING,
@@ -486,7 +468,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   'not empty': {
     key: 'not empty',
-    label: 'Is not empty',
+    label: 'is not empty',
     requiresValue: false,
     supportedTypes: [
       BaseType.STRING,
@@ -523,29 +505,29 @@ export const OPERATOR_DEFINITIONS = {
     description:
       'For TAGS/MULTI_SELECT: checks if at least one value selected. For ADDRESS: checks if address is not empty. For ACTOR: checks if user/group is assigned',
   },
-  exists: {
-    key: 'exists',
-    label: 'Exists',
-    requiresValue: false,
-    supportedTypes: Object.values(BaseType),
-    // No supportedFieldTypes - use BaseType fallback for all field types
-    valueType: 'none',
-    category: 'existence',
-  },
-  'not exists': {
-    key: 'not exists',
-    label: 'Does not exist',
-    requiresValue: false,
-    supportedTypes: Object.values(BaseType),
-    // No supportedFieldTypes - use BaseType fallback for all field types
-    valueType: 'none',
-    category: 'existence',
-  },
+  // exists: {
+  //   key: 'exists',
+  //   label: 'Exists',
+  //   requiresValue: false,
+  //   supportedTypes: Object.values(BaseType),
+  //   // No supportedFieldTypes - use BaseType fallback for all field types
+  //   valueType: 'none',
+  //   category: 'existence',
+  // },
+  // 'not exists': {
+  //   key: 'not exists',
+  //   label: 'Does not exist',
+  //   requiresValue: false,
+  //   supportedTypes: Object.values(BaseType),
+  //   // No supportedFieldTypes - use BaseType fallback for all field types
+  //   valueType: 'none',
+  //   category: 'existence',
+  // },
 
   // ===== FILE VALIDATION OPERATORS =====
   is_valid: {
     key: 'is_valid',
-    label: 'Is valid',
+    label: 'is valid',
     requiresValue: false,
     supportedTypes: [BaseType.FILE],
     supportedFieldTypes: [FieldType.FILE],
@@ -555,7 +537,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   is_invalid: {
     key: 'is_invalid',
-    label: 'Is invalid',
+    label: 'is invalid',
     requiresValue: false,
     supportedTypes: [BaseType.FILE],
     supportedFieldTypes: [FieldType.FILE],
@@ -565,7 +547,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   uploaded_today: {
     key: 'uploaded_today',
-    label: 'Uploaded today',
+    label: 'uploaded today',
     requiresValue: false,
     supportedTypes: [BaseType.FILE],
     supportedFieldTypes: [FieldType.FILE],
@@ -575,7 +557,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   uploaded_within_days: {
     key: 'uploaded_within_days',
-    label: 'Uploaded within days',
+    label: 'uploaded within days',
     requiresValue: true,
     supportedTypes: [BaseType.FILE],
     supportedFieldTypes: [FieldType.FILE],
@@ -587,7 +569,7 @@ export const OPERATOR_DEFINITIONS = {
   // ===== FILE PATTERN OPERATORS =====
   matches_pattern: {
     key: 'matches_pattern',
-    label: 'Matches pattern',
+    label: 'matches pattern',
     requiresValue: true,
     supportedTypes: [BaseType.FILE],
     supportedFieldTypes: [FieldType.FILE],
@@ -597,7 +579,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   contains_numbers: {
     key: 'contains_numbers',
-    label: 'Contains numbers',
+    label: 'contains numbers',
     requiresValue: false,
     supportedTypes: [BaseType.FILE],
     supportedFieldTypes: [FieldType.FILE],
@@ -607,7 +589,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   contains_date: {
     key: 'contains_date',
-    label: 'Contains date',
+    label: 'contains date',
     requiresValue: false,
     supportedTypes: [BaseType.FILE],
     supportedFieldTypes: [FieldType.FILE],
@@ -617,7 +599,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   has_version: {
     key: 'has_version',
-    label: 'Has version',
+    label: 'has version',
     requiresValue: false,
     supportedTypes: [BaseType.FILE],
     supportedFieldTypes: [FieldType.FILE],
@@ -629,7 +611,7 @@ export const OPERATOR_DEFINITIONS = {
   // ===== FILE EXTENSION CATEGORY OPERATORS =====
   is_office_document: {
     key: 'is_office_document',
-    label: 'Is office document',
+    label: 'is office document',
     requiresValue: false,
     supportedTypes: [BaseType.FILE],
     supportedFieldTypes: [FieldType.FILE],
@@ -639,7 +621,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   is_image_format: {
     key: 'is_image_format',
-    label: 'Is image format',
+    label: 'is image format',
     requiresValue: false,
     supportedTypes: [BaseType.FILE],
     supportedFieldTypes: [FieldType.FILE],
@@ -649,7 +631,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   is_text_format: {
     key: 'is_text_format',
-    label: 'Is text format',
+    label: 'is text format',
     requiresValue: false,
     supportedTypes: [BaseType.FILE],
     supportedFieldTypes: [FieldType.FILE],
@@ -659,7 +641,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   is_compressed: {
     key: 'is_compressed',
-    label: 'Is compressed',
+    label: 'is compressed',
     requiresValue: false,
     supportedTypes: [BaseType.FILE],
     supportedFieldTypes: [FieldType.FILE],
@@ -669,7 +651,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   is_executable: {
     key: 'is_executable',
-    label: 'Is executable',
+    label: 'is executable',
     requiresValue: false,
     supportedTypes: [BaseType.FILE],
     supportedFieldTypes: [FieldType.FILE],
@@ -681,7 +663,7 @@ export const OPERATOR_DEFINITIONS = {
   // ===== FILE SIZE OPERATORS =====
   within_size_limit: {
     key: 'within_size_limit',
-    label: 'Within size limit',
+    label: 'within size limit',
     requiresValue: true,
     supportedTypes: [BaseType.FILE],
     supportedFieldTypes: [FieldType.FILE],
@@ -691,7 +673,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   exceeds_limit: {
     key: 'exceeds_limit',
-    label: 'Exceeds limit',
+    label: 'exceeds limit',
     requiresValue: true,
     supportedTypes: [BaseType.FILE],
     supportedFieldTypes: [FieldType.FILE],
@@ -703,7 +685,7 @@ export const OPERATOR_DEFINITIONS = {
   // ===== ARRAY OPERATORS =====
   'length =': {
     key: 'length =',
-    label: 'Length equals',
+    label: 'length equals',
     requiresValue: true,
     supportedTypes: [BaseType.ARRAY],
     // No supportedFieldTypes - array length ops don't apply to FieldTypes
@@ -712,7 +694,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   'length >': {
     key: 'length >',
-    label: 'Length greater than',
+    label: 'length greater than',
     requiresValue: true,
     supportedTypes: [BaseType.ARRAY],
     valueType: 'single',
@@ -720,7 +702,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   'length <': {
     key: 'length <',
-    label: 'Length less than',
+    label: 'length less than',
     requiresValue: true,
     supportedTypes: [BaseType.ARRAY],
     valueType: 'single',
@@ -728,7 +710,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   'length >=': {
     key: 'length >=',
-    label: 'Length greater than or equal',
+    label: 'length greater than or equal',
     requiresValue: true,
     supportedTypes: [BaseType.ARRAY],
     valueType: 'single',
@@ -736,7 +718,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   'length <=': {
     key: 'length <=',
-    label: 'Length less than or equal',
+    label: 'length less than or equal',
     requiresValue: true,
     supportedTypes: [BaseType.ARRAY],
     valueType: 'single',
@@ -746,7 +728,7 @@ export const OPERATOR_DEFINITIONS = {
   // ===== OBJECT/JSON OPERATORS =====
   'has key': {
     key: 'has key',
-    label: 'Has key',
+    label: 'has key',
     requiresValue: true,
     supportedTypes: [BaseType.OBJECT, BaseType.JSON],
     supportedFieldTypes: [FieldType.JSON],
@@ -755,7 +737,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   'key equals': {
     key: 'key equals',
-    label: 'Key equals',
+    label: 'key equals',
     requiresValue: true,
     supportedTypes: [BaseType.OBJECT, BaseType.JSON],
     supportedFieldTypes: [FieldType.JSON],

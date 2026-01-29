@@ -408,9 +408,14 @@ export function checkDateCondition(date: Date, operator: string, value?: any): b
       return date < new Date(value)
     case 'after':
       return date > new Date(value)
-    case 'on':
+    case 'is': {
       const targetDate = new Date(value)
       return date.toDateString() === targetDate.toDateString()
+    }
+    case 'is not': {
+      const targetDate = new Date(value)
+      return date.toDateString() !== targetDate.toDateString()
+    }
     case 'within_days':
       const daysAgo = new Date()
       daysAgo.setDate(daysAgo.getDate() - value)

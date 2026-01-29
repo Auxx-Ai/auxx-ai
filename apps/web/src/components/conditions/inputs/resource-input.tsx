@@ -3,7 +3,10 @@
 'use client'
 
 import { useMemo } from 'react'
-import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import {
+  FieldInputAdapter,
+  type AutoGrowOptions,
+} from '~/components/fields/inputs/field-input-adapter'
 import { resolveFieldInputConfig, FieldInputMode } from '@auxx/lib/conditions/client'
 import type { PickerTriggerOptions } from '~/components/ui/picker-trigger'
 import type { FieldDefinition, Condition } from '../types'
@@ -24,14 +27,16 @@ interface ResourceInputProps {
   disabled?: boolean
   /** Placeholder text */
   placeholder?: string
-  /** Additional className */
-  className?: string
+  /** Additional className for text inputs */
+  inputClassName?: string
   /** Trigger customization options for picker-based inputs */
   triggerProps?: PickerTriggerOptions
   /** Controlled open state for picker-based inputs */
   open?: boolean
   /** Callback when open state changes */
   onOpenChange?: (open: boolean) => void
+  /** Enable auto-grow for text inputs */
+  autoGrow?: AutoGrowOptions
 }
 
 /**
@@ -45,10 +50,11 @@ export function ResourceInput({
   onChange,
   disabled = false,
   placeholder,
-  className,
+  inputClassName,
   triggerProps,
   open,
   onOpenChange,
+  autoGrow,
 }: ResourceInputProps) {
   // Resolve input configuration based on field type and operator
   const inputConfig = useMemo(() => {
@@ -68,11 +74,12 @@ export function ResourceInput({
       onChange={onChange}
       disabled={disabled}
       placeholder={placeholder ?? inputConfig.placeholder ?? field.placeholder}
-      className={className}
       allowMultiple={inputConfig.allowMultiple}
       triggerProps={triggerProps}
       open={open}
       onOpenChange={onOpenChange}
+      inputClassName={inputClassName}
+      autoGrow={autoGrow}
     />
   )
 }

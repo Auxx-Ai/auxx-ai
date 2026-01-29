@@ -3,7 +3,14 @@
 'use client'
 
 import React from 'react'
-import { CommandGroup, CommandItem, CommandEmpty } from '@auxx/ui/components/command'
+import {
+  Command,
+  CommandInput,
+  CommandList,
+  CommandGroup,
+  CommandItem,
+  CommandEmpty,
+} from '@auxx/ui/components/command'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { BaseType } from '@auxx/lib/workflow-engine/types'
 import type { MailViewFieldDefinition } from '@auxx/lib/mail-views/client'
@@ -94,6 +101,12 @@ interface SearchSuggestionsListProps {
   showEmpty?: boolean
   emptyMessage?: string
   className?: string
+  /** Controlled input value */
+  inputValue?: string
+  /** Callback when input changes */
+  onInputChange?: (value: string) => void
+  /** Placeholder for the search input */
+  placeholder?: string
 }
 
 /**
@@ -106,6 +119,9 @@ export function SearchSuggestionsList({
   showEmpty = true,
   emptyMessage = 'Type to search or select a filter field',
   className,
+  inputValue,
+  onInputChange,
+  placeholder = 'Search...',
 }: SearchSuggestionsListProps) {
   if (suggestions.length === 0 && !showEmpty) {
     return null
@@ -124,55 +140,59 @@ export function SearchSuggestionsList({
     {} as Record<SearchSuggestionType, SearchSuggestion[]>
   )
 
-  if (suggestions.length === 0) {
-    return (
-      <CommandEmpty>
-        <div className="px-2 py-3 text-xs text-muted-foreground">
-          <p>{emptyMessage}</p>
-        </div>
-      </CommandEmpty>
-    )
-  }
-
   // Order: recent first, then fields
   const typeOrder: SearchSuggestionType[] = ['recent', 'field']
 
   return (
-    <>
-      {typeOrder.map((type) => {
-        const items = groupedSuggestions[type]
-        if (!items || items.length === 0) return null
+    <Command className="bg-transparent">
+      {/* <CommandInput
+        value={inputValue}
+        onValueChange={onInputChange}
+        placeholder={placeholder}
+      /> */}
+      <CommandList>
+        {suggestions.length === 0 ? (
+          <CommandEmpty>
+            <div className="px-2 py-3 text-xs text-muted-foreground">
+              <p>{emptyMessage}</p>
+            </div>
+          </CommandEmpty>
+        ) : (
+          typeOrder.map((type) => {
+            const items = groupedSuggestions[type]
+            if (!items || items.length === 0) return null
 
-        return (
-          <CommandGroup key={type} heading={GROUP_LABELS[type]} className="">
-            {items.map((suggestion, index) => (
-              <CommandItem
-                key={`${type}-${suggestion.value}-${index}`}
-                value={`${type}-${suggestion.value}-${index}`}
-                onSelect={() => onSelect(suggestion)}
-              >
-                <div className="flex items-center gap-2 w-full">
-                  <div className="border bg-primary-50 rounded-md size-6 flex items-center justify-center relative">
-                    <EntityIcon size="sm" iconId={getSuggestionIcon(suggestion)} />
-                  </div>
+            return (
+              <CommandGroup key={type} heading={GROUP_LABELS[type]} className="">
+                {items.map((suggestion, index) => (
+                  <CommandItem
+                    key={`${type}-${suggestion.value}-${index}`}
+                    value={`${type}-${suggestion.value}-${index}`}
+                    onSelect={() => onSelect(suggestion)}>
+                    <div className="flex items-center gap-2 w-full">
+                      <div className="border bg-primary-50 rounded-md size-6 flex items-center justify-center relative">
+                        <EntityIcon size="sm" iconId={getSuggestionIcon(suggestion)} />
+                      </div>
 
-                  {/* Main content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1">
-                      <span className="truncate text-primary-700">{suggestion.label}</span>
-                      {suggestion.description && (
-                        <span className="text-xs text-primary-400 truncate">
-                          {suggestion.description}
-                        </span>
-                      )}
+                      {/* Main content */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1">
+                          <span className="truncate text-primary-700">{suggestion.label}</span>
+                          {suggestion.description && (
+                            <span className="text-xs text-primary-400 truncate">
+                              {suggestion.description}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              </CommandItem>
-            ))}
-          </CommandGroup>
-        )
-      })}
-    </>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )
+          })
+        )}
+      </CommandList>
+    </Command>
   )
 }

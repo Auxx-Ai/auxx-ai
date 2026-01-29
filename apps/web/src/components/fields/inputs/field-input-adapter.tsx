@@ -1,7 +1,7 @@
 // apps/web/src/components/fields/inputs/field-input-adapter.tsx
 'use client'
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef, type ReactNode } from 'react'
 import { FieldType } from '@auxx/database/enums'
 import type { FieldOptions } from '@auxx/lib/field-values/client'
 import { isMultiRelationship } from '@auxx/lib/field-values/client'
@@ -31,6 +31,43 @@ import {
 } from '~/components/workflow/nodes/shared/node-inputs'
 
 /**
+ * Wrapper for inline inputs that focuses the input when `open` becomes true.
+ * Used for text, number, and other non-picker inputs.
+ */
+interface FocusableInputWrapperProps {
+  children: ReactNode
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+}
+
+function FocusableInputWrapper({ children, open, onOpenChange }: FocusableInputWrapperProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (open && containerRef.current) {
+      // Find the first focusable input element within the container
+      const input = containerRef.current.querySelector<HTMLInputElement | HTMLTextAreaElement>(
+        'input, textarea'
+      )
+      if (input) {
+        input.focus()
+        // Notify parent that we've handled the open state
+        onOpenChange?.(false)
+      }
+    }
+  }, [open, onOpenChange])
+
+  return <div ref={containerRef}>{children}</div>
+}
+
+/** AutoGrow options for text inputs */
+export interface AutoGrowOptions {
+  minWidth?: number
+  maxWidth?: number
+  placeholderIsMinWidth?: boolean
+}
+
+/**
  * Props for FieldInputAdapter
  */
 export interface FieldInputAdapterProps {
@@ -56,6 +93,10 @@ export interface FieldInputAdapterProps {
   open?: boolean
   /** Callback when picker open state changes */
   onOpenChange?: (open: boolean) => void
+  /** Additional className for inline text inputs */
+  inputClassName?: string
+  /** Enable auto-grow for text inputs */
+  autoGrow?: AutoGrowOptions
 }
 
 /**
@@ -75,6 +116,8 @@ export function FieldInputAdapter({
   triggerProps,
   open,
   onOpenChange,
+  inputClassName,
+  autoGrow,
 }: FieldInputAdapterProps) {
   // For NodeInputProps-compatible components
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -253,46 +296,72 @@ export function FieldInputAdapter({
     }
 
     // ─────────────────────────────────────────────────────────────────
-    // TEXT TYPES - uses StringInput
+    // TEXT TYPES - uses StringInput with focus wrapper
     // ─────────────────────────────────────────────────────────────────
     case FieldType.TEXT:
     case FieldType.NAME:
-      return <StringInput {...nodeInputProps} />
+      return (
+        <FocusableInputWrapper open={open} onOpenChange={onOpenChange}>
+          <StringInput {...nodeInputProps} className={inputClassName} autoGrow={autoGrow} />
+        </FocusableInputWrapper>
+      )
 
     case FieldType.EMAIL:
-      return <StringInput {...nodeInputProps} validationType="email" />
+      return (
+        <FocusableInputWrapper open={open} onOpenChange={onOpenChange}>
+          <StringInput {...nodeInputProps} validationType="email" className={inputClassName} autoGrow={autoGrow} />
+        </FocusableInputWrapper>
+      )
 
     case FieldType.URL:
-      return <StringInput {...nodeInputProps} validationType="url" />
+      return (
+        <FocusableInputWrapper open={open} onOpenChange={onOpenChange}>
+          <StringInput {...nodeInputProps} validationType="url" className={inputClassName} autoGrow={autoGrow} />
+        </FocusableInputWrapper>
+      )
 
     case FieldType.RICH_TEXT:
-      return <StringInput {...nodeInputProps} multiline={true} />
+      return (
+        <FocusableInputWrapper open={open} onOpenChange={onOpenChange}>
+          <StringInput {...nodeInputProps} multiline={true} className={inputClassName} />
+        </FocusableInputWrapper>
+      )
 
     // ─────────────────────────────────────────────────────────────────
-    // PHONE - uses PhoneInput
+    // PHONE - uses PhoneInput with focus wrapper
     // ─────────────────────────────────────────────────────────────────
     case FieldType.PHONE_INTL:
-      return <PhoneInput {...nodeInputProps} />
+      return (
+        <FocusableInputWrapper open={open} onOpenChange={onOpenChange}>
+          <PhoneInput {...nodeInputProps} />
+        </FocusableInputWrapper>
+      )
 
     // ─────────────────────────────────────────────────────────────────
-    // NUMBER - uses NumberInput
+    // NUMBER - uses NumberInput with focus wrapper
     // ─────────────────────────────────────────────────────────────────
     case FieldType.NUMBER:
-      return <NumberInput {...nodeInputProps} />
+      return (
+        <FocusableInputWrapper open={open} onOpenChange={onOpenChange}>
+          <NumberInput {...nodeInputProps} />
+        </FocusableInputWrapper>
+      )
 
     // ─────────────────────────────────────────────────────────────────
-    // CURRENCY - uses CurrencyInput
+    // CURRENCY - uses CurrencyInput with focus wrapper
     // ─────────────────────────────────────────────────────────────────
     case FieldType.CURRENCY: {
       const currency = fieldOptions?.currency
       return (
-        <CurrencyInput
-          {...nodeInputProps}
-          currencyCode={currency?.currencyCode ?? 'USD'}
-          decimalPlaces={currency?.decimalPlaces === 'no-decimal' ? 0 : 2}
-          displayType={currency?.displayType ?? 'symbol'}
-          useGrouping={currency?.groups !== 'no-groups'}
-        />
+        <FocusableInputWrapper open={open} onOpenChange={onOpenChange}>
+          <CurrencyInput
+            {...nodeInputProps}
+            currencyCode={currency?.currencyCode ?? 'USD'}
+            decimalPlaces={currency?.decimalPlaces === 'no-decimal' ? 0 : 2}
+            displayType={currency?.displayType ?? 'symbol'}
+            useGrouping={currency?.groups !== 'no-groups'}
+          />
+        </FocusableInputWrapper>
       )
     }
 
@@ -303,16 +372,40 @@ export function FieldInputAdapter({
       return <BooleanInput {...nodeInputProps} />
 
     // ─────────────────────────────────────────────────────────────────
-    // DATE/TIME - uses DateTimeInput
+    // DATE/TIME - uses DateTimeInput with controlled open state
     // ─────────────────────────────────────────────────────────────────
     case FieldType.DATE:
-      return <DateTimeInput {...nodeInputProps} type="date" triggerProps={triggerProps} />
+      return (
+        <DateTimeInput
+          {...nodeInputProps}
+          type="date"
+          triggerProps={triggerProps}
+          open={open}
+          onOpenChange={onOpenChange}
+        />
+      )
 
     case FieldType.DATETIME:
-      return <DateTimeInput {...nodeInputProps} type="datetime" triggerProps={triggerProps} />
+      return (
+        <DateTimeInput
+          {...nodeInputProps}
+          type="datetime"
+          triggerProps={triggerProps}
+          open={open}
+          onOpenChange={onOpenChange}
+        />
+      )
 
     case FieldType.TIME:
-      return <DateTimeInput {...nodeInputProps} type="time" triggerProps={triggerProps} />
+      return (
+        <DateTimeInput
+          {...nodeInputProps}
+          type="time"
+          triggerProps={triggerProps}
+          open={open}
+          onOpenChange={onOpenChange}
+        />
+      )
 
     // ─────────────────────────────────────────────────────────────────
     // FILE - uses FileInput
@@ -327,16 +420,24 @@ export function FieldInputAdapter({
       )
 
     // ─────────────────────────────────────────────────────────────────
-    // ADDRESS - uses AddressInput
+    // ADDRESS - uses AddressInput with focus wrapper
     // ─────────────────────────────────────────────────────────────────
     case FieldType.ADDRESS:
     case FieldType.ADDRESS_STRUCT:
-      return <AddressInput {...nodeInputProps} />
+      return (
+        <FocusableInputWrapper open={open} onOpenChange={onOpenChange}>
+          <AddressInput {...nodeInputProps} />
+        </FocusableInputWrapper>
+      )
 
     // ─────────────────────────────────────────────────────────────────
-    // FALLBACK
+    // FALLBACK - uses StringInput with focus wrapper
     // ─────────────────────────────────────────────────────────────────
     default:
-      return <StringInput {...nodeInputProps} />
+      return (
+        <FocusableInputWrapper open={open} onOpenChange={onOpenChange}>
+          <StringInput {...nodeInputProps} className={inputClassName} autoGrow={autoGrow} />
+        </FocusableInputWrapper>
+      )
   }
 }

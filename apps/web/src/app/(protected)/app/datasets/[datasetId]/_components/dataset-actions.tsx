@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { WorkflowSubMenu } from '~/components/workflow/workflow-submenu'
+import { toRecordId } from '@auxx/types/resource'
 import { Upload, MoreHorizontal, RefreshCw, Download, Archive, Trash2 } from 'lucide-react'
 import { useDatasetDetail } from './dataset-detail-provider'
 import { toastSuccess, toastError } from '@auxx/ui/components/toast'
@@ -89,7 +90,7 @@ export function DatasetActions() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <WorkflowSubMenu resourceType="dataset" resourceId={dataset.id} onSuccess={refetch} />
+            <WorkflowSubMenu recordId={toRecordId('dataset', dataset.id)} onSuccess={refetch} />
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleRefresh}>
               <RefreshCw />

@@ -3,12 +3,11 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { ChevronDown } from 'lucide-react'
-import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
 import { useConditionContext } from '../condition-context'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
+import { PickerTrigger } from '~/components/ui/picker-trigger'
 import type { OperatorSelectorProps } from '../types'
 
 /**
@@ -20,9 +19,19 @@ const ConditionOperator = ({
   onChange,
   disabled,
   className,
+  triggerProps,
+  open: controlledOpen,
+  onOpenChange,
 }: OperatorSelectorProps) => {
-  const [open, setOpen] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
   const { getAvailableOperators } = useConditionContext()
+
+  // Support both controlled and uncontrolled modes
+  const isOpen = controlledOpen ?? internalOpen
+  const setIsOpen = (newOpen: boolean) => {
+    setInternalOpen(newOpen)
+    onOpenChange?.(newOpen)
+  }
 
   const options = useMemo(() => {
     return getAvailableOperators(fieldId).map((operator) => ({
@@ -34,16 +43,19 @@ const ConditionOperator = ({
   const selectedOption = options.find((o) => o.value === value)
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
+        <PickerTrigger
+          open={isOpen}
           disabled={disabled}
-          className={cn('h-6 justify-between px-2 text-xs', className)}>
-          {selectedOption?.label || 'Select operator'}
-          <ChevronDown className="ml-1 size-3 [[data-slot=condition-badge]_&]:hidden" />
-        </Button>
+          hasValue={!!selectedOption}
+          placeholder="Select operator"
+          variant={triggerProps?.variant ?? 'ghost'}
+          size={triggerProps?.size ?? 'sm'}
+          hideIcon={triggerProps?.hideIcon ?? true}
+          className={cn('h-6 px-2 text-xs', className, triggerProps?.className)}>
+          {selectedOption?.label}
+        </PickerTrigger>
       </PopoverTrigger>
       <PopoverContent className="w-48 p-0">
         <MultiSelectPicker
@@ -55,7 +67,7 @@ const ConditionOperator = ({
           canAdd={false}
           disabled={disabled}
           placeholder="Search operators..."
-          onSelectSingle={() => setOpen(false)}
+          onSelectSingle={() => setIsOpen(false)}
         />
       </PopoverContent>
     </Popover>

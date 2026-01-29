@@ -34,6 +34,7 @@ export {
 
 import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
 import type { FieldType } from '@auxx/database/types'
+import type { PickerTriggerOptions } from '~/components/ui/picker-trigger'
 
 /**
  * Group metadata for naming, descriptions, and UI state
@@ -206,6 +207,12 @@ export interface OperatorSelectorProps {
   onChange: (operator: Operator) => void
   disabled?: boolean
   className?: string
+  /** Trigger customization options */
+  triggerProps?: PickerTriggerOptions
+  /** Controlled open state */
+  open?: boolean
+  /** Callback when open state changes */
+  onOpenChange?: (open: boolean) => void
 }
 
 /**

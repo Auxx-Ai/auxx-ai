@@ -11,7 +11,6 @@ import ConditionOperator from './condition-operator'
 import ResourceFieldSelector from './resource-field-selector'
 import { ResourceInput } from '../inputs/resource-input'
 import { resolveFieldInputConfig, FieldInputMode } from '@auxx/lib/conditions/client'
-import { operatorRequiresValue } from '../types'
 import type { ConditionItemProps, Operator } from '../types'
 
 /**
@@ -27,6 +26,9 @@ interface ConditionBadgeProps extends ConditionItemProps {
  * Layout: [Field ▾] │ [Operator ▾] │ [Value Input] │ [X]
  * All in one compact row for use in searchbar and other inline contexts.
  */
+/** Type for tracking which section has focus */
+type FocusedSection = 'operator' | 'value' | null
+
 export const ConditionBadge = ({
   condition,
   groupId,
@@ -38,7 +40,7 @@ export const ConditionBadge = ({
   onRemove,
 }: ConditionBadgeProps) => {
   const [isHovered, setIsHovered] = useState(false)
-  const [valuePickerOpen, setValuePickerOpen] = useState(false)
+  const [focusedSection, setFocusedSection] = useState<FocusedSection>(null)
   const {
     config,
     readOnly,
@@ -59,16 +61,12 @@ export const ConditionBadge = ({
   const hasInput = inputConfig.mode !== FieldInputMode.NONE
 
   // Auto-open value picker when condition is created with undefined value
-  // Only auto-open if the operator requires a value input
+  // Only auto-open if the operator requires a value input and no section is focused
   useEffect(() => {
-    if (condition.value === undefined && !valuePickerOpen && hasInput) {
-      // Small delay to ensure component is mounted
-      const timer = setTimeout(() => {
-        setValuePickerOpen(true)
-      }, 100)
-      return () => clearTimeout(timer)
+    if (condition.value === undefined && focusedSection === null && hasInput) {
+      setFocusedSection('value')
     }
-  }, [condition.id, hasInput]) // Only run on initial mount (using condition.id as dependency)
+  }, [condition.id, hasInput])
 
   const handleUpdate = useCallback(
     (updates: Partial<typeof condition>) => {
@@ -101,6 +99,9 @@ export const ConditionBadge = ({
         value: '',
         variableId: config.mode === 'variable' ? fieldId : condition.variableId,
       })
+
+      // Open operator selector after field selection
+      setFocusedSection('operator')
     },
     [getFieldDefinition, handleUpdate, config.mode, condition.variableId]
   )
@@ -115,8 +116,9 @@ export const ConditionBadge = ({
       ) {
         newValue = undefined
       } else if (['in', 'not in'].includes(oldOperator) && !['in', 'not in'].includes(operator)) {
+        // Keep as array for relationship fields - just limit to first element
         if (Array.isArray(newValue)) {
-          newValue = newValue.length > 0 && newValue[0] ? newValue[0] : undefined
+          newValue = newValue.length > 0 && newValue[0] ? [newValue[0]] : []
         }
       } else if (!['in', 'not in'].includes(oldOperator) && ['in', 'not in'].includes(operator)) {
         if (!Array.isArray(newValue)) {
@@ -140,12 +142,11 @@ export const ConditionBadge = ({
     [handleUpdate]
   )
 
-  console.log('condition', condition)
   return (
     <div
       data-slot="condition-badge"
       className={cn(
-        'flex flex-row h-7 items-center rounded-xl bg-primary-200/30 border shrink-0',
+        'flex flex-row h-6 items-center rounded-xl bg-primary-200/30 border shrink-0',
         isHighlighted && 'ring-2 ring-info',
         isHovered && 'bg-destructive/10 border-destructive/20',
         className
@@ -161,7 +162,7 @@ export const ConditionBadge = ({
           <Button
             variant="transparent"
             className={cn(
-              'h-7 hover:bg-primary-200/50 px-1.5 text-xs rounded-r-none border-r',
+              'h-6 hover:bg-primary-200/50 px-1.5 text-xs rounded-r-none border-r',
               isHovered && 'border-destructive/20'
             )}>
             {fieldDef?.label ?? 'Field'}
@@ -176,9 +177,26 @@ export const ConditionBadge = ({
         onChange={handleOperatorChange}
         disabled={!condition.fieldId || readOnly}
         className={cn(
-          'h-7 hover:bg-primary-200/50 px-1.5 text-xs rounded-none border-r',
+          'h-6 hover:bg-primary-200/50 px-1.5 text-xs rounded-none border-r',
           isHovered && 'border-destructive/20'
         )}
+        open={focusedSection === 'operator'}
+        onOpenChange={(open) => {
+          if (open) {
+            setFocusedSection('operator')
+          } else {
+            // Cascade to value picker if operator requires value input
+            const newInputConfig = resolveFieldInputConfig(
+              fieldDef?.fieldType ?? 'TEXT',
+              condition.operator
+            )
+            if (newInputConfig.mode !== FieldInputMode.NONE) {
+              setFocusedSection('value')
+            } else {
+              setFocusedSection(null)
+            }
+          }
+        }}
       />
 
       {/* Value Input */}
@@ -188,14 +206,16 @@ export const ConditionBadge = ({
         value={condition.value}
         onChange={handleValueChange}
         disabled={readOnly}
-        className="text-xs"
+        inputClassName="text-xs px-1"
+        autoGrow={{ minWidth: 30, placeholderIsMinWidth: true }}
         triggerProps={{
           size: 'sm',
-          className: 'min-h-7 h-7 ps-1 pe-1 mx-0',
+          className: 'min-h-6 h-6 ps-1 pe-1 mx-0',
           hideIcon: true,
+          showClear: false,
         }}
-        open={valuePickerOpen}
-        onOpenChange={setValuePickerOpen}
+        open={focusedSection === 'value'}
+        onOpenChange={(open) => setFocusedSection(open ? 'value' : null)}
       />
 
       {/* Remove Button */}
@@ -205,7 +225,7 @@ export const ConditionBadge = ({
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
           className={cn(
-            'h-7 w-7 cursor-pointer rounded-r-xl flex items-center shrink-0 justify-center ',
+            'h-6 w-7 cursor-pointer rounded-r-xl flex items-center shrink-0 justify-center ',
             'text-muted-foreground hover:text-destructive hover:bg-destructive/10 hover:border-destructive/20',
             hasInput ? 'border-l' : ''
           )}

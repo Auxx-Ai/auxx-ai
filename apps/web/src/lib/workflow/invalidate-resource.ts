@@ -2,30 +2,42 @@
 
 import { getQueryKey } from '@trpc/react-query'
 import { getQueryClient, api } from '~/trpc/react'
-import { toRecordId } from '@auxx/lib/resources/client'
+import { type RecordId, parseRecordId, getModelType } from '@auxx/types/resource'
 
-export type ResourceType = 'thread' | 'contact' | 'ticket' | 'message' | 'entity'
+/**
+ * Internal type for cache invalidation (derived from entityDefinitionId via getModelType)
+ */
+type InvalidationType = 'thread' | 'contact' | 'ticket' | 'message' | 'entity'
+
+/**
+ * Derives the invalidation type from entityDefinitionId.
+ * System types (thread, message, contact, ticket) are returned as-is.
+ * Custom entities return 'entity'.
+ */
+function getInvalidationType(entityDefinitionId: string): InvalidationType {
+  const modelType = getModelType(entityDefinitionId)
+  if (['thread', 'message', 'contact', 'ticket'].includes(modelType)) {
+    return modelType as InvalidationType
+  }
+  return 'entity'
+}
 
 /**
  * Invalidates React Query cache for a specific resource after workflow completion
  *
- * @param resourceType - Type of resource to invalidate
- * @param resourceId - ID of the specific resource instance
- * @param entityDefinitionId - Entity definition ID (required when resourceType is 'entity')
+ * @param recordId - Full RecordId in format "entityDefinitionId:entityInstanceId"
  */
-export function invalidateResource(
-  resourceType: ResourceType,
-  resourceId: string,
-  entityDefinitionId?: string
-) {
+export function invalidateResource(recordId: RecordId) {
+  const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+  const invalidationType = getInvalidationType(entityDefinitionId)
   const queryClient = getQueryClient()
 
-  switch (resourceType) {
+  switch (invalidationType) {
     case 'thread':
     case 'message':
       // Invalidate specific thread
       queryClient.invalidateQueries({
-        queryKey: getQueryKey(api.thread.getById, { threadId: resourceId }, 'query'),
+        queryKey: getQueryKey(api.thread.getById, { threadId: entityInstanceId }, 'query'),
       })
       // Invalidate thread lists (will refetch with updated data)
       queryClient.invalidateQueries({
@@ -42,7 +54,7 @@ export function invalidateResource(
     case 'contact':
       // Invalidate specific contact
       queryClient.invalidateQueries({
-        queryKey: getQueryKey(api.contact.getById, { id: resourceId }, 'query'),
+        queryKey: getQueryKey(api.contact.getById, { id: entityInstanceId }, 'query'),
       })
       // Invalidate contact lists
       queryClient.invalidateQueries({
@@ -54,7 +66,7 @@ export function invalidateResource(
     case 'ticket':
       // Invalidate specific ticket
       queryClient.invalidateQueries({
-        queryKey: getQueryKey(api.ticket.byId, { id: resourceId }, 'query'),
+        queryKey: getQueryKey(api.ticket.byId, { id: entityInstanceId }, 'query'),
       })
       // Invalidate ticket lists
       queryClient.invalidateQueries({
@@ -70,12 +82,9 @@ export function invalidateResource(
 
     case 'entity':
       // Invalidate specific entity instance via record router
-      if (entityDefinitionId) {
-        const recordId = toRecordId(entityDefinitionId, resourceId)
-        queryClient.invalidateQueries({
-          queryKey: getQueryKey(api.record.getById, { recordId }, 'query'),
-        })
-      }
+      queryClient.invalidateQueries({
+        queryKey: getQueryKey(api.record.getById, { recordId }, 'query'),
+      })
       // Invalidate listFiltered for the entity type
       queryClient.invalidateQueries({
         queryKey: getQueryKey(api.record.listFiltered),
@@ -93,42 +102,40 @@ export function invalidateResource(
 /**
  * Creates an onComplete callback for workflow tracking that invalidates the resource
  */
-export function createWorkflowInvalidator(
-  resourceType: ResourceType,
-  resourceId: string,
-  entityDefinitionId?: string
-) {
-  return () => invalidateResource(resourceType, resourceId, entityDefinitionId)
+export function createWorkflowInvalidator(recordId: RecordId) {
+  return () => invalidateResource(recordId)
 }
 
 /**
  * Invalidates React Query cache for multiple resources after batch workflow completion
  * Optimized to only invalidate list/count queries once instead of per-resource
  *
- * @param resourceType - Type of resources to invalidate
- * @param resourceIds - IDs of the specific resource instances
- * @param entityDefinitionId - Entity definition ID (required when resourceType is 'entity')
+ * @param recordIds - Array of RecordIds in format "entityDefinitionId:entityInstanceId"
  */
-export function invalidateBatchResources(
-  resourceType: ResourceType,
-  resourceIds: string[],
-  entityDefinitionId?: string
-) {
-  if (resourceIds.length === 0) return
+export function invalidateBatchResources(recordIds: RecordId[]) {
+  if (recordIds.length === 0) return
+
+  // Parse first recordId to get entityDefinitionId (all should be same type in batch)
+  const { entityDefinitionId } = parseRecordId(recordIds[0]!)
+  const invalidationType = getInvalidationType(entityDefinitionId)
 
   console.log('[invalidateBatchResources] Invalidating batch', {
-    resourceType,
-    count: resourceIds.length,
+    invalidationType,
+    entityDefinitionId,
+    count: recordIds.length,
   })
   const queryClient = getQueryClient()
 
-  switch (resourceType) {
+  // Parse all recordIds to get entityInstanceIds
+  const entityInstanceIds = recordIds.map((r) => parseRecordId(r).entityInstanceId)
+
+  switch (invalidationType) {
     case 'thread':
     case 'message':
       // Invalidate each specific thread
-      resourceIds.forEach((resourceId) => {
+      entityInstanceIds.forEach((entityInstanceId) => {
         queryClient.invalidateQueries({
-          queryKey: getQueryKey(api.thread.getById, { threadId: resourceId }, 'query'),
+          queryKey: getQueryKey(api.thread.getById, { threadId: entityInstanceId }, 'query'),
         })
       })
       // Invalidate list and counts ONCE
@@ -143,9 +150,9 @@ export function invalidateBatchResources(
       break
 
     case 'contact':
-      resourceIds.forEach((resourceId) => {
+      entityInstanceIds.forEach((entityInstanceId) => {
         queryClient.invalidateQueries({
-          queryKey: getQueryKey(api.contact.getById, { id: resourceId }, 'query'),
+          queryKey: getQueryKey(api.contact.getById, { id: entityInstanceId }, 'query'),
         })
       })
       queryClient.invalidateQueries({
@@ -155,9 +162,9 @@ export function invalidateBatchResources(
       break
 
     case 'ticket':
-      resourceIds.forEach((resourceId) => {
+      entityInstanceIds.forEach((entityInstanceId) => {
         queryClient.invalidateQueries({
-          queryKey: getQueryKey(api.ticket.byId, { id: resourceId }, 'query'),
+          queryKey: getQueryKey(api.ticket.byId, { id: entityInstanceId }, 'query'),
         })
       })
       queryClient.invalidateQueries({
@@ -173,14 +180,11 @@ export function invalidateBatchResources(
 
     case 'entity':
       // Invalidate each specific entity instance via record router
-      if (entityDefinitionId) {
-        resourceIds.forEach((resourceId) => {
-          const recordId = toRecordId(entityDefinitionId, resourceId)
-          queryClient.invalidateQueries({
-            queryKey: getQueryKey(api.record.getById, { recordId }, 'query'),
-          })
+      recordIds.forEach((recordId) => {
+        queryClient.invalidateQueries({
+          queryKey: getQueryKey(api.record.getById, { recordId }, 'query'),
         })
-      }
+      })
       // Invalidate listFiltered for the entity type ONCE
       queryClient.invalidateQueries({
         queryKey: getQueryKey(api.record.listFiltered),

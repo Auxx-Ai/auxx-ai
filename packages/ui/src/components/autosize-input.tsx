@@ -170,7 +170,17 @@ function AutosizeInput({
       setInputWidth(newWidth)
       onAutosize?.(newWidth)
     }
-  }, [value, placeholder, placeholderIsMinWidth, minWidth, maxWidth, extraWidth, type, inputWidth, onAutosize])
+  }, [
+    value,
+    placeholder,
+    placeholderIsMinWidth,
+    minWidth,
+    maxWidth,
+    extraWidth,
+    type,
+    inputWidth,
+    onAutosize,
+  ])
 
   // Copy styles on mount and when input element changes
   React.useLayoutEffect(() => {
@@ -183,8 +193,11 @@ function AutosizeInput({
   }, [updateInputWidth])
 
   // Determine sizer value (controlled value, default value, or empty string)
-  const sizerValue = value ?? defaultValue ?? ''
+  // Replace spaces with non-breaking spaces and add zero-width space at end
+  // so trailing whitespace is measured correctly by scrollWidth
+  const rawSizerValue = String(value ?? defaultValue ?? '')
 
+  const sizerValue = rawSizerValue.replace(/ /g, '\u00A0') + '\u200b'
   // Combined input styles
   const combinedInputStyle: React.CSSProperties = {
     boxSizing: 'content-box',
@@ -202,7 +215,7 @@ function AutosizeInput({
     <div className={className} style={combinedWrapperStyle}>
       <input
         ref={inputRef}
-        type={type}
+        type="text"
         value={value}
         defaultValue={defaultValue}
         placeholder={placeholder}

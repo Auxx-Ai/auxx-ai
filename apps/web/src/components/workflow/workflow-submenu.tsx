@@ -15,15 +15,14 @@ import { api } from '~/trpc/react'
 import { useWorkflowRunStatusStore } from '~/stores/workflow-run-status-store'
 import { showWorkflowProgressToast } from './workflow-progress-toast'
 import { createWorkflowInvalidator } from '~/lib/workflow'
+import { type RecordId, parseRecordId } from '@auxx/types/resource'
 
 /**
  * Props for the WorkflowSubMenu component
  */
 interface WorkflowSubMenuProps {
-  /** Resource type: 'contact', 'ticket', 'thread', 'message', 'dataset' */
-  resourceType: 'contact' | 'ticket' | 'thread' | 'message' | 'dataset'
-  /** Resource ID to trigger workflow for */
-  resourceId: string
+  /** Record ID to trigger workflow for */
+  recordId: RecordId
   /** Called after successful trigger */
   onSuccess?: () => void
 }
@@ -35,19 +34,19 @@ interface WorkflowSubMenuProps {
  * Shows loading state while fetching, then displays available workflows.
  * Shows "No workflows available" if none exist.
  */
-export function WorkflowSubMenu({
-  resourceType,
-  resourceId,
-  onSuccess,
-}: WorkflowSubMenuProps) {
+export function WorkflowSubMenu({ recordId, onSuccess }: WorkflowSubMenuProps) {
+  const { entityDefinitionId, entityInstanceId } = recordId
+    ? parseRecordId(recordId)
+    : { entityDefinitionId: '', entityInstanceId: '' }
+
   // Store ref to selected workflow for use in onSuccess
   const selectedWorkflowRef = useRef<{ id: string; name: string } | null>(null)
 
-  // Query available workflows for this resource type
+  // Query available workflows for this entity
   const { data: workflows, isLoading: workflowsLoading } = api.workflow.getManualWorkflows.useQuery(
-    { resourceType },
+    { entityDefinitionId },
     {
-      enabled: resourceId.length > 0,
+      enabled: recordId.length > 0 && entityDefinitionId.length > 0,
       staleTime: 30000, // Cache for 30 seconds to avoid refetch flicker
     }
   )
@@ -59,9 +58,8 @@ export function WorkflowSubMenu({
       useWorkflowRunStatusStore.getState().trackRun({
         runId: data.workflowRunId,
         workflowName: selectedWorkflowRef.current?.name ?? 'Workflow',
-        resourceType,
-        resourceId,
-        onComplete: createWorkflowInvalidator(resourceType, resourceId),
+        recordId,
+        onComplete: createWorkflowInvalidator(recordId),
       })
 
       // Show progress toast
@@ -82,8 +80,7 @@ export function WorkflowSubMenu({
     selectedWorkflowRef.current = workflow
     triggerWorkflow.mutate({
       workflowAppId: workflow.id,
-      resourceType,
-      resourceId,
+      recordId,
     })
   }
 

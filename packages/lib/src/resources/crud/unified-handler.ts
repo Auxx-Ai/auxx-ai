@@ -40,6 +40,7 @@ import {
   type CreateEntityResult,
 } from './unified-handler-mutations'
 import { SYSTEM_FIELD_KEYS, type TableId } from '../registry/field-registry'
+import { ResourceRegistryService } from '../registry/resource-registry-service'
 // import type { EntityDefinitionEntity } from '@auxx/database/schema/entity-definition'
 // import type { EntityInstanceEntity } from '@auxx/database/schema/entity-instance'
 
@@ -103,6 +104,7 @@ export type { CrudOptions } from './unified-handler-mutations'
  */
 export class UnifiedCrudHandler {
   private fieldValueService: FieldValueService
+  private registryService: ResourceRegistryService
   private db: Database
 
   /** Cache for EntityDefinition lookups (keyed by entityDefinitionId or system type) */
@@ -118,6 +120,7 @@ export class UnifiedCrudHandler {
   ) {
     this.db = db ?? defaultDatabase
     this.fieldValueService = new FieldValueService(organizationId, userId, this.db)
+    this.registryService = new ResourceRegistryService(organizationId, this.db)
   }
 
   /**
@@ -496,24 +499,48 @@ export class UnifiedCrudHandler {
   }
 
   /**
-   * Search records with optional global search support
+   * Search records with optional global search support.
+   * Handles resolution of apiSlug and system entity names to actual entityDefinitionIds.
    *
    * @param params - Search parameters
    */
   async search(params: {
     query?: string
+    apiSlug?: string
     entityDefinitionId?: string
     entityDefinitionIds?: string[]
     limit?: number
     cursor?: string
   }) {
+    const { query, apiSlug, limit, cursor, entityDefinitionIds } = params
+    let { entityDefinitionId } = params
+
+    // Resolve apiSlug to entityDefinitionId if provided
+    if (apiSlug && !entityDefinitionId) {
+      entityDefinitionId = await this.registryService.resolveEntityDefIdFromApiSlug(apiSlug)
+    }
+
+    // Resolve system names (contact, ticket) to actual UUIDs
+    if (entityDefinitionId) {
+      entityDefinitionId = await this.registryService.resolveEntityDefId(entityDefinitionId)
+    }
+
+    // Also resolve entityDefinitionIds if provided
+    let resolvedEntityDefinitionIds = entityDefinitionIds
+    if (entityDefinitionIds && entityDefinitionIds.length > 0) {
+      resolvedEntityDefinitionIds = await Promise.all(
+        entityDefinitionIds.map((id) => this.registryService.resolveEntityDefId(id))
+      )
+    }
+    console.log('entityDefinitionId:', entityDefinitionId)
+
     const service = new RecordPickerService(this.organizationId, this.userId, this.db)
     return service.search({
-      query: params.query ?? '',
-      entityDefinitionId: params.entityDefinitionId,
-      entityDefinitionIds: params.entityDefinitionIds,
-      limit: params.limit,
-      cursor: params.cursor,
+      query: query ?? '',
+      entityDefinitionId,
+      entityDefinitionIds: resolvedEntityDefinitionIds,
+      limit,
+      cursor,
     })
   }
 
@@ -769,7 +796,7 @@ export class UnifiedCrudHandler {
 
     // Merge hooks: common hooks first, then entity-specific hooks
     // Entity-specific hooks can override common behavior if needed
-    const mergedHooks: Record<string, typeof entityHooks[string]> = { ...commonHooks }
+    const mergedHooks: Record<string, (typeof entityHooks)[string]> = { ...commonHooks }
     for (const [attr, fns] of Object.entries(entityHooks)) {
       mergedHooks[attr] = [...(mergedHooks[attr] ?? []), ...fns]
     }

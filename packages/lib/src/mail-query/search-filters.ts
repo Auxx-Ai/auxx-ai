@@ -205,7 +205,12 @@ export function conditionsToApiFilter(conditions: SearchCondition[]): ApiSearchF
       case 'status':
         result.is = result.is || []
         if (condition.value) {
-          result.is.push(condition.value)
+          // Handle both array and string values
+          if (Array.isArray(condition.value)) {
+            result.is.push(...condition.value)
+          } else {
+            result.is.push(condition.value)
+          }
         }
         break
 

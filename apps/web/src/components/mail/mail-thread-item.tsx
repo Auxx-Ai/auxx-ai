@@ -22,6 +22,7 @@ import { Button } from '@auxx/ui/components/button'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { useThreadMutations } from '~/hooks/use-thread-mutations'
 import { WorkflowSubMenu } from '~/components/workflow/workflow-submenu'
+import { toRecordId } from '@auxx/types/resource'
 
 // NEW: Import from new hooks
 import { useThread, useMessage, useThreadReadStatus, useThreadDraftStatus } from '~/components/threads/hooks'
@@ -49,7 +50,7 @@ function ProcessingMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <WorkflowSubMenu resourceType="thread" resourceId={threadId} onSuccess={onSuccess} />
+        <WorkflowSubMenu recordId={toRecordId('thread', threadId)} onSuccess={onSuccess} />
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={() => threadMutations.archiveThread.mutate({ threadId })}

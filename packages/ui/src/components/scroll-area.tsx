@@ -11,12 +11,21 @@ import { cn } from '@auxx/ui/lib/utils'
 interface ScrollAreaProps extends React.ComponentProps<typeof ScrollAreaPrimitive.Root> {
   /** Scroll orientation: vertical (default), horizontal, or both */
   orientation?: 'vertical' | 'horizontal' | 'both'
+  /** Additional classes for the scrollbar (use to override thickness, colors, etc.) */
+  scrollbarClassName?: string
 }
 
 /**
  * ScrollArea component with configurable scroll orientation.
+ * Use scrollbarClassName to customize scrollbar appearance (e.g., "w-1" for thinner vertical scrollbar).
  */
-function ScrollArea({ className, children, orientation = 'vertical', ...props }: ScrollAreaProps) {
+function ScrollArea({
+  className,
+  children,
+  orientation = 'vertical',
+  scrollbarClassName,
+  ...props
+}: ScrollAreaProps) {
   return (
     <ScrollAreaPrimitive.Root className={cn('relative overflow-hidden', className)} {...props}>
       <ScrollAreaPrimitive.Viewport
@@ -26,9 +35,11 @@ function ScrollArea({ className, children, orientation = 'vertical', ...props }:
         )}>
         {children}
       </ScrollAreaPrimitive.Viewport>
-      {(orientation === 'vertical' || orientation === 'both') && <ScrollBar orientation="vertical" />}
+      {(orientation === 'vertical' || orientation === 'both') && (
+        <ScrollBar orientation="vertical" className={scrollbarClassName} />
+      )}
       {(orientation === 'horizontal' || orientation === 'both') && (
-        <ScrollBar orientation="horizontal" />
+        <ScrollBar orientation="horizontal" className={scrollbarClassName} />
       )}
       <ScrollAreaPrimitive.Corner />
     </ScrollAreaPrimitive.Root>

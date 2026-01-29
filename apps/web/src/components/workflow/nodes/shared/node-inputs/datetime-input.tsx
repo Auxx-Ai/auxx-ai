@@ -23,6 +23,10 @@ interface DateTimeInputProps extends NodeInputProps {
   dateFormat?: string
   /** Trigger customization options */
   triggerProps?: PickerTriggerOptions
+  /** Controlled open state */
+  open?: boolean
+  /** Callback when open state changes */
+  onOpenChange?: (open: boolean) => void
 }
 
 /**
@@ -41,6 +45,8 @@ export const DateTimeInput = createNodeInput<DateTimeInputProps>(
     minDate,
     maxDate,
     triggerProps,
+    open,
+    onOpenChange,
   }) => {
     const value = inputs[name]
     const error = errors[name]
@@ -100,6 +106,8 @@ export const DateTimeInput = createNodeInput<DateTimeInputProps>(
         notClearable={false}
         className="w-full"
         triggerProps={triggerProps}
+        open={open}
+        onOpenChange={onOpenChange}
       />
     )
   }

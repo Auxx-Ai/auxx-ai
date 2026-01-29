@@ -5,9 +5,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { Filter, Loader2, Search, X } from 'lucide-react'
 import { cn } from '@auxx/ui/lib/utils'
 import { Button } from '@auxx/ui/components/button'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { Command, CommandList } from '@auxx/ui/components/command'
-import { Badge } from '@auxx/ui/components/badge'
+import { Popover, PopoverAnchor, PopoverContent } from '@auxx/ui/components/popover'
 
 import { SearchFilterInput } from './search-filter-input'
 import type { AutosizeInputRef } from '@auxx/ui/components/autosize-input'
@@ -60,7 +58,7 @@ export function MailSearchBar({
   isLoading = false,
 }: MailSearchBarProps) {
   const inputRef = useRef<AutosizeInputRef>(null)
-  const commandRef = useRef<HTMLDivElement>(null)
+  const filterButtonRef = useRef<HTMLButtonElement>(null)
 
   // Local UI state
   const [isOpen, setIsOpen] = useState(false)
@@ -98,18 +96,12 @@ export function MailSearchBar({
       if (e.key === '/' && !isOpen && !isInputFocused()) {
         e.preventDefault()
         setIsOpen(true)
+        setTimeout(() => inputRef.current?.focus(), 50)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isOpen])
-
-  // Focus input when popover opens
-  useEffect(() => {
-    if (isOpen && !showAdvanced) {
-      setTimeout(() => inputRef.current?.focus(), 100)
-    }
-  }, [isOpen, showAdvanced])
 
   /** Handle suggestion selection */
   const handleSuggestionSelect = useCallback(
@@ -130,9 +122,7 @@ export function MailSearchBar({
       // The ConditionBadge will detect undefined value and auto-open the picker
       if (suggestion.type === 'field' && suggestion.fieldId) {
         const fieldDef = suggestion.fieldDefinition
-        const defaultOperator = fieldDef
-          ? getDefaultOperatorForField(suggestion.fieldId)
-          : 'is'
+        const defaultOperator = fieldDef ? getDefaultOperatorForField(suggestion.fieldId) : 'is'
 
         // Add condition with undefined value - picker will auto-open
         actions.addCondition(suggestion.fieldId, defaultOperator, undefined)
@@ -207,16 +197,31 @@ export function MailSearchBar({
         }
       }
     },
-    [suggestions, highlightedSuggestionIndex, inputValue, handleSuggestionSelect, actions, executeSearch]
+    [
+      suggestions,
+      highlightedSuggestionIndex,
+      inputValue,
+      handleSuggestionSelect,
+      actions,
+      executeSearch,
+    ]
   )
 
+  /** Handle input focus */
+  const handleInputFocus = useCallback(() => {
+    setIsOpen(true)
+  }, [])
+
   /** Clear all conditions and input */
-  const handleClear = useCallback(() => {
-    setInputValue('')
-    actions.clearConditions()
-    onSearch('')
-    setIsOpen(false)
-  }, [actions, onSearch])
+  const handleClear = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation()
+      setInputValue('')
+      actions.clearConditions()
+      onSearch('')
+    },
+    [actions, onSearch]
+  )
 
   /** Handle open/close */
   const handleOpenChange = useCallback((open: boolean) => {
@@ -253,6 +258,13 @@ export function MailSearchBar({
     [actions]
   )
 
+  /** Handle filter button click - toggles advanced mode */
+  const handleFilterClick = useCallback(() => {
+    const nextOpen = !showAdvanced
+    setShowAdvanced(nextOpen)
+    setIsOpen(nextOpen)
+  }, [showAdvanced])
+
   return (
     <ConditionProvider
       conditions={conditions}
@@ -262,127 +274,86 @@ export function MailSearchBar({
         showGrouping: false,
         compactMode: true,
       }}
-      onConditionsChange={handleConditionsChange}
-    >
-      <Popover open={isOpen} onOpenChange={handleOpenChange}>
-        <PopoverTrigger
-          asChild
-          className="w-full h-7 flex flex-1 min-w-[20rem] max-w-[30rem] justify-start items-center relative bg-primary-50 hover:bg-background rounded-full pe-1"
-        >
-          <div>
-            <div
-              onClick={() => {
-                setShowAdvanced(false)
-                setIsOpen(true)
-              }}
-              className="px-3 whitespace-nowrap rounded-md font-medium transition-colors gap-2 text-sm inline-flex items-center shrink-0 w-full flex-1 h-7 overflow-hidden justify-start relative bg-transparent shadow-none hover:bg-transparent focus:ring-0 focus:ring-offset-0 focus:outline-hidden"
-            >
-              <Search className="size-4 shrink-0 opacity-50" />
-              <TriggerDisplay
-                hasConditions={hasActiveConditions}
-                conditionCount={conditionCount}
-                chips={chips}
-              />
-            </div>
+      onConditionsChange={handleConditionsChange}>
+      <div className={cn('w-full min-w-[20rem] ', className)}>
+        {/* Search input row - always visible, outside popover */}
+        <div
+          className={cn(
+            'flex items-center h-8 bg-primary-50 hover:bg-background pe-1 transition-colors border',
+            isOpen
+              ? 'rounded-t-2xl bg-background border border-b-0 border-foreground/15'
+              : 'rounded-full border-transparent'
+          )}>
+          <Search className="size-4 shrink-0 opacity-50 ml-3 mr-2" />
 
-            <div className="flex items-center gap-1 absolute right-7">
-              {(isLoading || suggestionsLoading) && (
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-              )}
-            </div>
+          <SearchFilterInput
+            inputRef={inputRef}
+            inputValue={inputValue}
+            onInputChange={setInputValue}
+            onInputKeyDown={handleInputKeyDown}
+            onFocus={handleInputFocus}
+            placeholder="Search..."
+            className="flex-1"
+          />
 
+          {/* Loading indicator */}
+          {(isLoading || suggestionsLoading) && (
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-1" />
+          )}
+
+          {/* Clear button */}
+          {(inputValue || hasActiveConditions) && (
             <Button
               variant="ghost"
-              aria-selected={showAdvanced ? 'true' : 'false'}
-              className={cn('size-6 rounded-full aria-[selected=true]:bg-primary-200')}
-              onClick={(e) => {
-                e.stopPropagation()
-                setShowAdvanced(true)
-                setIsOpen(true)
-              }}
-            >
-              <Filter className="size-4 shrink-0 opacity-50" />
+              size="icon"
+              className="size-6 rounded-full shrink-0 bg-primary-50 hover:bg-primary-100 [&_svg]:opacity-50 hover:[&_svg]:opacity-100"
+              onClick={handleClear}>
+              <X className="size-4 shrink-0" />
             </Button>
-          </div>
-        </PopoverTrigger>
+          )}
 
-        <PopoverContent
-          className="w-full p-0 ml-[1px] animate-none! border-0 rounded-t-2xl bg-background"
-          align="start"
-          sideOffset={-28}
-          style={{
-            width: 'calc(0px + var(--radix-popover-trigger-width))',
-            maxHeight: 'var(--radix-popover-content-available-height)',
-          }}
-        >
-          {showAdvanced ? (
-            <div className="flex flex-col">
+          {/* Filter button */}
+          <Button
+            ref={filterButtonRef}
+            variant="ghost"
+            aria-selected={showAdvanced ? 'true' : 'false'}
+            className={cn('size-6 rounded-full aria-[selected=true]:bg-primary-200')}
+            onClick={handleFilterClick}>
+            <Filter className="size-4 shrink-0 opacity-50" />
+          </Button>
+        </div>
+
+        {/* Popover for dropdown - anchored below input */}
+        <Popover open={isOpen} onOpenChange={handleOpenChange}>
+          <PopoverAnchor className="w-full flex-1" />
+          <PopoverContent
+            className="rounded-t-none rounded-b-2xl border-t-0 p-0 shadow-lg"
+            align="start"
+            sideOffset={0}
+            // onOpenAutoFocus={(e) => e.preventDefault()}
+            onInteractOutside={(e) => {
+              // Prevent closing when clicking the filter button
+              if (filterButtonRef.current?.contains(e.target as Node)) {
+                e.preventDefault()
+              }
+            }}
+            style={{ width: 'var(--radix-popover-trigger-width)' }}>
+            {showAdvanced ? (
               <AdvancedFilterMode
                 initialConditions={conditions}
                 onApply={handleApplyAdvancedConditions}
                 onCancel={() => setShowAdvanced(false)}
               />
-            </div>
-          ) : (
-            <Command
-              ref={commandRef}
-              shouldFilter={false}
-              className="bg-transparent rounded-t-xl shadow-none"
-            >
-              <div className="flex items-center border-b px-3 relative min-h-7">
-                <Search className="mr-2 h-4 w-4 shrink-0 opacity-50 ml-[-1px]" />
-                <SearchFilterInput
-                  inputRef={inputRef}
-                  inputValue={inputValue}
-                  onInputChange={setInputValue}
-                  onInputKeyDown={handleInputKeyDown}
-                  placeholder="Search..."
-                  className="flex-1"
-                />
-
-                <div className="flex items-center gap-1 absolute right-[29px]">
-                  {(isLoading || suggestionsLoading) && (
-                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                  )}
-                </div>
-
-                <Button
-                  variant="ghost"
-                  aria-selected={showAdvanced ? 'true' : 'false'}
-                  className={cn(
-                    'size-6 rounded-full aria-[selected=true]:bg-primary-200 absolute right-[4px]'
-                  )}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setShowAdvanced(true)
-                  }}
-                >
-                  <Filter className="size-4 shrink-0 opacity-50" />
-                </Button>
-
-                {(inputValue || hasActiveConditions) && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-6 rounded-full shrink-0 bg-primary-50 hover:bg-primary-100 absolute right-[29px] [&_svg]:opacity-50 hover:[&_svg]:opacity-100"
-                    onClick={handleClear}
-                  >
-                    <X className="size-4 shrink-0" />
-                  </Button>
-                )}
-              </div>
-
-              <CommandList>
-                <SearchSuggestionsList
-                  suggestions={suggestions}
-                  onSelect={handleSuggestionSelect}
-                  showEmpty={!inputValue && chips.length === 0}
-                />
-              </CommandList>
-            </Command>
-          )}
-        </PopoverContent>
-      </Popover>
+            ) : (
+              <SearchSuggestionsList
+                suggestions={suggestions}
+                onSelect={handleSuggestionSelect}
+                showEmpty={!inputValue && chips.length === 0}
+              />
+            )}
+          </PopoverContent>
+        </Popover>
+      </div>
     </ConditionProvider>
   )
 }
@@ -394,36 +365,5 @@ function isInputFocused(): boolean {
     active instanceof HTMLInputElement ||
     active instanceof HTMLTextAreaElement ||
     (active as HTMLElement)?.isContentEditable === true
-  )
-}
-
-/** Display component for the trigger button */
-function TriggerDisplay({
-  hasConditions,
-  conditionCount,
-  chips,
-}: {
-  hasConditions: boolean
-  conditionCount: number
-  chips: Array<{ key: string; type: string; value: string }>
-}) {
-  if (!hasConditions) {
-    return <span className="text-muted-foreground/60">Search...</span>
-  }
-
-  return (
-    <div className="w-full flex items-center flex-1">
-      <div className="flex items-center gap-1 w-full overflow-x-auto no-scrollbar">
-        {chips.slice(0, 3).map((chip) => (
-          <Badge key={chip.key} variant="user" className="px-2 pe-1 shrink-0">
-            <span className="text-blue-600 font-medium">{chip.type}:</span>
-            <span className="max-w-[100px] truncate">{chip.value}</span>
-          </Badge>
-        ))}
-        {chips.length > 3 && (
-          <span className="text-xs text-muted-foreground">+{chips.length - 3} more</span>
-        )}
-      </div>
-    </div>
   )
 }

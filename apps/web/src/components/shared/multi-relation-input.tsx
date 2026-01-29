@@ -189,9 +189,11 @@ export function MultiRelationInput({
           open={open}
           disabled={disabled}
           variant={triggerProps?.variant ?? 'transparent'}
+          size={triggerProps?.size}
           hasValue={hasValue}
           placeholder={placeholder}
           showClear={triggerProps?.showClear ?? multi}
+          hideIcon={triggerProps?.hideIcon}
           onClear={handleClearAll}
           asCombobox
           className={cn('h-auto min-h-8', className, triggerProps?.className)}>

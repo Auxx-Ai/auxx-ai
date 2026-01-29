@@ -19,7 +19,7 @@ export interface MailViewFieldDefinition {
   id: string
   label: string
   type: BaseType
-  fieldType: typeof FieldType[keyof typeof FieldType]
+  fieldType: (typeof FieldType)[keyof typeof FieldType]
   /** Field-specific options using unified FieldOptions type */
   options?: FieldOptions
   placeholder?: string
@@ -43,28 +43,13 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
     fieldType: FieldType.RELATIONSHIP,
     options: {
       relationship: {
-        inverseResourceFieldId: 'Tag:threads',
+        inverseResourceFieldId: 'tag:threads',
         relationshipType: 'has_many',
         isInverse: false,
       },
     },
     placeholder: 'Select tags...',
     description: 'Filter by tags applied to threads',
-  },
-  {
-    id: 'label',
-    label: 'Label',
-    type: BaseType.RELATION,
-    fieldType: FieldType.RELATIONSHIP,
-    options: {
-      relationship: {
-        inverseResourceFieldId: 'Label:threads',
-        relationshipType: 'has_many',
-        isInverse: false,
-      },
-    },
-    placeholder: 'Select labels...',
-    description: 'Filter by labels on threads',
   },
   {
     id: 'assignee',
@@ -87,7 +72,7 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
     fieldType: FieldType.RELATIONSHIP,
     options: {
       relationship: {
-        inverseResourceFieldId: 'Inbox:threads',
+        inverseResourceFieldId: 'inbox:threads',
         relationshipType: 'has_many',
         isInverse: false,
       },
@@ -150,10 +135,11 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
     fieldType: FieldType.SINGLE_SELECT,
     options: {
       options: [
-        { value: 'OPEN', label: 'Open' },
-        { value: 'ARCHIVED', label: 'Archived' },
-        { value: 'TRASH', label: 'Trash' },
-        { value: 'SPAM', label: 'Spam' },
+        { value: 'unassigned', label: 'Unassigned' },
+        { value: 'assigned', label: 'Assigned' },
+        { value: 'done', label: 'Done' },
+        { value: 'trash', label: 'Trash' },
+        { value: 'spam', label: 'Spam' },
       ],
     },
     description: 'Filter by thread status',
@@ -164,28 +150,28 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
   // ═══════════════════════════════════════════════════════════════════════════
   {
     id: 'date',
-    label: 'Date',
+    label: 'Sent Date',
     type: BaseType.DATE,
     fieldType: FieldType.DATE,
     placeholder: 'Select date...',
     description: 'Filter by date',
   },
-  {
-    id: 'before',
-    label: 'Before',
-    type: BaseType.DATE,
-    fieldType: FieldType.DATE,
-    placeholder: 'Select date...',
-    description: 'Filter messages before date',
-  },
-  {
-    id: 'after',
-    label: 'After',
-    type: BaseType.DATE,
-    fieldType: FieldType.DATE,
-    placeholder: 'Select date...',
-    description: 'Filter messages after date',
-  },
+  // {
+  //   id: 'before',
+  //   label: 'Before',
+  //   type: BaseType.DATE,
+  //   fieldType: FieldType.DATE,
+  //   placeholder: 'Select date...',
+  //   description: 'Filter messages before date',
+  // },
+  // {
+  //   id: 'after',
+  //   label: 'After',
+  //   type: BaseType.DATE,
+  //   fieldType: FieldType.DATE,
+  //   placeholder: 'Select date...',
+  //   description: 'Filter messages after date',
+  // },
 
   // ═══════════════════════════════════════════════════════════════════════════
   // BOOLEAN FIELDS
@@ -215,7 +201,7 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
  * Get field definition by ID.
  */
 export function getMailViewFieldDefinition(fieldId: string): MailViewFieldDefinition | undefined {
-  return MAIL_VIEW_FIELD_DEFINITIONS.find(f => f.id === fieldId)
+  return MAIL_VIEW_FIELD_DEFINITIONS.find((f) => f.id === fieldId)
 }
 
 /**

@@ -81,14 +81,10 @@ export function MassWorkflowTriggerDialog({
       if (successfulRuns.length > 0) {
         const batchId = useWorkflowRunStatusStore.getState().trackBatch({
           workflowName: selectedWorkflow?.name ?? 'Workflow',
-          resourceType: entityDefinitionId,
           results: successfulRuns,
           onComplete: () => {
             // Invalidate all resources efficiently (list queries only once)
-            invalidateBatchResources(
-              entityDefinitionId,
-              successfulRuns.map(({ recordId }) => recordId)
-            )
+            invalidateBatchResources(successfulRuns.map(({ recordId }) => recordId))
           },
         })
 

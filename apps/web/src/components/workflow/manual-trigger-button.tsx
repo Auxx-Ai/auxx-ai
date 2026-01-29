@@ -103,9 +103,8 @@ export function ManualTriggerButton({
         useWorkflowRunStatusStore.getState().trackRun({
           runId: data.workflowRunId,
           workflowName: selectedWorkflowRef.current?.name ?? 'Workflow',
-          resourceType: entityDefinitionId,
-          resourceId: entityInstanceId,
-          onComplete: createWorkflowInvalidator(entityDefinitionId, entityInstanceId),
+          recordId,
+          onComplete: createWorkflowInvalidator(recordId),
         })
 
         // Show progress toast

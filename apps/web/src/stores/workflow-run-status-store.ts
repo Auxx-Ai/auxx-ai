@@ -3,8 +3,8 @@
 import { create } from 'zustand'
 import { generateId } from '@auxx/utils/generateId'
 import { createSSEConnection, type SSEConnection } from '~/lib/sse-connection'
+import { type RecordId, parseRecordId } from '@auxx/types/resource'
 
-type ResourceType = 'thread' | 'contact' | 'ticket' | 'message' | 'entity'
 type RunStatus = 'running' | 'paused' | 'completed' | 'failed'
 
 /**
@@ -13,8 +13,7 @@ type RunStatus = 'running' | 'paused' | 'completed' | 'failed'
 interface TrackedRun {
   runId: string
   workflowName: string
-  resourceType: ResourceType
-  resourceId: string
+  recordId: RecordId
   status: RunStatus
   currentNodeTitle?: string
   startedAt: Date
@@ -50,21 +49,19 @@ interface WorkflowRunStatusStore {
   trackRun: (run: {
     runId: string
     workflowName: string
-    resourceType: ResourceType
-    resourceId: string
+    recordId: RecordId
     onComplete?: () => void
   }) => void
 
   // Bulk operation support
   trackBatch: (params: {
     workflowName: string
-    resourceType: ResourceType
-    results: Array<{ resourceId: string; workflowRunId: string }>
+    results: Array<{ recordId: RecordId; workflowRunId: string }>
     onComplete?: () => void
   }) => string
 
   // Queries
-  getRunsForResource: (resourceType: ResourceType, resourceId: string) => TrackedRun[]
+  getRunsForResource: (recordId: RecordId) => TrackedRun[]
   getBatchProgress: (batchId: string) => BatchProgress | null
   getActiveBatches: () => BatchProgress[]
   getActiveRuns: () => TrackedRun[]
@@ -97,12 +94,11 @@ export const useWorkflowRunStatusStore = create<WorkflowRunStatusStore>((set, ge
   connections: new Map(),
   pendingSubscriptions: [],
 
-  trackRun: ({ runId, workflowName, resourceType, resourceId, onComplete }) => {
+  trackRun: ({ runId, workflowName, recordId, onComplete }) => {
     const run: TrackedRun = {
       runId,
       workflowName,
-      resourceType,
-      resourceId,
+      recordId,
       status: 'running',
       startedAt: new Date(),
       onComplete,
@@ -117,7 +113,7 @@ export const useWorkflowRunStatusStore = create<WorkflowRunStatusStore>((set, ge
     get()._subscribeToRun(runId)
   },
 
-  trackBatch: ({ workflowName, resourceType, results, onComplete }) => {
+  trackBatch: ({ workflowName, results, onComplete }) => {
     const batchId = generateId('batch')
 
     set((state) => {
@@ -127,8 +123,7 @@ export const useWorkflowRunStatusStore = create<WorkflowRunStatusStore>((set, ge
         newRuns.set(result.workflowRunId, {
           runId: result.workflowRunId,
           workflowName,
-          resourceType,
-          resourceId: result.resourceId,
+          recordId: result.recordId,
           status: 'running',
           startedAt: new Date(),
           batchId,
@@ -159,10 +154,16 @@ export const useWorkflowRunStatusStore = create<WorkflowRunStatusStore>((set, ge
     return batchId
   },
 
-  getRunsForResource: (resourceType, resourceId) => {
-    return Array.from(get().runs.values()).filter(
-      (r) => r.resourceType === resourceType && r.resourceId === resourceId
-    )
+  getRunsForResource: (recordId) => {
+    // Parse to compare by components
+    const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+    return Array.from(get().runs.values()).filter((r) => {
+      const parsed = parseRecordId(r.recordId)
+      return (
+        parsed.entityDefinitionId === entityDefinitionId &&
+        parsed.entityInstanceId === entityInstanceId
+      )
+    })
   },
 
   getBatchProgress: (batchId) => {
@@ -393,4 +394,4 @@ export const useWorkflowRunStatusStore = create<WorkflowRunStatusStore>((set, ge
   },
 }))
 
-export type { TrackedRun, BatchProgress, ResourceType, RunStatus }
+export type { TrackedRun, BatchProgress, RunStatus }

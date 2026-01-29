@@ -10,7 +10,7 @@ import { executeResourceQuery, fetchResourceById } from '../../resources/resourc
 import { isCustomResourceId } from '../../resources/client'
 import { ResourceRegistryService } from '../../resources/registry'
 import { inArray } from 'drizzle-orm'
-import { parseRecordId, type RecordId } from '@auxx/types/resource'
+import { parseRecordId, toRecordId, type RecordId } from '@auxx/types/resource'
 
 const logger = createScopedLogger('trigger-manual-workflow-bulk')
 
@@ -29,7 +29,7 @@ export type BulkTriggerErrorCode =
  * Result for a single resource in bulk operation
  */
 export interface ResourceTriggerResult {
-  resourceId: string
+  recordId: RecordId
   success: boolean
   workflowRunId?: string
   error?: {
@@ -165,12 +165,13 @@ export async function triggerManualResourceWorkflowBulk(params: {
 
   // Use Promise.allSettled to handle partial failures
   const executions = entityInstanceIds.map(async (entityInstanceId, index): Promise<ResourceTriggerResult> => {
+    const recordId = toRecordId(entityDefinitionId, entityInstanceId)
     try {
       // Check if resource exists
       const resourceData = resourcesMap.get(entityInstanceId)
       if (!resourceData) {
         return {
-          resourceId: entityInstanceId,
+          recordId,
           success: false,
           error: {
             code: 'RESOURCE_NOT_FOUND',
@@ -211,7 +212,7 @@ export async function triggerManualResourceWorkflowBulk(params: {
       })
 
       return {
-        resourceId: entityInstanceId,
+        recordId,
         success: true,
         workflowRunId: workflowRun.id,
       }
@@ -222,7 +223,7 @@ export async function triggerManualResourceWorkflowBulk(params: {
       })
 
       return {
-        resourceId: entityInstanceId,
+        recordId,
         success: false,
         error: {
           code: 'WORKFLOW_EXECUTION_FAILED',

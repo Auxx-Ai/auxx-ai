@@ -244,8 +244,11 @@ function MailboxInner({
     () => ({
       contextType: contextType,
       contextId: contextId,
-      // Use the active status slug derived from the URL, ensure it's a valid StatusSlug
-      statusSlug: activeStatusSlug === 'all' ? undefined : activeStatusSlug,
+      // If user has search filters, let them override URL-based statusSlug
+      // This prevents redundant filtering (statusSlug + filter.is both being sent)
+      statusSlug: storeApiFilter
+        ? undefined
+        : (activeStatusSlug === 'all' ? undefined : activeStatusSlug),
       // Prefer store API filter, fall back to legacy search query
       filter: storeApiFilter,
       searchQuery: !storeApiFilter ? deferredSearchQuery || undefined : undefined,

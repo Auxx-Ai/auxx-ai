@@ -367,8 +367,15 @@ export const threadRouter = createTRPCRouter({
         }
       }
 
-      // Map status slug to internal filter
-      const statusFilter = input.statusSlug ? mapUrlSlugToStatusFilter(input.statusSlug) : undefined
+      // Map status to internal filter
+      // Prefer filter.is (from searchbar conditions) over statusSlug (from URL)
+      let statusFilter: ReturnType<typeof mapUrlSlugToStatusFilter> | undefined
+      if (input.filter?.is && input.filter.is.length > 0) {
+        // Convert filter.is values to statusFilter (e.g., 'unassigned' -> { hasAssignee: false, status: 'OPEN' })
+        statusFilter = mapUrlSlugToStatusFilter(input.filter.is[0])
+      } else if (input.statusSlug) {
+        statusFilter = mapUrlSlugToStatusFilter(input.statusSlug)
+      }
 
       const serviceInput: ListThreadIdsInput = {
         context,

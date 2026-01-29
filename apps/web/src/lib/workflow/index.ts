@@ -9,5 +9,4 @@ export {
   invalidateResource,
   invalidateBatchResources,
   createWorkflowInvalidator,
-  type ResourceType,
 } from './invalidate-resource'

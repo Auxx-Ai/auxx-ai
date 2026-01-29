@@ -147,28 +147,15 @@ export const recordRouter = createTRPCRouter({
    */
   search: protectedProcedure.input(globalSearchInputSchema).query(async ({ ctx, input }) => {
     const { organizationId, user } = ctx.session
-    const { apiSlug, query, limit, cursor, entityDefinitionIds } = input
-    let { entityDefinitionId } = input
+    const { apiSlug, entityDefinitionId, query, limit, cursor, entityDefinitionIds } = input
 
     try {
       const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db)
 
-      // Resolve apiSlug to entityDefinitionId if provided
-      if (apiSlug && !entityDefinitionId) {
-        const { ResourceRegistryService } = await import('@auxx/lib/resources')
-        const registryService = new ResourceRegistryService(organizationId, ctx.db)
-        const resource = await registryService.getByApiSlug(apiSlug)
-        if (!resource) {
-          throw new TRPCError({
-            code: 'NOT_FOUND',
-            message: `Entity not found: ${apiSlug}`,
-          })
-        }
-        entityDefinitionId = resource.id
-      }
-
+      // Handler handles all resolution internally (apiSlug -> entityDefinitionId, system names -> UUIDs)
       return await handler.search({
         query: query || '',
+        apiSlug,
         entityDefinitionId,
         entityDefinitionIds,
         limit,
@@ -176,6 +163,12 @@ export const recordRouter = createTRPCRouter({
       })
     } catch (error: any) {
       if (error instanceof TRPCError) throw error
+      if (error.message?.includes('not found')) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: error.message,
+        })
+      }
       throw new TRPCError({
         code: 'INTERNAL_SERVER_ERROR',
         message: `Search failed: ${error.message}`,

@@ -4,6 +4,7 @@
 import { useRef, useCallback } from 'react'
 import { cn } from '@auxx/ui/lib/utils'
 import { AutosizeInput, type AutosizeInputRef } from '@auxx/ui/components/autosize-input'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { useSearchStore, type SearchCondition } from './store'
 import { ConditionBadge } from '~/components/conditions/components/condition-badge'
 
@@ -23,6 +24,8 @@ interface SearchFilterInputProps {
   className?: string
   /** Ref to expose focus method */
   inputRef?: React.RefObject<AutosizeInputRef | null>
+  /** Callback when input receives focus */
+  onFocus?: () => void
 }
 
 /**
@@ -37,6 +40,7 @@ export function SearchFilterInput({
   placeholder = 'Search...',
   className,
   inputRef: externalInputRef,
+  onFocus,
 }: SearchFilterInputProps) {
   const internalInputRef = useRef<AutosizeInputRef>(null)
   const inputRef = externalInputRef || internalInputRef
@@ -87,50 +91,45 @@ export function SearchFilterInput({
       // Forward to parent for suggestion navigation
       onInputKeyDown(e)
     },
-    [
-      inputValue,
-      conditions,
-      highlightedIndex,
-      removeCondition,
-      setHighlightedIndex,
-      onInputKeyDown,
-    ]
+    [inputValue, conditions, highlightedIndex, removeCondition, setHighlightedIndex, onInputKeyDown]
   )
 
   return (
-    <div
-      ref={containerRef}
-      onClick={handleContainerClick}
-      className={cn(
-        'flex items-center gap-1 flex-1 flex-wrap min-h-[32px] cursor-text',
-        className
-      )}
-    >
-      {/* Condition badges - full editable badges with field/operator/value/remove */}
-      {conditions.map((condition, index) => (
-        <ConditionBadge
-          key={condition.id}
-          condition={condition}
-          isHighlighted={highlightedIndex === index}
-          showRemoveButton={true}
-          onUpdate={(updates) => updateCondition(condition.id, updates)}
-          onRemove={() => {
-            removeCondition(condition.id)
-            inputRef.current?.focus()
-          }}
-        />
-      ))}
+    <ScrollArea
+      orientation="horizontal"
+      scrollbarClassName="h-1.5!"
+      className={cn('flex-1', className)}>
+      <div
+        ref={containerRef}
+        onClick={handleContainerClick}
+        className="flex items-center gap-1 h-8 cursor-text pt-0.5 pb-1">
+        {/* Condition badges - full editable badges with field/operator/value/remove */}
+        {conditions.map((condition, index) => (
+          <ConditionBadge
+            key={condition.id}
+            condition={condition}
+            isHighlighted={highlightedIndex === index}
+            showRemoveButton={true}
+            onUpdate={(updates) => updateCondition(condition.id, updates)}
+            onRemove={() => {
+              removeCondition(condition.id)
+              inputRef.current?.focus()
+            }}
+          />
+        ))}
 
-      {/* Text input */}
-      <AutosizeInput
-        ref={inputRef}
-        value={inputValue}
-        onChange={(e) => onInputChange(e.target.value)}
-        onKeyDown={handleInputKeyDown}
-        placeholder={conditions.length === 0 ? placeholder : ''}
-        minWidth={100}
-        inputClassName="bg-transparent outline-none text-sm"
-      />
-    </div>
+        {/* Text input */}
+        <AutosizeInput
+          ref={inputRef}
+          value={inputValue}
+          onChange={(e) => onInputChange(e.target.value)}
+          onKeyDown={handleInputKeyDown}
+          onFocus={onFocus}
+          placeholder={conditions.length === 0 ? placeholder : ''}
+          minWidth={100}
+          inputClassName="bg-transparent outline-none text-sm"
+        />
+      </div>
+    </ScrollArea>
   )
 }

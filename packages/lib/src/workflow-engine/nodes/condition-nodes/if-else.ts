@@ -409,7 +409,7 @@ export class IfElseProcessor extends BaseNodeProcessor {
   }
 
   /**
-   * DATE: before, after, on, not on, within_days, older_than_days, today, yesterday, etc.
+   * DATE: is, is not, before, after, within_days, older_than_days, today, yesterday, etc.
    * NO comparison operators (>, <, etc.) - those are for numbers only!
    */
   private evaluateDateOperator(
@@ -424,6 +424,16 @@ export class IfElseProcessor extends BaseNodeProcessor {
     }
 
     switch (operator) {
+      case 'is': {
+        const targetDate = parseDate(compareValue)
+        return targetDate ? isSameDay(date, targetDate) : false
+      }
+
+      case 'is not': {
+        const targetDate = parseDate(compareValue)
+        return targetDate ? !isSameDay(date, targetDate) : true
+      }
+
       case 'before': {
         const beforeDate = parseDate(compareValue)
         return beforeDate ? date.getTime() < beforeDate.getTime() : false
@@ -432,16 +442,6 @@ export class IfElseProcessor extends BaseNodeProcessor {
       case 'after': {
         const afterDate = parseDate(compareValue)
         return afterDate ? date.getTime() > afterDate.getTime() : false
-      }
-
-      case 'on': {
-        const onDate = parseDate(compareValue)
-        return onDate ? isSameDay(date, onDate) : false
-      }
-
-      case 'not on': {
-        const notOnDate = parseDate(compareValue)
-        return notOnDate ? !isSameDay(date, notOnDate) : true
       }
 
       case 'within_days':

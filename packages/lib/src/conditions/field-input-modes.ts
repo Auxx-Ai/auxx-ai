@@ -87,7 +87,15 @@ export function resolveFieldInputConfig(fieldType: string, operator: Operator): 
   // ===== OPERATORS THAT OVERRIDE FIELD TYPE =====
 
   // Operators that need NUMBER input (days count, byte size)
-  if (['within_days', 'older_than_days', 'uploaded_within_days', 'within_size_limit', 'exceeds_limit'].includes(operator)) {
+  if (
+    [
+      'within_days',
+      'older_than_days',
+      'uploaded_within_days',
+      'within_size_limit',
+      'exceeds_limit',
+    ].includes(operator)
+  ) {
     return {
       mode: FieldInputMode.SINGLE,
       fieldType: FieldType.NUMBER,
@@ -130,6 +138,7 @@ export function resolveFieldInputConfig(fieldType: string, operator: Operator): 
       return {
         mode: FieldInputMode.RELATION,
         fieldType: FieldType.RELATIONSHIP,
+        allowMultiple: false,
         placeholder: 'Select record',
       }
     }
@@ -179,7 +188,9 @@ export function resolveFieldInputConfig(fieldType: string, operator: Operator): 
   }
 
   // ===== SELECT FIELD HANDLING =====
-  if ([FieldType.SINGLE_SELECT, FieldType.MULTI_SELECT, FieldType.TAGS].includes(fieldType as any)) {
+  if (
+    [FieldType.SINGLE_SELECT, FieldType.MULTI_SELECT, FieldType.TAGS].includes(fieldType as any)
+  ) {
     return {
       mode: FieldInputMode.SELECT,
       fieldType,

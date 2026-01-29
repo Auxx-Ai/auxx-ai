@@ -72,8 +72,6 @@ function buildConditionQuery(condition: Condition): SQL<unknown> | null {
     switch (fieldId) {
       case 'tag':
         return buildTagQuery(op, value)
-      case 'label':
-        return buildLabelQuery(op, value)
       case 'assignee':
         return buildAssigneeQuery(op, value)
       case 'inbox':
@@ -149,48 +147,6 @@ function buildTagQuery(operator: Operator, value: any): SQL<unknown> | null {
           .where(and(
             eq(schema.TagsOnThread.threadId, Thread.id),
             inArray(schema.TagsOnThread.tagId, excludeTagIds)
-          ))
-      ))
-    default:
-      return null
-  }
-}
-
-/**
- * Build label condition query.
- */
-function buildLabelQuery(operator: Operator, value: any): SQL<unknown> | null {
-  switch (operator) {
-    case 'empty':
-      return not(exists(
-        db.select({ id: sql`1` }).from(schema.LabelsOnThread)
-          .where(eq(schema.LabelsOnThread.threadId, Thread.id))
-      ))
-    case 'not empty':
-      return exists(
-        db.select({ id: sql`1` }).from(schema.LabelsOnThread)
-          .where(eq(schema.LabelsOnThread.threadId, Thread.id))
-      )
-    case 'in':
-    case 'is':
-      const labelIds = Array.isArray(value) ? value : [value]
-      if (labelIds.length === 0) return null
-      return exists(
-        db.select({ id: sql`1` }).from(schema.LabelsOnThread)
-          .where(and(
-            eq(schema.LabelsOnThread.threadId, Thread.id),
-            inArray(schema.LabelsOnThread.labelId, labelIds)
-          ))
-      )
-    case 'not in':
-    case 'is not':
-      const excludeLabelIds = Array.isArray(value) ? value : [value]
-      if (excludeLabelIds.length === 0) return null
-      return not(exists(
-        db.select({ id: sql`1` }).from(schema.LabelsOnThread)
-          .where(and(
-            eq(schema.LabelsOnThread.threadId, Thread.id),
-            inArray(schema.LabelsOnThread.labelId, excludeLabelIds)
           ))
       ))
     default:
@@ -278,13 +234,35 @@ function buildInboxQuery(operator: Operator, value: any): SQL<unknown> | null {
 
 /**
  * Build status condition query.
+ * Maps user-facing status values to database conditions.
  */
 function buildStatusQuery(operator: Operator, value: any): SQL<unknown> | null {
+  // Map user-facing status values to database conditions
+  const getStatusCondition = (statusValue: string): SQL<unknown> | null => {
+    switch (statusValue) {
+      case 'unassigned':
+        return and(isNull(Thread.assigneeId), eq(Thread.status, 'OPEN'))!
+      case 'assigned':
+        return and(isNotNull(Thread.assigneeId), eq(Thread.status, 'OPEN'))!
+      case 'done':
+        return eq(Thread.status, 'ARCHIVED')
+      case 'trash':
+        return eq(Thread.status, 'TRASH')
+      case 'spam':
+        return eq(Thread.status, 'SPAM')
+      default:
+        return null
+    }
+  }
+
+  const condition = getStatusCondition(value)
+  if (!condition) return null
+
   switch (operator) {
     case 'is':
-      return eq(Thread.status, value)
+      return condition
     case 'is not':
-      return not(eq(Thread.status, value))
+      return not(condition)
     default:
       return null
   }
@@ -311,14 +289,24 @@ function buildDateQuery(operator: Operator, value: any, field?: string): SQL<unk
     case 'after':
       const afterDate = parseDate(value)
       return afterDate ? gt(dateColumn, afterDate) : null
-    case 'on':
-      const onDate = parseDate(value)
-      if (!onDate) return null
-      const startOfDay = new Date(onDate)
+    case 'is': {
+      const isDate = parseDate(value)
+      if (!isDate) return null
+      const startOfDay = new Date(isDate)
       startOfDay.setHours(0, 0, 0, 0)
-      const endOfDay = new Date(onDate)
+      const endOfDay = new Date(isDate)
       endOfDay.setHours(23, 59, 59, 999)
       return and(gte(dateColumn, startOfDay), lte(dateColumn, endOfDay))
+    }
+    case 'is not': {
+      const isNotDate = parseDate(value)
+      if (!isNotDate) return null
+      const startOfDay = new Date(isNotDate)
+      startOfDay.setHours(0, 0, 0, 0)
+      const endOfDay = new Date(isNotDate)
+      endOfDay.setHours(23, 59, 59, 999)
+      return or(lt(dateColumn, startOfDay), gt(dateColumn, endOfDay))
+    }
     case 'empty':
       return isNull(dateColumn)
     case 'not empty':
