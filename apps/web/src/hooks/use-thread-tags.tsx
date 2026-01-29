@@ -1,16 +1,19 @@
 // apps/web/src/hooks/use-thread-tags.tsx
-// NOTE: This hook uses the legacy api.tag.updateEntityTags mutation.
-// For new code, consider using useThreadTags from '~/components/tags/hooks/use-thread-tags'
-// which uses useSaveFieldValue for the RELATIONSHIP field type.
+// Hook for managing thread tags using the unified FieldValue system.
+// Uses useSaveFieldValue with RELATIONSHIP field type.
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { api } from '~/trpc/react'
-import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { toastError } from '@auxx/ui/components/toast'
+import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
+import { useResource } from '~/components/resources'
+import { toRecordId } from '@auxx/lib/resources/client'
 import type { ThreadMeta } from '~/components/threads/store'
+import type { RecordId } from '@auxx/types/resource'
 
 /**
- * Hook for managing thread tags using the legacy api.tag.updateEntityTags mutation.
- * For new code, consider using useThreadTags from '~/components/tags/hooks/use-thread-tags'.
+ * Hook for managing thread tags using the FieldValue system.
+ * Uses useSaveFieldValue with RELATIONSHIP field type for tag assignment.
  *
  * @param thread The thread object from store (with flat tags structure)
  * @param contextParams Context parameters for invalidation
@@ -46,6 +49,13 @@ export function useThreadTags(
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
   const utils = api.useUtils()
 
+  // Get entity definition IDs for thread and tag from resource store
+  const { resource: threadResource } = useResource('thread')
+  const { resource: tagResource } = useResource('tag')
+
+  const threadEntityDefId = threadResource?.entityDefinitionId ?? null
+  const tagEntityDefId = tagResource?.entityDefinitionId ?? null
+
   // Extract tags from thread data (no separate API call needed)
   const fetchedTagsData = useMemo(() => {
     return thread?.tags || []
@@ -63,91 +73,72 @@ export function useThreadTags(
     }
   }, [thread?.tags])
 
-  const updateEntityTags = api.tag.updateEntityTags.useMutation({
-    onMutate: async (variables) => {
-      if (!thread) return
-
-      // Cancel any outgoing queries
-      await utils.thread.getById.cancel({ threadId: thread.id })
-
-      // Snapshot previous data
-      const previousThread = utils.thread.getById.getData({ threadId: thread.id })
-
-      // Optimistically update React Query cache (nested structure for getById endpoint)
-      // Note: This hook receives data from Zustand store (flat), but we maintain
-      // the correct nested structure here for React Query cache consistency
-      utils.thread.getById.setData({ threadId: thread.id }, (old) => {
-        if (!old) return old
-        return {
-          ...old,
-          tags: variables.tagIds.map((tagId) => ({
-            tag: { id: tagId, title: 'Loading...', color: '#gray', emoji: '', description: null },
-          })),
-        }
-      })
-
-      return { previousThread }
-    },
-    onError: (err, variables, context) => {
-      if (!thread) return
-
-      // Rollback optimistic update
-      if (context?.previousThread) {
-        utils.thread.getById.setData({ threadId: thread.id }, context.previousThread)
-      }
-      toastError({ title: 'Failed to update tags', description: err.message })
-    },
-    onSuccess: (result) => {
-      toastSuccess({ title: `Tags updated (${result.added} added, ${result.removed} removed)` })
+  // Use the unified field value save hook
+  const { saveFieldValue, isPending } = useSaveFieldValue({
+    onSuccess: () => {
       // Invalidate list data - only if contextType is valid
-      if (isValidContextType) {
+      if (isValidContextType && thread) {
         utils.thread.list.invalidate({
           contextType: contextType as any,
           contextId,
           statusSlug,
           searchQuery,
         })
+        utils.thread.getById.invalidate({ threadId: thread.id })
       }
-    },
-    onSettled: (data, error, variables) => {
-      if (!thread) return
-
-      // Invalidate thread query to get fresh data from server
-      utils.thread.getById.invalidate({ threadId: thread.id })
     },
   })
 
-  const handleTagChange = async (incomingTagIds: string[]) => {
-    if (!thread) return
+  /**
+   * Handle tag change - updates thread's tags using FieldValue relationship
+   */
+  const handleTagChange = useCallback(
+    async (incomingTagIds: string[]) => {
+      if (!thread || !threadEntityDefId || !tagEntityDefId) {
+        console.warn('Cannot update tags: missing thread or entity definition IDs')
+        return
+      }
 
-    // TagPicker passes an array of tag IDs directly
-    const newTagIds = [...incomingTagIds.filter(Boolean)]
-    const currentTagIds = [...selectedTagIds] // Use current selectedTagIds state
+      // TagPicker passes an array of tag IDs directly
+      const newTagIds = [...incomingTagIds.filter(Boolean)]
+      const currentTagIds = [...selectedTagIds]
 
-    // Update local state immediately for responsiveness
-    setSelectedTagIds([...newTagIds])
-    setSelectedTags([...newTagIds])
+      // Update local state immediately for responsiveness
+      setSelectedTagIds([...newTagIds])
+      setSelectedTags([...newTagIds])
 
-    try {
-      // Use the optimistic updateEntityTags mutation
-      await updateEntityTags.mutateAsync({
-        tagIds: newTagIds,
-        entityId: thread.id,
-        entityType: 'thread',
-      })
-    } catch (error) {
-      console.error('Error updating tags:', error)
-      // Revert optimistic update on error
-      setSelectedTagIds([...currentTagIds])
-      setSelectedTags([...currentTagIds])
-    }
-  }
+      try {
+        // Convert tag IDs to RecordIds
+        const tagRecordIds: RecordId[] = newTagIds.map((tagId) =>
+          toRecordId(tagEntityDefId, tagId)
+        )
+
+        // Build the thread RecordId
+        const threadRecordId = toRecordId(threadEntityDefId, thread.id)
+
+        // Save via FieldValue system with RELATIONSHIP field type
+        saveFieldValue(threadRecordId, 'tags', tagRecordIds, 'RELATIONSHIP')
+      } catch (error) {
+        console.error('Error updating tags:', error)
+        // Revert optimistic update on error
+        setSelectedTagIds([...currentTagIds])
+        setSelectedTags([...currentTagIds])
+        toastError({
+          title: 'Failed to update tags',
+          description: error instanceof Error ? error.message : 'Unknown error',
+        })
+      }
+    },
+    [thread, threadEntityDefId, tagEntityDefId, selectedTagIds, saveFieldValue]
+  )
 
   return {
     selectedTags,
     selectedTagIds,
     fetchedTagsData,
     handleTagChange,
-    updateEntityTags,
+    isPending,
+    // Legacy compatibility
+    updateEntityTags: { isPending },
   }
 }

@@ -40,18 +40,6 @@ export class ExecuteProcessor extends BaseNodeProcessor {
     let hasErrors = false
 
     try {
-      // Import the action executor
-      // const { createActionExecutor } = await import('../../../actions/core/action-executor')
-      // const { createOrganizationServices } = await import('../../../services/service-registrations')
-
-      // Create service registry for action execution
-      // const serviceRegistry = await createOrganizationServices(
-      //   context.organizationId,
-      //   context.userId || 'system'
-      // )
-
-      // const actionExecutor = await createActionExecutor(serviceRegistry)
-
       for (let i = 0; i < actions.length; i++) {
         const action = actions[i]
 

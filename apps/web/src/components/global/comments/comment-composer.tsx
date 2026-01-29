@@ -24,7 +24,7 @@ import { useDropzone } from 'react-dropzone'
 import { ENTITY_TYPES } from '@auxx/lib/files/types'
 import type { RecordId } from '@auxx/lib/field-values/client'
 
-import { EmojiPicker } from '~/components/pickers/emoji-picker'
+import { EmojiPicker } from '@auxx/ui/components/emoji-picker'
 import { MetaIcon } from '~/constants/icons'
 
 // Frontend file type distinction

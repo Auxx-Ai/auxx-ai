@@ -34,6 +34,12 @@ import {
   type MailViewFilter,
   type TeamMember,
 } from './types'
+import {
+  threadHasAnyTags,
+  threadHasNoTags,
+  threadHasTags,
+  threadDoesNotHaveTags,
+} from '../field-values/relationship-queries'
 
 // Enums for filter structure
 /**
@@ -189,29 +195,19 @@ export class MailViewQueryBuilder {
 
   // --- Condition Builder Methods ---
 
+  /**
+   * Build tag condition using FieldValue relationship queries.
+   * Tags are stored in FieldValue table with systemAttribute='thread_tags'.
+   */
   private buildTagCondition(condition: FilterCondition): SQL<unknown> | null {
     const { operator, value } = condition
 
     // Handle IS_EMPTY / IS_NOT_EMPTY first
     if (operator === ComparisonOperator.IS_EMPTY) {
-      // No associated tags - use NOT EXISTS
-      return not(
-        exists(
-          db
-            .select()
-            .from(schema.TagsOnThread)
-            .where(eq(schema.TagsOnThread.threadId, schema.Thread.id))
-        )
-      )
+      return threadHasNoTags(db, schema.Thread.id, this.organizationId)
     }
     if (operator === ComparisonOperator.IS_NOT_EMPTY) {
-      // At least one associated tag - use EXISTS
-      return exists(
-        db
-          .select()
-          .from(schema.TagsOnThread)
-          .where(eq(schema.TagsOnThread.threadId, schema.Thread.id))
-      )
+      return threadHasAnyTags(db, schema.Thread.id, this.organizationId)
     }
 
     // Validate value for other operators
@@ -236,118 +232,30 @@ export class MailViewQueryBuilder {
           this.logger.warn(`EQUALS operator used with array value for TAG, interpreting as IN`, {
             value,
           })
-          return exists(
-            db
-              .select()
-              .from(schema.TagsOnThread)
-              .where(
-                and(
-                  eq(schema.TagsOnThread.threadId, schema.Thread.id),
-                  inArray(schema.TagsOnThread.tagId, tagIds)
-                )
-              )
-          )
         }
-        return exists(
-          db
-            .select()
-            .from(schema.TagsOnThread)
-            .where(
-              and(
-                eq(schema.TagsOnThread.threadId, schema.Thread.id),
-                eq(schema.TagsOnThread.tagId, tagId)
-              )
-            )
-        )
+        return threadHasTags(db, schema.Thread.id, tagIds, this.organizationId)
+
       case ComparisonOperator.NOT_EQUALS: // Interpreted as "does not have this tag"
         if (Array.isArray(value)) {
           this.logger.warn(
             `NOT_EQUALS operator used with array value for TAG, interpreting as NOT_IN`,
             { value }
           )
-          return not(
-            exists(
-              db
-                .select()
-                .from(schema.TagsOnThread)
-                .where(
-                  and(
-                    eq(schema.TagsOnThread.threadId, schema.Thread.id),
-                    inArray(schema.TagsOnThread.tagId, tagIds)
-                  )
-                )
-            )
-          )
         }
-        return not(
-          exists(
-            db
-              .select()
-              .from(schema.TagsOnThread)
-              .where(
-                and(
-                  eq(schema.TagsOnThread.threadId, schema.Thread.id),
-                  eq(schema.TagsOnThread.tagId, tagId)
-                )
-              )
-          )
-        )
+        return threadDoesNotHaveTags(db, schema.Thread.id, tagIds, this.organizationId)
+
       case ComparisonOperator.IN:
         if (!Array.isArray(value)) {
           this.logger.warn(`IN operator requires an array value for TAG`, { value })
-          return exists(
-            db
-              .select()
-              .from(schema.TagsOnThread)
-              .where(
-                and(
-                  eq(schema.TagsOnThread.threadId, schema.Thread.id),
-                  eq(schema.TagsOnThread.tagId, tagId)
-                )
-              )
-          ) // Fallback to single tag check
         }
-        return exists(
-          db
-            .select()
-            .from(schema.TagsOnThread)
-            .where(
-              and(
-                eq(schema.TagsOnThread.threadId, schema.Thread.id),
-                inArray(schema.TagsOnThread.tagId, tagIds)
-              )
-            )
-        ) // Has at least one of the tags
+        return threadHasTags(db, schema.Thread.id, tagIds, this.organizationId)
+
       case ComparisonOperator.NOT_IN:
         if (!Array.isArray(value)) {
           this.logger.warn(`NOT_IN operator requires an array value for TAG`, { value })
-          return not(
-            exists(
-              db
-                .select()
-                .from(schema.TagsOnThread)
-                .where(
-                  and(
-                    eq(schema.TagsOnThread.threadId, schema.Thread.id),
-                    eq(schema.TagsOnThread.tagId, tagId)
-                  )
-                )
-            )
-          ) // Fallback to single tag check
         }
-        return not(
-          exists(
-            db
-              .select()
-              .from(schema.TagsOnThread)
-              .where(
-                and(
-                  eq(schema.TagsOnThread.threadId, schema.Thread.id),
-                  inArray(schema.TagsOnThread.tagId, tagIds)
-                )
-              )
-          )
-        ) // Has none of the specified tags
+        return threadDoesNotHaveTags(db, schema.Thread.id, tagIds, this.organizationId)
+
       default:
         this.logger.warn(`Unsupported operator ${operator} for TAG`)
         return null

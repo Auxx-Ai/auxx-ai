@@ -6,7 +6,7 @@ import { OrganizationWebhookCoordinator } from '../utils/organization-webhook-co
 import type { SeedingConfig, SeedingResult } from '../types'
 import { createScopedLogger } from '@auxx/logger'
 import { database as db, schema } from '@auxx/database'
-import { eq } from 'drizzle-orm'
+import { eq, and, isNotNull, inArray } from 'drizzle-orm'
 
 const logger = createScopedLogger('organization-seeder')
 
@@ -156,16 +156,26 @@ export class OrganizationSeeder {
         )
       )
 
-      console.log('  ↳ Deleting tags on threads...')
-      await db.delete(schema.TagsOnThread).where(
-        eq(
-          schema.TagsOnThread.threadId,
-          db
-            .select({ id: schema.Thread.id })
-            .from(schema.Thread)
-            .where(eq(schema.Thread.organizationId, organizationId))
+      console.log('  ↳ Deleting thread tag associations (via FieldValue)...')
+      // Delete FieldValue records for thread_tags (RELATIONSHIP field)
+      // Find thread IDs for this organization
+      const threadIds = await db
+        .select({ id: schema.Thread.id })
+        .from(schema.Thread)
+        .where(eq(schema.Thread.organizationId, organizationId))
+
+      if (threadIds.length > 0) {
+        // Delete FieldValue records where entityId is a thread and relatedEntityId is set (tag relationship)
+        await db.delete(schema.FieldValue).where(
+          and(
+            inArray(
+              schema.FieldValue.entityId,
+              threadIds.map((t) => t.id)
+            ),
+            isNotNull(schema.FieldValue.relatedEntityId)
+          )
         )
-      )
+      }
 
       console.log('  ↳ Deleting messages...')
       await db.delete(schema.Message).where(eq(schema.Message.organizationId, organizationId))

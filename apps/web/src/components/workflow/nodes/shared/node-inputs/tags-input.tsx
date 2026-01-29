@@ -5,9 +5,9 @@
 import { useState, useMemo, useCallback } from 'react'
 import { Popover, PopoverTrigger } from '@auxx/ui/components/popover'
 import { Badge } from '@auxx/ui/components/badge'
-import { TagPicker } from '~/components/pickers/tag-picker'
-import { api } from '~/trpc/react'
-import { ChevronDown, Tags, X } from 'lucide-react'
+import { TagPicker } from '~/components/tags/ui/tag-picker'
+import { useTagHierarchy } from '~/components/tags/hooks/use-tag-hierarchy'
+import { ChevronDown, X } from 'lucide-react'
 import { createNodeInput, type NodeInputProps } from './base-node-input'
 
 interface TagsInputProps extends NodeInputProps {
@@ -44,15 +44,13 @@ export const TagsInput = createNodeInput<TagsInputProps>(
       return []
     }, [inputs, name])
 
-    // Fetch tag details for display
-    const { data: allTags } = api.tag.getAll.useQuery(undefined, {
-      staleTime: 5 * 60 * 1000,
-    })
+    // Get tag details for display using useTagHierarchy
+    const { flatTags } = useTagHierarchy()
 
     // Get selected tag objects for display
     const selectedTagObjects = useMemo(
-      () => allTags?.filter((t) => value.includes(t.id)) || [],
-      [allTags, value]
+      () => flatTags.filter((t) => value.includes(t.id)),
+      [flatTags, value]
     )
 
     const handleChange = useCallback(

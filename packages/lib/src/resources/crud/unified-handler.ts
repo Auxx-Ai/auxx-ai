@@ -5,7 +5,7 @@ import { database as defaultDatabase, schema } from '@auxx/database'
 import { eq, and } from 'drizzle-orm'
 import { getEntityInstance, listEntityInstances } from '@auxx/services/entity-instances'
 import { getEntityDefinition } from '@auxx/services/entity-definitions'
-import { getCustomFields, checkUniqueValue } from '@auxx/services/custom-fields'
+import { checkUniqueValue } from '@auxx/services/custom-fields'
 import { ModelTypes } from '@auxx/types/custom-field'
 import { FieldValueService } from '../../field-values'
 import { publisher } from '../../events/publisher'
@@ -672,11 +672,13 @@ export class UnifiedCrudHandler {
   // ═══════════════════════════════════════════════════════════════════════════
 
   /**
-   * Resolve entity definition by ID or system type (cached)
+   * Resolve entity definition by ID or system type (cached).
+   * Returns the full EntityDefinition for a given system type or UUID.
    *
-   * @param entityDefinitionId - 'contact', 'ticket', or UUID for custom entities
+   * @param entityDefinitionId - 'contact', 'ticket', 'tag', 'thread', or UUID for custom entities
+   * @returns The resolved EntityDefinition
    */
-  private async resolveEntityDefinition(entityDefinitionId: string) {
+  async resolveEntityDefinition(entityDefinitionId: string) {
     // Check cache first
     const cached = this.entityDefCache.get(entityDefinitionId)
     if (cached) return cached
@@ -684,7 +686,7 @@ export class UnifiedCrudHandler {
     let entityDef: EntityDefinitionEntity
 
     // System types map to entityType column - query by entityType
-    if (['contact', 'ticket', 'part', 'entity_group', 'inbox'].includes(entityDefinitionId)) {
+    if (['contact', 'ticket', 'part', 'entity_group', 'inbox', 'tag', 'thread'].includes(entityDefinitionId)) {
       const rows = await this.db
         .select()
         .from(schema.EntityDefinition)
@@ -721,6 +723,7 @@ export class UnifiedCrudHandler {
 
   /**
    * Get custom fields for an entity definition (cached)
+   * Uses this.db directly to ensure visibility of fields in same transaction
    *
    * @param entityDefinitionId - Entity definition UUID
    */
@@ -728,15 +731,20 @@ export class UnifiedCrudHandler {
     const cached = this.customFieldsCache.get(entityDefinitionId)
     if (cached) return cached
 
-    const result = await getCustomFields({
-      organizationId: this.organizationId,
-      entityDefinitionId,
-    })
+    // Query directly using handler's db instance to ensure visibility
+    // of fields created in the same transaction (e.g., during seeding)
+    const fields = await this.db
+      .select()
+      .from(schema.CustomField)
+      .where(
+        and(
+          eq(schema.CustomField.organizationId, this.organizationId),
+          eq(schema.CustomField.entityDefinitionId, entityDefinitionId)
+        )
+      )
 
-    if (result.isErr()) return []
-
-    this.customFieldsCache.set(entityDefinitionId, result.value)
-    return result.value
+    this.customFieldsCache.set(entityDefinitionId, fields)
+    return fields
   }
 
   /**
@@ -748,28 +756,18 @@ export class UnifiedCrudHandler {
   private async setFieldValues(recordId: RecordId, values: Record<string, unknown>): Promise<void> {
     const { entityDefinitionId } = parseRecordId(recordId)
 
-    // Check if any key is a system field key (needs mapping to CustomField UUID)
-    const needsMapping = Object.keys(values).some((key) => SYSTEM_FIELD_KEYS.has(key))
+    // Get cached fields and build key → id map for all entity types
+    // Uses systemAttribute (e.g., 'title', 'tag_parent') as key, falls back to name for custom fields
+    const fields = await this.getCustomFieldsCached(entityDefinitionId)
+    const keyToIdMap = new Map(fields.map((f) => [f.systemAttribute ?? f.name, f.id]))
 
-    let valueArray: Array<{ fieldId: string; value: unknown }>
-
-    if (needsMapping) {
-      // Build systemAttribute → CustomField.id map using cached fields
-      const fields = await this.getCustomFieldsCached(entityDefinitionId)
-      const sysAttrToIdMap = new Map(fields.map((f) => [f.systemAttribute ?? '', f.id]))
-
-      valueArray = Object.entries(values)
-        .filter(([_, value]) => value !== undefined)
-        .map(([key, value]) => ({
-          fieldId: sysAttrToIdMap.get(key) ?? key, // Map systemAttribute → UUID, or pass through
-          value,
-        }))
-    } else {
-      // Direct - keys are already field IDs
-      valueArray = Object.entries(values)
-        .filter(([_, value]) => value !== undefined)
-        .map(([fieldId, value]) => ({ fieldId, value }))
-    }
+    const valueArray = Object.entries(values)
+      .filter(([_, value]) => value !== undefined)
+      .map(([key, value]) => ({
+        // Map field key (systemAttribute) → UUID, or pass through if already a UUID
+        fieldId: keyToIdMap.get(key) ?? key,
+        value,
+      }))
 
     if (valueArray.length > 0) {
       await this.fieldValueService.setValuesForEntity({

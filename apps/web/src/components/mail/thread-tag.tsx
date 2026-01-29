@@ -8,35 +8,39 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { TagFormDialog } from '~/app/(protected)/app/settings/tags/_components/tags-form'
+import { TagDialog } from '~/components/tags/ui/tag-dialog'
+import { useTagHierarchy } from '~/components/tags/hooks/use-tag-hierarchy'
 import { useConfirm } from '~/hooks/use-confirm'
 import { Pencil, Trash2 } from 'lucide-react'
 import { toastError } from '@auxx/ui/components/toast'
+import { toRecordId } from '@auxx/lib/resources/client'
 import type { ThreadTagSummary } from '~/components/threads/store'
+
+interface ThreadTagProps {
+  /** The tag summary object (flat structure from store) */
+  tag: ThreadTagSummary
+  /** The thread ID the tag is attached to */
+  threadId: string
+  /** Callback to remove this tag from the thread - passed from parent that manages tags */
+  onRemove?: () => void
+}
 
 /**
  * Displays a single tag for a thread with dropdown actions
- * @param tag The tag summary object (flat structure from store)
- * @param threadId The thread ID the tag is attached to
  */
-export function ThreadTag({ tag, threadId }: { tag: ThreadTagSummary; threadId: string }) {
+export function ThreadTag({ tag, threadId, onRemove }: ThreadTagProps) {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [confirm, ConfirmDialog] = useConfirm()
   const utils = api.useUtils()
 
-  const untagEntity = api.tag.untagEntity.useMutation({
-    onSuccess: () => {
-      utils.tag.getEntityTags.invalidate({ entityId: threadId, entityType: 'thread' })
-    },
-  })
+  const { entityDefinitionId, refresh } = useTagHierarchy()
 
-  const deleteTag = api.tag.delete.useMutation({
+  const deleteRecord = api.record.delete.useMutation({
     onSuccess: () => {
-      utils.tag.getHierarchy.invalidate()
-      utils.tag.getEntityTags.invalidate({ entityId: threadId, entityType: 'thread' })
+      refresh()
+      utils.thread.getById.invalidate({ threadId })
     },
     onError: (error) => {
       toastError({
@@ -46,16 +50,21 @@ export function ThreadTag({ tag, threadId }: { tag: ThreadTagSummary; threadId: 
     },
   })
 
+  /** Opens the edit tag dialog */
   function handleEdit() {
     setIsEditDialogOpen(true)
   }
 
+  /** Called when tag edit is successful */
   function handleEditSuccess() {
-    utils.tag.getEntityTags.invalidate({ entityId: threadId, entityType: 'thread' })
-    utils.tag.getHierarchy.invalidate()
+    refresh()
+    utils.thread.getById.invalidate({ threadId })
   }
 
+  /** Handles deleting the tag entirely (from all threads) */
   async function handleDeleteTag() {
+    if (!entityDefinitionId) return
+
     const confirmed = await confirm({
       title: 'Delete tag?',
       description:
@@ -66,13 +75,24 @@ export function ThreadTag({ tag, threadId }: { tag: ThreadTagSummary; threadId: 
     })
 
     if (confirmed) {
-      await deleteTag.mutateAsync({ id: tag.id })
+      await deleteRecord.mutateAsync({
+        entityDefinitionId,
+        entityInstanceId: tag.id,
+      })
     }
   }
 
-  async function handleRemoveFromThread() {
-    await untagEntity.mutateAsync({ entityId: threadId, entityType: 'thread', tagId: tag.id })
+  /** Handles removing this tag from the current thread only */
+  function handleRemoveFromThread() {
+    if (onRemove) {
+      onRemove()
+    } else {
+      console.warn('ThreadTag: onRemove callback not provided, cannot remove tag from thread')
+    }
   }
+
+  // Build recordId for tag dialog
+  const recordId = entityDefinitionId ? toRecordId(entityDefinitionId, tag.id) : undefined
 
   return (
     <>
@@ -87,25 +107,23 @@ export function ThreadTag({ tag, threadId }: { tag: ThreadTagSummary; threadId: 
           </div>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => handleRemoveFromThread()} className="">
-            Remove from thread
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => handleEdit()}>
+          <DropdownMenuItem onClick={handleRemoveFromThread}>Remove from thread</DropdownMenuItem>
+          <DropdownMenuItem onClick={handleEdit}>
             <Pencil />
             Edit Tag
           </DropdownMenuItem>
-          <DropdownMenuItem variant="destructive" onClick={() => handleDeleteTag()}>
+          <DropdownMenuItem variant="destructive" onClick={handleDeleteTag}>
             <Trash2 />
             Delete Tag
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <TagFormDialog
+      <TagDialog
         open={isEditDialogOpen}
         onOpenChange={setIsEditDialogOpen}
-        editingTag={tag}
-        onSuccess={handleEditSuccess}
+        recordId={recordId}
+        onSaved={handleEditSuccess}
       />
 
       <ConfirmDialog />

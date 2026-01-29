@@ -97,7 +97,6 @@
     "./signatures": "./src/signatures/index.ts",
     "./snapshot": "./src/snapshot/index.ts",
     "./seed": "./src/seed/index.ts",
-    "./services": "./src/services/index.ts",
     "./settings": "./src/settings/index.ts",
     "./settings/types": "./src/settings/types.ts",
     "./tags": "./src/tags/index.ts",

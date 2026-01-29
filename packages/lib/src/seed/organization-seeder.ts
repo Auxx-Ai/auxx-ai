@@ -1,10 +1,10 @@
 // lib/organization/organization-seeder.ts
-import { database as db, schema, type Database } from '@auxx/database'
+import { schema, type Database } from '@auxx/database'
 import { eq } from 'drizzle-orm'
 import { InboxService } from '../inboxes'
 import { SettingsInitializer } from '../settings/settings-initializer'
 import { createScopedLogger } from '@auxx/logger'
-import { TagService } from '../tags/tag-service'
+import { UnifiedCrudHandler } from '../resources/crud'
 import { KBService } from '../kb'
 import { EmailTemplateType } from '@auxx/database/enums'
 import { SubscriptionService } from '@auxx/billing'
@@ -169,38 +169,52 @@ export class OrganizationSeeder {
     )
   }
 
+  /**
+   * Seed default tags for a new organization using the unified entity system.
+   * Creates a hierarchical tag structure with a parent "Topic Categorization" tag
+   * and child tags, plus independent top-level tags.
+   */
   private async seedTags(organizationId: string) {
-    const tagService = new TagService(organizationId, this.userId, this.db)
+    const handler = new UnifiedCrudHandler(organizationId, this.userId, this.db)
 
-    // Topic Categorization parent tag
-    const topicCategorizationTag = await tagService.createTag({
+    // Create parent tag first - Topic Categorization
+    // UnifiedCrudHandler.create() throws on error, so if we get a result, it succeeded
+    const topicResult = await handler.create('tag', {
       title: 'Topic Categorization',
       description: 'Top-level categorization for support tickets',
       emoji: '🏷️',
       color: '#A7C1F2',
     })
 
-    // Sub-tags under Topic Categorization
+    // Create child tags under Topic Categorization using parent relationship
+    // Must be sequential to avoid inverse relationship sync conflicts (sortKey collisions)
     const topicSubTags = [
-      { title: 'Account Management', emoji: '👤', color: '#F2A99B', parentId: topicCategorizationTag.id },
-      { title: 'Billing', emoji: '💳', color: '#B9E3B9', parentId: topicCategorizationTag.id },
-      { title: 'Customer Feedback', emoji: '💬', color: '#F5C8A3', parentId: topicCategorizationTag.id },
-      { title: 'Legal', emoji: '⚖️', color: '#8D8D8D', parentId: topicCategorizationTag.id },
-      { title: 'Sales', emoji: '💼', color: '#D7A4D3', parentId: topicCategorizationTag.id },
-      { title: 'Security', emoji: '🔒', color: '#C9B6F2', parentId: topicCategorizationTag.id },
-      { title: 'Shipping', emoji: '🚚', color: '#F5E7A3', parentId: topicCategorizationTag.id },
-      { title: 'Troubleshooting', emoji: '🛠️', color: '#A7D8E2', parentId: topicCategorizationTag.id },
+      { title: 'Account Management', emoji: '👤', color: '#F2A99B' },
+      { title: 'Billing', emoji: '💳', color: '#B9E3B9' },
+      { title: 'Customer Feedback', emoji: '💬', color: '#F5C8A3' },
+      { title: 'Legal', emoji: '⚖️', color: '#8D8D8D' },
+      { title: 'Sales', emoji: '💼', color: '#D7A4D3' },
+      { title: 'Security', emoji: '🔒', color: '#C9B6F2' },
+      { title: 'Shipping', emoji: '🚚', color: '#F5E7A3' },
+      { title: 'Troubleshooting', emoji: '🛠️', color: '#A7D8E2' },
     ]
-    await Promise.all(topicSubTags.map((tag) => tagService.createTag(tag)))
 
-    // Independent tags
+    for (const tag of topicSubTags) {
+      await handler.create('tag', {
+        ...tag,
+        tag_parent: topicResult.recordId, // Link to parent via RecordId
+      })
+    }
+
+    // Create independent tags (no parent) - can be parallel since no inverse sync needed
     const independentTags = [
       { title: 'Support', emoji: '🆘', color: '#F2A99B' },
       { title: 'Urgent', emoji: '🚨', color: '#C9B6F2' },
       { title: 'Orders', emoji: '📦', color: '#F5E7A3' },
       { title: 'VIP', emoji: '⭐', color: '#F5C8A3' },
     ]
-    await Promise.all(independentTags.map((tag) => tagService.createTag(tag)))
+
+    await Promise.all(independentTags.map((tag) => handler.create('tag', tag)))
   }
   // Create ticket sequence for the organization
   /**

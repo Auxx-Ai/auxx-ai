@@ -29,6 +29,15 @@ interface UseAllRecordsOptions {
 }
 
 /**
+ * Field info for client-side operations (key → id mapping)
+ */
+export interface FieldInfo {
+  id: string
+  key: string
+  type: string
+}
+
+/**
  * Result from useAllRecords hook
  */
 interface UseAllRecordsResult<T = RecordMeta> {
@@ -36,6 +45,8 @@ interface UseAllRecordsResult<T = RecordMeta> {
   records: T[]
   /** Resolved entityDefinitionId UUID */
   entityDefinitionId: string | null
+  /** Map of field key to field info (for resolving fieldIds when saving) */
+  fields: Record<string, FieldInfo>
   /** Loading state */
   isLoading: boolean
   /** Error if any */
@@ -137,6 +148,7 @@ export function useAllRecords<T extends RecordMeta = RecordMeta>(
   return {
     records: (data?.items ?? []) as T[],
     entityDefinitionId: data?.entityDefinitionId ?? null,
+    fields: data?.fields ?? {},
     isLoading: shouldFetch && isLoading,
     error: error ?? null,
     refresh: refetch,

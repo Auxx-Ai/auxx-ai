@@ -58,6 +58,7 @@ export type {
   ResourceTableDefinition,
 } from './registry'
 export type { ResourceDisplayConfig, OrgScopingStrategy, JoinScopingConfig } from './registry'
+export { listAll } from './crud/unified-handler-queries'
 
 // Field capability utilities
 export {

@@ -40,6 +40,12 @@ import {
   SearchOperator,
   IsOperatorValue,
 } from './search-query-parser'
+import {
+  threadHasAnyTags,
+  threadHasNoTags,
+  threadHasTags,
+  threadHasTagMatchingSearch,
+} from '../field-values/relationship-queries'
 
 const logger = createScopedLogger('mail-query-builder')
 
@@ -290,20 +296,10 @@ export class MailQueryBuilder {
           logger.debug(
             `Building context ${contextType}: Has Tag=${contextId}, Excluding TRASH/SPAM`
           )
-          // Apply default exclusions AND filter by tag presence
+          // Apply default exclusions AND filter by tag presence using FieldValue relationship
           return and(
             defaultExclusions,
-            exists(
-              database
-                .select()
-                .from(schema.TagsOnThread)
-                .where(
-                  and(
-                    eq(schema.TagsOnThread.threadId, schema.Thread.id),
-                    eq(schema.TagsOnThread.tagId, contextId)
-                  )
-                )
-            )
+            threadHasTags(database, schema.Thread.id, [contextId], organizationId)
           )
 
         case InternalFilterContextType.VIEW:
@@ -791,26 +787,17 @@ export class MailQueryBuilder {
    * @param value - The tag name.
    * @returns {SQL | undefined} The condition.
    */
+  /**
+   * Build tag condition using FieldValue relationship.
+   * Supports "no-tags" special value and searches by tag title or ID.
+   */
   private buildTagCondition(value: string): SQL | undefined {
     if (value.toLowerCase() === 'no-tags') {
-      return sql`NOT EXISTS (
-        SELECT 1 FROM ${schema.TagsOnThread}
-        WHERE ${schema.TagsOnThread.threadId} = ${schema.Thread.id}
-      )`
+      return threadHasNoTags(database, schema.Thread.id, this.input.organizationId)
     }
 
-    return exists(
-      database
-        .select()
-        .from(schema.TagsOnThread)
-        .innerJoin(schema.Tag, eq(schema.Tag.id, schema.TagsOnThread.tagId))
-        .where(
-          and(
-            eq(schema.TagsOnThread.threadId, schema.Thread.id),
-            or(ilike(schema.Tag.title, `%${value}%`), eq(schema.Tag.id, value))
-          )
-        )
-    )
+    // Search by tag title or ID using FieldValue relationship
+    return threadHasTagMatchingSearch(database, schema.Thread.id, value, this.input.organizationId)
   }
 
   /**
@@ -1144,10 +1131,7 @@ export class MailQueryBuilder {
 
     switch (hasValue) {
       case 'no-tags':
-        return sql`NOT EXISTS (
-          SELECT 1 FROM ${schema.TagsOnThread}
-          WHERE ${schema.TagsOnThread.threadId} = ${schema.Thread.id}
-        )`
+        return threadHasNoTags(database, schema.Thread.id, this.input.organizationId)
       case 'attachments':
         return exists(
           database

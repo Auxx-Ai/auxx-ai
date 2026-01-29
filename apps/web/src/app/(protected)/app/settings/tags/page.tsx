@@ -1,7 +1,7 @@
 // app/(protected)/app/settings/tags/page.tsx
 import React from 'react'
 import SettingsPage from '~/components/global/settings-page'
-import { TagTreeView } from './_components/tags-list'
+import { TagTreeView } from '~/components/tags/ui/tags-list'
 
 /**
  * Settings page for managing organization tags

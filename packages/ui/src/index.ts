@@ -145,7 +145,17 @@ export {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from './components/dropdown-menu'
-export { EmojiPicker } from './components/emoji-picker'
+export { EmojiPicker, FormEmojiPicker, type EmojiPickerProps } from './components/emoji-picker'
+export {
+  EMOJI_GROUPS,
+  EMOJI_DATA,
+  SKIN_TONES,
+  SKIN_TONE_COLORS,
+  getEmoji,
+  type EmojiItem,
+  type EmojiGroup,
+  type SkinTone,
+} from './components/emojis'
 export {
   Form,
   FormControl,

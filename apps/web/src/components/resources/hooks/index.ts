@@ -21,7 +21,7 @@ export { useRecord, useIsRecordLoading, useIsRecordPending } from './use-record'
 export { useRecords } from './use-records'
 export { useRecordInvalidation } from './use-record-invalidation'
 export { useRecordBatchFetcher } from './use-record-batch-fetcher'
-export { useAllRecords } from './use-all-records'
+export { useAllRecords, type FieldInfo } from './use-all-records'
 
 // Entity field values hook
 export { useEntityValues } from './use-entity-values'

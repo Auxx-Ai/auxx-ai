@@ -11,6 +11,7 @@ import { createScopedLogger } from '../logger'
 import { getRedisClient } from '@auxx/redis'
 import { buildConditionGroupsQuery } from '../mail-query/condition-query-builder'
 import type { ConditionGroup } from '../conditions/types'
+import { batchGetThreadTagIds } from '../field-values/relationship-queries'
 
 const logger = createScopedLogger('mail-view-service')
 
@@ -846,15 +847,26 @@ export class MailViewService {
               .where(inArray(schema.Message.id, Array.from(latestMessageByThread.values())))
           : []
 
-      // Step 3: Get thread tags
-      const threadTags = await this.db
-        .select({
-          threadId: schema.TagsOnThread.threadId,
-          tag: schema.Tag,
-        })
-        .from(schema.TagsOnThread)
-        .leftJoin(schema.Tag, eq(schema.TagsOnThread.tagId, schema.Tag.id))
-        .where(inArray(schema.TagsOnThread.threadId, threadIds))
+      // Step 3: Get thread tags via FieldValue relationship
+      const threadTagIdsMap = await batchGetThreadTagIds(this.db, threadIds, this.organizationId)
+      const allTagIds = Array.from(new Set(Array.from(threadTagIdsMap.values()).flat()))
+      const tagsById = new Map<string, typeof schema.Tag.$inferSelect>()
+      if (allTagIds.length > 0) {
+        const tagRows = await this.db
+          .select()
+          .from(schema.Tag)
+          .where(inArray(schema.Tag.id, allTagIds))
+        for (const tag of tagRows) {
+          tagsById.set(tag.id, tag)
+        }
+      }
+      // Convert to the expected format: array of { threadId, tag }
+      const threadTags: { threadId: string; tag: typeof schema.Tag.$inferSelect | null }[] = []
+      for (const [threadId, tagIds] of threadTagIdsMap) {
+        for (const tagId of tagIds) {
+          threadTags.push({ threadId, tag: tagsById.get(tagId) ?? null })
+        }
+      }
 
       // Step 4: Get thread labels
       const threadLabels = await this.db

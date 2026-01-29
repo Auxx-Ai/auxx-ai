@@ -22,6 +22,12 @@ import { database as db, schema } from '@auxx/database'
 import type { Condition, ConditionGroup } from '../conditions/types'
 import type { Operator } from '../conditions/operator-definitions'
 import { createScopedLogger } from '../logger'
+import {
+  threadHasAnyTags,
+  threadHasNoTags,
+  threadHasTags,
+  threadDoesNotHaveTags,
+} from '../field-values/relationship-queries'
 
 const logger = createScopedLogger('condition-query-builder')
 
@@ -38,7 +44,7 @@ export function buildConditionGroupsQuery(
     return eq(Thread.organizationId, organizationId)
   }
 
-  const groupConditions = groups.map(group => buildGroupQuery(group))
+  const groupConditions = groups.map(group => buildGroupQuery(group, organizationId))
   const validConditions = groupConditions.filter(Boolean) as SQL<unknown>[]
 
   if (validConditions.length === 0) {
@@ -52,8 +58,8 @@ export function buildConditionGroupsQuery(
 /**
  * Build query for a single ConditionGroup.
  */
-function buildGroupQuery(group: ConditionGroup): SQL<unknown> | null {
-  const conditions = group.conditions.map(buildConditionQuery).filter(Boolean) as SQL<unknown>[]
+function buildGroupQuery(group: ConditionGroup, organizationId: string): SQL<unknown> | null {
+  const conditions = group.conditions.map(c => buildConditionQuery(c, organizationId)).filter(Boolean) as SQL<unknown>[]
 
   if (conditions.length === 0) return null
   if (conditions.length === 1) return conditions[0]
@@ -64,14 +70,14 @@ function buildGroupQuery(group: ConditionGroup): SQL<unknown> | null {
 /**
  * Build query for a single Condition.
  */
-function buildConditionQuery(condition: Condition): SQL<unknown> | null {
+function buildConditionQuery(condition: Condition, organizationId: string): SQL<unknown> | null {
   const { fieldId, operator, value, metadata } = condition
   const op = operator as Operator
 
   try {
     switch (fieldId) {
       case 'tag':
-        return buildTagQuery(op, value)
+        return buildTagQuery(op, value, organizationId)
       case 'assignee':
         return buildAssigneeQuery(op, value)
       case 'inbox':
@@ -113,42 +119,27 @@ function buildConditionQuery(condition: Condition): SQL<unknown> | null {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Build tag condition query.
+ * Build tag condition query using FieldValue relationship.
+ * Tags are stored in FieldValue table with systemAttribute='thread_tags'.
  */
-function buildTagQuery(operator: Operator, value: any): SQL<unknown> | null {
+function buildTagQuery(operator: Operator, value: any, organizationId: string): SQL<unknown> | null {
   switch (operator) {
     case 'empty':
-      return not(exists(
-        db.select({ id: sql`1` }).from(schema.TagsOnThread)
-          .where(eq(schema.TagsOnThread.threadId, Thread.id))
-      ))
+      return threadHasNoTags(db, Thread.id, organizationId)
     case 'not empty':
-      return exists(
-        db.select({ id: sql`1` }).from(schema.TagsOnThread)
-          .where(eq(schema.TagsOnThread.threadId, Thread.id))
-      )
+      return threadHasAnyTags(db, Thread.id, organizationId)
     case 'in':
-    case 'is':
+    case 'is': {
       const tagIds = Array.isArray(value) ? value : [value]
       if (tagIds.length === 0) return null
-      return exists(
-        db.select({ id: sql`1` }).from(schema.TagsOnThread)
-          .where(and(
-            eq(schema.TagsOnThread.threadId, Thread.id),
-            inArray(schema.TagsOnThread.tagId, tagIds)
-          ))
-      )
+      return threadHasTags(db, Thread.id, tagIds, organizationId)
+    }
     case 'not in':
-    case 'is not':
+    case 'is not': {
       const excludeTagIds = Array.isArray(value) ? value : [value]
       if (excludeTagIds.length === 0) return null
-      return not(exists(
-        db.select({ id: sql`1` }).from(schema.TagsOnThread)
-          .where(and(
-            eq(schema.TagsOnThread.threadId, Thread.id),
-            inArray(schema.TagsOnThread.tagId, excludeTagIds)
-          ))
-      ))
+      return threadDoesNotHaveTags(db, Thread.id, excludeTagIds, organizationId)
+    }
     default:
       return null
   }

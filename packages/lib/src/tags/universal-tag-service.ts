@@ -3,8 +3,9 @@
 import { createScopedLogger } from '@auxx/logger'
 import { database, type Database, schema } from '@auxx/database'
 import { type IntegrationProviderType } from '@auxx/database/types'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, isNull, inArray, isNotNull } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
+import { generateId } from '@auxx/utils'
 
 const logger = createScopedLogger('universal-tag-service')
 
@@ -136,8 +137,35 @@ export class UniversalTagService {
   }
 
   /**
+   * Get the CustomField ID for thread_tags (cached per instance)
+   */
+  private threadTagsFieldId: string | null = null
+  private async getThreadTagsFieldId(): Promise<string | null> {
+    if (this.threadTagsFieldId) return this.threadTagsFieldId
+
+    const result = await this.db
+      .select({ id: schema.CustomField.id })
+      .from(schema.CustomField)
+      .innerJoin(
+        schema.EntityDefinition,
+        eq(schema.CustomField.entityDefinitionId, schema.EntityDefinition.id)
+      )
+      .where(
+        and(
+          eq(schema.CustomField.systemAttribute, 'thread_tags'),
+          eq(schema.EntityDefinition.organizationId, this.organizationId)
+        )
+      )
+      .limit(1)
+
+    this.threadTagsFieldId = result[0]?.id ?? null
+    return this.threadTagsFieldId
+  }
+
+  /**
    * Apply a tag to an entity (thread, message, etc)
-   * This is the universal operation that works for all providers
+   * This is the universal operation that works for all providers.
+   * Uses FieldValue storage for tag relationships.
    */
   async applyTag(params: {
     tagId: string
@@ -148,21 +176,36 @@ export class UniversalTagService {
     try {
       // Currently only thread is supported in the schema
       if (params.entityType === 'thread') {
-        // Check if tag already applied
-        const existing = await this.db.query.TagsOnThread.findFirst({
-          where: (tagsOnThread, { eq, and }) =>
-            and(eq(tagsOnThread.tagId, params.tagId), eq(tagsOnThread.threadId, params.entityId)),
-        })
+        const fieldId = await this.getThreadTagsFieldId()
+        if (!fieldId) {
+          throw new Error('Thread tags field not found for organization')
+        }
 
-        if (existing) {
+        // Check if tag already applied via FieldValue
+        const existing = await this.db
+          .select({ id: schema.FieldValue.id })
+          .from(schema.FieldValue)
+          .where(
+            and(
+              eq(schema.FieldValue.fieldId, fieldId),
+              eq(schema.FieldValue.entityId, params.entityId),
+              eq(schema.FieldValue.relatedEntityId, params.tagId)
+            )
+          )
+          .limit(1)
+
+        if (existing.length > 0) {
           return { id: `${params.tagId}-${params.entityId}` }
         }
 
-        // Apply the tag
-        await this.db.insert(schema.TagsOnThread).values({
-          tagId: params.tagId,
-          threadId: params.entityId,
-          createdBy: params.createdBy,
+        // Apply the tag via FieldValue
+        await this.db.insert(schema.FieldValue).values({
+          id: generateId('fv'),
+          fieldId,
+          entityId: params.entityId,
+          relatedEntityId: params.tagId,
+          createdAt: new Date(),
+          updatedAt: new Date(),
         })
 
         logger.info('Applied tag to thread', {
@@ -189,7 +232,8 @@ export class UniversalTagService {
   }
 
   /**
-   * Remove a tag from an entity
+   * Remove a tag from an entity.
+   * Uses FieldValue storage for tag relationships.
    */
   async removeTag(params: {
     tagId: string
@@ -198,12 +242,19 @@ export class UniversalTagService {
   }): Promise<void> {
     try {
       if (params.entityType === 'thread') {
+        const fieldId = await this.getThreadTagsFieldId()
+        if (!fieldId) {
+          throw new Error('Thread tags field not found for organization')
+        }
+
+        // Remove via FieldValue
         await this.db
-          .delete(schema.TagsOnThread)
+          .delete(schema.FieldValue)
           .where(
             and(
-              eq(schema.TagsOnThread.tagId, params.tagId),
-              eq(schema.TagsOnThread.threadId, params.entityId)
+              eq(schema.FieldValue.fieldId, fieldId),
+              eq(schema.FieldValue.entityId, params.entityId),
+              eq(schema.FieldValue.relatedEntityId, params.tagId)
             )
           )
 
@@ -234,7 +285,8 @@ export class UniversalTagService {
   }
 
   /**
-   * Get all tags applied to an entity
+   * Get all tags applied to an entity.
+   * Uses FieldValue storage for tag relationships.
    */
   async getEntityTags(
     entityType: string,
@@ -249,18 +301,41 @@ export class UniversalTagService {
   > {
     try {
       if (entityType === 'thread') {
-        const tagsOnThread = await this.db.query.TagsOnThread.findMany({
-          where: (tagsOnThread, { eq }) => eq(tagsOnThread.threadId, entityId),
-          with: {
-            tag: true,
-          },
+        const fieldId = await this.getThreadTagsFieldId()
+        if (!fieldId) {
+          return []
+        }
+
+        // Get tag IDs from FieldValue
+        const fieldValues = await this.db
+          .select({ relatedEntityId: schema.FieldValue.relatedEntityId })
+          .from(schema.FieldValue)
+          .where(
+            and(
+              eq(schema.FieldValue.fieldId, fieldId),
+              eq(schema.FieldValue.entityId, entityId),
+              isNotNull(schema.FieldValue.relatedEntityId)
+            )
+          )
+
+        const tagIds = fieldValues
+          .map((fv) => fv.relatedEntityId)
+          .filter((id): id is string => id !== null)
+
+        if (tagIds.length === 0) {
+          return []
+        }
+
+        // Get full tag details
+        const tags = await this.db.query.Tag.findMany({
+          where: (tag, { inArray }) => inArray(tag.id, tagIds),
         })
 
-        return tagsOnThread.map((tot) => ({
-          id: tot.tag.id,
-          name: tot.tag.title, // Note: using 'title' field from schema
-          color: tot.tag.color,
-          isSystemTag: tot.tag.isSystemTag,
+        return tags.map((tag) => ({
+          id: tag.id,
+          name: tag.title,
+          color: tag.color,
+          isSystemTag: tag.isSystemTag,
         }))
       } else {
         logger.warn('Unsupported entity type for getting tags', {

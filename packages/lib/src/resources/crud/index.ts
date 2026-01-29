@@ -20,6 +20,7 @@ export type {
   ListAllInput,
   ListAllItem,
   ListAllResult,
+  ListAllFieldInfo,
 } from './unified-handler-queries'
 
 // Mutation utilities (for advanced use cases)

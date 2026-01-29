@@ -6,7 +6,7 @@ import {
   OrganizationMemberModel,
   ParticipantModel,
 } from '@auxx/database/models'
-import { TagService } from '@auxx/lib/tags'
+import { listAll } from '@auxx/lib/resources'
 import { InboxService } from '@auxx/lib/inboxes'
 import { schema } from '@auxx/database'
 import { and, or, eq, ilike, inArray } from 'drizzle-orm'
@@ -210,19 +210,26 @@ export const searchRouter = createTRPCRouter({
           break
         }
         case SearchOperator.TAG: {
-          // Get tags
-          const tagService = new TagService(organizationId, userId, ctx.db)
-          const tags = await tagService.getAllTags()
-          const filteredTags = tags
-            .filter((tag) => !query || tag.title.toLowerCase().includes(query.toLowerCase()))
+          // Get tags using unified entity system
+          const result = await listAll({
+            organizationId,
+            userId,
+            db: ctx.db,
+            entityDefinitionId: 'tag',
+          })
+          const filteredTags = result.items
+            .filter((item) => {
+              const title = item.fieldValues.title ?? item.displayName ?? ''
+              return !query || title.toLowerCase().includes(query.toLowerCase())
+            })
             .slice(0, 10)
           suggestions.push(
-            ...filteredTags.map((tag) => ({
+            ...filteredTags.map((item) => ({
               type: 'tag',
-              value: tag.title,
-              label: tag.title,
-              emoji: tag.emoji,
-              color: tag.color,
+              value: item.fieldValues.title ?? item.displayName ?? '',
+              label: item.fieldValues.title ?? item.displayName ?? '',
+              emoji: item.fieldValues.emoji ?? null,
+              color: item.fieldValues.color ?? null,
             }))
           )
           break

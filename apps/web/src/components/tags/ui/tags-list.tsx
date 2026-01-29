@@ -1,4 +1,4 @@
-// apps/web/src/app/(protected)/app/settings/tags/_components/tags-list.tsx
+// apps/web/src/components/tags/ui/tags-list.tsx
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
@@ -7,22 +7,27 @@ import { Input } from '@auxx/ui/components/input'
 import { Button } from '@auxx/ui/components/button'
 import { useQueryState } from 'nuqs'
 import { api } from '~/trpc/react'
-import { TagFormDialog } from './tags-form'
+import { TagDialog } from './tag-dialog'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { toastSuccess, toastError } from '@auxx/ui/components/toast'
+import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { useUser } from '~/hooks/use-user'
 import { useConfirm } from '~/hooks/use-confirm'
-import { useTagHierarchy } from '~/components/tags/hooks/use-tag-hierarchy'
-import { filterHierarchy } from '~/components/tags/utils/hierarchy'
-import type { TagNode } from '~/components/tags/types'
+import { useTagHierarchy } from '../hooks/use-tag-hierarchy'
+import { filterHierarchy } from '../utils/hierarchy'
+import { toRecordId, type RecordId } from '@auxx/lib/resources/client'
+import type { TagNode } from '../types'
 
+/**
+ * Tag tree view component for settings page.
+ * Displays hierarchical list of tags with CRUD operations.
+ */
 export function TagTreeView() {
   const [confirm, ConfirmDialog] = useConfirm()
 
   useUser({
-    requireOrganization: true, // Require organization membership
-    requireRoles: ['ADMIN', 'OWNER'], // Ensure user is an admin or owner
+    requireOrganization: true,
+    requireRoles: ['ADMIN', 'OWNER'],
   })
 
   // Search query from URL (persists across refreshes)
@@ -30,46 +35,40 @@ export function TagTreeView() {
 
   // State for tag operations
   const [expandedTags, setExpandedTags] = useState<Record<string, boolean>>({})
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
-  const [editingTag, setEditingTag] = useState<any>(null)
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [editingRecordId, setEditingRecordId] = useState<RecordId | undefined>(undefined)
 
-  // Fetch tag hierarchy using useTagHierarchy
-  const { hierarchy: tagHierarchy, isLoading, refresh: refetch } = useTagHierarchy()
+  // Fetch tag hierarchy
+  const { hierarchy: tagHierarchy, isLoading, refresh, entityDefinitionId } = useTagHierarchy()
 
-  // Delete tag mutation
-  const deleteTag = api.tag.delete.useMutation({
+  // Delete record mutation (replaces api.tag.delete)
+  const deleteRecord = api.record.delete.useMutation({
     onSuccess: () => {
-      toastSuccess({ title: 'Tag deleted', description: 'The tag was deleted successfully' })
-      refetch()
+      refresh()
     },
     onError: (error) => {
       toastError({ title: 'Failed to delete tag', description: error.message })
     },
   })
 
-  // Filter tags based on search query using filterHierarchy utility
+  // Filter tags based on search query
   const filterTags = useCallback((tags: TagNode[], query: string): TagNode[] => {
     if (!query) return tags
     const { filtered } = filterHierarchy(tags, query)
     return filtered
   }, [])
 
-  // Filtered tags based on search
   const filteredTags = searchQuery ? filterTags(tagHierarchy || [], searchQuery) : tagHierarchy
 
   // Auto-expand parent tags when search is active
   useEffect(() => {
     if (searchQuery && tagHierarchy) {
-      // Helper to collect all parent tag IDs that have children matching search
       const collectMatchingParentIds = (tags: TagNode[]): string[] => {
         let parentIds: string[] = []
 
         tags.forEach((tag) => {
-          // If this tag matches or has children that match, add its ID
           if (filterTags([tag], searchQuery).length > 0) {
             parentIds.push(tag.id)
-
-            // Also expand its children
             if (tag.children?.length) {
               parentIds = [...parentIds, ...collectMatchingParentIds(tag.children)]
             }
@@ -90,21 +89,31 @@ export function TagTreeView() {
     }
   }, [searchQuery, tagHierarchy, filterTags])
 
-  // Toggle expanded state for a tag
+  /** Toggle expanded state for a tag */
   const toggleExpanded = (tagId: string) => {
     setExpandedTags((prev) => ({ ...prev, [tagId]: !prev[tagId] }))
   }
 
-  // Handle tag edit click
+  /** Open dialog for editing a tag */
   const handleEditTag = (tag: TagNode) => {
-    setEditingTag(tag)
-    setIsCreateDialogOpen(true)
+    if (entityDefinitionId) {
+      setEditingRecordId(toRecordId(entityDefinitionId, tag.id))
+      setIsDialogOpen(true)
+    }
   }
 
-  // Handle tag delete click
+  /** Open dialog for creating a new tag */
+  const handleCreateTag = () => {
+    setEditingRecordId(undefined)
+    setIsDialogOpen(true)
+  }
+
+  /** Handle tag deletion */
   const handleDeleteTag = async (tag: TagNode) => {
+    if (!entityDefinitionId) return
+
     if (tag.children?.length > 0) {
-      const confirmed = await confirm({
+      await confirm({
         title: 'Cannot Delete Tag',
         description: 'This tag has child tags. You must move or delete its children first.',
         confirmText: 'OK',
@@ -123,7 +132,7 @@ export function TagTreeView() {
     })
 
     if (confirmed) {
-      deleteTag.mutate({ id: tag.id })
+      deleteRecord.mutate({ recordId: tag.recordId })
     }
   }
 
@@ -157,17 +166,16 @@ export function TagTreeView() {
           <div
             className="ml-1 flex flex-1 cursor-pointer items-center"
             onClick={() => hasChildren && toggleExpanded(tag.id)}>
-            {tag.emoji && <span className="mr-2 shrink-0">{tag.emoji}</span>}
-            <span
-              className="mr-2 h-3 w-3 rounded-full shrink-0"
-              style={{ backgroundColor: tag.color || '#94a3b8' }}
-            />
+            <div
+              className="size-7 mr-2 flex items-center justify-center rounded-full shrink-0"
+              style={{ backgroundColor: tag.color || '#94a3b8' }}>
+              {tag.emoji && <span className="shrink-0">{tag.emoji}</span>}
+            </div>
+
             <span className="font-medium shrink-0">{tag.title}</span>
 
             {tag.description && (
-              <span className="ml-2  truncate text-sm text-muted-foreground">
-                {tag.description}
-              </span>
+              <span className="ml-2 truncate text-sm text-muted-foreground">{tag.description}</span>
             )}
           </div>
 
@@ -200,7 +208,7 @@ export function TagTreeView() {
           </div>
         </div>
 
-        {/* Render children if expanded */}
+        {/* Children */}
         {hasChildren && isExpanded && (
           <div className="ml-4 mt-0 border-l border-l-border pl-2">
             {tag.children.map((child) => (
@@ -216,15 +224,10 @@ export function TagTreeView() {
   const TagItemSkeleton = ({ hasChildren = false }: { hasChildren?: boolean }) => (
     <div className="select-none">
       <div className="flex items-center rounded-2xl ps-0.5 pe-1 py-0.5">
-        {/* Expand button placeholder */}
         <Skeleton className="h-7 w-7 rounded-full shrink-0" />
-        {/* Color dot */}
         <Skeleton className="ml-2 h-3 w-3 rounded-full shrink-0" />
-        {/* Title */}
         <Skeleton className="ml-2 h-4 w-24 shrink-0" />
-        {/* Description */}
         <Skeleton className="ml-2 h-4 w-40" />
-        {/* Action buttons spacer */}
         <div className="ml-auto flex space-x-1">
           <Skeleton className="h-6 w-6 rounded" />
           <Skeleton className="h-6 w-6 rounded" />
@@ -239,19 +242,16 @@ export function TagTreeView() {
     </div>
   )
 
-  // Loading skeleton
+  // Loading state
   if (isLoading) {
     return (
       <div className="space-y-4">
-        {/* Search and action bar skeleton */}
         <div className="flex items-center space-x-2">
           <div className="relative flex-1">
             <Skeleton className="h-8 w-full" />
           </div>
           <Skeleton className="h-8 w-[106px]" />
         </div>
-
-        {/* Tag tree container skeleton */}
         <div className="rounded-[20px] border p-1">
           <TagItemSkeleton hasChildren />
           <TagItemSkeleton />
@@ -277,12 +277,7 @@ export function TagTreeView() {
           />
         </div>
 
-        <Button
-          variant="outline"
-          onClick={() => {
-            setEditingTag(null)
-            setIsCreateDialogOpen(true)
-          }}>
+        <Button variant="outline" onClick={handleCreateTag}>
           <Plus />
           Add Tag
         </Button>
@@ -303,14 +298,14 @@ export function TagTreeView() {
         )}
       </div>
 
-      {/* Tag form dialog for creating/editing */}
-      <TagFormDialog
-        open={isCreateDialogOpen}
-        onOpenChange={setIsCreateDialogOpen}
-        editingTag={editingTag}
-        onSuccess={() => {
-          refetch()
-          setEditingTag(null)
+      {/* Tag dialog for creating/editing */}
+      <TagDialog
+        open={isDialogOpen}
+        onOpenChange={setIsDialogOpen}
+        recordId={editingRecordId}
+        onSaved={() => {
+          refresh()
+          setEditingRecordId(undefined)
         }}
       />
 

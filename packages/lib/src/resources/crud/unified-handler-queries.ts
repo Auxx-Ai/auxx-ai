@@ -21,7 +21,8 @@ import {
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId, type RecordId } from '../resource-id'
-import { FieldValueService } from '../../field-values'
+import { FieldValueService, formatToRawValue } from '../../field-values'
+import type { FieldType } from '@auxx/database/types'
 
 const logger = createScopedLogger('unified-handler-queries')
 
@@ -293,6 +294,15 @@ export type ListAllItem = EntityInstanceEntity & {
 }
 
 /**
+ * Field info for client-side operations
+ */
+export interface ListAllFieldInfo {
+  id: string
+  key: string
+  type: string
+}
+
+/**
  * Result from listAll query
  */
 export interface ListAllResult {
@@ -300,6 +310,8 @@ export interface ListAllResult {
   items: ListAllItem[]
   /** Resolved entityDefinitionId UUID */
   entityDefinitionId: string
+  /** Map of field key to field info (for resolving fieldIds when saving) */
+  fields: Record<string, ListAllFieldInfo>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -383,24 +395,49 @@ export async function listAll(
     limit: 1000,
   })
 
-  if (records.length === 0) {
-    return { items: [], entityDefinitionId: entityDefId }
+  // Get all fields for this entity (needed for both field values and response)
+  const fields = await registryService.getFieldsForResource(entityDefId)
+
+  // Build fields map (key → { id, key, type })
+  const fieldsMap: Record<string, ListAllFieldInfo> = {}
+  for (const field of fields) {
+    fieldsMap[field.key] = {
+      id: field.id,
+      key: field.key,
+      type: field.fieldType ?? field.type,
+    }
   }
 
-  // Build field references - either from params.fieldIds or from all fields
+  if (records.length === 0) {
+    return { items: [], entityDefinitionId: entityDefId, fields: fieldsMap }
+  }
+
+  // Build field references and maps from ResourceFieldId → field.key and → fieldType
+  const resourceFieldIdToKey = new Map<string, string>()
+  const resourceFieldIdToType = new Map<string, FieldType>()
   let fieldReferences: FieldReference[]
 
   if (params.fieldIds && params.fieldIds.length > 0) {
     // Use specific fields provided
-    fieldReferences = params.fieldIds.map(
-      (fieldId) => toResourceFieldId(entityDefId, fieldId) as ResourceFieldId
-    )
+    fieldReferences = params.fieldIds.map((fieldId) => {
+      const resourceFieldId = toResourceFieldId(entityDefId, fieldId)
+      // Find field by id to get its key and type
+      const field = fields.find((f) => f.id === fieldId)
+      if (field) {
+        resourceFieldIdToKey.set(resourceFieldId, field.key)
+        resourceFieldIdToType.set(resourceFieldId, (field.fieldType ?? field.type) as FieldType)
+      }
+      return resourceFieldId as ResourceFieldId
+    })
   } else {
-    // Get all fields for this entity and build references
-    const fields = await registryService.getFieldsForResource(entityDefId)
+    // Use all fields
     fieldReferences = fields
       .filter((f) => f.resourceFieldId) // Only fields with resourceFieldId
-      .map((f) => f.resourceFieldId as ResourceFieldId)
+      .map((f) => {
+        resourceFieldIdToKey.set(f.resourceFieldId as string, f.key)
+        resourceFieldIdToType.set(f.resourceFieldId as string, (f.fieldType ?? f.type) as FieldType)
+        return f.resourceFieldId as ResourceFieldId
+      })
   }
 
   // If no fields, return records without field values
@@ -408,6 +445,7 @@ export async function listAll(
     return {
       items: records.map((r) => ({ ...r, fieldValues: {} })),
       entityDefinitionId: entityDefId,
+      fields: fieldsMap,
     }
   }
 
@@ -418,7 +456,7 @@ export async function listAll(
     fieldReferences,
   })
 
-  // Group field values by recordId
+  // Group field values by recordId, using field key (not ResourceFieldId) as the key
   const fieldValuesByRecord = new Map<string, Record<string, unknown>>()
   for (const recordId of recordIds) {
     fieldValuesByRecord.set(recordId, {})
@@ -426,11 +464,18 @@ export async function listAll(
 
   for (const result of values) {
     const existing = fieldValuesByRecord.get(result.recordId) ?? {}
-    // Use the fieldReference as key (ResourceFieldId string)
-    const fieldKey = Array.isArray(result.fieldReference)
-      ? result.fieldReference.join('::')
-      : result.fieldReference
-    existing[fieldKey] = result.value
+    // Convert ResourceFieldId to field key for the output
+    const resourceFieldId = Array.isArray(result.fieldRef)
+      ? result.fieldRef.join('::')
+      : result.fieldRef
+    const fieldKey = resourceFieldIdToKey.get(resourceFieldId) ?? resourceFieldId
+    const fieldType = resourceFieldIdToType.get(resourceFieldId)
+
+    // Extract raw value from TypedFieldValue (e.g., { type: 'text', value: '#C9B6F2' } → '#C9B6F2')
+    const rawValue = fieldType && result.value != null
+      ? formatToRawValue(result.value, fieldType)
+      : result.value
+    existing[fieldKey] = rawValue
     fieldValuesByRecord.set(result.recordId, existing)
   }
 
@@ -443,5 +488,6 @@ export async function listAll(
   return {
     items,
     entityDefinitionId: entityDefId,
+    fields: fieldsMap,
   }
 }

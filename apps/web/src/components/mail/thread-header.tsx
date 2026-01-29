@@ -245,7 +245,16 @@ export function ThreadHeader({
           {fetchedTagsData && fetchedTagsData.length > 0 && (
             <div className="flex flex-row no-wrap gap-2 shrink-0">
               {fetchedTagsData.map((tag) => (
-                <ThreadTag tag={tag} threadId={threadId} key={tag.id} />
+                <ThreadTag
+                  tag={tag}
+                  threadId={threadId}
+                  key={tag.id}
+                  onRemove={() => {
+                    // Remove this tag from the current tags list
+                    const newTagIds = selectedTags.filter((id) => id !== tag.id)
+                    updateTags(newTagIds)
+                  }}
+                />
               ))}
             </div>
           )}

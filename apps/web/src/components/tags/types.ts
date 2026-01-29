@@ -1,10 +1,11 @@
 // apps/web/src/components/tags/types.ts
 
-import type { RecordMeta } from '~/components/resources'
+import type { RecordMeta, FieldInfo } from '~/components/resources'
 import type { RecordId } from '@auxx/lib/resources/client'
 
 /**
  * Tag record with field values from the entity system
+ * Note: Keys match systemAttribute names (e.g., tag_parent, is_system_tag)
  */
 export interface TagRecord extends RecordMeta {
   fieldValues: {
@@ -12,8 +13,8 @@ export interface TagRecord extends RecordMeta {
     description?: string
     emoji?: string
     color?: string
-    parent?: RecordId[]
-    isSystemTag?: boolean
+    tag_parent?: RecordId[]
+    is_system_tag?: boolean
   }
 }
 
@@ -42,6 +43,8 @@ export interface UseTagHierarchyResult {
   flatTags: TagNode[]
   /** Map of tag ID to TagNode for quick lookups */
   tagMap: Map<string, TagNode>
+  /** Map of field key to field info (for resolving fieldIds when saving) */
+  fields: Record<string, FieldInfo>
   /** Loading state */
   isLoading: boolean
   /** Error if any */

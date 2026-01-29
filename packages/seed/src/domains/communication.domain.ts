@@ -2,7 +2,7 @@
 // Communication domain refinements for support threads and messages with comprehensive seeding
 
 import { createId } from '@paralleldrive/cuid2'
-import { sql } from 'drizzle-orm'
+import { sql, and, eq } from 'drizzle-orm'
 import type { SeedingContext, SeedingScenario, ServiceIntegratorIntegration, ServiceIntegratorInbox } from '../types'
 import { BusinessDistributions } from '../utils/business-distributions'
 import { RelationshipEngine } from '../utils/relationship-engine'
@@ -193,8 +193,8 @@ export class CommunicationDomain {
     // Generate and insert Messages (now with proper participant relationships)
     await this.seedMessages(db, schema, organizationId)
 
-    // Generate and insert TagsOnThread associations
-    await this.seedTagsOnThread(db, schema, organizationId)
+    // Generate and insert thread tag associations (via FieldValue)
+    await this.seedThreadTags(db, schema, organizationId)
   }
 
   /**
@@ -250,13 +250,37 @@ export class CommunicationDomain {
   }
 
   /**
-   * seedTagsOnThread generates and inserts tag-thread associations.
+   * seedThreadTags generates and inserts thread tag associations via FieldValue.
+   * Uses the thread_tags RELATIONSHIP field to store tag assignments.
    * @param db - Drizzle database instance
    * @param schema - Database schema
    * @param organizationId - Organization ID to filter threads and tags
    */
-  private async seedTagsOnThread(db: any, schema: any, organizationId: string): Promise<void> {
+  private async seedThreadTags(db: any, schema: any, organizationId: string): Promise<void> {
     console.log('🏷️  Generating tag-thread associations...')
+
+    // Find the thread_tags custom field
+    const threadTagsField = await db
+      .select({ id: schema.CustomField.id })
+      .from(schema.CustomField)
+      .innerJoin(
+        schema.EntityDefinition,
+        eq(schema.CustomField.entityDefinitionId, schema.EntityDefinition.id)
+      )
+      .where(
+        and(
+          eq(schema.CustomField.systemAttribute, 'thread_tags'),
+          eq(schema.EntityDefinition.organizationId, organizationId)
+        )
+      )
+      .limit(1)
+
+    if (threadTagsField.length === 0) {
+      console.log('⚠️  thread_tags field not found, skipping tag associations')
+      return
+    }
+
+    const fieldId = threadTagsField[0]!.id
 
     // Get existing threads
     const threads = await db
@@ -280,7 +304,14 @@ export class CommunicationDomain {
       return
     }
 
-    const tagAssignments = []
+    const fieldValues: Array<{
+      id: string
+      fieldId: string
+      entityId: string
+      relatedEntityId: string
+      createdAt: Date
+      updatedAt: Date
+    }> = []
 
     threads.forEach((thread: any, threadIndex: number) => {
       // Add 1-3 tags per thread
@@ -289,21 +320,21 @@ export class CommunicationDomain {
       for (let i = 0; i < tagCount; i++) {
         const tag = tags[(threadIndex + i) % tags.length]!
 
-        tagAssignments.push({
-          threadId: thread.id,
-          tagId: tag.id,
+        fieldValues.push({
+          id: `fv_${createId()}`,
+          fieldId,
+          entityId: thread.id,
+          relatedEntityId: tag.id,
           createdAt: new Date(),
+          updatedAt: new Date(),
         })
       }
     })
 
-    if (tagAssignments.length > 0) {
-      await db
-        .insert(schema.TagsOnThread)
-        .values(tagAssignments)
-        .onConflictDoNothing()
+    if (fieldValues.length > 0) {
+      await db.insert(schema.FieldValue).values(fieldValues).onConflictDoNothing()
 
-      console.log(`✅ Upserted ${tagAssignments.length} tag-thread associations`)
+      console.log(`✅ Upserted ${fieldValues.length} tag-thread associations via FieldValue`)
     }
   }
 

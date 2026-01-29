@@ -33,10 +33,6 @@ vi.mock('@auxx/database', () => ({
       createdById: 'createdById',
       isFirstInThread: 'isFirstInThread'
     },
-    TagsOnThread: {
-      threadId: 'threadId',
-      tagId: 'tagId'
-    },
     ThreadReadStatus: {
       threadId: 'threadId',
       userId: 'userId'
@@ -79,9 +75,6 @@ const mockDb = {
     Message: {
       findMany: vi.fn().mockResolvedValue([])
     },
-    TagsOnThread: {
-      findMany: vi.fn().mockResolvedValue([])
-    },
     ThreadReadStatus: {
       findMany: vi.fn().mockResolvedValue([])
     }
@@ -91,9 +84,6 @@ const mockDb = {
       execute: vi.fn(),
       query: {
         Thread: {
-          findMany: vi.fn().mockResolvedValue([])
-        },
-        TagsOnThread: {
           findMany: vi.fn().mockResolvedValue([])
         },
         ThreadReadStatus: {
@@ -317,7 +307,6 @@ describe('ThreadQueryService', () => {
         }
       ])
 
-      mockDb.query.TagsOnThread.findMany.mockResolvedValueOnce([])
       mockDb.query.ThreadReadStatus.findMany.mockResolvedValueOnce([])
 
       const result = await (service as any).fetchThreadRelations(threadIds, input)

@@ -2,8 +2,9 @@
 
 import { type Database, schema } from '@auxx/database'
 import { ThreadStatus, DraftMode } from '@auxx/database/enums'
-import { eq, and, inArray } from 'drizzle-orm'
+import { eq, and, inArray, isNotNull } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
+import { generateId } from '@auxx/utils'
 
 const logger = createScopedLogger('thread-mutation-service')
 
@@ -38,7 +39,7 @@ export class ThreadMutationService {
    */
   async updateThreadStatus(
     threadId: string,
-    status: typeof ThreadStatus[keyof typeof ThreadStatus]
+    status: (typeof ThreadStatus)[keyof typeof ThreadStatus]
   ): Promise<MutationResult> {
     logger.info('Updating thread status', { threadId, status, organizationId: this.organizationId })
 
@@ -46,17 +47,14 @@ export class ThreadMutationService {
       const result = await this.db
         .update(schema.Thread)
         .set({
-          status: status as any
+          status: status as any,
         })
         .where(
-          and(
-            eq(schema.Thread.id, threadId),
-            eq(schema.Thread.organizationId, this.organizationId)
-          )
+          and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, this.organizationId))
         )
         .returning({
           id: schema.Thread.id,
-          status: schema.Thread.status
+          status: schema.Thread.status,
         })
 
       if (result.length === 0) {
@@ -67,7 +65,7 @@ export class ThreadMutationService {
         id: threadId,
         success: true,
         updatedFields: { status },
-        timestamp: new Date()
+        timestamp: new Date(),
       }
     } catch (error: unknown) {
       logger.error('Failed to update thread status', {
@@ -85,10 +83,7 @@ export class ThreadMutationService {
    * Updates the subject of a thread.
    * Returns MutationResult - frontend uses optimistic updates.
    */
-  async updateThreadSubject(
-    threadId: string,
-    subject: string
-  ): Promise<MutationResult> {
+  async updateThreadSubject(threadId: string, subject: string): Promise<MutationResult> {
     logger.info('Updating thread subject', {
       threadId,
       subject,
@@ -102,17 +97,14 @@ export class ThreadMutationService {
       const result = await this.db
         .update(schema.Thread)
         .set({
-          subject: trimmedSubject
+          subject: trimmedSubject,
         })
         .where(
-          and(
-            eq(schema.Thread.id, threadId),
-            eq(schema.Thread.organizationId, this.organizationId)
-          )
+          and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, this.organizationId))
         )
         .returning({
           id: schema.Thread.id,
-          subject: schema.Thread.subject
+          subject: schema.Thread.subject,
         })
 
       if (result.length === 0) {
@@ -123,7 +115,7 @@ export class ThreadMutationService {
         id: threadId,
         success: true,
         updatedFields: { subject: trimmedSubject },
-        timestamp: new Date()
+        timestamp: new Date(),
       }
     } catch (error: unknown) {
       logger.error('Failed to update thread subject', {
@@ -152,11 +144,9 @@ export class ThreadMutationService {
       // Verify assigneeId belongs to the organization if not null
       if (assigneeId) {
         const memberExists = await this.db.query.OrganizationMember.findFirst({
-          where: (members, { eq, and }) => and(
-            eq(members.userId, assigneeId),
-            eq(members.organizationId, this.organizationId)
-          ),
-          columns: { id: true }
+          where: (members, { eq, and }) =>
+            and(eq(members.userId, assigneeId), eq(members.organizationId, this.organizationId)),
+          columns: { id: true },
         })
         if (!memberExists) {
           throw new Error(
@@ -168,17 +158,14 @@ export class ThreadMutationService {
       const result = await this.db
         .update(schema.Thread)
         .set({
-          assigneeId
+          assigneeId,
         })
         .where(
-          and(
-            eq(schema.Thread.id, threadId),
-            eq(schema.Thread.organizationId, this.organizationId)
-          )
+          and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, this.organizationId))
         )
         .returning({
           id: schema.Thread.id,
-          assigneeId: schema.Thread.assigneeId
+          assigneeId: schema.Thread.assigneeId,
         })
 
       if (result.length === 0) {
@@ -189,7 +176,7 @@ export class ThreadMutationService {
         id: threadId,
         success: true,
         updatedFields: { assigneeId },
-        timestamp: new Date()
+        timestamp: new Date(),
       }
     } catch (error: unknown) {
       logger.error('Failed to assign thread', {
@@ -208,7 +195,7 @@ export class ThreadMutationService {
    */
   async updateThreadStatusBulk(
     threadIds: string[],
-    status: typeof ThreadStatus[keyof typeof ThreadStatus],
+    status: (typeof ThreadStatus)[keyof typeof ThreadStatus],
     options: { returnAffectedCount?: boolean } = {}
   ): Promise<{ count: number; affectedIds?: string[] }> {
     if (!threadIds || threadIds.length === 0) return { count: 0 }
@@ -224,7 +211,7 @@ export class ThreadMutationService {
       const result = await this.db
         .update(schema.Thread)
         .set({
-          status: status as any
+          status: status as any,
         })
         .where(
           and(
@@ -232,11 +219,13 @@ export class ThreadMutationService {
             eq(schema.Thread.organizationId, this.organizationId)
           )
         )
-        .returning(options.returnAffectedCount ? { id: schema.Thread.id } : { id: schema.Thread.id })
+        .returning(
+          options.returnAffectedCount ? { id: schema.Thread.id } : { id: schema.Thread.id }
+        )
 
       return {
         count: result.length,
-        ...(options.returnAffectedCount && { affectedIds: result.map(r => r.id) })
+        ...(options.returnAffectedCount && { affectedIds: result.map((r) => r.id) }),
       }
     } catch (error: unknown) {
       logger.error('Failed to update thread status in bulk', {
@@ -272,11 +261,9 @@ export class ThreadMutationService {
       // Optional user validation (only if needed)
       if (options.validateUser && assigneeId) {
         const userExists = await this.db.query.OrganizationMember.findFirst({
-          where: (members, { eq, and }) => and(
-            eq(members.userId, assigneeId),
-            eq(members.organizationId, this.organizationId)
-          ),
-          columns: { id: true } // Minimal select
+          where: (members, { eq, and }) =>
+            and(eq(members.userId, assigneeId), eq(members.organizationId, this.organizationId)),
+          columns: { id: true }, // Minimal select
         })
 
         if (!userExists) {
@@ -289,7 +276,7 @@ export class ThreadMutationService {
       const result = await this.db
         .update(schema.Thread)
         .set({
-          assigneeId
+          assigneeId,
         })
         .where(
           and(
@@ -301,7 +288,7 @@ export class ThreadMutationService {
 
       return {
         count: result.length,
-        errors
+        errors,
       }
     } catch (error: unknown) {
       logger.error('Failed to assign threads in bulk', {
@@ -316,7 +303,8 @@ export class ThreadMutationService {
   }
 
   /**
-   * Most performance-critical operation - completely redesigned for Drizzle
+   * Most performance-critical operation - uses FieldValue storage for tags.
+   * Tags are stored as RELATIONSHIP field values with systemAttribute='thread_tags'.
    */
   async tagThreadsBulk(
     threadIds: string[],
@@ -335,17 +323,38 @@ export class ThreadMutationService {
     const errors: string[] = []
 
     try {
-      // 1. Fast tag validation (batch query)
+      // 1. Get the CustomField ID for thread_tags
+      const tagsField = await this.db
+        .select({ id: schema.CustomField.id })
+        .from(schema.CustomField)
+        .innerJoin(
+          schema.EntityDefinition,
+          eq(schema.CustomField.entityDefinitionId, schema.EntityDefinition.id)
+        )
+        .where(
+          and(
+            eq(schema.CustomField.systemAttribute, 'thread_tags'),
+            eq(schema.EntityDefinition.organizationId, this.organizationId)
+          )
+        )
+        .limit(1)
+
+      if (tagsField.length === 0) {
+        errors.push('Thread tags field not found for organization')
+        return { created: 0, skipped: 0, errors }
+      }
+
+      const fieldId = tagsField[0]!.id
+
+      // 2. Fast tag validation (batch query)
       const existingTags = await this.db.query.Tag.findMany({
-        where: (tags, { and, inArray, eq }) => and(
-          inArray(tags.id, tagIds),
-          eq(tags.organizationId, this.organizationId)
-        ),
-        columns: { id: true }
+        where: (tags, { and, inArray, eq }) =>
+          and(inArray(tags.id, tagIds), eq(tags.organizationId, this.organizationId)),
+        columns: { id: true },
       })
 
-      const validTagIds = existingTags.map(t => t.id)
-      const invalidTagIds = tagIds.filter(id => !validTagIds.includes(id))
+      const validTagIds = existingTags.map((t) => t.id)
+      const invalidTagIds = tagIds.filter((id) => !validTagIds.includes(id))
 
       if (invalidTagIds.length > 0) {
         errors.push(`Invalid tag IDs: ${invalidTagIds.join(', ')}`)
@@ -360,41 +369,60 @@ export class ThreadMutationService {
 
       await this.db.transaction(async (tx) => {
         if (operation === 'set') {
-          // Remove all existing tags for these threads first
-          await tx.delete(schema.TagsOnThread)
-            .where(inArray(schema.TagsOnThread.threadId, threadIds))
+          // Remove all existing tags for these threads first (via FieldValue)
+          await tx
+            .delete(schema.FieldValue)
+            .where(
+              and(
+                eq(schema.FieldValue.fieldId, fieldId),
+                inArray(schema.FieldValue.entityId, threadIds),
+                isNotNull(schema.FieldValue.relatedEntityId)
+              )
+            )
         }
 
         if (operation === 'remove') {
-          const deleteResult = await tx.delete(schema.TagsOnThread)
+          // Delete specific tag assignments (via FieldValue)
+          const deleteResult = await tx
+            .delete(schema.FieldValue)
             .where(
               and(
-                inArray(schema.TagsOnThread.threadId, threadIds),
-                inArray(schema.TagsOnThread.tagId, validTagIds)
+                eq(schema.FieldValue.fieldId, fieldId),
+                inArray(schema.FieldValue.entityId, threadIds),
+                inArray(schema.FieldValue.relatedEntityId, validTagIds)
               )
             )
-            .returning({ threadId: schema.TagsOnThread.threadId })
+            .returning({ entityId: schema.FieldValue.entityId })
           created = deleteResult.length
         } else {
           // 'add' or 'set' - Generate all combinations efficiently
-          const tagsToCreate = threadIds.flatMap(threadId =>
-            validTagIds.map(tagId => ({
-              threadId,
-              tagId,
-              createdAt: new Date()
+          const valuesToCreate = threadIds.flatMap((threadId) =>
+            validTagIds.map((tagId) => ({
+              id: generateId('fv'),
+              fieldId,
+              entityId: threadId,
+              relatedEntityId: tagId,
+              createdAt: new Date(),
+              updatedAt: new Date(),
             }))
           )
 
-          if (tagsToCreate.length > 0) {
-            // Bulk insert with conflict handling (much faster than individual checks)
+          if (valuesToCreate.length > 0) {
+            // Bulk insert with conflict handling using unique constraint
             const result = await tx
-              .insert(schema.TagsOnThread)
-              .values(tagsToCreate)
-              .onConflictDoNothing({ target: [schema.TagsOnThread.threadId, schema.TagsOnThread.tagId] })
-              .returning({ threadId: schema.TagsOnThread.threadId })
+              .insert(schema.FieldValue)
+              .values(valuesToCreate)
+              .onConflictDoNothing({
+                target: [
+                  schema.FieldValue.fieldId,
+                  schema.FieldValue.entityId,
+                  schema.FieldValue.relatedEntityId,
+                ],
+              })
+              .returning({ entityId: schema.FieldValue.entityId })
 
             created = result.length
-            skipped = tagsToCreate.length - result.length
+            skipped = valuesToCreate.length - result.length
           }
         }
       })
@@ -429,10 +457,7 @@ export class ThreadMutationService {
       const result = await this.db
         .delete(schema.Thread)
         .where(
-          and(
-            eq(schema.Thread.id, threadId),
-            eq(schema.Thread.organizationId, this.organizationId)
-          )
+          and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, this.organizationId))
         )
         .returning({ id: schema.Thread.id })
 
@@ -512,19 +537,31 @@ export class ThreadMutationService {
   }
 
   // Convenience bulk status methods
-  async markAsSpamBulk(threadIds: string[], options?: { returnAffectedCount?: boolean }): Promise<{ count: number; affectedIds?: string[] }> {
+  async markAsSpamBulk(
+    threadIds: string[],
+    options?: { returnAffectedCount?: boolean }
+  ): Promise<{ count: number; affectedIds?: string[] }> {
     return this.updateThreadStatusBulk(threadIds, 'SPAM', options)
   }
 
-  async moveToTrashBulk(threadIds: string[], options?: { returnAffectedCount?: boolean }): Promise<{ count: number; affectedIds?: string[] }> {
+  async moveToTrashBulk(
+    threadIds: string[],
+    options?: { returnAffectedCount?: boolean }
+  ): Promise<{ count: number; affectedIds?: string[] }> {
     return this.updateThreadStatusBulk(threadIds, 'TRASH', options)
   }
 
-  async archiveThreadBulk(threadIds: string[], options?: { returnAffectedCount?: boolean }): Promise<{ count: number; affectedIds?: string[] }> {
+  async archiveThreadBulk(
+    threadIds: string[],
+    options?: { returnAffectedCount?: boolean }
+  ): Promise<{ count: number; affectedIds?: string[] }> {
     return this.updateThreadStatusBulk(threadIds, 'ARCHIVED', options)
   }
 
-  async unarchiveThreadBulk(threadIds: string[], options?: { returnAffectedCount?: boolean }): Promise<{ count: number; affectedIds?: string[] }> {
+  async unarchiveThreadBulk(
+    threadIds: string[],
+    options?: { returnAffectedCount?: boolean }
+  ): Promise<{ count: number; affectedIds?: string[] }> {
     return this.updateThreadStatusBulk(threadIds, 'OPEN', options)
   }
 
@@ -538,27 +575,26 @@ export class ThreadMutationService {
   ): Promise<void> {
     // Get all non-draft messages with proper dates (ordered by sentAt ASC for first/last)
     const messages = await this.db.query.Message.findMany({
-      where: (messages, { eq, and, isNotNull }) => and(
-        eq(messages.threadId, threadId),
-        eq(messages.draftMode, DraftMode.NONE),
-        isNotNull(messages.sentAt)
-      ),
+      where: (messages, { eq, and, isNotNull }) =>
+        and(
+          eq(messages.threadId, threadId),
+          eq(messages.draftMode, DraftMode.NONE),
+          isNotNull(messages.sentAt)
+        ),
       columns: { sentAt: true },
-      orderBy: (messages, { asc }) => [asc(messages.sentAt)]
+      orderBy: (messages, { asc }) => [asc(messages.sentAt)],
     })
 
     // Get the latest message with deterministic ordering for latestMessageId
     const latestMessage = await this.db.query.Message.findFirst({
-      where: (messages, { eq, and }) => and(
-        eq(messages.threadId, threadId),
-        eq(messages.draftMode, DraftMode.NONE)
-      ),
+      where: (messages, { eq, and }) =>
+        and(eq(messages.threadId, threadId), eq(messages.draftMode, DraftMode.NONE)),
       columns: { id: true },
       orderBy: (messages, { desc }) => [
         desc(messages.receivedAt),
         desc(messages.sentAt),
-        desc(messages.id)
-      ]
+        desc(messages.id),
+      ],
     })
 
     const messageCount = messages.length
@@ -572,7 +608,7 @@ export class ThreadMutationService {
         messageCount,
         firstMessageAt,
         lastMessageAt,
-        latestMessageId
+        latestMessageId,
       })
       .where(eq(schema.Thread.id, threadId))
 
@@ -592,31 +628,31 @@ export class ThreadMutationService {
   async updateThreadParticipants(threadId: string): Promise<void> {
     // Get messages and their participants for this thread
     const messages = await this.db.query.Message.findMany({
-      where: (messages, { eq, and }) => and(
-        eq(messages.threadId, threadId),
-        eq(messages.draftMode, DraftMode.NONE)
-      ),
+      where: (messages, { eq, and }) =>
+        and(eq(messages.threadId, threadId), eq(messages.draftMode, DraftMode.NONE)),
       columns: { id: true },
       with: {
         participants: {
-          columns: { participantId: true }
-        }
-      }
+          columns: { participantId: true },
+        },
+      },
     })
 
     // Extract unique participant IDs
-    const participantIds = [...new Set(
-      messages
-        .flatMap(m => m.participants)
-        .map(p => p.participantId)
-        .filter(Boolean)
-    )]
+    const participantIds = [
+      ...new Set(
+        messages
+          .flatMap((m) => m.participants)
+          .map((p) => p.participantId)
+          .filter(Boolean)
+      ),
+    ]
 
     await this.db
       .update(schema.Thread)
       .set({
         participantIds,
-        participantCount: participantIds.length
+        participantCount: participantIds.length,
       })
       .where(eq(schema.Thread.id, threadId))
 

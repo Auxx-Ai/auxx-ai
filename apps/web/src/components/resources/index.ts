@@ -22,6 +22,8 @@ export {
   useRecordHydration,
   // Entity field values
   useEntityValues,
+  // Types
+  type FieldInfo,
 } from './hooks'
 
 // Store utilities (for advanced use cases)

@@ -136,6 +136,18 @@ export {
   type RelationshipErrorCode,
 } from './relationship-errors'
 
+// Relationship query helpers (for TagsOnThread migration)
+export {
+  threadHasAnyTags,
+  threadHasNoTags,
+  threadHasTags,
+  threadDoesNotHaveTags,
+  getThreadTagIds,
+  batchGetThreadTagIds,
+  getThreadsWithTag,
+  threadHasTagMatchingSearch,
+} from './relationship-queries'
+
 // Display field types and config
 export type {
   DisplayFieldType,

@@ -26,6 +26,7 @@ export function useTagHierarchy(): UseTagHierarchyResult {
   const {
     records,
     entityDefinitionId,
+    fields,
     isLoading,
     error,
     refresh,
@@ -42,7 +43,7 @@ export function useTagHierarchy(): UseTagHierarchyResult {
     // Convert records to TagNode format
     const nodes: TagNode[] = records.map((record) => {
       // Extract parent ID from relationship field (RecordId[] format)
-      const parentRecordIds = record.fieldValues.parent ?? []
+      const parentRecordIds = record.fieldValues.tag_parent ?? []
       const parentId = parentRecordIds.length > 0
         ? parentRecordIds[0].split(':')[1] ?? null
         : null
@@ -55,7 +56,7 @@ export function useTagHierarchy(): UseTagHierarchyResult {
         emoji: record.fieldValues.emoji ?? null,
         color: record.fieldValues.color ?? '#94a3b8',
         parentId,
-        isSystemTag: record.fieldValues.isSystemTag ?? false,
+        isSystemTag: record.fieldValues.is_system_tag ?? false,
         children: [],
       }
     })
@@ -96,6 +97,7 @@ export function useTagHierarchy(): UseTagHierarchyResult {
     hierarchy,
     flatTags,
     tagMap,
+    fields,
     isLoading,
     error,
     entityDefinitionId,

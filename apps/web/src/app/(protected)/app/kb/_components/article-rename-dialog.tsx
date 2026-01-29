@@ -13,8 +13,7 @@ import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Form, FormControl, FormField, FormItem, FormMessage } from '@auxx/ui/components/form'
 import { Input } from '@auxx/ui/components/input'
 import { Button } from '@auxx/ui/components/button'
-import { FormEmojiPicker } from '~/components/pickers/emoji-picker'
-// import { EmojiPicker } from '~/components/emoji-picker' // Existing component
+import { FormEmojiPicker } from '@auxx/ui/components/emoji-picker'
 
 // Form schema
 const formSchema = z.object({

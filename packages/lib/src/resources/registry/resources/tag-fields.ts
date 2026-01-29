@@ -122,14 +122,14 @@ export const TAG_FIELDS: Record<string, ResourceField> = {
   },
 
   // Self-referential: parent tag
-  parent: {
-    id: toFieldId('parent'),
-    key: 'parent',
+  tag_parent: {
+    id: toFieldId('tag_parent'),
+    key: 'tag_parent',
     label: 'Parent Tag',
     type: BaseType.RELATION,
     fieldType: FieldType.RELATIONSHIP,
     isSystem: true,
-    systemAttribute: 'parent_id',
+    systemAttribute: 'tag_parent',
     systemSortOrder: 'a5',
     dbColumn: 'parentId',
     nullable: true,
@@ -141,7 +141,7 @@ export const TAG_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     relationship: {
-      inverseResourceFieldId: 'tag:children' as ResourceFieldId,
+      inverseResourceFieldId: 'tag:tag_children' as ResourceFieldId,
       relationshipType: 'belongs_to',
       isInverse: false,
       // Self-referential constraints
@@ -154,9 +154,9 @@ export const TAG_FIELDS: Record<string, ResourceField> = {
   },
 
   // Inverse: child tags
-  children: {
-    id: toFieldId('children'),
-    key: 'children',
+  tag_children: {
+    id: toFieldId('tag_children'),
+    key: 'tag_children',
     label: 'Child Tags',
     type: BaseType.RELATION,
     fieldType: FieldType.RELATIONSHIP,
@@ -172,16 +172,16 @@ export const TAG_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     relationship: {
-      inverseResourceFieldId: 'tag:parent' as ResourceFieldId,
+      inverseResourceFieldId: 'tag:tag_parent' as ResourceFieldId,
       relationshipType: 'has_many',
       isInverse: true,
     },
   },
 
   // Inverse: threads with this tag
-  threads: {
-    id: toFieldId('threads'),
-    key: 'threads',
+  tag_threads: {
+    id: toFieldId('tag_threads'),
+    key: 'tag_threads',
     label: 'Threads',
     type: BaseType.RELATION,
     fieldType: FieldType.RELATIONSHIP,
@@ -203,9 +203,9 @@ export const TAG_FIELDS: Record<string, ResourceField> = {
     },
   },
 
-  isSystemTag: {
-    id: toFieldId('isSystemTag'),
-    key: 'isSystemTag',
+  is_system_tag: {
+    id: toFieldId('is_system_tag'),
+    key: 'is_system_tag',
     label: 'System Tag',
     type: BaseType.BOOLEAN,
     fieldType: FieldType.CHECKBOX,

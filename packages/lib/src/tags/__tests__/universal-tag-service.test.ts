@@ -19,10 +19,6 @@ const mockDb = {
       findFirst: vi.fn(),
       findMany: vi.fn(),
     },
-    TagsOnThread: {
-      findFirst: vi.fn(),
-      findMany: vi.fn(),
-    },
   },
   insert: vi.fn(),
   update: vi.fn(),

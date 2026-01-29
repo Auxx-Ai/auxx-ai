@@ -821,7 +821,8 @@ export class ResourceRegistryService {
         // Core identifiers
         id: fieldId,
         resourceFieldId,
-        key: field.name,
+        // For system fields, use systemAttribute as key (e.g., 'title'); for custom fields use name
+        key: field.systemAttribute ?? field.name,
         label: field.name,
         type: baseType,
 
