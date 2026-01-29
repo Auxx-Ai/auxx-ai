@@ -4,20 +4,24 @@
 // Only import from client-safe paths.
 import { BaseType } from '../workflow-engine/types'
 import { FieldType } from '@auxx/database/enums'
-import type { Operator } from '../conditions/operator-definitions'
+import type { FieldOptions } from '../custom-fields/field-options'
+import { getOperatorsForFieldType, type Operator } from '../conditions/operator-definitions'
 
 /**
  * Field definition for mail view filters.
  * Compatible with ConditionProvider's FieldDefinition interface.
+ *
+ * NOTE: operators are derived from fieldType using getOperatorsForFieldType()
+ * - Use getDefaultOperatorForField() to get the first valid operator
+ * - Use getOperatorsForFieldType(field.fieldType) to get all valid operators
  */
 export interface MailViewFieldDefinition {
   id: string
   label: string
   type: BaseType
-  fieldType?: typeof FieldType[keyof typeof FieldType]
-  operators?: Operator[]
-  options?: Array<{ label: string; value: string }>
-  targetTable?: string
+  fieldType: typeof FieldType[keyof typeof FieldType]
+  /** Field-specific options using unified FieldOptions type */
+  options?: FieldOptions
   placeholder?: string
   description?: string
 }
@@ -25,6 +29,8 @@ export interface MailViewFieldDefinition {
 /**
  * Field definitions for mail view filters.
  * Defines all filterable fields for threads in mail views.
+ *
+ * NOTE: operators are automatically derived from fieldType using getOperatorsForFieldType()
  */
 export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
   // ═══════════════════════════════════════════════════════════════════════════
@@ -35,8 +41,13 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
     label: 'Tag',
     type: BaseType.RELATION,
     fieldType: FieldType.RELATIONSHIP,
-    targetTable: 'Tag',
-    operators: ['in', 'not in', 'empty', 'not empty'],
+    options: {
+      relationship: {
+        inverseResourceFieldId: 'Tag:threads',
+        relationshipType: 'has_many',
+        isInverse: false,
+      },
+    },
     placeholder: 'Select tags...',
     description: 'Filter by tags applied to threads',
   },
@@ -45,8 +56,13 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
     label: 'Label',
     type: BaseType.RELATION,
     fieldType: FieldType.RELATIONSHIP,
-    targetTable: 'Label',
-    operators: ['in', 'not in', 'empty', 'not empty'],
+    options: {
+      relationship: {
+        inverseResourceFieldId: 'Label:threads',
+        relationshipType: 'has_many',
+        isInverse: false,
+      },
+    },
     placeholder: 'Select labels...',
     description: 'Filter by labels on threads',
   },
@@ -55,8 +71,12 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
     label: 'Assignee',
     type: BaseType.ACTOR,
     fieldType: FieldType.ACTOR,
-    targetTable: 'TeamMember',
-    operators: ['is', 'is not', 'in', 'not in', 'empty', 'not empty'],
+    options: {
+      actor: {
+        target: 'user',
+        multiple: false,
+      },
+    },
     placeholder: 'Select assignees...',
     description: 'Filter by assigned team member',
   },
@@ -65,8 +85,13 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
     label: 'Inbox',
     type: BaseType.RELATION,
     fieldType: FieldType.RELATIONSHIP,
-    targetTable: 'Inbox',
-    operators: ['is', 'is not', 'in', 'not in', 'empty', 'not empty'],
+    options: {
+      relationship: {
+        inverseResourceFieldId: 'Inbox:threads',
+        relationshipType: 'has_many',
+        isInverse: false,
+      },
+    },
     placeholder: 'Select inboxes...',
     description: 'Filter by inbox',
   },
@@ -79,7 +104,6 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
     label: 'Sender',
     type: BaseType.EMAIL,
     fieldType: FieldType.EMAIL,
-    operators: ['is', 'is not', 'contains', 'not contains', 'empty', 'not empty'],
     placeholder: 'Email address...',
     description: 'Filter by sender email address',
   },
@@ -88,7 +112,6 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
     label: 'From',
     type: BaseType.EMAIL,
     fieldType: FieldType.EMAIL,
-    operators: ['is', 'is not', 'contains', 'not contains', 'empty', 'not empty'],
     placeholder: 'Sender email...',
     description: 'Filter by sender email address',
   },
@@ -97,7 +120,6 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
     label: 'To',
     type: BaseType.EMAIL,
     fieldType: FieldType.EMAIL,
-    operators: ['is', 'is not', 'contains', 'not contains', 'empty', 'not empty'],
     placeholder: 'Recipient email...',
     description: 'Filter by recipient email address',
   },
@@ -106,7 +128,6 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
     label: 'Subject',
     type: BaseType.STRING,
     fieldType: FieldType.TEXT,
-    operators: ['is', 'is not', 'contains', 'not contains', 'empty', 'not empty'],
     placeholder: 'Subject text...',
     description: 'Filter by thread subject',
   },
@@ -115,7 +136,6 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
     label: 'Body',
     type: BaseType.STRING,
     fieldType: FieldType.TEXT,
-    operators: ['contains', 'not contains'],
     placeholder: 'Body text...',
     description: 'Filter by email body content',
   },
@@ -128,13 +148,14 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
     label: 'Status',
     type: BaseType.ENUM,
     fieldType: FieldType.SINGLE_SELECT,
-    operators: ['is', 'is not'],
-    options: [
-      { label: 'Open', value: 'OPEN' },
-      { label: 'Archived', value: 'ARCHIVED' },
-      { label: 'Trash', value: 'TRASH' },
-      { label: 'Spam', value: 'SPAM' },
-    ],
+    options: {
+      options: [
+        { value: 'OPEN', label: 'Open' },
+        { value: 'ARCHIVED', label: 'Archived' },
+        { value: 'TRASH', label: 'Trash' },
+        { value: 'SPAM', label: 'Spam' },
+      ],
+    },
     description: 'Filter by thread status',
   },
 
@@ -146,7 +167,6 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
     label: 'Date',
     type: BaseType.DATE,
     fieldType: FieldType.DATE,
-    operators: ['before', 'after', 'on', 'empty', 'not empty'],
     placeholder: 'Select date...',
     description: 'Filter by date',
   },
@@ -155,7 +175,6 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
     label: 'Before',
     type: BaseType.DATE,
     fieldType: FieldType.DATE,
-    operators: ['before'],
     placeholder: 'Select date...',
     description: 'Filter messages before date',
   },
@@ -164,7 +183,6 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
     label: 'After',
     type: BaseType.DATE,
     fieldType: FieldType.DATE,
-    operators: ['after'],
     placeholder: 'Select date...',
     description: 'Filter messages after date',
   },
@@ -177,7 +195,6 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
     label: 'Has Attachments',
     type: BaseType.BOOLEAN,
     fieldType: FieldType.CHECKBOX,
-    operators: ['is'],
     description: 'Filter by attachment presence',
   },
 
@@ -189,7 +206,6 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
     label: 'Search',
     type: BaseType.STRING,
     fieldType: FieldType.TEXT,
-    operators: ['contains'],
     placeholder: 'Search text...',
     description: 'Free text search across all fields',
   },
@@ -211,11 +227,16 @@ export function getMailViewFields(): MailViewFieldDefinition[] {
 
 /**
  * Get default operator for a field.
+ * Derives valid operators from the field's fieldType.
  */
 export function getDefaultOperatorForField(fieldId: string): Operator {
   const field = getMailViewFieldDefinition(fieldId)
-  if (!field || !field.operators || field.operators.length === 0) {
+  if (!field) {
     return 'is'
   }
-  return field.operators[0]
+  const operators = getOperatorsForFieldType(field.fieldType)
+  if (operators.length === 0) {
+    return 'is'
+  }
+  return operators[0].key as Operator
 }

@@ -13,7 +13,15 @@ import { and, or, eq, ilike, inArray } from 'drizzle-orm'
 import { SearchOperator, IsOperatorValue } from '@auxx/lib/mail-query'
 import { createScopedLogger } from '@auxx/logger'
 import { ParticipantRole } from '@auxx/database/enums'
+
 const logger = createScopedLogger('search-router')
+
+/** Schema for search conditions stored in recent searches */
+const searchConditionSchema = z.object({
+  fieldId: z.string(),
+  operator: z.string(),
+  value: z.any(),
+})
 // Helper function to get operator description
 const getOperatorDescription = (operator: string): string => {
   const descriptions: Record<string, string> = {
@@ -304,11 +312,117 @@ export const searchRouter = createTRPCRouter({
         contact: p.contact || null,
       }))
     }),
-  // Save search query (called when user executes a search)
+  // Save search query (called when user executes a search) - DEPRECATED
   saveQuery: protectedProcedure
     .input(z.object({ query: z.string() }))
     .mutation(async ({ input, ctx }) => {
       await saveSearchQuery(ctx, input.query)
       return { success: true }
+    }),
+
+  // ─────────────────────────────────────────────────────────────────
+  // NEW: Condition-based recent searches
+  // ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Get recent searches with stored conditions
+   * Returns conditions as JSON for restoring full filter state
+   * Supports both new condition-based format and legacy text format
+   */
+  recentSearches: protectedProcedure.query(async ({ ctx }) => {
+    const userId = ctx.session.userId
+    const organizationId = ctx.session.organizationId
+
+    try {
+      const model = new SearchHistoryModel(organizationId)
+      const recentRes = await model.findMany({ orderBy: undefined as any, limit: 20 })
+      const recents = recentRes.ok ? recentRes.value : []
+
+      // Parse and deduplicate
+      const seen = new Set<string>()
+      const uniqueRecents = []
+
+      for (const r of recents) {
+        const query = (r as any).query || ''
+
+        // Check if it's a condition-based search (new format)
+        if (query.startsWith('__CONDITIONS__')) {
+          try {
+            const jsonStr = query.slice('__CONDITIONS__'.length)
+            const data = JSON.parse(jsonStr)
+            const displayText = data.displayText || ''
+
+            if (!seen.has(displayText)) {
+              seen.add(displayText)
+              uniqueRecents.push({
+                id: (r as any).id,
+                displayText,
+                conditions: data.conditions || [],
+                conditionCount: Array.isArray(data.conditions) ? data.conditions.length : 0,
+                createdAt: (r as any).createdAt,
+              })
+            }
+          } catch {
+            // Skip malformed entries
+            continue
+          }
+        } else {
+          // Legacy text-based search - skip for now
+          // These don't have restorable conditions
+          continue
+        }
+
+        if (uniqueRecents.length >= 5) break
+      }
+
+      return uniqueRecents
+    } catch (error) {
+      logger.error('Failed to fetch recent searches', { error })
+      return []
+    }
+  }),
+
+  /**
+   * Save search with conditions (new format)
+   * Stores conditions as JSON in the query field for now
+   * TODO: Add proper conditions JSONB column to SearchHistory table
+   */
+  saveSearch: protectedProcedure
+    .input(
+      z.object({
+        conditions: z.array(searchConditionSchema),
+        displayText: z.string(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const userId = ctx.session.userId
+      const organizationId = ctx.session.organizationId
+
+      try {
+        const model = new SearchHistoryModel(organizationId)
+
+        // Clean up old entries if at limit
+        const existingCountRes = await model.countByUser(userId)
+        const existingCount = existingCountRes.ok ? existingCountRes.value : 0
+        if (existingCount >= 20) {
+          const oldestRes = await model.findOldestByUser(userId, existingCount - 19)
+          const oldestEntries = oldestRes.ok ? oldestRes.value : []
+          if (oldestEntries.length) {
+            await model.deleteMany(oldestEntries.map((e: any) => e.id))
+          }
+        }
+
+        // Store as JSON string with special prefix to identify condition-based searches
+        // Format: __CONDITIONS__:{displayText}:{conditionsJSON}
+        const searchData = JSON.stringify({
+          displayText: input.displayText,
+          conditions: input.conditions,
+        })
+        await model.createForUser(userId, `__CONDITIONS__${searchData}`)
+        return { success: true }
+      } catch (error) {
+        logger.error('Failed to save search', { error })
+        return { success: false }
+      }
     }),
 })

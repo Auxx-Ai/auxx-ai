@@ -2,13 +2,15 @@
 
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useState, useEffect, useMemo } from 'react'
 import { X } from 'lucide-react'
 import { cn } from '@auxx/ui/lib/utils'
+import { Button } from '@auxx/ui/components/button'
 import { useConditionContext } from '../condition-context'
 import ConditionOperator from './condition-operator'
 import ResourceFieldSelector from './resource-field-selector'
 import { ResourceInput } from '../inputs/resource-input'
+import { resolveFieldInputConfig, FieldInputMode } from '@auxx/lib/conditions/client'
 import { operatorRequiresValue } from '../types'
 import type { ConditionItemProps, Operator } from '../types'
 
@@ -36,6 +38,7 @@ export const ConditionBadge = ({
   onRemove,
 }: ConditionBadgeProps) => {
   const [isHovered, setIsHovered] = useState(false)
+  const [valuePickerOpen, setValuePickerOpen] = useState(false)
   const {
     config,
     readOnly,
@@ -46,6 +49,26 @@ export const ConditionBadge = ({
   } = useConditionContext()
 
   const fieldDef = getFieldDefinition(condition.fieldId)
+
+  // Resolve input configuration based on field type and operator
+  const inputConfig = useMemo(() => {
+    return resolveFieldInputConfig(fieldDef?.fieldType ?? 'TEXT', condition.operator)
+  }, [fieldDef?.fieldType, condition.operator])
+
+  // Whether this condition requires a value input
+  const hasInput = inputConfig.mode !== FieldInputMode.NONE
+
+  // Auto-open value picker when condition is created with undefined value
+  // Only auto-open if the operator requires a value input
+  useEffect(() => {
+    if (condition.value === undefined && !valuePickerOpen && hasInput) {
+      // Small delay to ensure component is mounted
+      const timer = setTimeout(() => {
+        setValuePickerOpen(true)
+      }, 100)
+      return () => clearTimeout(timer)
+    }
+  }, [condition.id, hasInput]) // Only run on initial mount (using condition.id as dependency)
 
   const handleUpdate = useCallback(
     (updates: Partial<typeof condition>) => {
@@ -117,72 +140,79 @@ export const ConditionBadge = ({
     [handleUpdate]
   )
 
+  console.log('condition', condition)
   return (
     <div
       data-slot="condition-badge"
       className={cn(
-        'inline-flex items-center rounded-xl bg-primary-200/30 border shrink-0',
+        'flex flex-row h-7 items-center rounded-xl bg-primary-200/30 border shrink-0',
         isHighlighted && 'ring-2 ring-info',
         isHovered && 'bg-destructive/10 border-destructive/20',
         className
       )}>
-      <div className="flex flex-row items-center p-0 gap-0">
-        {/* Field Selector */}
-        <div className="max-w-[120px]">
-          <ResourceFieldSelector
-            value={condition.fieldId}
-            onChange={handleFieldChange}
-            disabled={readOnly}
-            placeholder="Field"
-            className="h-5 w-full border-0 px-1 text-xs bg-transparent"
-            availableFields={getAvailableFields()}
-          />
+      {/* Field Selector */}
+      <ResourceFieldSelector
+        value={condition.fieldId}
+        onChange={handleFieldChange}
+        disabled={readOnly}
+        placeholder="Field"
+        availableFields={getAvailableFields()}
+        renderTrigger={() => (
+          <Button
+            variant="transparent"
+            className={cn(
+              'h-7 hover:bg-primary-200/50 px-1.5 text-xs rounded-r-none border-r',
+              isHovered && 'border-destructive/20'
+            )}>
+            {fieldDef?.label ?? 'Field'}
+          </Button>
+        )}
+      />
+
+      {/* Operator Selector */}
+      <ConditionOperator
+        fieldId={condition.fieldId}
+        value={condition.operator}
+        onChange={handleOperatorChange}
+        disabled={!condition.fieldId || readOnly}
+        className={cn(
+          'h-7 hover:bg-primary-200/50 px-1.5 text-xs rounded-none border-r',
+          isHovered && 'border-destructive/20'
+        )}
+      />
+
+      {/* Value Input */}
+      <ResourceInput
+        condition={condition}
+        field={fieldDef}
+        value={condition.value}
+        onChange={handleValueChange}
+        disabled={readOnly}
+        className="text-xs"
+        triggerProps={{
+          size: 'sm',
+          className: 'min-h-7 h-7 ps-1 pe-1 mx-0',
+          hideIcon: true,
+        }}
+        open={valuePickerOpen}
+        onOpenChange={setValuePickerOpen}
+      />
+
+      {/* Remove Button */}
+      {showRemoveButton && !readOnly && (
+        <div
+          onClick={handleRemove}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+          className={cn(
+            'h-7 w-7 cursor-pointer rounded-r-xl flex items-center shrink-0 justify-center ',
+            'text-muted-foreground hover:text-destructive hover:bg-destructive/10 hover:border-destructive/20',
+            hasInput ? 'border-l' : ''
+          )}
+          aria-label="Remove condition">
+          <X className="size-3.5 shrink-0" />
         </div>
-
-        {/* Operator Selector */}
-        <ConditionOperator
-          fieldId={condition.fieldId}
-          value={condition.operator}
-          onChange={handleOperatorChange}
-          disabled={!condition.fieldId || readOnly}
-        />
-
-        {/* Value Input */}
-        {fieldDef && operatorRequiresValue(condition.operator) && (
-          <>
-            <div className="h-3 w-[1px] bg-divider shrink-0" />
-            <div className="min-w-[80px] max-w-[150px]">
-              <ResourceInput
-                condition={condition}
-                field={fieldDef}
-                value={condition.value}
-                onChange={handleValueChange}
-                disabled={readOnly}
-                className="text-xs"
-              />
-            </div>
-          </>
-        )}
-
-        {/* Remove Button */}
-        {showRemoveButton && !readOnly && (
-          <>
-            <div className="h-3 w-[1px] bg-divider shrink-0 ml-1" />
-            <button
-              type="button"
-              onClick={handleRemove}
-              onMouseEnter={() => setIsHovered(true)}
-              onMouseLeave={() => setIsHovered(false)}
-              className={cn(
-                'rounded-full size-5 flex items-center justify-center ml-0.5 mr-0.5',
-                'text-muted-foreground hover:text-destructive hover:bg-destructive/10'
-              )}
-              aria-label="Remove condition">
-              <X className="size-3.5" />
-            </button>
-          </>
-        )}
-      </div>
+      )}
     </div>
   )
 }

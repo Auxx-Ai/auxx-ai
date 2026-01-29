@@ -14,11 +14,11 @@ import {
 import type { RecordId } from '@auxx/types/resource'
 import type { ActorId } from '@auxx/types/actor'
 import { toRecordId } from '@auxx/lib/resources/client'
-import { cn } from '@auxx/ui/lib/utils'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
 import { ActorPicker } from '~/components/pickers/actor-picker/actor-picker'
 import { SelectFieldInput, getSelectConfig } from './select-input-field'
 import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
+import type { PickerTriggerOptions } from '~/components/ui/picker-trigger'
 import {
   StringInput,
   NumberInput,
@@ -46,12 +46,16 @@ export interface FieldInputAdapterProps {
   placeholder?: string
   /** Disabled state */
   disabled?: boolean
-  /** Additional className */
-  className?: string
   /** Callback when options change (for TAGS management) */
   onOptionsChange?: (options: SelectOption[]) => void
   /** Override multi-select behavior (for operators like "in"/"not in") */
   allowMultiple?: boolean
+  /** Trigger customization options for picker-based inputs */
+  triggerProps?: PickerTriggerOptions
+  /** Controlled open state for picker-based inputs */
+  open?: boolean
+  /** Callback when picker open state changes */
+  onOpenChange?: (open: boolean) => void
 }
 
 /**
@@ -66,9 +70,11 @@ export function FieldInputAdapter({
   onChange,
   placeholder = 'Enter value...',
   disabled = false,
-  className,
   onOptionsChange,
   allowMultiple,
+  triggerProps,
+  open,
+  onOpenChange,
 }: FieldInputAdapterProps) {
   // For NodeInputProps-compatible components
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -168,8 +174,10 @@ export function FieldInputAdapter({
             multi={multi}
             placeholder={placeholder}
             disabled={disabled}
-            className={className}
             onCreate={handleOpenCreate}
+            triggerProps={triggerProps}
+            open={open}
+            onOpenChange={onOpenChange}
           />
           {createDialogOpen && createEntityDefinitionId && (
             <EntityInstanceDialog
@@ -205,8 +213,9 @@ export function FieldInputAdapter({
           multi={multi}
           emptyLabel={placeholder}
           disabled={disabled}
-          triggerVariant="transparent"
-          triggerClassName={cn('w-full ps-0 pe-1', className)}
+          triggerProps={triggerProps}
+          open={open}
+          onOpenChange={onOpenChange}
         />
       )
     }
@@ -221,7 +230,8 @@ export function FieldInputAdapter({
       const options = fieldOptions?.options ?? []
       const baseConfig = getSelectConfig(fieldType)
       // Override multi if allowMultiple is explicitly set
-      const config = allowMultiple !== undefined ? { ...baseConfig, multi: allowMultiple } : baseConfig
+      const config =
+        allowMultiple !== undefined ? { ...baseConfig, multi: allowMultiple } : baseConfig
 
       // Value should already be string[] - caller normalizes
       const selectedValues = (value as string[]) || []
@@ -235,7 +245,9 @@ export function FieldInputAdapter({
           config={config}
           placeholder={placeholder}
           disabled={disabled}
-          className={className}
+          triggerProps={triggerProps}
+          open={open}
+          onOpenChange={onOpenChange}
         />
       )
     }
@@ -294,13 +306,13 @@ export function FieldInputAdapter({
     // DATE/TIME - uses DateTimeInput
     // ─────────────────────────────────────────────────────────────────
     case FieldType.DATE:
-      return <DateTimeInput {...nodeInputProps} type="date" />
+      return <DateTimeInput {...nodeInputProps} type="date" triggerProps={triggerProps} />
 
     case FieldType.DATETIME:
-      return <DateTimeInput {...nodeInputProps} type="datetime" />
+      return <DateTimeInput {...nodeInputProps} type="datetime" triggerProps={triggerProps} />
 
     case FieldType.TIME:
-      return <DateTimeInput {...nodeInputProps} type="time" />
+      return <DateTimeInput {...nodeInputProps} type="time" triggerProps={triggerProps} />
 
     // ─────────────────────────────────────────────────────────────────
     // FILE - uses FileInput

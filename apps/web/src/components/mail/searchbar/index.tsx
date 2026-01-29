@@ -10,6 +10,7 @@ import { Command, CommandList } from '@auxx/ui/components/command'
 import { Badge } from '@auxx/ui/components/badge'
 
 import { SearchFilterInput } from './search-filter-input'
+import type { AutosizeInputRef } from '@auxx/ui/components/autosize-input'
 import { SearchSuggestionsList, type SearchSuggestion } from './search-suggestions-list'
 import { AdvancedFilterMode } from './advanced-filter-mode'
 import { useSearchSuggestions, useSaveSearchQuery } from './_hooks/use-search-suggestions'
@@ -47,23 +48,6 @@ export interface SearchBarProps extends MailSearchBarProps {}
 export const SearchBar = MailSearchBar
 
 /**
- * Map suggestion type to condition fieldId
- */
-function mapSuggestionTypeToFieldId(type: string): string {
-  const map: Record<string, string> = {
-    tag: 'tag',
-    user: 'assignee',
-    participant: 'from',
-    inbox: 'inbox',
-    status: 'status',
-    has: 'hasAttachments',
-    operator: 'freeText',
-    recent: 'freeText',
-  }
-  return map[type] || 'freeText'
-}
-
-/**
  * MailSearchBar component with store-driven condition management.
  * Supports both inline text input and structured condition badges.
  * Wrapped in ConditionProvider so ConditionBadge components can access context.
@@ -75,7 +59,7 @@ export function MailSearchBar({
   debounceDelay = 500,
   isLoading = false,
 }: MailSearchBarProps) {
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<AutosizeInputRef>(null)
   const commandRef = useRef<HTMLDivElement>(null)
 
   // Local UI state
@@ -96,11 +80,6 @@ export function MailSearchBar({
 
   // Save search query hook
   const saveSearchQuery = useSaveSearchQuery()
-
-  // Parse operator from input (e.g., "tag:urgent" -> operator: "tag", query: "urgent")
-  const operatorMatch = inputValue.match(/^(\w+):(.*)$/)
-  const currentOperator = operatorMatch?.[1]?.toLowerCase()
-  const currentQuery = operatorMatch?.[2] ?? inputValue
 
   // Get suggestions
   const { suggestions, isLoading: suggestionsLoading } = useSearchSuggestions({
@@ -135,48 +114,53 @@ export function MailSearchBar({
   /** Handle suggestion selection */
   const handleSuggestionSelect = useCallback(
     (suggestion: SearchSuggestion) => {
-      // Operator selection - set input to that operator
-      if (suggestion.type === 'operator') {
-        setInputValue(suggestion.value)
-        return
-      }
-
-      // Recent search - execute immediately
-      if (suggestion.type === 'recent') {
-        onSearch(suggestion.value)
+      // Recent search - restore conditions and execute
+      if (suggestion.type === 'recent' && suggestion.conditions) {
+        actions.setConditions(suggestion.conditions)
         setInputValue('')
+        // Execute search with restored conditions
+        setTimeout(() => {
+          onSearch(displayText)
+        }, 0)
         setIsOpen(false)
         return
       }
 
-      // Map suggestion to fieldId and add condition
-      const fieldId = mapSuggestionTypeToFieldId(currentOperator || suggestion.type)
-      const operator = getDefaultOperatorForField(fieldId)
+      // Field selection - add condition with undefined value
+      // The ConditionBadge will detect undefined value and auto-open the picker
+      if (suggestion.type === 'field' && suggestion.fieldId) {
+        const fieldDef = suggestion.fieldDefinition
+        const defaultOperator = fieldDef
+          ? getDefaultOperatorForField(suggestion.fieldId)
+          : 'is'
 
-      // Handle different field types
-      switch (fieldId) {
-        case 'tag':
-        case 'assignee':
-        case 'inbox':
-          // Entity fields use value as ID, label as display
-          actions.addCondition(fieldId, operator, suggestion.value, suggestion.label)
-          break
-        case 'hasAttachments':
-          actions.addCondition(fieldId, 'is', true)
-          break
-        case 'status':
-          actions.addCondition(fieldId, 'is', suggestion.value)
-          break
-        default:
-          // Text fields use value directly
-          actions.addCondition(fieldId, operator, suggestion.value)
+        // Add condition with undefined value - picker will auto-open
+        actions.addCondition(suggestion.fieldId, defaultOperator, undefined)
+        setInputValue('')
+        setHighlightedSuggestionIndex(-1)
+        return
       }
-
-      setInputValue('')
-      setHighlightedSuggestionIndex(-1)
     },
-    [currentOperator, actions, onSearch]
+    [actions, onSearch, displayText]
   )
+
+  /** Execute search with current conditions */
+  const executeSearch = useCallback(() => {
+    const query = displayText
+    onSearch(query)
+    // Save conditions for recent searches
+    if (conditions.length > 0) {
+      saveSearchQuery(
+        conditions.map((c) => ({
+          fieldId: c.fieldId,
+          operator: c.operator,
+          value: c.value,
+        })),
+        query
+      )
+    }
+    setIsOpen(false)
+  }, [displayText, conditions, onSearch, saveSearchQuery])
 
   /** Handle input keydown for suggestion navigation and condition creation */
   const handleInputKeyDown = useCallback(
@@ -193,7 +177,7 @@ export function MailSearchBar({
         return
       }
 
-      // Enter to select suggestion or add condition
+      // Enter to select suggestion or add free text
       if (e.key === 'Enter') {
         e.preventDefault()
 
@@ -203,55 +187,7 @@ export function MailSearchBar({
           return
         }
 
-        // Add typed value as condition
-        if (currentOperator && currentQuery) {
-          // Entity operators need autocomplete selection
-          if (['tag', 'assignee', 'inbox'].includes(currentOperator)) {
-            // Don't add without selection
-            return
-          }
-
-          switch (currentOperator) {
-            case 'from':
-              actions.addCondition('from', 'contains', currentQuery)
-              break
-            case 'to':
-              actions.addCondition('to', 'contains', currentQuery)
-              break
-            case 'subject':
-              actions.addCondition('subject', 'contains', currentQuery)
-              break
-            case 'body':
-              actions.addCondition('body', 'contains', currentQuery)
-              break
-            case 'is':
-              actions.addCondition('status', 'is', currentQuery)
-              break
-            case 'has':
-              if (currentQuery === 'attachments') {
-                actions.addCondition('hasAttachments', 'is', true)
-              }
-              break
-            case 'before': {
-              const date = new Date(currentQuery)
-              if (!isNaN(date.getTime())) {
-                actions.addCondition('before', 'before', date.toISOString())
-              }
-              break
-            }
-            case 'after': {
-              const date = new Date(currentQuery)
-              if (!isNaN(date.getTime())) {
-                actions.addCondition('after', 'after', date.toISOString())
-              }
-              break
-            }
-          }
-          setInputValue('')
-          return
-        }
-
-        // Free text or execute search
+        // Add typed value as free text condition
         if (inputValue.trim()) {
           actions.addCondition('freeText', 'contains', inputValue.trim())
           setInputValue('')
@@ -271,24 +207,8 @@ export function MailSearchBar({
         }
       }
     },
-    [
-      suggestions,
-      highlightedSuggestionIndex,
-      currentOperator,
-      currentQuery,
-      inputValue,
-      handleSuggestionSelect,
-      actions,
-    ]
+    [suggestions, highlightedSuggestionIndex, inputValue, handleSuggestionSelect, actions, executeSearch]
   )
-
-  /** Execute search with current conditions */
-  const executeSearch = useCallback(() => {
-    const query = displayText
-    onSearch(query)
-    saveSearchQuery(query)
-    setIsOpen(false)
-  }, [displayText, onSearch, saveSearchQuery])
 
   /** Clear all conditions and input */
   const handleClear = useCallback(() => {

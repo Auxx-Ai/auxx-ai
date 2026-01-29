@@ -8,6 +8,7 @@ import {
   DateTimePicker,
   type PickerMode,
 } from '~/components/pickers/date-time-picker'
+import type { PickerTriggerOptions } from '~/components/ui/picker-trigger'
 
 interface DateTimeInputProps extends NodeInputProps {
   /** Field name */
@@ -20,6 +21,8 @@ interface DateTimeInputProps extends NodeInputProps {
   maxDate?: Date
   /** Date format string (unused, for backward compatibility) */
   dateFormat?: string
+  /** Trigger customization options */
+  triggerProps?: PickerTriggerOptions
 }
 
 /**
@@ -37,6 +40,7 @@ export const DateTimeInput = createNodeInput<DateTimeInputProps>(
     type = 'datetime',
     minDate,
     maxDate,
+    triggerProps,
   }) => {
     const value = inputs[name]
     const error = errors[name]
@@ -95,6 +99,7 @@ export const DateTimeInput = createNodeInput<DateTimeInputProps>(
         hideNowButton={false}
         notClearable={false}
         className="w-full"
+        triggerProps={triggerProps}
       />
     )
   }

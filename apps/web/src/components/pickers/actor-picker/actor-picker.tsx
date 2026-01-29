@@ -2,14 +2,13 @@
 
 'use client'
 
-import { useState, useEffect, type ReactNode } from 'react'
-import { ChevronDown, ChevronsUpDown } from 'lucide-react'
-import { Button, type ButtonProps } from '@auxx/ui/components/button'
+import { useState, useEffect, useCallback, type ReactNode } from 'react'
 import { Popover, PopoverContentDialogAware, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
 import { ActorPickerContent, type ActorPickerContentProps } from './actor-picker-content'
 import { ActorBadge } from '~/components/resources/ui/actor-badge'
 import { ItemsListView } from '~/components/ui/items-list-view'
+import { PickerTrigger, type PickerTriggerOptions } from '~/components/ui/picker-trigger'
 import type { ActorId } from '@auxx/types/actor'
 
 /**
@@ -41,11 +40,8 @@ export interface ActorPickerProps
   /** Additional className for popover content */
   contentClassName?: string
 
-  /** Additional className for trigger button */
-  triggerClassName?: string
-
-  /** Button variant for the default trigger (default: 'outline') */
-  triggerVariant?: ButtonProps['variant']
+  /** Trigger customization options */
+  triggerProps?: PickerTriggerOptions
 }
 
 /**
@@ -67,8 +63,7 @@ export function ActorPicker({
   side = 'bottom',
   sideOffset = 5,
   contentClassName,
-  triggerClassName,
-  triggerVariant = 'outline',
+  triggerProps,
   value,
   onChange,
   multi = true,
@@ -100,6 +95,17 @@ export function ActorPicker({
     handleOpenChange(false)
   }
 
+  /**
+   * Clear all selections
+   */
+  const handleClearAll = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation()
+      onChange([])
+    },
+    [onChange]
+  )
+
   // Sync internal state with controlled state
   useEffect(() => {
     if (open !== undefined && open !== internalOpen) {
@@ -109,27 +115,25 @@ export function ActorPicker({
 
   const hasValue = value.length > 0
 
-  // Custom trigger or default button
+  // Custom trigger or default button using PickerTrigger
   const triggerElement = children ? (
     children
   ) : (
-    <Button
-      variant={triggerVariant}
-      type="button"
+    <PickerTrigger
+      open={isOpen}
       disabled={disabled}
-      className={cn('justify-between', triggerClassName)}>
-      {hasValue ? (
-        <ItemsListView
-          items={value.map((id) => ({ id }))}
-          renderItem={(item) => <ActorBadge actorId={item.id as ActorId} />}
-        />
-      ) : (
-        <span className="text-primary-400 text-sm font-normal pointer-events-none">
-          {emptyLabel}
-        </span>
-      )}
-      <ChevronDown className="opacity-50" />
-    </Button>
+      variant={triggerProps?.variant ?? 'transparent'}
+      hasValue={hasValue}
+      placeholder={emptyLabel}
+      showClear={triggerProps?.showClear ?? false}
+      onClear={handleClearAll}
+      hideIcon={triggerProps?.hideIcon}
+      className={triggerProps?.className}>
+      <ItemsListView
+        items={value}
+        renderItem={(item) => <ActorBadge actorId={item as ActorId} />}
+      />
+    </PickerTrigger>
   )
 
   return (

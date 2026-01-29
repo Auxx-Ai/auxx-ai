@@ -3,6 +3,7 @@
 
 import { useRef, useCallback } from 'react'
 import { cn } from '@auxx/ui/lib/utils'
+import { AutosizeInput, type AutosizeInputRef } from '@auxx/ui/components/autosize-input'
 import { useSearchStore, type SearchCondition } from './store'
 import { ConditionBadge } from '~/components/conditions/components/condition-badge'
 
@@ -21,7 +22,7 @@ interface SearchFilterInputProps {
   /** Additional CSS classes */
   className?: string
   /** Ref to expose focus method */
-  inputRef?: React.RefObject<HTMLInputElement | null>
+  inputRef?: React.RefObject<AutosizeInputRef | null>
 }
 
 /**
@@ -37,7 +38,7 @@ export function SearchFilterInput({
   className,
   inputRef: externalInputRef,
 }: SearchFilterInputProps) {
-  const internalInputRef = useRef<HTMLInputElement>(null)
+  const internalInputRef = useRef<AutosizeInputRef>(null)
   const inputRef = externalInputRef || internalInputRef
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -121,14 +122,14 @@ export function SearchFilterInput({
       ))}
 
       {/* Text input */}
-      <input
+      <AutosizeInput
         ref={inputRef}
-        type="text"
         value={inputValue}
         onChange={(e) => onInputChange(e.target.value)}
         onKeyDown={handleInputKeyDown}
         placeholder={conditions.length === 0 ? placeholder : ''}
-        className="flex-1 min-w-[100px] bg-transparent outline-none text-sm"
+        minWidth={100}
+        inputClassName="bg-transparent outline-none text-sm"
       />
     </div>
   )

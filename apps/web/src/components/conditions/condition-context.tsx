@@ -83,7 +83,8 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
         return
       }
 
-      const availableOperators = getOperatorsForFieldType(fieldDef.type)
+      // Use fieldType to get operators (fieldType is now required)
+      const availableOperators = getOperatorsForFieldType(fieldDef.fieldType ?? fieldDef.type)
       const defaultOperator = availableOperators[0]?.key || 'equals'
 
       const newCondition: Condition = {
@@ -357,19 +358,15 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
     [groups, onGroupsChange, config, renumberGroups]
   )
 
-  // Operator resolution
+  // Operator resolution - derives operators from fieldType
   const getAvailableOperators = useCallback(
     (fieldId: string): OperatorDefinition[] => {
       const fieldDef = resolveFieldDefinition(fieldId)
       if (!fieldDef) return []
 
-      if (fieldDef.operators && fieldDef.operators.length > 0) {
-        return fieldDef.operators
-          .map((opKey) => getOperatorDefinition(opKey))
-          .filter((op): op is OperatorDefinition => op !== undefined)
-      }
-
-      return getOperatorsForFieldType(fieldDef.type)
+      // Use fieldType (e.g., 'TEXT', 'DATE') to get operators
+      // fieldType is now required on MailViewFieldDefinition
+      return getOperatorsForFieldType(fieldDef.fieldType ?? fieldDef.type)
     },
     [resolveFieldDefinition]
   )

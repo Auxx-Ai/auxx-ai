@@ -5,11 +5,10 @@
 import { useState, useMemo, useCallback } from 'react'
 import { api } from '~/trpc/react'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { Button } from '@auxx/ui/components/button'
-import { ChevronDown, X } from 'lucide-react'
 import { cn } from '@auxx/ui/lib/utils'
 import { Badge } from '@auxx/ui/components/badge'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
+import { PickerTrigger, type PickerTriggerOptions } from '~/components/ui/picker-trigger'
 import { type RecordId } from '@auxx/lib/resources/client'
 import { RecordBadge } from '../resources/ui'
 
@@ -53,6 +52,15 @@ export interface MultiRelationInputProps {
 
   /** Label for create button (default: "Create new") */
   createLabel?: string
+
+  /** Trigger customization options */
+  triggerProps?: PickerTriggerOptions
+
+  /** Controlled open state */
+  open?: boolean
+
+  /** Callback when open state changes */
+  onOpenChange?: (open: boolean) => void
 }
 
 /**
@@ -73,9 +81,21 @@ export function MultiRelationInput({
   excludeIds = [],
   onCreate,
   createLabel,
+  triggerProps,
+  open: controlledOpen,
+  onOpenChange,
 }: MultiRelationInputProps) {
-  const [open, setOpen] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+
+  // Use controlled or uncontrolled state
+  const open = controlledOpen ?? internalOpen
+  const setOpen = (newOpen: boolean) => {
+    if (controlledOpen === undefined) {
+      setInternalOpen(newOpen)
+    }
+    onOpenChange?.(newOpen)
+  }
 
   // Derive tableId for search - use first entity definition if array
   const tableId = useMemo(() => {
@@ -145,14 +165,6 @@ export function MultiRelationInput({
    * Render the trigger content showing selected items
    */
   const renderTriggerContent = () => {
-    if (value.length === 0) {
-      return (
-        <span className="text-primary-400 text-sm font-normal pointer-events-none">
-          {placeholder}
-        </span>
-      )
-    }
-
     const displayItems = value.slice(0, maxDisplayItems)
     const remainingCount = value.length - maxDisplayItems
 
@@ -173,25 +185,18 @@ export function MultiRelationInput({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button
-          variant="transparent"
-          size="sm"
-          role="combobox"
-          aria-expanded={open}
+        <PickerTrigger
+          open={open}
           disabled={disabled}
-          className={cn('w-full ps-0 pe-1 h-auto min-h-8 justify-between flex-1', className)}>
-          <div className="flex items-center gap-2 flex-1 min-w-0">{renderTriggerContent()}</div>
-          <div className="flex items-center gap-1 shrink-0">
-            {hasValue && multi && (
-              <div
-                className="size-4 flex items-center justify-center rounded-full bg-primary-500/30 text-primary-100 transition-colors hover:bg-bad-100 hover:text-bad-500"
-                onClick={handleClearAll}>
-                <X className="size-3!" />
-              </div>
-            )}
-            <ChevronDown className="opacity-50" />
-          </div>
-        </Button>
+          variant={triggerProps?.variant ?? 'transparent'}
+          hasValue={hasValue}
+          placeholder={placeholder}
+          showClear={triggerProps?.showClear ?? multi}
+          onClear={handleClearAll}
+          asCombobox
+          className={cn('h-auto min-h-8', className, triggerProps?.className)}>
+          {renderTriggerContent()}
+        </PickerTrigger>
       </PopoverTrigger>
       <PopoverContent
         className="p-0 min-w-[max(var(--radix-popover-trigger-width),18rem)]"

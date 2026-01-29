@@ -3,9 +3,9 @@
 
 import React, { useState, useMemo, useCallback } from 'react'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
 import { Calendar as CalendarIcon, Clock } from 'lucide-react'
+import { PickerTrigger, type PickerTriggerOptions } from '~/components/ui/picker-trigger'
 
 import { type DateTimePickerProps } from './types'
 import { formatTime12Hour, formatDateDisplay, formatDateTimeDisplay } from './utils'
@@ -42,6 +42,7 @@ export function DateTimePicker({
   children,
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
+  triggerProps,
 }: DateTimePickerProps) {
   // Controlled vs uncontrolled open state
   const [internalOpen, setInternalOpen] = useState(false)
@@ -92,22 +93,21 @@ export function DateTimePicker({
 
   /** Icon based on mode */
   const TriggerIcon = mode === 'time' ? Clock : CalendarIcon
+  const triggerIcon = triggerProps?.icon ?? <TriggerIcon className="size-4 text-primary-400" />
 
-  // Default trigger
+  // Default trigger using PickerTrigger
   const defaultTrigger = (
-    <Button
-      variant="transparent"
+    <PickerTrigger
+      open={open}
       disabled={disabled}
-      className={cn('px-0 w-[240px] justify-start')}>
-      <TriggerIcon className="size-4 text-primary-400" />
-      {displayValue ? (
-        <span className="truncate">{displayValue}</span>
-      ) : (
-        <span className="text-primary-400 text-sm font-normal">
-          {placeholder || defaultPlaceholder}
-        </span>
-      )}
-    </Button>
+      variant={triggerProps?.variant ?? 'transparent'}
+      hasValue={!!displayValue}
+      placeholder={placeholder || defaultPlaceholder}
+      icon={triggerIcon}
+      iconPosition={triggerProps?.iconPosition ?? 'start'}
+      className={cn('w-[240px] justify-start', triggerProps?.className)}>
+      <span className="truncate">{displayValue}</span>
+    </PickerTrigger>
   )
 
   return (

@@ -90,9 +90,11 @@ export function FieldInputRow({
 
   // Normalize value for different field types
   const normalizedValue =
-    fieldType === 'RELATIONSHIP' ? extractRelationshipRecordIds(value) :
-    fieldType === 'ACTOR' ? extractActorIds(value) :
-    value
+    fieldType === 'RELATIONSHIP'
+      ? extractRelationshipRecordIds(value)
+      : fieldType === 'ACTOR'
+        ? extractActorIds(value)
+        : value
 
   // Determine if relationship is multi-select using helper
   const isMulti = isMultiRelationship(relationshipConfig?.relationshipType)
@@ -133,6 +135,7 @@ export function FieldInputRow({
         onChange={handleChange}
         placeholder={placeholder ?? `Enter ${field.label.toLowerCase()}...`}
         disabled={disabled}
+        triggerProps={{ className: 'ps-0 pe-1' }}
       />
     </VarEditorFieldRow>
   )

@@ -6,10 +6,9 @@ import { usePropertyContext } from '../property-provider'
 import { useFieldNavigationOptional } from '../field-navigation-context'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { Button } from '@auxx/ui/components/button'
-import { ChevronDown, X } from 'lucide-react'
 import { cn } from '@auxx/ui/lib/utils'
 import { TagsView } from '~/components/ui/tags-view'
+import { PickerTrigger, type PickerTriggerOptions } from '~/components/ui/picker-trigger'
 import { FieldType } from '@auxx/database/enums'
 import type { SelectOption } from '@auxx/types/custom-field'
 import { toResourceFieldId } from '@auxx/types/field'
@@ -250,6 +249,12 @@ export interface SelectFieldInputProps {
   disabled?: boolean
   /** Additional className */
   className?: string
+  /** Trigger customization options */
+  triggerProps?: PickerTriggerOptions
+  /** Controlled open state */
+  open?: boolean
+  /** Callback when open state changes */
+  onOpenChange?: (open: boolean) => void
 }
 
 /**
@@ -266,8 +271,20 @@ export function SelectFieldInput({
   placeholder,
   disabled = false,
   className,
+  triggerProps,
+  open: controlledOpen,
+  onOpenChange,
 }: SelectFieldInputProps) {
-  const [open, setOpen] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
+
+  // Use controlled or uncontrolled state
+  const open = controlledOpen ?? internalOpen
+  const setOpen = (newOpen: boolean) => {
+    if (controlledOpen === undefined) {
+      setInternalOpen(newOpen)
+    }
+    onOpenChange?.(newOpen)
+  }
 
   /**
    * Handle selection changes from picker
@@ -307,34 +324,18 @@ export function SelectFieldInput({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button
-          variant="transparent"
-          role="combobox"
-          aria-expanded={open}
+        <PickerTrigger
+          open={open}
           disabled={disabled}
-          className={cn(
-            'w-full justify-between font-normal min-h-9 ps-0 pe-1',
-            // !hasValue && 'text-muted-foreground',
-            className
-          )}>
-          {hasValue ? (
-            <TagsView value={value} options={options} className="flex-1" />
-          ) : (
-            <span className="text-primary-400 text-sm font-normal pointer-events-none">
-              {placeholder ?? config.placeholder}
-            </span>
-          )}
-          <div className="flex items-center gap-1 ml-2 shrink-0">
-            {hasValue && config.multi && (
-              <div
-                className="size-4 flex items-center justify-center rounded-full bg-primary-500/30 text-primary-100 transition-colors hover:bg-bad-100 hover:text-bad-500"
-                onClick={handleClearAll}>
-                <X className="size-3!" />
-              </div>
-            )}
-            <ChevronDown className="size-4 opacity-50" />
-          </div>
-        </Button>
+          variant={triggerProps?.variant ?? 'transparent'}
+          hasValue={hasValue}
+          placeholder={placeholder ?? config.placeholder}
+          showClear={triggerProps?.showClear ?? config.multi}
+          onClear={handleClearAll}
+          asCombobox
+          className={cn(className, triggerProps?.className)}>
+          <TagsView value={value} options={options} className="flex-1" />
+        </PickerTrigger>
       </PopoverTrigger>
       <PopoverContent className="min-w-[var(--radix-popover-trigger-width)] p-0" align="start">
         <MultiSelectPicker

@@ -1,5 +1,7 @@
 // apps/web/src/components/pickers/date-time-picker/types.ts
 
+import type { PickerTriggerOptions } from '~/components/ui/picker-trigger'
+
 /** Time period for 12-hour format */
 export enum Period {
   AM = 'AM',
@@ -99,6 +101,9 @@ export interface DateTimePickerProps {
   open?: boolean
   /** Controlled open state handler */
   onOpenChange?: (open: boolean) => void
+
+  /** Trigger customization options */
+  triggerProps?: PickerTriggerOptions
 }
 
 /** Calendar view props */

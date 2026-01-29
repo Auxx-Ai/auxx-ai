@@ -1,72 +1,93 @@
-// src/components/mail/searchbar/search-suggestions-list.tsx
+// apps/web/src/components/mail/searchbar/search-suggestions-list.tsx
+
 'use client'
 
 import React from 'react'
 import { CommandGroup, CommandItem, CommandEmpty } from '@auxx/ui/components/command'
-import Image from 'next/image'
 import { EntityIcon } from '@auxx/ui/components/icons'
+import { BaseType } from '@auxx/lib/workflow-engine/types'
+import type { MailViewFieldDefinition } from '@auxx/lib/mail-views/client'
+import type { SearchCondition } from './store'
 
-/** Suggestion type for search suggestions */
-export type SearchSuggestionType =
-  | 'operator'
-  | 'recent'
-  | 'user'
-  | 'participant'
-  | 'tag'
-  | 'inbox'
-  | 'status'
-  | 'has'
+/**
+ * Suggestion types for search suggestions
+ * - 'field': A field from MAIL_VIEW_FIELD_DEFINITIONS to add as a condition
+ * - 'recent': A recent search that restores a full set of conditions
+ */
+export type SearchSuggestionType = 'field' | 'recent'
 
-/** Maps suggestion types to EntityIcon iconIds */
-const SUGGESTION_TYPE_ICON_MAP: Record<SearchSuggestionType, string> = {
-  recent: 'history',
-  user: 'user',
-  participant: 'user',
-  tag: 'tag',
-  inbox: 'inbox',
-  operator: 'hash',
-  status: 'circle',
-  has: 'check',
-}
-
-/** Default icon for unknown suggestion types */
-const DEFAULT_SUGGESTION_ICON = 'search'
-
-/** Maps suggestion types to group labels */
-const SUGGESTION_TYPE_LABEL_MAP: Record<SearchSuggestionType, string> = {
-  recent: 'Recent Searches',
-  operator: 'Search Operators',
-  user: 'Team Members',
-  participant: 'Participants',
-  tag: 'Tags',
-  inbox: 'Inboxes',
-  status: 'Status',
-  has: 'Properties',
-}
-
-/** Default label for unknown suggestion types */
-const DEFAULT_GROUP_LABEL = 'Suggestions'
-
-/** Gets the group label for a suggestion type */
-const getGroupLabel = (type: SearchSuggestionType): string =>
-  SUGGESTION_TYPE_LABEL_MAP[type] ?? DEFAULT_GROUP_LABEL
-
-/** Gets the iconId for a suggestion type */
-const getIconId = (type: SearchSuggestionType): string =>
-  SUGGESTION_TYPE_ICON_MAP[type] ?? DEFAULT_SUGGESTION_ICON
-
+/**
+ * Search suggestion interface
+ */
 export interface SearchSuggestion {
   type: SearchSuggestionType
+
+  /** For 'field' type: the field ID from MAIL_VIEW_FIELD_DEFINITIONS */
+  fieldId?: string
+
+  /** For 'field' type: full field definition for display */
+  fieldDefinition?: MailViewFieldDefinition
+
+  /** For 'recent' type: stored conditions to restore */
+  conditions?: SearchCondition[]
+
+  /** Common display props */
   value: string
   label: string
   description?: string
-  secondary?: string
-  image?: string
-  emoji?: string
-  color?: string
-  icon?: string
 }
 
+/**
+ * Maps BaseType to EntityIcon iconId for visual representation
+ */
+const BASE_TYPE_ICON_MAP: Record<string, string> = {
+  [BaseType.STRING]: 'text',
+  [BaseType.NUMBER]: 'hash',
+  [BaseType.BOOLEAN]: 'toggle-left',
+  [BaseType.DATE]: 'calendar',
+  [BaseType.DATETIME]: 'calendar-clock',
+  [BaseType.TIME]: 'clock',
+  [BaseType.EMAIL]: 'mail',
+  [BaseType.URL]: 'link',
+  [BaseType.PHONE]: 'phone',
+  [BaseType.ENUM]: 'list',
+  [BaseType.RELATION]: 'link-2',
+  [BaseType.ACTOR]: 'circle-user',
+  [BaseType.TAGS]: 'tags',
+  [BaseType.FILE]: 'paperclip',
+  [BaseType.ADDRESS]: 'map-pin',
+  [BaseType.CURRENCY]: 'dollar-sign',
+}
+
+/** Default icon for unknown types */
+const DEFAULT_ICON = 'filter'
+
+/**
+ * Group labels for suggestion types
+ */
+const GROUP_LABELS: Record<SearchSuggestionType, string> = {
+  recent: 'Recent Searches',
+  field: 'Filter by',
+}
+
+/**
+ * Get icon for a suggestion based on type and field definition
+ */
+function getSuggestionIcon(suggestion: SearchSuggestion): string {
+  if (suggestion.type === 'recent') {
+    return 'history'
+  }
+
+  if (suggestion.type === 'field' && suggestion.fieldDefinition) {
+    return BASE_TYPE_ICON_MAP[suggestion.fieldDefinition.type] ?? DEFAULT_ICON
+  }
+
+  return DEFAULT_ICON
+}
+
+/**
+ * Props for SearchSuggestionsList component
+ */
 interface SearchSuggestionsListProps {
   suggestions: SearchSuggestion[]
   onSelect: (suggestion: SearchSuggestion) => void
@@ -75,11 +96,15 @@ interface SearchSuggestionsListProps {
   className?: string
 }
 
+/**
+ * SearchSuggestionsList component
+ * Renders grouped suggestions for field selection and recent searches.
+ */
 export function SearchSuggestionsList({
   suggestions,
   onSelect,
   showEmpty = true,
-  emptyMessage = 'Try operators like: assignee:name, is:unread, subject:"hello", tag:urgent',
+  emptyMessage = 'Type to search or select a filter field',
   className,
 }: SearchSuggestionsListProps) {
   if (suggestions.length === 0 && !showEmpty) {
@@ -96,7 +121,7 @@ export function SearchSuggestionsList({
       acc[type].push(suggestion)
       return acc
     },
-    {} as Record<string, SearchSuggestion[]>
+    {} as Record<SearchSuggestionType, SearchSuggestion[]>
   )
 
   if (suggestions.length === 0) {
@@ -109,56 +134,45 @@ export function SearchSuggestionsList({
     )
   }
 
+  // Order: recent first, then fields
+  const typeOrder: SearchSuggestionType[] = ['recent', 'field']
+
   return (
     <>
-      {Object.entries(groupedSuggestions).map(([type, items]) => (
-        <CommandGroup key={type} heading={getGroupLabel(type as SearchSuggestionType)} className="">
-          {items.map((suggestion, index) => (
-            <CommandItem
-              key={`${type}-${index}`}
-              value={`${type}-${suggestion.value}-${index}`}
-              onSelect={() => onSelect(suggestion)}>
-              <div className="flex items-center gap-2 w-full">
-                <div className="border bg-primary-50 rounded-md size-6 flex items-center justify-center relative">
-                  {/* Icon or Avatar */}
-                  {suggestion.image ? (
-                    <Image
-                      fill
-                      src={suggestion.image}
-                      alt={suggestion.label}
-                      className="size-4 rounded-md object-cover"
-                    />
-                  ) : suggestion.emoji ? (
-                    <span className="text-lg w-6 text-center">{suggestion.emoji}</span>
-                  ) : suggestion.color ? (
-                    <div
-                      className="w-3 h-3 rounded-full"
-                      style={{ backgroundColor: suggestion.color }}
-                    />
-                  ) : (
-                    <EntityIcon size="sm" iconId={getIconId(type as SearchSuggestionType)} />
-                  )}
-                </div>
+      {typeOrder.map((type) => {
+        const items = groupedSuggestions[type]
+        if (!items || items.length === 0) return null
 
-                {/* Main content */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1">
-                    <span className="truncate text-primary-700">{suggestion.label}</span>
-                    {suggestion.secondary && (
-                      <span className="text-xs text-primary-300 truncate">
-                        {suggestion.secondary}
-                      </span>
-                    )}
-                    {suggestion.description && (
-                      <div className="text-xs text-primary-400">{suggestion.description}</div>
-                    )}
+        return (
+          <CommandGroup key={type} heading={GROUP_LABELS[type]} className="">
+            {items.map((suggestion, index) => (
+              <CommandItem
+                key={`${type}-${suggestion.value}-${index}`}
+                value={`${type}-${suggestion.value}-${index}`}
+                onSelect={() => onSelect(suggestion)}
+              >
+                <div className="flex items-center gap-2 w-full">
+                  <div className="border bg-primary-50 rounded-md size-6 flex items-center justify-center relative">
+                    <EntityIcon size="sm" iconId={getSuggestionIcon(suggestion)} />
+                  </div>
+
+                  {/* Main content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1">
+                      <span className="truncate text-primary-700">{suggestion.label}</span>
+                      {suggestion.description && (
+                        <span className="text-xs text-primary-400 truncate">
+                          {suggestion.description}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </CommandItem>
-          ))}
-        </CommandGroup>
-      ))}
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        )
+      })}
     </>
   )
 }
