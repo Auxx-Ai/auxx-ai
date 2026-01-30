@@ -7,7 +7,6 @@ export {
   type ThreadStatus,
   type IntegrationProvider,
   type ActorId,
-  type ThreadTagSummary,
   type ThreadSort,
   type ContextPagination,
   type ThreadFilter,

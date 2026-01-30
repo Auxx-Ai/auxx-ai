@@ -25,7 +25,8 @@ import { toRecordId } from '@auxx/types/resource'
 
 // NEW: Import from new hooks
 import { useThread, useMessage, useThreadReadStatus, useThreadDraftStatus, useThreadMutation } from '~/components/threads/hooks'
-import { useThreadSelectionStore, type ThreadTagSummary } from '~/components/threads/store'
+import { useThreadSelectionStore } from '~/components/threads/store'
+import { TagBadge } from '~/components/tags/ui/tag-badge'
 
 /**
  * Processing menu component for triggering manual message processing
@@ -257,8 +258,13 @@ export function MailThreadItem({
                     Draft
                   </div>
                 )}
-                {thread.tags?.map((tag) => (
-                  <ThreadTag key={tag.id} tag={tag} isMultiSelected={isMultiSelected} />
+                {thread.tagIds?.map((tagId) => (
+                  <TagBadge
+                    key={tagId}
+                    recordId={tagId}
+                    size="sm"
+                    className={cn(isMultiSelected && 'text-background/80 border-black/20')}
+                  />
                 ))}
               </div>
             </div>
@@ -303,15 +309,3 @@ function ThreadItemSkeleton() {
   )
 }
 
-/** Renders a visual chip for a thread tag */
-function ThreadTag({ tag, isMultiSelected }: { tag: ThreadTagSummary; isMultiSelected: boolean }) {
-  return (
-    <div
-      className={cn(
-        'flex items-center gap-1 overflow-hidden whitespace-nowrap rounded-[5px] border px-[3px] py-[1px] text-xs text-muted-foreground',
-        isMultiSelected && 'text-background/80 border-black/20'
-      )}>
-      {tag.tag_emoji} {tag.title}
-    </div>
-  )
-}

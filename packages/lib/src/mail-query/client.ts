@@ -139,7 +139,8 @@ export interface FilterableThread {
   status: string
   assigneeId: ActorIdObject | null
   isUnread?: boolean
-  tags?: Array<{ id: string }>
+  /** Tag RecordIds (format: "entityDefinitionId:instanceId") */
+  tagIds?: string[]
   inboxId?: string | null
 }
 
@@ -225,10 +226,15 @@ export function threadMatchesFilter(thread: FilterableThread, filter: ThreadClie
 
   // ─────────────────────────────────────────────────────────────────
   // Tag filter (thread must have at least one matching tag)
+  // thread.tagIds are RecordIds (e.g., "entityDefId:tagId"), extract raw tag ID
   // ─────────────────────────────────────────────────────────────────
   if (filter.tagIds?.length) {
-    const threadTagIds = thread.tags?.map((t) => t.id) ?? []
-    const hasMatchingTag = filter.tagIds.some((id) => threadTagIds.includes(id))
+    const threadTagRawIds = (thread.tagIds ?? []).map((recordId) => {
+      // RecordId format: "entityDefinitionId:entityInstanceId"
+      const colonIdx = recordId.indexOf(':')
+      return colonIdx >= 0 ? recordId.slice(colonIdx + 1) : recordId
+    })
+    const hasMatchingTag = filter.tagIds.some((id) => threadTagRawIds.includes(id))
     if (!hasMatchingTag) {
       return false
     }

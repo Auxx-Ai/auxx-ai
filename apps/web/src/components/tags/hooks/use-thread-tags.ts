@@ -18,46 +18,43 @@ import type { RecordId } from '@auxx/types/resource'
  * @returns Tag state and operations: { selectedTags, handleTagChange, isPending }
  */
 export function useThreadTags(threadId: string) {
-  const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [selectedTags, setSelectedTags] = useState<RecordId[]>([])
 
   // Get thread from store
   const { thread } = useThread({ threadId })
 
-  // Get entity definition IDs for thread and tag from resource store
+  // Get entity definition IDs for thread
   const { resource: threadResource } = useResource('thread')
-  const { resource: tagResource } = useResource('tag')
-
   const threadEntityDefId = threadResource?.entityDefinitionId ?? null
-  const tagEntityDefId = tagResource?.entityDefinitionId ?? null
 
   // Get the tags field with actual CustomField UUID
   const tagsField = useSystemField('thread_tags')
   const tagsFieldId = tagsField?.id ?? null
 
-  // Sync local tag state with thread tags from store
+  // Sync local tag state with thread tags from store (now RecordId[])
   useEffect(() => {
-    if (thread?.tags) {
-      const tagIds = thread.tags.map((tag) => tag.id)
-      setSelectedTags(tagIds)
+    if (thread?.tagIds) {
+      setSelectedTags([...thread.tagIds])
     } else {
       setSelectedTags([])
     }
-  }, [thread?.tags])
+  }, [thread?.tagIds])
 
   // Use the unified field value save hook (no invalidation callbacks needed - zustand handles state)
   const { saveFieldValue, isPending } = useSaveFieldValue()
 
   /**
    * Handle tag change - updates thread's tags using FieldValue relationship
+   * Accepts RecordId[] directly (no conversion needed)
    */
   const handleTagChange = useCallback(
-    async (incomingTagIds: string[]) => {
-      if (!thread || !threadEntityDefId || !tagEntityDefId || !tagsFieldId) {
-        console.warn('Cannot update tags: missing thread, entity definition IDs, or tags field')
+    async (incomingTagIds: RecordId[]) => {
+      if (!thread || !threadEntityDefId || !tagsFieldId) {
+        console.warn('Cannot update tags: missing thread, entity definition ID, or tags field')
         return
       }
 
-      // TagPicker passes an array of tag IDs directly
+      // Filter out any invalid entries
       const newTagIds = [...incomingTagIds.filter(Boolean)]
       const currentTagIds = [...selectedTags]
 
@@ -65,14 +62,12 @@ export function useThreadTags(threadId: string) {
       setSelectedTags([...newTagIds])
 
       try {
-        // Convert tag IDs to RecordIds
-        const tagRecordIds: RecordId[] = newTagIds.map((tagId) => toRecordId(tagEntityDefId, tagId))
-
         // Build the thread RecordId
         const threadRecordId = toRecordId(threadEntityDefId, thread.id)
 
         // Save via FieldValue system with RELATIONSHIP field type
-        saveFieldValue(threadRecordId, tagsFieldId, tagRecordIds, 'RELATIONSHIP')
+        // newTagIds is already RecordId[] - no conversion needed
+        saveFieldValue(threadRecordId, tagsFieldId, newTagIds, 'RELATIONSHIP')
       } catch (error) {
         console.error('Error updating tags:', error)
         // Revert optimistic update on error
@@ -83,7 +78,7 @@ export function useThreadTags(threadId: string) {
         })
       }
     },
-    [thread, threadEntityDefId, tagEntityDefId, tagsFieldId, selectedTags, saveFieldValue]
+    [thread, threadEntityDefId, tagsFieldId, selectedTags, saveFieldValue]
   )
 
   return {

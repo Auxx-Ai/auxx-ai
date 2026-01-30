@@ -2,7 +2,6 @@
 'use client'
 
 import { useState } from 'react'
-import { cn } from '@auxx/ui/lib/utils'
 import { api } from '~/trpc/react'
 import {
   DropdownMenu,
@@ -11,16 +10,16 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { TagDialog } from '~/components/tags/ui/tag-dialog'
+import { TagBadge } from '~/components/tags/ui/tag-badge'
 import { useTagHierarchy } from '~/components/tags/hooks/use-tag-hierarchy'
 import { useConfirm } from '~/hooks/use-confirm'
 import { Pencil, Trash2 } from 'lucide-react'
 import { toastError } from '@auxx/ui/components/toast'
-import { toRecordId } from '@auxx/lib/resources/client'
-import type { ThreadTagSummary } from '~/components/threads/store'
+import type { RecordId } from '@auxx/lib/resources/client'
 
 interface ThreadTagProps {
-  /** The tag summary object (flat structure from store) */
-  tag: ThreadTagSummary
+  /** The tag RecordId (format: "entityDefinitionId:instanceId") */
+  tagId: RecordId
   /** The thread ID the tag is attached to */
   threadId: string
   /** Callback to remove this tag from the thread - passed from parent that manages tags */
@@ -30,12 +29,12 @@ interface ThreadTagProps {
 /**
  * Displays a single tag for a thread with dropdown actions
  */
-export function ThreadTag({ tag, threadId, onRemove }: ThreadTagProps) {
+export function ThreadTag({ tagId, threadId, onRemove }: ThreadTagProps) {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [confirm, ConfirmDialog] = useConfirm()
   const utils = api.useUtils()
 
-  const { entityDefinitionId, refresh } = useTagHierarchy()
+  const { refresh } = useTagHierarchy()
 
   const deleteRecord = api.record.delete.useMutation({
     onSuccess: () => {
@@ -63,8 +62,6 @@ export function ThreadTag({ tag, threadId, onRemove }: ThreadTagProps) {
 
   /** Handles deleting the tag entirely (from all threads) */
   async function handleDeleteTag() {
-    if (!entityDefinitionId) return
-
     const confirmed = await confirm({
       title: 'Delete tag?',
       description:
@@ -75,10 +72,7 @@ export function ThreadTag({ tag, threadId, onRemove }: ThreadTagProps) {
     })
 
     if (confirmed) {
-      await deleteRecord.mutateAsync({
-        entityDefinitionId,
-        entityInstanceId: tag.id,
-      })
+      await deleteRecord.mutateAsync({ recordId: tagId })
     }
   }
 
@@ -91,19 +85,17 @@ export function ThreadTag({ tag, threadId, onRemove }: ThreadTagProps) {
     }
   }
 
-  // Build recordId for tag dialog
-  const recordId = entityDefinitionId ? toRecordId(entityDefinitionId, tag.id) : undefined
-
   return (
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <div
-            className={cn(
-              'flex cursor-pointer items-center gap-1 overflow-hidden whitespace-nowrap rounded-[5px] border border-foreground/20 px-[3px] py-px text-xs',
-              'data-[state=open]:bg-accent data-[state=open]:text-accent-foreground'
-            )}>
-            {tag.tag_emoji} {tag.title}
+          {/* Use TagBadge for display - it reads from stores */}
+          <div className="cursor-pointer">
+            <TagBadge
+              recordId={tagId}
+              size="sm"
+              className="data-[state=open]:bg-accent data-[state=open]:text-accent-foreground"
+            />
           </div>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
@@ -122,7 +114,7 @@ export function ThreadTag({ tag, threadId, onRemove }: ThreadTagProps) {
       <TagDialog
         open={isEditDialogOpen}
         onOpenChange={setIsEditDialogOpen}
-        recordId={recordId}
+        recordId={tagId}
         onSaved={handleEditSuccess}
       />
 

@@ -40,7 +40,6 @@ export {
   type ThreadFilter,
   type IntegrationProvider,
   type ActorId,
-  type ThreadTagSummary,
   type MessageMeta,
   type DraftMode,
   type ParticipantSummary,

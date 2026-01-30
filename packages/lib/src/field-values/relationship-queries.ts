@@ -4,6 +4,8 @@
 
 import { schema, type Database } from '@auxx/database'
 import { and, eq, inArray, isNotNull, sql, type SQL } from 'drizzle-orm'
+import { ResourceRegistryService } from '../resources/registry/resource-registry-service'
+import { toRecordId } from '@auxx/types/resource'
 
 /**
  * Build subquery to check if a thread has any tags.
@@ -179,13 +181,16 @@ export async function getThreadTagIds(
 }
 
 /**
- * Batch get tag IDs for multiple threads.
- * Returns a Map of threadId -> array of tag IDs.
+ * Batch get tag RecordIds for multiple threads.
+ * Returns a Map of threadId -> array of RecordIds.
+ *
+ * Handles legacy data where relatedEntityId may be a raw instance ID
+ * by normalizing to full RecordId format (entityDefinitionId:instanceId).
  *
  * @param db - Database instance
  * @param threadIds - Array of thread IDs
  * @param organizationId - Organization ID
- * @returns Map of threadId to tag IDs array
+ * @returns Map of threadId to RecordId[] array
  */
 export async function batchGetThreadTagIds(
   db: Database,
@@ -196,21 +201,33 @@ export async function batchGetThreadTagIds(
     return new Map()
   }
 
+  const registryService = new ResourceRegistryService(organizationId, db)
+
+  // Get tag entityDefinitionId (cached) for normalizing legacy raw IDs
+  const tagEntityDefId = await registryService.resolveEntityDefId('tag')
+
+  // Get the thread_tags field ID for this organization
+  const threadTagsField = await db.query.CustomField.findFirst({
+    where: and(
+      eq(schema.CustomField.systemAttribute, 'thread_tags'),
+      eq(schema.CustomField.organizationId, organizationId)
+    ),
+    columns: { id: true },
+  })
+  if (!threadTagsField) {
+    return new Map()
+  }
+
+  // Simple query: just FieldValue table, no JOINs needed
   const results = await db
     .select({
       threadId: schema.FieldValue.entityId,
       tagId: schema.FieldValue.relatedEntityId,
     })
     .from(schema.FieldValue)
-    .innerJoin(schema.CustomField, eq(schema.FieldValue.fieldId, schema.CustomField.id))
-    .innerJoin(
-      schema.EntityDefinition,
-      eq(schema.CustomField.entityDefinitionId, schema.EntityDefinition.id)
-    )
     .where(
       and(
-        eq(schema.CustomField.systemAttribute, 'thread_tags'),
-        eq(schema.EntityDefinition.organizationId, organizationId),
+        eq(schema.FieldValue.fieldId, threadTagsField.id),
         inArray(schema.FieldValue.entityId, threadIds),
         isNotNull(schema.FieldValue.relatedEntityId)
       )
@@ -219,8 +236,12 @@ export async function batchGetThreadTagIds(
   const map = new Map<string, string[]>()
   for (const { threadId, tagId } of results) {
     if (!threadId || !tagId) continue
+
+    // Convert raw tag ID to RecordId format
+    const recordId = toRecordId(tagEntityDefId, tagId)
+
     const existing = map.get(threadId) || []
-    existing.push(tagId)
+    existing.push(recordId)
     map.set(threadId, existing)
   }
   return map

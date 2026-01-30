@@ -22,7 +22,7 @@ import { ActorPicker } from '../pickers/actor-picker'
 import { useThreadContext } from './thread-provider'
 import { useThreadTags } from '~/components/tags/hooks/use-thread-tags'
 import { useThread, useInbox } from '~/components/threads/hooks'
-import { useActor } from '~/components/resources/hooks/use-actor'
+import { useActor, useResource } from '~/components/resources/hooks'
 import { useConfirm } from '~/hooks/use-confirm'
 import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 import {
@@ -53,6 +53,10 @@ export function ThreadHeader() {
 
   // Get inbox details
   const { inbox } = useInbox(thread?.inboxId)
+
+  // Get tag entity definition ID for TagPicker RecordId integration
+  const { resource: tagResource } = useResource('tag')
+  const tagEntityDefId = tagResource?.entityDefinitionId ?? undefined
 
   // Get assignee details via actor store
   // Convert ActorId object to string format expected by useActor (e.g., 'user:abc123')
@@ -270,6 +274,7 @@ export function ThreadHeader() {
                 selectedTags={selectedTags}
                 onChange={handleTagChange}
                 allowMultiple={true}
+                tagEntityDefinitionId={tagEntityDefId}
               />
             )}
             <ManualTriggerButton recordId={toRecordId('thread', thread.id)}>
@@ -358,16 +363,16 @@ export function ThreadHeader() {
               onSave={handleSubjectChange}
             />
           </div>
-          {thread.tags && thread.tags.length > 0 && (
+          {thread.tagIds && thread.tagIds.length > 0 && (
             <div className="flex flex-row no-wrap gap-2 shrink-0">
-              {thread.tags.map((tag) => (
+              {thread.tagIds.map((tagId) => (
                 <ThreadTag
-                  tag={tag}
+                  tagId={tagId}
                   threadId={threadId}
-                  key={tag.id}
+                  key={tagId}
                   onRemove={() => {
                     // Remove this tag from the current tags list
-                    const newTagIds = selectedTags.filter((id) => id !== tag.id)
+                    const newTagIds = selectedTags.filter((id) => id !== tagId)
                     handleTagChange(newTagIds)
                   }}
                 />

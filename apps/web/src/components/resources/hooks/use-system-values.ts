@@ -71,10 +71,7 @@ export function useSystemValues<T extends string>(
   }, [enabled, systemAttributes, systemAttributeMap, fieldMap])
 
   // Build fieldRefs array (just the ResourceFieldIds)
-  const fieldRefs = useMemo(
-    () => fieldInfos.map((f) => f.resourceFieldId),
-    [fieldInfos]
-  )
+  const fieldRefs = useMemo(() => fieldInfos.map((f) => f.resourceFieldId), [fieldInfos])
 
   // Fetch values using useFieldValues with autoFetch
   const { values: rawValues, isLoading } = useFieldValues(

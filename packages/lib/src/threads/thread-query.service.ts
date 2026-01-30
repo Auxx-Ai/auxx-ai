@@ -31,13 +31,14 @@ import {
   type ThreadWithDetails,
   type ThreadSortDescriptor,
   type ThreadSortField,
-  type ThreadTagSummary,
   type ListThreadIdsInput,
   type PaginatedIdsResult,
   type ThreadMeta,
   type ThreadStatus,
   type IntegrationProvider,
 } from './types'
+import { batchGetThreadTagIds } from '../field-values/relationship-queries'
+import type { RecordId } from '@auxx/types/resource'
 const logger = createScopedLogger('thread-query-service')
 
 /** Default ordering used when no explicit sort is requested. */
@@ -634,7 +635,7 @@ export class ThreadQueryService {
       count: ids.length,
     })
 
-    // Fetch threads with tags
+    // Fetch threads
     const threads = await this.db.query.Thread.findMany({
       where: and(
         inArray(schema.Thread.id, ids),
@@ -642,10 +643,12 @@ export class ThreadQueryService {
       ),
       with: {
         integration: { columns: { provider: true } },
-        // tags: TEMPORARILY DISABLED - migration to FieldValue in progress
-        // tags: { with: { tag: true } },
       },
     })
+
+    // Fetch tag RecordIds via FieldValue system
+    // Note: batchGetThreadTagIds returns RecordIds (from FieldValue.relatedEntityId which stores RecordIds)
+    const tagIdMap = await batchGetThreadTagIds(this.db, ids, this.organizationId)
 
     // Fetch read status for all threads for this user
     const readStatuses = await this.db
@@ -689,6 +692,9 @@ export class ThreadQueryService {
           }
         }
 
+        // tagIdMap values are already RecordIds (stored in FieldValue.relatedEntityId)
+        const tagIds = (tagIdMap.get(id) ?? []) as RecordId[]
+
         return {
           id: t.id,
           subject: t.subject,
@@ -704,8 +710,7 @@ export class ThreadQueryService {
           latestCommentId: t.latestCommentId ?? null,
           inboxId: t.inboxId ?? null,
           externalId: t.externalId ?? null,
-          // tags: TEMPORARILY returning empty array - migration to FieldValue in progress
-          tags: [],
+          tagIds,
           isUnread,
         } satisfies ThreadMeta
       })

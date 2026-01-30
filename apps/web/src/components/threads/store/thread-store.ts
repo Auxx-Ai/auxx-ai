@@ -6,6 +6,7 @@ import { immer } from 'zustand/middleware/immer'
 import { subscribeWithSelector } from 'zustand/middleware'
 import type { ThreadClientFilter } from '@auxx/lib/mail-query/client'
 import type { ActorId } from '@auxx/types/actor'
+import type { RecordId } from '@auxx/types/resource'
 
 /** Re-export filter type for convenience */
 export type { ThreadClientFilter as ThreadFilter }
@@ -21,14 +22,6 @@ export type ThreadStatus = 'OPEN' | 'ARCHIVED' | 'SPAM' | 'TRASH'
 export type IntegrationProvider = 'GMAIL' | 'OUTLOOK' | 'FACEBOOK' | 'INSTAGRAM' | 'OPENPHONE'
 
 /** Actor ID with type discriminator (matches backend) */
-
-/** Tag summary for display in thread list */
-export interface ThreadTagSummary {
-  id: string
-  title: string
-  tag_color?: string | null
-  tag_emoji?: string | null
-}
 
 /**
  * ThreadMeta - core thread metadata for display.
@@ -58,8 +51,8 @@ export interface ThreadMeta {
   // External ID for chat threads (e.g., Facebook conversation ID)
   externalId: string | null
 
-  // Tags included inline for list display
-  tags: ThreadTagSummary[]
+  /** Tag RecordIds (format: "entityDefinitionId:instanceId") */
+  tagIds: RecordId[]
 
   // Read status for the requesting user
   isUnread: boolean

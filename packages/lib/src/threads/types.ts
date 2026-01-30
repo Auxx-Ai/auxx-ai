@@ -4,6 +4,7 @@ import type { MessageAttachmentInfo } from '../messages/attachment-transformers'
 import { InternalFilterContextType } from '../mail-query/types'
 import { UrlBasedStatusFilter } from '../mail-query/filter-types'
 import type { ActorId } from '@auxx/types/actor'
+import type { RecordId } from '@auxx/types/resource'
 
 /** Allowed fields that can be used when sorting thread lists. */
 export type ThreadSortField = 'lastMessageAt' | 'subject' | 'sender'
@@ -12,14 +13,6 @@ export type ThreadSortField = 'lastMessageAt' | 'subject' | 'sender'
 export interface ThreadSortDescriptor {
   field: ThreadSortField
   direction: 'asc' | 'desc'
-}
-
-/** Minimal representation of a tag that is attached to a thread. */
-export interface ThreadTagSummary {
-  id: string
-  title: string
-  tag_color?: string | null
-  tag_emoji?: string | null
 }
 
 /** Mapping of inbox/user unread counts keyed by scope. */
@@ -182,8 +175,8 @@ export interface ThreadMeta {
   // External ID for chat threads (e.g., Facebook conversation ID)
   externalId: string | null
 
-  // Tags included inline for list display (avoids separate fetch)
-  tags: ThreadTagSummary[]
+  /** Tag RecordIds (format: "entityDefinitionId:instanceId") */
+  tagIds: RecordId[]
 
   // Read status for the requesting user
   isUnread: boolean

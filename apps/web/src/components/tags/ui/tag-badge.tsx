@@ -25,9 +25,13 @@ interface TagBadgeProps {
 export function TagBadge({ recordId, size = 'md', onRemove, className }: TagBadgeProps) {
   // Get base record data (displayName)
   const { record, isLoading: recordLoading } = useRecord({ recordId })
-
   // Get tag-specific field values using system attributes
-  const { values, isLoading: valuesLoading } = useSystemValues(recordId, ['tag_color', 'tag_emoji'])
+  const { values, isLoading: valuesLoading } = useSystemValues(
+    recordId,
+    ['tag_color', 'tag_emoji'],
+    { autoFetch: true }
+  )
+
   const color = values.tag_color as string | undefined
   const emoji = values.tag_emoji as string | undefined
 
@@ -42,16 +46,20 @@ export function TagBadge({ recordId, size = 'md', onRemove, className }: TagBadg
 
   return (
     <span
-      className={cn('inline-flex items-center gap-1 rounded-md border', sizeClasses, className)}
+      className={cn(
+        'inline-flex items-center gap-1 rounded-md border shrink-0',
+        sizeClasses,
+        className
+      )}
       style={{
         backgroundColor: color ? `${color}20` : undefined,
         borderColor: color ? `${color}40` : undefined,
       }}>
       {emoji && <span>{emoji}</span>}
       {color && !emoji && (
-        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+        <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
       )}
-      <span className="font-medium">{displayName}</span>
+      <span className="font-medium shrink-0">{displayName}</span>
       {onRemove && (
         <button
           type="button"
@@ -59,8 +67,8 @@ export function TagBadge({ recordId, size = 'md', onRemove, className }: TagBadg
             e.stopPropagation()
             onRemove()
           }}
-          className="ml-0.5 rounded hover:bg-muted">
-          <X className="h-3 w-3" />
+          className="ml-0.5 rounded hover:bg-muted shrink-0">
+          <X className="h-3 w-3 shrink-0" />
         </button>
       )}
     </span>
