@@ -13,9 +13,7 @@ import {
   MessageData, // Data structure expected by storage service
   ParticipantInputData, // Structure for participant info from provider
   IntegrationType,
-  DraftMode,
   EmailLabel, // Still needed for MessageData structure
-  // IdentifierType and ParticipantRole are handled by storage service
 } from '../../email/email-storage' // Adjust path
 import { createScopedLogger } from '@auxx/logger'
 import { env } from '@auxx/config/server'
@@ -511,8 +509,7 @@ export class InstagramProvider
         // Default values for non-applicable fields
         keywords: [],
         labelIds: [],
-        draftMode: DraftMode.NONE,
-        emailLabel: EmailLabel.inbox, // Use 'inbox' concept
+        emailLabel: EmailLabel.inbox,
       }
       return messageData
     } catch (error: any) {

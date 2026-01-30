@@ -6,7 +6,8 @@ export type ThreadWithDetails = RouterOutputs['thread']['getById']
 export type DraftMessageType = Exclude<ThreadWithDetails['draftMessage'], null>
 export type MessageType = ThreadWithDetails['messages'][number]
 // Server-authoritative draft message type (persisted fields only)
-export type DraftMessage = RouterOutputs['thread']['createOrUpdateDraft']
+// Now comes from the new draft router
+export type DraftMessage = RouterOutputs['draft']['upsert']
 // Client submit payload for drafts
 export type DraftPayload = {
   threadId: string | null

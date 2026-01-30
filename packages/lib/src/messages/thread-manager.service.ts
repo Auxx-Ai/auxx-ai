@@ -1,7 +1,7 @@
 // packages/lib/src/messages/thread-manager.service.ts
 
 import { database, type Database, schema } from '@auxx/database'
-import { DraftMode, ThreadStatus } from '@auxx/database/enums'
+import { ThreadStatus } from '@auxx/database/enums'
 import type { ThreadEntity as Thread } from '@auxx/database/models'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray, sql } from 'drizzle-orm'
@@ -306,28 +306,24 @@ export class ThreadManagerService {
             SELECT COUNT(*)
             FROM "Message"
             WHERE "threadId" = ${threadId}
-              AND "draftMode" = 'NONE'
               AND "sentAt" IS NOT NULL
           ), 0),
           "firstMessageAt" = (
             SELECT MIN("sentAt")
             FROM "Message"
             WHERE "threadId" = ${threadId}
-              AND "draftMode" = 'NONE'
               AND "sentAt" IS NOT NULL
           ),
           "lastMessageAt" = (
             SELECT MAX("sentAt")
             FROM "Message"
             WHERE "threadId" = ${threadId}
-              AND "draftMode" = 'NONE'
               AND "sentAt" IS NOT NULL
           ),
           "latestMessageId" = (
             SELECT id
             FROM "Message"
             WHERE "threadId" = ${threadId}
-              AND "draftMode" = 'NONE'
             ORDER BY "receivedAt" DESC NULLS LAST,
                      "sentAt" DESC NULLS LAST,
                      id DESC
@@ -338,7 +334,6 @@ export class ThreadManagerService {
             FROM "MessageParticipant" mp
             JOIN "Message" m ON mp."messageId" = m.id
             WHERE m."threadId" = ${threadId}
-              AND m."draftMode" = 'NONE'
               AND mp."participantId" IS NOT NULL
           ), 0)
         WHERE t.id = ${threadId}
@@ -355,17 +350,11 @@ export class ThreadManagerService {
    * Updates thread participants
    */
   async updateThreadParticipants(threadId: string): Promise<void> {
-    // Get all unique participants from non-draft messages
     const participants = await this.db
       .selectDistinct({ participantId: schema.MessageParticipant.participantId })
       .from(schema.MessageParticipant)
       .innerJoin(schema.Message, eq(schema.MessageParticipant.messageId, schema.Message.id))
-      .where(
-        and(
-          eq(schema.Message.threadId, threadId),
-          eq(schema.Message.draftMode, DraftMode.NONE)
-        )
-      )
+      .where(eq(schema.Message.threadId, threadId))
 
     const participantIds = participants.map((p) => p.participantId).filter(Boolean)
 
@@ -403,7 +392,12 @@ export class ThreadManagerService {
     if (orphaned.length === 0) return 0
 
     // Delete orphaned threads
-    await this.db.delete(schema.Thread).where(inArray(schema.Thread.id, orphaned.map((t) => t.id)))
+    await this.db.delete(schema.Thread).where(
+      inArray(
+        schema.Thread.id,
+        orphaned.map((t) => t.id)
+      )
+    )
 
     logger.info('Cleaned up orphaned threads', {
       count: orphaned.length,

@@ -65,6 +65,7 @@ import { attachmentRouter } from './routers/attachment'
 import { mediaAssetRouter } from './routers/mediaAsset'
 import { entityDefinitionRouter } from './routers/entityDefinition'
 import { dataImportRouter } from './routers/data-import'
+import { draftRouter } from './routers/draft'
 import { fieldValueRouter } from './routers/fieldValue'
 import { taskRouter } from './routers/task'
 import { entityGroupRouter } from './routers/entityGroup'
@@ -98,6 +99,7 @@ export const appRouter = createTRPCRouter({
   customField: customFieldRouter,
   dataset: datasetRouter,
   document: documentRouter,
+  draft: draftRouter,
   segment: segmentRouter,
   fieldValue: fieldValueRouter,
   file: fileRouter,

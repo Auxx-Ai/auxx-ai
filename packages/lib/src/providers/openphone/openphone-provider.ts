@@ -13,7 +13,6 @@ import {
   type MessageData,
   IntegrationType,
   MessageType,
-  DraftMode,
   EmailLabel, // Keep for MessageData structure
 } from '../../email/email-storage' // Adjust path
 import { createScopedLogger } from '@auxx/logger'
@@ -481,8 +480,7 @@ export class OpenPhoneProvider
         metadata: { openphone_message: message, openphone_conversation: conversation }, // Store raw event
         keywords: [],
         labelIds: [],
-        draftMode: DraftMode.NONE,
-        emailLabel: EmailLabel.inbox, // Treat SMS as inbox item conceptually
+        emailLabel: EmailLabel.inbox,
         // Fields from Message model defaults
         isAutoReply: false, // Assume false
         isFirstInThread: false, // Cannot easily determine from single message

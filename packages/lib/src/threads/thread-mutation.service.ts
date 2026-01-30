@@ -1,7 +1,6 @@
 // packages/lib/src/threads/thread-mutation.service.ts
 
 import { type Database, schema } from '@auxx/database'
-import { DraftMode } from '@auxx/database/enums'
 import { eq, and, inArray, isNotNull } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
 import { generateId } from '@auxx/utils'
@@ -434,22 +433,18 @@ export class ThreadMutationService {
     threadId: string,
     operation: 'create' | 'update' | 'delete' = 'create'
   ): Promise<void> {
-    // Get all non-draft messages with proper dates (ordered by sentAt ASC for first/last)
+    // Get all messages with proper dates (ordered by sentAt ASC for first/last)
+    // All messages are now "real" messages - drafts are in separate Draft table
     const messages = await this.db.query.Message.findMany({
       where: (messages, { eq, and, isNotNull }) =>
-        and(
-          eq(messages.threadId, threadId),
-          eq(messages.draftMode, DraftMode.NONE),
-          isNotNull(messages.sentAt)
-        ),
+        and(eq(messages.threadId, threadId), isNotNull(messages.sentAt)),
       columns: { sentAt: true },
       orderBy: (messages, { asc }) => [asc(messages.sentAt)],
     })
 
     // Get the latest message with deterministic ordering for latestMessageId
     const latestMessage = await this.db.query.Message.findFirst({
-      where: (messages, { eq, and }) =>
-        and(eq(messages.threadId, threadId), eq(messages.draftMode, DraftMode.NONE)),
+      where: (messages, { eq }) => eq(messages.threadId, threadId),
       columns: { id: true },
       orderBy: (messages, { desc }) => [
         desc(messages.receivedAt),
@@ -488,9 +483,9 @@ export class ThreadMutationService {
    */
   async updateThreadParticipants(threadId: string): Promise<void> {
     // Get messages and their participants for this thread
+    // All messages are now "real" messages - drafts are in separate Draft table
     const messages = await this.db.query.Message.findMany({
-      where: (messages, { eq, and }) =>
-        and(eq(messages.threadId, threadId), eq(messages.draftMode, DraftMode.NONE)),
+      where: (messages, { eq }) => eq(messages.threadId, threadId),
       columns: { id: true },
       with: {
         participants: {

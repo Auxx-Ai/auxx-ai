@@ -245,11 +245,7 @@ export class MessageSenderService {
       .select({ internetMessageId: schema.Message.internetMessageId })
       .from(schema.Message)
       .where(
-        and(
-          eq(schema.Message.threadId, threadId),
-          eq(schema.Message.draftMode, 'NONE' as any),
-          sql`("internetMessageId" IS NOT NULL)`
-        )
+        and(eq(schema.Message.threadId, threadId), sql`("internetMessageId" IS NOT NULL)`)
       )
       .orderBy(desc(schema.Message.sentAt))
       .limit(1)
@@ -263,11 +259,7 @@ export class MessageSenderService {
       .select({ internetMessageId: schema.Message.internetMessageId })
       .from(schema.Message)
       .where(
-        and(
-          eq(schema.Message.threadId, threadId),
-          eq(schema.Message.draftMode, 'NONE' as any),
-          sql`("internetMessageId" IS NOT NULL)`
-        )
+        and(eq(schema.Message.threadId, threadId), sql`("internetMessageId" IS NOT NULL)`)
       )
       .orderBy(asc(schema.Message.sentAt))
       .limit(10)

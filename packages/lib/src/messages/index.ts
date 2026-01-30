@@ -12,7 +12,6 @@ export { SyncMessages } from './sync-messages'
 export * from './types/message-sending.types'
 export type {
   MessageMeta,
-  DraftMode,
   ListMessageIdsOptions,
   ListMessagesByThreadResult,
 } from './types/message-query.types'

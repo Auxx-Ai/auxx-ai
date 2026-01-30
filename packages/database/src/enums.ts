@@ -191,6 +191,7 @@ export const DocumentTypeValues = [
 
 export const DomainTypeValues = ['CUSTOM', 'PROVIDER'] as const
 
+// @deprecated - DraftMode is no longer used. Drafts are now stored in separate Draft table.
 export const DraftModeValues = ['NONE', 'PRIVATE', 'SHARED'] as const
 
 export const EmailLabelValues = ['inbox', 'sent', 'draft'] as const
@@ -759,6 +760,7 @@ export const DomainType = {
   PROVIDER: 'PROVIDER',
 } as const
 
+// @deprecated - DraftMode is no longer used. Drafts are now stored in separate Draft table.
 export const DraftMode = {
   NONE: 'NONE',
   PRIVATE: 'PRIVATE',

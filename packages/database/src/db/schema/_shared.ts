@@ -120,7 +120,7 @@ export const documentType = pgEnum('DocumentType', [
   'XML',
 ])
 export const domainType = pgEnum('DomainType', ['CUSTOM', 'PROVIDER'])
-export const draftMode = pgEnum('DraftMode', ['NONE', 'PRIVATE', 'SHARED'])
+// DraftMode enum removed - drafts now stored in separate Draft table
 export const emailLabel = pgEnum('EmailLabel', ['inbox', 'sent', 'draft'])
 export const emailProvider = pgEnum('EmailProvider', ['GMAIL', 'OUTLOOK', 'IMAP'])
 export const emailTemplateType = pgEnum('EmailTemplateType', [

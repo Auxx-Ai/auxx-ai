@@ -56,6 +56,9 @@ export interface ThreadMeta {
 
   // Read status for the requesting user
   isUnread: boolean
+
+  /** Draft RecordIds for the requesting user on this thread (format: "draft:draftId") */
+  draftIds: RecordId[]
 }
 
 /** Sorting options for thread lists */

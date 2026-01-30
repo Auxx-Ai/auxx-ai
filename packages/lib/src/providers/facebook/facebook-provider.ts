@@ -13,8 +13,6 @@ import {
   MessageData, // Data structure expected by storage service
   ParticipantInputData, // Structure for participant info from provider
   IntegrationType,
-  DraftMode,
-  // EmailLabel, // Still needed for MessageData structure
 } from '../../email/email-storage' // Adjust path
 import { createScopedLogger } from '@auxx/logger'
 import { env } from '@auxx/config/server'
@@ -511,8 +509,6 @@ export class FacebookProvider
         // Default values for non-applicable fields
         keywords: [],
         labelIds: [],
-        draftMode: DraftMode.NONE,
-        // emailLabel: EmailLabel.inbox, // Use 'inbox' conceptually
       }
       return messageData
     } catch (error: any) {

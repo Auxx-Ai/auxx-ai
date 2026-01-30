@@ -8,7 +8,6 @@ export {
   MessageStorageService,
   IntegrationType,
   MessageType,
-  DraftMode,
   EmailLabel,
   IdentifierType,
   ParticipantRole,

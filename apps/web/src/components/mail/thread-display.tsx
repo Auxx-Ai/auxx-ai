@@ -45,14 +45,9 @@ export function ThreadDisplay() {
           {thread ? (
             // Determine thread type from integration provider
             isChatThread(thread.integrationProvider) ? (
-              <ChatInterface
-                key={thread.id}
-                threadId={thread.id}
-                sessionId={thread.externalId}
-                thread={thread}
-              />
+              <ChatInterface threadId={thread.id} sessionId={thread.externalId} thread={thread} />
             ) : (
-              <ThreadProvider threadId={thread.id} key={thread.id}>
+              <ThreadProvider threadId={thread.id}>
                 <ThreadDetails />
               </ThreadProvider>
             )
@@ -82,4 +77,3 @@ export function ThreadDisplay() {
     </div>
   )
 }
-

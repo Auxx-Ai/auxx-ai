@@ -6,7 +6,6 @@ import { and, eq, inArray, sql } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
 import type {
   MessageMeta,
-  DraftMode,
   SendStatus,
   ListMessageIdsOptions,
   ListMessagesByThreadResult,
@@ -38,31 +37,20 @@ export class MessageQueryService {
    * Get all messages for a thread with full metadata.
    * Single query - no separate ID listing step.
    */
-  async getMessagesByThread(
-    threadId: string,
-    options: ListMessageIdsOptions = {}
-  ): Promise<ListMessagesByThreadResult> {
-    const { includeDrafts = false } = options
-
+  async getMessagesByThread(threadId: string): Promise<ListMessagesByThreadResult> {
     logger.debug('Fetching messages for thread', {
       organizationId: this.organizationId,
       threadId,
-      includeDrafts,
     })
 
     const providerMap = await getOrgProviderMap(this.organizationId, this.db)
 
-    const conditions = [
-      eq(schema.Message.threadId, threadId),
-      eq(schema.Message.organizationId, this.organizationId),
-    ]
-
-    if (!includeDrafts) {
-      conditions.push(eq(schema.Message.draftMode, 'NONE'))
-    }
-
+    // All messages in Message table are sent messages (drafts are in Draft table)
     const rows = await this.db.query.Message.findMany({
-      where: and(...conditions),
+      where: and(
+        eq(schema.Message.threadId, threadId),
+        eq(schema.Message.organizationId, this.organizationId)
+      ),
       orderBy: [
         sql`${schema.Message.receivedAt} ASC NULLS LAST`,
         sql`${schema.Message.sentAt} ASC NULLS LAST`,
@@ -81,7 +69,6 @@ export class MessageQueryService {
         sentAt: true,
         receivedAt: true,
         createdAt: true,
-        draftMode: true,
         createdById: true,
         fromId: true,
         replyToId: true,
@@ -117,7 +104,6 @@ export class MessageQueryService {
         receivedAt: m.receivedAt?.toISOString() ?? null,
         createdAt: m.createdAt.toISOString(),
         participants,
-        draftMode: (m.draftMode as DraftMode) ?? 'NONE',
         createdById: m.createdById,
         messageType,
         sendStatus: (m.sendStatus as SendStatus) ?? null,
@@ -165,7 +151,6 @@ export class MessageQueryService {
         sentAt: true,
         receivedAt: true,
         createdAt: true,
-        draftMode: true,
         createdById: true,
         fromId: true,
         replyToId: true,
@@ -204,7 +189,6 @@ export class MessageQueryService {
           receivedAt: m.receivedAt?.toISOString() ?? null,
           createdAt: m.createdAt.toISOString(),
           participants,
-          draftMode: (m.draftMode as DraftMode) ?? 'NONE',
           createdById: m.createdById,
           messageType,
           sendStatus: (m.sendStatus as SendStatus) ?? null,

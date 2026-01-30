@@ -15,10 +15,10 @@ import {
   IdentifierType as IdentifierTypeEnum,
   ParticipantRole as ParticipantRoleEnum,
   MessageType,
-  DraftMode,
   EmailLabel,
   ThreadStatus,
 } from '@auxx/database/enums'
+
 import type { IdentifierType, ParticipantRole } from '@auxx/database/types'
 
 import type { MessageEntity as Message, ThreadEntity as Thread } from '@auxx/database/models'
@@ -31,13 +31,11 @@ const logger = createScopedLogger('message-storage')
 // Re-export enums for convenience
 export {
   MessageType,
-  DraftMode,
   EmailLabel,
   IdentifierTypeEnum as IdentifierType,
   ParticipantRoleEnum as ParticipantRole,
   ThreadStatus,
 }
-
 // JSON types
 type JsonValue = any
 type JsonArray = any
@@ -106,8 +104,6 @@ export interface MessageData {
   isAutoReply?: boolean | null
   isFirstInThread?: boolean | null // Provider might determine this
   isAIGenerated?: boolean | null
-  draftMode?: (typeof DraftMode)[keyof typeof DraftMode] | null
-  // emailLabel?: EmailLabel | null
 }
 
 /**
@@ -443,8 +439,7 @@ export class MessageStorageService {
               and(
                 eq(t.threadId, thread.id),
                 gte(t.sentAt, timeWindowStart as any),
-                lte(t.sentAt, timeWindowEnd as any),
-                eq(t.draftMode, 'NONE' as any)
+                lte(t.sentAt, timeWindowEnd as any)
               ),
             with: { from: true },
           })
@@ -975,28 +970,24 @@ export class MessageStorageService {
             SELECT COUNT(*)
             FROM "Message"
             WHERE "threadId" = ${threadId}
-              AND "draftMode" = 'NONE'
               AND "sentAt" IS NOT NULL
           ), 0),
           "firstMessageAt" = (
             SELECT MIN("sentAt")
             FROM "Message"
             WHERE "threadId" = ${threadId}
-              AND "draftMode" = 'NONE'
               AND "sentAt" IS NOT NULL
           ),
           "lastMessageAt" = (
             SELECT MAX("sentAt")
             FROM "Message"
             WHERE "threadId" = ${threadId}
-              AND "draftMode" = 'NONE'
               AND "sentAt" IS NOT NULL
           ),
           "latestMessageId" = (
             SELECT id
             FROM "Message"
             WHERE "threadId" = ${threadId}
-              AND "draftMode" = 'NONE'
             ORDER BY "receivedAt" DESC NULLS LAST,
                      "sentAt" DESC NULLS LAST,
                      id DESC
@@ -1007,7 +998,6 @@ export class MessageStorageService {
             FROM "MessageParticipant" mp
             JOIN "Message" m ON mp."messageId" = m.id
             WHERE m."threadId" = ${threadId}
-              AND m."draftMode" = 'NONE'
               AND mp."participantId" IS NOT NULL
           ), 0)
         WHERE t.id = ${threadId}
@@ -1116,7 +1106,6 @@ export class MessageStorageService {
             sentAt: messageData.sentAt,
             historyId: messageData.historyId ? BigInt(messageData.historyId) : null,
             isInbound: messageData.isInbound,
-            draftMode: messageData.draftMode ?? DraftMode.NONE,
             updatedAt: new Date(),
           })
           .where(eq(schema.Message.id, existingByMsgId.id))
@@ -1367,7 +1356,7 @@ export class MessageStorageService {
           metadata: messageData.metadata || null,
           isInbound: messageData.isInbound,
           isFirstInThread: isNewThread,
-          draftMode: messageData.draftMode ?? ('NONE' as any),
+
           fromId: senderParticipantId, // Set direct link on create
           replyToId: firstReplyToParticipantId, // Set direct link on create (optional)
         })
@@ -1386,7 +1375,6 @@ export class MessageStorageService {
             snippet: messageData.snippet,
             metadata: messageData.metadata || null,
             isInbound: messageData.isInbound,
-            draftMode: messageData.draftMode ?? ('NONE' as any),
             fromId: senderParticipantId, // Update direct link
             replyToId: firstReplyToParticipantId, // Update direct link
           },

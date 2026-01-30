@@ -1,7 +1,7 @@
 // apps/web/src/app/api/openphone/webhook/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { database as db, schema } from '@auxx/database'
-import { MessageStorageService, DraftMode } from '@auxx/lib/email'
+import { MessageStorageService } from '@auxx/lib/email'
 import type { MessageData } from '@auxx/lib/email'
 import { createScopedLogger } from '@auxx/logger'
 import crypto from 'crypto'
@@ -245,8 +245,6 @@ function convertOpenPhoneWebhookEventToMessageData(
       metadata: { openphone_webhook_event_data: messagePayload },
       keywords: [],
       labelIds: [],
-      draftMode: DraftMode.NONE,
-      emailLabel: EmailLabel.inbox,
     }
 
     return messageData

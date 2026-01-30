@@ -13,7 +13,6 @@ import {
   jsonb,
   sql,
   type AnyPgColumn,
-  draftMode,
   sendStatus,
 } from './_shared'
 import { createId } from '@paralleldrive/cuid2'
@@ -43,7 +42,6 @@ export const Message = pgTable(
       .references((): AnyPgColumn => Integration.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
     isInbound: boolean().default(true).notNull(),
     isFirstInThread: boolean().default(true).notNull(),
-    draftMode: draftMode().default('NONE').notNull(),
     subject: text().notNull(),
     textHtml: text(),
     textPlain: text(),
@@ -95,11 +93,10 @@ export const Message = pgTable(
       .using('btree', table.sendToken.asc().nullsLast())
       .where(sql`("sendToken" IS NOT NULL)`),
     index('Message_sentAt_idx').using('btree', table.sentAt.asc().nullsLast()),
-    index('Message_threadId_createdById_draftMode_idx').using(
+    index('Message_threadId_createdById_idx').using(
       'btree',
       table.threadId.asc().nullsLast(),
-      table.createdById.asc().nullsLast(),
-      table.draftMode.asc().nullsLast()
+      table.createdById.asc().nullsLast()
     ),
     index('Message_threadId_idx').using('btree', table.threadId.asc().nullsLast()),
     index('retry_queue_idx').using(
@@ -111,7 +108,6 @@ export const Message = pgTable(
     index('thread_messages_idx').using(
       'btree',
       table.threadId.asc().nullsLast(),
-      table.draftMode.asc().nullsLast(),
       table.sentAt.asc().nullsLast()
     ),
   ]

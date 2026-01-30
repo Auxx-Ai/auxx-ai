@@ -1,7 +1,6 @@
 // packages/lib/src/threads/thread-query.service.ts
 
 import { type Database, schema } from '@auxx/database'
-import { DraftMode } from '@auxx/database/enums'
 import {
   and,
   eq,
@@ -357,13 +356,7 @@ export class ThreadQueryService {
           // Note: inbox relation removed - Thread.inboxId was removed in migration 0028
           integration: true, // Added to support provider-based type derivation
           messages: {
-            where: (messages, { eq, or, and }) =>
-              userId
-                ? or(
-                    eq(messages.draftMode, DraftMode.NONE),
-                    and(eq(messages.draftMode, DraftMode.PRIVATE), eq(messages.createdById, userId))
-                  )
-                : eq(messages.draftMode, DraftMode.NONE),
+            // All messages are now "real" messages - drafts are stored separately
             orderBy: (messages, { asc }) => [
               asc(messages.sentAt),
               asc(messages.lastAttemptAt),
@@ -399,24 +392,18 @@ export class ThreadQueryService {
         return null
       }
 
-      // Separate Draft from Sent Messages
-      let userDraftMessage: DraftMessageType | null = null
-      const sentMessages: DraftMessageType[] = []
+      // Messages are now all "real" messages - drafts are in separate Draft table
+      // Drafts are fetched separately in the router via DraftService
+      const sentMessages: DraftMessageType[] = (thread.messages || []).map((msg) => ({
+        ...msg,
+        attachments: [],
+      })) as DraftMessageType[]
 
-      if (thread.messages) {
-        for (const msg of thread.messages) {
-          if (msg.draftMode === DraftMode.PRIVATE && msg.createdById === userId) {
-            userDraftMessage = { ...msg, attachments: [] } as DraftMessageType
-          } else if (msg.draftMode === DraftMode.NONE) {
-            sentMessages.push({ ...msg, attachments: [] } as DraftMessageType)
-          }
-        }
-        sentMessages.sort((a, b) => {
-          const aTime = (a.sentAt ?? a.lastAttemptAt ?? a.createdAt).getTime()
-          const bTime = (b.sentAt ?? b.lastAttemptAt ?? b.createdAt).getTime()
-          return aTime - bTime
-        })
-      }
+      sentMessages.sort((a, b) => {
+        const aTime = (a.sentAt ?? a.lastAttemptAt ?? a.createdAt).getTime()
+        const bTime = (b.sentAt ?? b.lastAttemptAt ?? b.createdAt).getTime()
+        return aTime - bTime
+      })
 
       // Determine isUnread status
       let isUnread: boolean | null = userId ? true : null
@@ -436,16 +423,10 @@ export class ThreadQueryService {
 
       const { messages, readStatusEntries, ...restOfThread } = thread
 
-      // Load attachments for all messages (sent messages + draft message)
-      const allMessages = [...sentMessages]
-      if (userDraftMessage) {
-        allMessages.push(userDraftMessage)
-      }
-
+      // Load attachments for all messages
       let messagesWithAttachments = sentMessages
-      let draftWithAttachments = userDraftMessage
 
-      if (allMessages.length > 0) {
+      if (sentMessages.length > 0) {
         // For now, we'll create a temporary MessageAttachmentService
         // In a real implementation, this might be passed in or created differently to avoid userId dependency
         const tempUserId = userId || 'system' // Fallback for when userId is not provided
@@ -455,27 +436,19 @@ export class ThreadQueryService {
           this.db
         )
 
-        const messageIds = allMessages.map((msg) => msg.id)
+        const messageIds = sentMessages.map((msg) => msg.id)
         const attachmentMap = await messageAttachmentService.fetchAttachmentsForMessages(messageIds)
 
-        // Splice attachments into sent messages
+        // Splice attachments into messages
         messagesWithAttachments = spliceAttachmentsIntoMessages(sentMessages, attachmentMap)
-
-        // Splice attachments into draft message if it exists
-        if (userDraftMessage) {
-          const draftWithAttachmentsArray = spliceAttachmentsIntoMessages(
-            [userDraftMessage],
-            attachmentMap
-          )
-          draftWithAttachments = draftWithAttachmentsArray[0] || userDraftMessage
-        }
       }
 
+      // draftMessage is now null here - it's fetched separately from the Draft table in the router
       const finalThread: ThreadWithDetails = {
         ...restOfThread,
         messages: messagesWithAttachments,
         isUnread: isUnread ?? undefined,
-        draftMessage: draftWithAttachments,
+        draftMessage: null,
       }
 
       return finalThread
@@ -626,7 +599,7 @@ export class ThreadQueryService {
    * Batch fetch thread metadata by IDs.
    * Returns core thread data without embedded messages/participants.
    * Uses denormalized latestMessageId and latestCommentId columns.
-   * Now includes isUnread status for the requesting user.
+   * Now includes isUnread status and draftIds for the requesting user.
    */
   async getThreadMetaBatch(ids: string[], userId: string): Promise<ThreadMeta[]> {
     if (ids.length === 0) return []
@@ -676,6 +649,31 @@ export class ThreadQueryService {
       readStatuses.map((s) => [s.threadId, { isRead: s.isRead, lastReadAt: s.lastReadAt }])
     )
 
+    // Fetch draft IDs for all threads for this user
+    const drafts = await this.db
+      .select({
+        threadId: schema.Draft.threadId,
+        id: schema.Draft.id,
+      })
+      .from(schema.Draft)
+      .where(
+        and(
+          inArray(schema.Draft.threadId, ids),
+          eq(schema.Draft.createdById, userId),
+          eq(schema.Draft.organizationId, this.organizationId)
+        )
+      )
+
+    // Build draft IDs lookup (threadId → RecordId[])
+    const draftIdsByThread = new Map<string, RecordId[]>()
+    for (const d of drafts) {
+      if (d.threadId) {
+        const existing = draftIdsByThread.get(d.threadId) ?? []
+        existing.push(toRecordId('draft', d.id))
+        draftIdsByThread.set(d.threadId, existing)
+      }
+    }
+
     // Map to ThreadMeta, preserving input order
     const threadMap = new Map(threads.map((t) => [t.id, t]))
 
@@ -718,6 +716,7 @@ export class ThreadQueryService {
           externalId: t.externalId ?? null,
           tagIds,
           isUnread,
+          draftIds: draftIdsByThread.get(id) ?? [],
         } satisfies ThreadMeta
       })
       .filter(Boolean) as ThreadMeta[]

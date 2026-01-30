@@ -1,10 +1,7 @@
 // apps/web/src/app/api/instagram/webhook/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { database as db, schema } from '@auxx/database'
-import {
-  MessageStorageService,
-  DraftMode,
-} from '@auxx/lib/email'
+import { MessageStorageService } from '@auxx/lib/email'
 import type { MessageData } from '@auxx/lib/email'
 import { createScopedLogger } from '@auxx/logger'
 import { env } from '@auxx/config/server'
@@ -224,7 +221,6 @@ function convertInstagramWebhookEventToMessageData(
       metadata: { event: event },
       keywords: [],
       labelIds: [],
-      draftMode: DraftMode.NONE,
       emailLabel: EmailLabel.inbox,
     }
 

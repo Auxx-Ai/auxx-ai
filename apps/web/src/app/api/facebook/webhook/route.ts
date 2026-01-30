@@ -1,7 +1,7 @@
 // apps/web/src/app/api/facebook/webhook/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { database as db, schema } from '@auxx/database'
-import { MessageStorageService, DraftMode } from '@auxx/lib/email'
+import { MessageStorageService } from '@auxx/lib/email'
 import type { MessageData } from '@auxx/lib/email'
 import { createScopedLogger } from '@auxx/logger'
 import { env } from '@auxx/config/server'
@@ -210,8 +210,6 @@ function convertWebhookEventToMessageData(
       metadata: { event: event }, // Store the raw event
       keywords: [],
       labelIds: [],
-      draftMode: DraftMode.NONE,
-      emailLabel: EmailLabel.inbox, // Treat as inbox item
     }
     return messageData
   } catch (error: any) {

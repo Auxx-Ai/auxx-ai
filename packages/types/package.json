@@ -12,7 +12,8 @@
     "./groups": "./groups/index.ts",
     "./pagination": "./pagination/index.ts",
     "./resource": "./resource/index.ts",
-    "./task": "./task/index.ts"
+    "./task": "./task/index.ts",
+    "./draft": "./draft/index.ts"
   },
   "dependencies": {
     "@auxx/database": "workspace:*",

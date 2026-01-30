@@ -19,7 +19,6 @@ import {
   MessageStorageService,
   type MessageData, // Use this structure for storing
   type ParticipantInputData, // Use this for participant info
-  DraftMode,
   EmailLabel, // Still needed for MessageData structure
 } from '../../email/email-storage' // Adjust path
 import { env } from '@auxx/config/server'
@@ -765,10 +764,6 @@ export class OutlookProvider
             labelIds: [], // Outlook uses folder IDs, not labels like Gmail
             internetMessageId: message.internetMessageId,
             folderId: message.parentFolderId,
-            // internetHeaders: (message.internetMessageHeaders as Prisma.JsonArray | undefined) || [], // Cast needed
-            // emailLabel: emailLabel,
-            draftMode: emailLabel === EmailLabel.draft ? DraftMode.PRIVATE : DraftMode.NONE,
-            // Other fields like isFirstInThread, isAIGenerated require more logic
           }
         } catch (error) {
           logger.error('Error converting Outlook message to MessageData:', {

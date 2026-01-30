@@ -1,6 +1,6 @@
 // packages/lib/src/mail-query/mail-query-builder.ts
 import { database, schema } from '@auxx/database'
-import { DraftMode, ThreadStatus } from '@auxx/database/enums'
+import { ThreadStatus } from '@auxx/database/enums'
 import {
   SQL,
   and,
@@ -353,18 +353,15 @@ export class MailQueryBuilder {
           logger.debug(`Building context ${contextType}: User's drafts`)
           if (!userId) throw new Error(`userId is required for ${contextType}`)
           // Filter threads containing user's draft messages. Exclude TRASH/SPAM threads.
+          // Drafts are now stored in separate Draft table
           return and(
             defaultExclusions, // Exclude TRASH/SPAM threads
             exists(
               database
                 .select()
-                .from(schema.Message)
+                .from(schema.Draft)
                 .where(
-                  and(
-                    eq(schema.Message.threadId, schema.Thread.id),
-                    ne(schema.Message.draftMode, DraftMode.NONE),
-                    eq(schema.Message.createdById, userId)
-                  )
+                  and(eq(schema.Draft.threadId, schema.Thread.id), eq(schema.Draft.userId, userId))
                 )
             )
           )
@@ -372,7 +369,7 @@ export class MailQueryBuilder {
         case InternalFilterContextType.SENT:
           logger.debug(`Building context ${contextType}: User's sent items`)
           if (!userId) throw new Error(`userId is required for ${contextType}`)
-          // Find threads where the user sent at least one message (not drafts). Exclude TRASH/SPAM threads.
+          // Find threads where the user sent at least one message. Exclude TRASH/SPAM threads.
           return and(
             defaultExclusions, // Exclude TRASH/SPAM threads
             exists(
@@ -383,7 +380,6 @@ export class MailQueryBuilder {
                   and(
                     eq(schema.Message.threadId, schema.Thread.id),
                     eq(schema.Message.createdById, userId),
-                    eq(schema.Message.draftMode, DraftMode.NONE),
                     eq(schema.Message.isInbound, false),
                     isNotNull(schema.Message.sentAt)
                   )
@@ -442,7 +438,10 @@ export class MailQueryBuilder {
 
         case UrlBasedStatusFilter.ASSIGNED:
           // Filter for threads that have an assignee AND are OPEN (not archived/done)
-          return and(isNotNull(schema.Thread.assigneeId), eq(schema.Thread.status, ThreadStatus.OPEN))
+          return and(
+            isNotNull(schema.Thread.assigneeId),
+            eq(schema.Thread.status, ThreadStatus.OPEN)
+          )
 
         case UrlBasedStatusFilter.UNASSIGNED:
           // Filter for threads that have no assignee AND are OPEN (not archived/done)

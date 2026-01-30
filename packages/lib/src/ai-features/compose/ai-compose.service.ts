@@ -1,6 +1,4 @@
 // packages/lib/src/ai-features/compose/ai-compose.service.ts
-
-import { DraftMode } from '@auxx/database/enums'
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '../../logger'
 import { LLMOrchestrator } from '../../ai/orchestrator/llm-orchestrator'
@@ -158,9 +156,6 @@ export class AIComposeService {
       const thread = await threadQueryService.getThreadById(threadId, userId, {
         include: {
           messages: {
-            where: {
-              draftMode: DraftMode.NONE,
-            },
             orderBy: { sentAt: 'desc' },
             take: this.config.maxContextMessages,
             select: {

@@ -29,7 +29,6 @@ vi.mock('@auxx/database', () => ({
       snippet: 'snippet',
       isInbound: 'isInbound',
       fromId: 'fromId',
-      draftMode: 'draftMode',
       createdById: 'createdById',
       isFirstInThread: 'isFirstInThread'
     },
@@ -52,13 +51,7 @@ vi.mock('../../mail-query/mail-query-builder', () => ({
   }))
 }))
 
-vi.mock('@auxx/database/enums', () => ({
-  DraftMode: {
-    NONE: 'NONE',
-    PRIVATE: 'PRIVATE',
-    SHARED: 'SHARED'
-  }
-}))
+vi.mock('@auxx/database/enums', () => ({}))
 
 // Mock database instance
 const mockDb = {

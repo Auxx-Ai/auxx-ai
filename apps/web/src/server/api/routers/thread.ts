@@ -8,19 +8,15 @@ import { getUserOrganizationId } from '@auxx/lib/email' // Adjust import path if
 import { createScopedLogger } from '@auxx/logger'
 import { recordIdSchema } from '@auxx/types/resource'
 import {
-  DraftService,
   ThreadQueryService,
   ThreadMutationService,
   UnreadService,
   type ThreadSortDescriptor,
   type ListThreadIdsInput,
 } from '@auxx/lib/threads'
+import { DraftService } from '@auxx/lib/drafts'
 import { ProviderRegistryService } from '@auxx/lib/providers'
-import {
-  MessageSenderService,
-  ThreadManagerService,
-  MessageComposerService,
-} from '@auxx/lib/messages'
+import { MessageSenderService } from '@auxx/lib/messages'
 import { InternalFilterContextType, mapUrlSlugToStatusFilter } from '@auxx/lib/types' // Import context enum
 import { IdentifierType, ThreadStatus as ThreadStatusEnum } from '@auxx/database/enums'
 import { whereThreadMessageType, getMessageTypeFromProvider } from '@auxx/lib/providers'
@@ -39,20 +35,6 @@ const FileAttachmentSchema = z.object({
   size: z.number().optional(),
   mimeType: z.string().optional(),
   type: z.enum(['file', 'asset']), // 'file' = FolderFile, 'asset' = MediaAsset
-})
-// Draft Upsert Input Schema
-const UpsertDraftInputSchema = z.object({
-  threadId: z.string().nullish(), // Optional: will create thread if not provided
-  subject: z.string().nullish(),
-  textHtml: z.string().nullish(),
-  textPlain: z.string().nullish(),
-  signatureId: z.string().nullish(),
-  to: z.array(ParticipantInputSchema).optional(),
-  cc: z.array(ParticipantInputSchema).optional(),
-  bcc: z.array(ParticipantInputSchema).optional(),
-  attachments: z.array(FileAttachmentSchema).optional(), // File attachments to attach
-  integrationId: z.string(), // Required: which integration to use for draft context
-  metadata: z.record(z.string(), z.unknown()).optional(), // Optional metadata object
 })
 // Send Message Input Schema
 const SendMessageInputSchema = z.object({
@@ -78,7 +60,6 @@ const SendMessageInputSchema = z.object({
 const getServiceDependencies = (
   ctx: any
 ): {
-  draftService: DraftService
   threadQuery: ThreadQueryService
   threadMutation: ThreadMutationService
   messageSender: MessageSenderService
@@ -93,23 +74,11 @@ const getServiceDependencies = (
   }
   // Instantiate new modular services
   const providerRegistry = new ProviderRegistryService(organizationId)
-  const threadManager = new ThreadManagerService(organizationId, ctx.db)
-  const messageComposer = new MessageComposerService(organizationId, ctx.db)
   const messageSender = new MessageSenderService(organizationId, providerRegistry, ctx.db)
   // New specialized services
   const threadQuery = new ThreadQueryService(organizationId, ctx.db)
   const threadMutation = new ThreadMutationService(organizationId, ctx.db)
-  // Updated draft service with new architecture
-  const draftService = new DraftService(
-    ctx.db,
-    organizationId,
-    userId,
-    threadManager,
-    messageComposer
-  )
   return {
-    // service,
-    draftService,
     threadQuery,
     threadMutation,
     messageSender,
@@ -305,6 +274,7 @@ export const threadRouter = createTRPCRouter({
   /**
    * Get a single thread by ID.
    * Updated to use ThreadQueryService.
+   * Also fetches draft from new Draft table.
    */
   getById: protectedProcedure
     .input(z.object({ threadId: z.string() }))
@@ -330,10 +300,68 @@ export const threadRouter = createTRPCRouter({
           messageType,  // All messages in a thread share the same type
         })) ?? []
 
+        // Fetch draft from new Draft table
+        const draftService = new DraftService(ctx.db, organizationId, userId)
+        const draft = await draftService.getByThreadId(input.threadId)
+
+        // Transform draft to expected format if it exists
+        let draftMessage = null
+        if (draft) {
+          const content = draft.content
+          draftMessage = {
+            id: draft.id,
+            threadId: draft.threadId,
+            subject: content.subject || '',
+            textHtml: content.bodyHtml || '',
+            textPlain: content.bodyText || '',
+            signatureId: content.signatureId || null,
+            participants: [
+              ...content.recipients.to.map((p) => ({
+                role: 'TO' as const,
+                participant: {
+                  id: p.participantId || p.identifier,
+                  identifier: p.identifier,
+                  identifierType: p.identifierType,
+                  name: p.name || null,
+                },
+              })),
+              ...content.recipients.cc.map((p) => ({
+                role: 'CC' as const,
+                participant: {
+                  id: p.participantId || p.identifier,
+                  identifier: p.identifier,
+                  identifierType: p.identifierType,
+                  name: p.name || null,
+                },
+              })),
+              ...content.recipients.bcc.map((p) => ({
+                role: 'BCC' as const,
+                participant: {
+                  id: p.participantId || p.identifier,
+                  identifier: p.identifier,
+                  identifierType: p.identifierType,
+                  name: p.name || null,
+                },
+              })),
+            ],
+            attachments: content.attachments.map((a) => ({
+              id: a.fileId,
+              name: a.filename,
+              size: a.size,
+              mimeType: a.contentType,
+              type: 'file' as const,
+            })),
+            metadata: content.metadata || {},
+            createdAt: draft.createdAt.toISOString(),
+            updatedAt: draft.updatedAt.toISOString(),
+          }
+        }
+
         return {
           ...thread,
           messageType,
           messages: messagesWithType,
+          draftMessage,
         }
       } catch (error: unknown) {
         if (error instanceof TRPCError) throw error // Re-throw known TRPC errors
@@ -416,91 +444,6 @@ export const threadRouter = createTRPCRouter({
       }
       return session
     }),
-  /**
-   * Creates or updates a private draft message.
-   */
-  createOrUpdateDraft: protectedProcedure
-    .input(UpsertDraftInputSchema)
-    .mutation(async ({ ctx, input }) => {
-      const { draftService, organizationId, userId } = getServiceDependencies(ctx)
-      try {
-        logger.info('API: Upserting draft', {
-          userId,
-          threadId: input.threadId,
-          integrationId: input.integrationId,
-        })
-        const draftMessage = await draftService.createOrUpdateDraft(input)
-        return draftMessage
-      } catch (error: unknown) {
-        if (error instanceof TRPCError) throw error
-        handleServiceError(error, 'createOrUpdateDraft', {
-          organizationId,
-          userId,
-          threadId: input.threadId,
-        })
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to save draft.' })
-      }
-    }),
-  /**
-   * Deletes a private draft message.
-   */
-  deleteDraft: protectedProcedure
-    .input(z.object({ draftMessageId: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-      const { draftMessageId } = input
-      try {
-        const { draftService } = getServiceDependencies(ctx)
-        logger.info('API: Deleting draft', { userId, draftMessageId })
-        const result = await draftService.deleteDraft(draftMessageId)
-        return result
-      } catch (error: unknown) {
-        if (error instanceof TRPCError) throw error
-        handleServiceError(error, 'deleteDraft', {
-          organizationId,
-          userId,
-          draftMessageId,
-        })
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to delete draft.' })
-      }
-    }),
-
-  // ============================================================================
-  // Draft Query Endpoints (Phase 2 additions)
-  // ============================================================================
-
-  /**
-   * Check if a thread has a draft for the current user.
-   */
-  hasDraft: protectedProcedure
-    .input(z.object({ threadId: z.string() }))
-    .query(async ({ ctx, input }) => {
-      const { draftService } = getServiceDependencies(ctx)
-      return await draftService.hasDraft(input.threadId)
-    }),
-
-  /**
-   * Get draft ID for a thread (for the current user).
-   */
-  getDraftId: protectedProcedure
-    .input(z.object({ threadId: z.string() }))
-    .query(async ({ ctx, input }) => {
-      const { draftService } = getServiceDependencies(ctx)
-      return await draftService.getDraftId(input.threadId)
-    }),
-
-  /**
-   * Batch check which threads have drafts for the current user.
-   * Returns array of thread IDs that have drafts.
-   */
-  getThreadsWithDrafts: protectedProcedure
-    .input(z.object({ threadIds: z.array(z.string()).max(100) }))
-    .mutation(async ({ ctx, input }) => {
-      const { draftService } = getServiceDependencies(ctx)
-      const set = await draftService.getThreadsWithDrafts(input.threadIds)
-      return Array.from(set) // Return as array for JSON serialization
-    }),
-
   /**
    * Sends an email message, potentially from a draft.
    * Updated to use MessageSenderService directly.

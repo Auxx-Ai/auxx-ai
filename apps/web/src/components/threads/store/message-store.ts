@@ -10,9 +10,6 @@ import type { ParticipantId } from '@auxx/types'
 const BATCH_DELAY = 50
 const MAX_BATCH_SIZE = 100
 
-/** Draft mode enum */
-export type DraftMode = 'NONE' | 'PRIVATE' | 'SHARED'
-
 /** Send status enum for outbound messages */
 export type SendStatus = 'PENDING' | 'SENT' | 'FAILED'
 
@@ -58,9 +55,7 @@ export interface MessageMeta {
   /** All participants as tagged IDs: ["from:abc", "to:xyz", ...] */
   participants: ParticipantId[]
 
-  // Draft state
-  draftMode: DraftMode
-  createdById: string | null // User ID who created (for drafts)
+  createdById: string | null // User ID who created outbound messages
 
   // Send status for outbound messages
   sendStatus: SendStatus | null

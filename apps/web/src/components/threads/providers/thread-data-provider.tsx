@@ -3,12 +3,7 @@
 
 import React, { useEffect } from 'react'
 import { api } from '~/trpc/react'
-import {
-  useThreadStore,
-  useMessageStore,
-  useParticipantStore,
-  useThreadDraftStore,
-} from '../store'
+import { useThreadStore, useMessageStore, useParticipantStore } from '../store'
 import { useThreadRealtime } from '../realtime'
 
 interface ThreadDataProviderProps {
@@ -120,35 +115,6 @@ export function ThreadDataProvider({ children }: ThreadDataProviderProps) {
 
     return () => clearTimeout(timer)
   }, [pendingParticipantCount, startParticipantBatch, completeParticipantBatch, fetchParticipants])
-
-  // ============================================================
-  // Draft status batch fetching
-  // ============================================================
-  const pendingDraftCount = useThreadDraftStore((s) => s.pendingIds.size)
-  const startDraftBatch = useThreadDraftStore((s) => s.startBatch)
-  const completeDraftBatch = useThreadDraftStore((s) => s.completeBatch)
-
-  const { mutateAsync: fetchDraftStatus } = api.thread.getThreadsWithDrafts.useMutation()
-
-  useEffect(() => {
-    if (pendingDraftCount === 0) return
-
-    const timer = setTimeout(async () => {
-      const batch = startDraftBatch()
-      if (batch.length === 0) return
-
-      try {
-        // Returns array of thread IDs that have drafts
-        const threadIdsWithDrafts = await fetchDraftStatus({ threadIds: batch })
-        completeDraftBatch(threadIdsWithDrafts, batch)
-      } catch (error) {
-        console.error('Draft status batch fetch failed:', error)
-        completeDraftBatch([], batch) // Mark all as no draft on error
-      }
-    }, 50)
-
-    return () => clearTimeout(timer)
-  }, [pendingDraftCount, startDraftBatch, completeDraftBatch, fetchDraftStatus])
 
   return <>{children}</>
 }

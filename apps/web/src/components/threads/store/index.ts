@@ -6,7 +6,6 @@ export {
   type ThreadMeta,
   type ThreadStatus,
   type IntegrationProvider,
-  type ActorId,
   type ThreadSort,
   type ContextPagination,
   type ThreadFilter,
@@ -27,7 +26,6 @@ export {
   useMessageStore,
   getMessageStoreState,
   type MessageMeta,
-  type DraftMode,
   type SendStatus,
   type MessageType,
   type AttachmentMeta,
@@ -41,11 +39,6 @@ export {
   type ParticipantMeta,
   type ParticipantIdentifierType,
 } from './participant-store'
-
-export {
-  useThreadDraftStore,
-  getThreadDraftStoreState,
-} from './thread-draft-store'
 
 export {
   useThreadSelectionStore,

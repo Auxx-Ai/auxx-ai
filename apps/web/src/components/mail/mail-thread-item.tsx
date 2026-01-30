@@ -24,9 +24,15 @@ import { WorkflowSubMenu } from '~/components/workflow/workflow-submenu'
 import { toRecordId } from '@auxx/types/resource'
 
 // NEW: Import from new hooks
-import { useThread, useMessage, useThreadReadStatus, useThreadDraftStatus, useThreadMutation } from '~/components/threads/hooks'
+import {
+  useThread,
+  useMessage,
+  useThreadReadStatus,
+  useThreadMutation,
+} from '~/components/threads/hooks'
 import { useThreadSelectionStore } from '~/components/threads/store'
 import { TagBadge } from '~/components/tags/ui/tag-badge'
+import { OverflowRow } from '@auxx/ui/components/overflow-row'
 
 /**
  * Processing menu component for triggering manual message processing
@@ -113,7 +119,9 @@ export function MailThreadItem({
     enabled: !!thread?.latestMessageId,
   })
   const { isUnread, markAsRead } = useThreadReadStatus(threadId)
-  const { hasDraft } = useThreadDraftStatus(threadId)
+
+  // Draft status is now embedded in ThreadMeta
+  const hasDraft = (thread?.draftIds?.length ?? 0) > 0
 
   // --- Selection store actions ---
   const toggleSelection = useThreadSelectionStore((s) => s.toggleSelection)
@@ -181,6 +189,8 @@ export function MailThreadItem({
     return latestMessage?.snippet ?? ''
   }, [latestMessage?.snippet])
 
+  const hasTagsOrDraft = hasDraft || (thread?.tagIds?.length ?? 0) > 0
+
   // --- Loading state ---
   if (isThreadLoading || !thread) {
     return <ThreadItemSkeleton />
@@ -243,12 +253,16 @@ export function MailThreadItem({
           </div>
 
           {/* Subject */}
-          <div className="grid-auto-cols-[minmax(auto,max-content)] grid flex-1 grid-flow-col grid-cols-[auto] items-center gap-1">
-            <div className="truncate text-xs font-medium group-aria-selected:text-background/80">
+          <div className="flex w-full items-center gap-1 min-w-0">
+            <div
+              className={cn(
+                'min-w-0 truncate text-xs font-medium group-aria-selected:text-background/80',
+                hasTagsOrDraft && 'max-w-[60%] shrink-0'
+              )}>
               {thread.subject || '(no subject)'}
             </div>
-            <div>
-              <div className="flex items-center justify-end gap-1 overflow-hidden">
+            <div className="min-w-0 flex-1">
+              <OverflowRow collapseSlot="text" className="justify-end" gap={4}>
                 {hasDraft && (
                   <div
                     className={cn(
@@ -266,7 +280,7 @@ export function MailThreadItem({
                     className={cn(isMultiSelected && 'text-background/80 border-black/20')}
                   />
                 ))}
-              </div>
+              </OverflowRow>
             </div>
           </div>
         </div>
@@ -308,4 +322,3 @@ function ThreadItemSkeleton() {
     </div>
   )
 }
-

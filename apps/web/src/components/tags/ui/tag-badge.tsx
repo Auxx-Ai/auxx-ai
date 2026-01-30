@@ -61,7 +61,7 @@ export function TagBadge({ recordId, size = 'md', onRemove, className, ...props 
       {color && !emoji && (
         <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
       )}
-      <span className="font-medium shrink-0">{displayName}</span>
+      <span data-slot="text" className="font-medium shrink-0">{displayName}</span>
       {onRemove && (
         <button
           type="button"

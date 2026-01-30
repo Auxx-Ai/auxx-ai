@@ -341,7 +341,6 @@ export class WorkflowTestRunner {
       isAutoReply: false,
       isFirstInThread: true,
       isAIGenerated: false,
-      draftMode: 'NONE',
       subject: 'Test Subject',
       textHtml: '<p>Test message body</p>',
       textPlain: 'Test message body',

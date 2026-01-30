@@ -56,12 +56,7 @@ export const messageRouter = createTRPCRouter({
    * Returns messages with participants as ParticipantId[] array.
    */
   listByThread: protectedProcedure
-    .input(
-      z.object({
-        threadId: z.string(),
-        includeDrafts: z.boolean().optional().default(false),
-      })
-    )
+    .input(z.object({ threadId: z.string() }))
     .query(async ({ ctx, input }) => {
       const organizationId = getUserOrganizationId(ctx.session)
       if (!organizationId) {
@@ -74,13 +69,8 @@ export const messageRouter = createTRPCRouter({
       const messageQuery = new MessageQueryService(organizationId, ctx.db)
 
       try {
-        logger.debug('Fetching messages for thread', {
-          threadId: input.threadId,
-          includeDrafts: input.includeDrafts,
-        })
-        return await messageQuery.getMessagesByThread(input.threadId, {
-          includeDrafts: input.includeDrafts,
-        })
+        logger.debug('Fetching messages for thread', { threadId: input.threadId })
+        return await messageQuery.getMessagesByThread(input.threadId)
       } catch (error: unknown) {
         logger.error('Failed to fetch messages for thread', {
           organizationId,

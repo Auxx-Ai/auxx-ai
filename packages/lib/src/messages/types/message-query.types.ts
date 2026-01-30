@@ -4,11 +4,6 @@ import type { ParticipantId } from '@auxx/types'
 import { MessageType } from '../../providers/types'
 
 /**
- * Draft mode enum for messages.
- */
-export type DraftMode = 'NONE' | 'PRIVATE' | 'SHARED'
-
-/**
  * Send status enum for outbound messages.
  */
 export type SendStatus = 'PENDING' | 'SENT' | 'FAILED'
@@ -55,9 +50,7 @@ export interface MessageMeta {
    */
   participants: ParticipantId[]
 
-  // Draft state
-  draftMode: DraftMode
-  createdById: string | null // User ID who created (for drafts)
+  createdById: string | null // User ID who created outbound messages
 
   // Send status for outbound messages
   sendStatus: SendStatus | null
@@ -75,7 +68,7 @@ export interface MessageMeta {
  * Options for listing messages.
  */
 export interface ListMessageIdsOptions {
-  includeDrafts?: boolean
+  // Reserved for future options
 }
 
 /**

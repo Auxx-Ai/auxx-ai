@@ -33,7 +33,6 @@ export interface DraftMessageType {
   providerError?: string | null
   attempts?: number | null
   lastAttemptAt?: Date | null
-  draftMode: string
   createdById?: string | null
   createdAt: Date
   isInbound: boolean
@@ -180,6 +179,9 @@ export interface ThreadMeta {
 
   // Read status for the requesting user
   isUnread: boolean
+
+  /** Draft RecordIds for the requesting user on this thread (format: "draft:draftId") */
+  draftIds: RecordId[]
 }
 
 /**

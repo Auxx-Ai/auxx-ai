@@ -1,7 +1,7 @@
 // packages/lib/src/providers/google/messages/parse-message.ts
 import parse from 'gmail-api-parse-message'
 import { createScopedLogger } from '@auxx/logger'
-import { MessageData, DraftMode, EmailLabel } from '../../../email/email-storage'
+import { MessageData, EmailLabel } from '../../../email/email-storage'
 import { parseParticipantString, parseMultipleParticipants, isDefined } from '../../provider-utils'
 import { extractEmailAddress, isUserEmail } from '@auxx/utils'
 import type { ParsedGmailMessage, GmailMessageWithPayload } from '../types'
@@ -139,7 +139,6 @@ export function convertMessagesToMessageData(
           metadata: { headers: message.headers },
           isInbound,
           isAutoReply: !!message.headers['auto-submitted'],
-          draftMode: emailLabel === EmailLabel.draft ? DraftMode.PRIVATE : DraftMode.NONE,
         } as MessageData
       } catch (error: any) {
         logger.error('Error converting Gmail message to MessageData:', {

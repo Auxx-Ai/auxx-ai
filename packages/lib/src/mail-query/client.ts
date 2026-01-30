@@ -1,7 +1,7 @@
 // packages/lib/src/mail-query/client.ts
 
 export { SearchOperator, IsOperatorValue, parseSearchQuery, type SearchToken } from './search-query-parser'
-import type { RecordId } from '@auxx/types/resource'
+import { getInstanceId, isRecordId, type RecordId } from '@auxx/types/resource'
 
 // Structured search filters for the searchbar
 export {
@@ -47,8 +47,8 @@ export interface ThreadClientFilter {
   /** Filter by thread status (OPEN, ARCHIVED, TRASH, SPAM) */
   status?: ThreadStatusValue | ThreadStatusValue[]
 
-  /** Filter by inbox RecordId (format: "entityDefinitionId:instanceId") */
-  inboxId?: RecordId
+  /** Filter by inbox ID (accepts RecordId or raw instance ID from URL) */
+  inboxId?: string
 
   /** Filter by assignment presence: true = has assignee, false = unassigned */
   hasAssignee?: boolean
@@ -177,9 +177,23 @@ export function threadMatchesFilter(thread: FilterableThread, filter: ThreadClie
 
   // ─────────────────────────────────────────────────────────────────
   // Inbox filter
+  // thread.inboxId is RecordId (e.g., "inbox:abc123")
+  // filter.inboxId may be RecordId OR raw instance ID (from URL)
   // ─────────────────────────────────────────────────────────────────
   if (filter.inboxId !== undefined) {
-    if (thread.inboxId !== filter.inboxId) {
+    if (!thread.inboxId) {
+      return false
+    }
+
+    // Extract instance ID from thread's RecordId
+    const threadInboxInstanceId = getInstanceId(thread.inboxId)
+
+    // Extract instance ID from filter (may be raw ID or RecordId)
+    const filterInboxInstanceId = isRecordId(filter.inboxId)
+      ? getInstanceId(filter.inboxId as RecordId)
+      : filter.inboxId
+
+    if (threadInboxInstanceId !== filterInboxInstanceId) {
       return false
     }
   }

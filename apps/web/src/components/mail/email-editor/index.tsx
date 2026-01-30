@@ -35,11 +35,6 @@ import { api } from '~/trpc/react'
 import { deriveInitialState, type InitState } from './derive-initial'
 import { useDraftAutosave } from './use-draft-autosave'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
-import {
-  reconcileDraft,
-  isServerResponseStale,
-  type ExtendedDraftMessage,
-} from './draft-reconciler'
 import type {
   ReplyComposeEditorProps,
   Recipients,
@@ -260,13 +255,13 @@ function ReplyComposeEditorComponent({
   // Mutations
   // Track when user requested discard to handle late autosave completions
   const discardAfterSave = useRef(false)
-  const saveDraftMutation = api.thread.createOrUpdateDraft.useMutation({
+  const saveDraftMutation = api.draft.upsert.useMutation({
     onSuccess: (data) => {
       // If user already clicked discard and we got a late save, delete the new draft and avoid state updates
       if (discardAfterSave.current) {
         if (data?.id) {
           deleteDraftMutation.mutate(
-            { draftMessageId: data.id },
+            { draftId: data.id },
             {
               onSuccess: () => {
                 // Ensure editor closes after cleanup
@@ -315,8 +310,8 @@ function ReplyComposeEditorComponent({
     },
     onSettled: () => setIsSending(false),
   })
-  const deleteDraftMutation = api.thread.deleteDraft.useMutation({
-    onMutate: async ({ draftMessageId }) => {
+  const deleteDraftMutation = api.draft.delete.useMutation({
+    onMutate: async ({ draftId }) => {
       // Cancel any outgoing refetches
       await utils.thread.getById.cancel()
       // Snapshot the previous value
@@ -327,23 +322,23 @@ function ReplyComposeEditorComponent({
           if (!old) return old
           return {
             ...old,
-            messages: old.messages.filter((m) => m.id !== draftMessageId),
             // Ensure reply box logic won't see a draft immediately after delete
-            draftMessage:
-              old.draftMessage?.id === draftMessageId ? null : (old.draftMessage ?? null),
+            draftMessage: old.draftMessage?.id === draftId ? null : (old.draftMessage ?? null),
           }
         })
       }
       // Clear local draft state immediately
       setState((prev) => ({ ...prev, draftId: null }))
-      return { previousThread }
+      return { previousThread, draftId }
     },
     onError: (err, variables, context) => {
       // Rollback on error
       if (context?.previousThread && thread?.id) {
         utils.thread.getById.setData({ threadId: thread.id }, context.previousThread)
       }
-      setState((prev) => ({ ...prev, draftId: variables.draftMessageId }))
+      if (context?.draftId) {
+        setState((prev) => ({ ...prev, draftId: context.draftId }))
+      }
       toastError({ title: 'Failed to discard draft', description: err.message })
     },
     onSuccess: () => {
@@ -356,7 +351,7 @@ function ReplyComposeEditorComponent({
   const debouncedDelete = useDebouncedCallback(
     (draftId: string) => {
       deleteDraftMutation.mutate(
-        { draftMessageId: draftId },
+        { draftId },
         {
           onSuccess: () => {
             // Clear any pending saves
@@ -407,71 +402,12 @@ function ReplyComposeEditorComponent({
       })
       setIsDraftSaved(true)
     },
-    onCacheSync: ({ draftId, threadId, payload, draftData, firstSave }) => {
+    onCacheSync: ({ threadId, draftData }) => {
+      // Simplified cache sync - just invalidate thread cache
+      // The new draft table system doesn't need complex reconciliation
       const cacheThreadId = thread?.id || threadId || state.threadId
-      if (!cacheThreadId) return
-      utils.thread.getById.setData({ threadId: cacheThreadId }, (old) => {
-        if (!old) return old
-        const local = old.draftMessage as ExtendedDraftMessage | undefined
-        const server = draftData
-        // If server response is available, check for staleness and reconcile
-        if (server) {
-          const isStale = local && isServerResponseStale(local, server)
-          if (!isStale) {
-            const reconciled = reconcileDraft(local, server, { isFirstSave: firstSave })
-            return {
-              ...old,
-              draftMessage: reconciled as any,
-            }
-          }
-          // If stale, preserve local state (could implement conservative merge here)
-          return old
-        }
-        // Optimistic update path - no server data available
-        const nextId = draftId ?? old.draftMessage?.id ?? `temp-draft-${Date.now()}`
-        const nextDraft: ExtendedDraftMessage = {
-          id: nextId,
-          threadId: cacheThreadId,
-          subject: payload.subject ?? '',
-          textHtml: payload.textHtml ?? '',
-          textPlain: null,
-          signatureId: payload.signatureId ?? null,
-          participants: old.draftMessage?.participants ?? [],
-          metadata: {
-            ...(old.draftMessage as any)?.metadata,
-            includePreviousMessage: payload.metadata?.includePreviousMessage ?? false,
-            sourceMessageId: payload.metadata?.sourceMessageId ?? null,
-          },
-          createdAt: old.draftMessage?.createdAt || new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          localVersion: (local?.localVersion ?? 0) + 1,
-          attachments: old.draftMessage?.attachments || [],
-        } as any
-        // Use reconcileDraft even for optimistic updates to maintain consistency
-        const reconciled = reconcileDraft(local, undefined, { isFirstSave: firstSave })
-        return {
-          ...old,
-          draftMessage: {
-            ...reconciled,
-            ...nextDraft, // Apply optimistic changes
-          } as any,
-        }
-      })
-      // Handle thread ID changes (e.g., new thread created on first save)
-      if (draftData?.threadId && draftData.threadId !== cacheThreadId) {
-        // Clear old cache entry
-        utils.thread.getById.setData({ threadId: cacheThreadId }, (old) => {
-          if (!old) return old
-          return { ...old, draftMessage: null }
-        })
-        // Set new cache entry
-        utils.thread.getById.setData({ threadId: draftData.threadId }, (old) => {
-          if (!old) return old
-          const reconciled = reconcileDraft(undefined, draftData, { isFirstSave: firstSave })
-          return { ...old, draftMessage: reconciled as any }
-        })
-        // Invalidate thread lists to refresh previews
-        utils.thread.list.invalidate()
+      if (cacheThreadId) {
+        utils.thread.getById.invalidate({ threadId: cacheThreadId })
       }
     },
   })

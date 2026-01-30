@@ -2,7 +2,7 @@
 
 import { type Database, type Transaction, schema } from '@auxx/database'
 import { eq, and } from 'drizzle-orm'
-import { DraftMode, SendStatus, ParticipantRole } from '@auxx/database/enums'
+import { SendStatus, ParticipantRole } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import type { ComposedMessage, ProcessedParticipants } from './types/message-sending.types'
 import { MessageAttachmentService, type FileAttachment } from './message-attachment.service'
@@ -36,8 +36,7 @@ export class MessageComposerService {
     participants: ProcessedParticipants
     signatureId?: string | null
     draftMessageId?: string | null
-    draftMode?: typeof DraftMode.NONE | typeof DraftMode.PRIVATE | typeof DraftMode.SHARED // Defaults to NONE if not specified
-    keepAsDraft?: boolean // If true, update existing draft without promoting to pending
+    keepAsDraft?: boolean // @deprecated - no longer used, drafts use separate Draft table
     inReplyTo?: string | null
     references?: string | null
     attachmentIds?: string[] // MediaAsset IDs to attach
@@ -88,7 +87,6 @@ export class MessageComposerService {
     signatureId?: string | null
     messageId: string
     sendToken: string
-    draftMode?: typeof DraftMode.NONE | typeof DraftMode.PRIVATE | typeof DraftMode.SHARED
     inReplyTo?: string | null
     references?: string | null
     attachmentIds?: string[]
@@ -155,11 +153,7 @@ export class MessageComposerService {
           sentAt: null, // Will be set when actually sent
 
           // Flags
-          // Note: messageType removed - derived from Integration.provider
-          // Note: isAutoReply, isAIGenerated removed - unused fields
-          // Note: inReplyTo, references removed - unused threading metadata
           isInbound: false,
-          draftMode: input.draftMode ?? DraftMode.NONE,
           hasAttachments: input.attachmentIds && input.attachmentIds.length > 0,
 
           // Initialize send tracking
@@ -202,13 +196,11 @@ export class MessageComposerService {
 
       await tx.insert(schema.MessageParticipant).values(participantLinks).onConflictDoNothing()
 
-      // Update thread latestMessageId if this is a non-draft message
-      const effectiveDraftMode = input.draftMode ?? DraftMode.NONE
-      if (effectiveDraftMode === DraftMode.NONE) {
-        await tx.update(schema.Thread)
-          .set({ latestMessageId: message.id })
-          .where(eq(schema.Thread.id, input.threadId))
-      }
+      // Update thread latestMessageId
+      // All messages are now "real" messages - drafts are in separate Draft table
+      await tx.update(schema.Thread)
+        .set({ latestMessageId: message.id })
+        .where(eq(schema.Thread.id, input.threadId))
 
       // Note: Attachments will be linked outside transaction using MessageAttachmentService
 
@@ -310,10 +302,10 @@ export class MessageComposerService {
     signatureId?: string | null
     messageId: string
     sendToken: string
-    draftMode?: typeof DraftMode.NONE | typeof DraftMode.PRIVATE | typeof DraftMode.SHARED
     inReplyTo?: string | null
     references?: string | null
   }): Promise<ComposedMessage> {
+    // @deprecated - This method is deprecated. Drafts are now stored in separate Draft table.
     logger.info('Updating existing draft', {
       draftMessageId: input.draftMessageId,
       messageId: input.messageId,
@@ -347,9 +339,6 @@ export class MessageComposerService {
 
           // Update participants
           fromId: input.participants.from.id,
-
-          // Keep as draft
-          draftMode: input.draftMode ?? DraftMode.PRIVATE,
         })
         .where(
           and(
@@ -428,10 +417,10 @@ export class MessageComposerService {
     signatureId?: string | null
     messageId: string
     sendToken: string
-    draftMode?: typeof DraftMode.NONE | typeof DraftMode.PRIVATE | typeof DraftMode.SHARED
     inReplyTo?: string | null
     references?: string | null
   }): Promise<ComposedMessage> {
+    // @deprecated - This method is deprecated. Drafts are now stored in separate Draft table.
     logger.info('Promoting draft to pending', {
       draftMessageId: input.draftMessageId,
       messageId: input.messageId,
@@ -449,7 +438,6 @@ export class MessageComposerService {
       columns: {
         id: true,
         createdById: true,
-        draftMode: true,
         organizationId: true,
         sendStatus: true,
       },
@@ -493,9 +481,6 @@ export class MessageComposerService {
 
           // Update timestamps
           updatedAt: now,
-
-          // Change draft mode - only clear to NONE when promoting to send, otherwise preserve
-          draftMode: input.draftMode ?? DraftMode.NONE,
 
           // Reset send tracking
           attempts: 0,
@@ -547,13 +532,11 @@ export class MessageComposerService {
 
       await tx.insert(schema.MessageParticipant).values(participantLinks).onConflictDoNothing()
 
-      // Update thread latestMessageId when promoting draft to non-draft
-      const effectiveDraftMode = input.draftMode ?? DraftMode.NONE
-      if (effectiveDraftMode === DraftMode.NONE) {
-        await tx.update(schema.Thread)
-          .set({ latestMessageId: message.id })
-          .where(eq(schema.Thread.id, input.threadId))
-      }
+      // Update thread latestMessageId
+      // All messages are now "real" messages - drafts are in separate Draft table
+      await tx.update(schema.Thread)
+        .set({ latestMessageId: message.id })
+        .where(eq(schema.Thread.id, input.threadId))
 
       return message
     })

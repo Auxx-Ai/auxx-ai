@@ -41,7 +41,6 @@ export {
   type IntegrationProvider,
   type ActorId,
   type MessageMeta,
-  type DraftMode,
   type ParticipantSummary,
   type ParticipantMeta,
   type ParticipantIdentifierType,

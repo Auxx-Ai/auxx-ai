@@ -35,6 +35,7 @@
     "./datasets": "./src/datasets/index.ts",
     "./datasets/types": "./src/datasets/types/index.ts",
     "./dehydration": "./src/dehydration/index.ts",
+    "./drafts": "./src/drafts/index.ts",
     "./email": "./src/email/index.ts",
     "./email-processor": "./src/email-processor/index.ts",
     "./email-processor/*": "./src/email-processor/*",
