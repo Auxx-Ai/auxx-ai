@@ -44,11 +44,6 @@ export {
 } from './participant-store'
 
 export {
-  useThreadReadStatusStore,
-  getThreadReadStatusStoreState,
-} from './thread-read-status-store'
-
-export {
   useThreadDraftStore,
   getThreadDraftStoreState,
 } from './thread-draft-store'

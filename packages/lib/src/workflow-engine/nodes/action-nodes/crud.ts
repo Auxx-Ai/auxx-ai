@@ -713,7 +713,7 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
    * - status    -> ThreadMutationService.updateThreadStatus()
    * - subject   -> ThreadMutationService.updateThreadSubject()
    * - assignee  -> ThreadMutationService.assignThread()
-   * - readStatus -> UnreadService.markThreadAsRead/Unread()
+   * - readStatus -> UnreadService.setReadStatus()
    * - tags      -> ThreadMutationService.tagThreadsBulk()
    * - inbox     -> ThreadMutationService.moveThreadsToInbox()
    */
@@ -813,13 +813,9 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
 
     // ACTION: Mark Read/Unread (Virtual Field)
     if (data.readStatus !== undefined && data.readStatus !== '') {
-      const markPromise =
-        data.readStatus === 'READ'
-          ? unreadService.markThreadAsRead(resourceId)
-          : unreadService.markThreadAsUnread(resourceId)
-
       actionPromises.push(
-        markPromise
+        unreadService
+          .setReadStatus(resourceId, data.readStatus === 'READ')
           .then(() => {
             results.readStatusUpdated = true
             results.newReadStatus = data.readStatus

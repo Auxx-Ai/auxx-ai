@@ -4,11 +4,10 @@
 import { useState, useMemo, useCallback } from 'react'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { Button } from '@auxx/ui/components/button'
-import { useInbox } from '~/hooks/use-inbox'
+import { useInboxes, type InboxItem } from '~/components/threads/hooks'
 import { cn } from '@auxx/ui/lib/utils'
 import { MultiSelectPicker } from './multi-select-picker'
 import { InboxDialog } from '~/components/inbox/inbox-dialog'
-import type { InboxWithRelations } from '@auxx/lib/types'
 import type { SelectOption } from '@auxx/types/custom-field'
 
 /** Props for InboxPicker component */
@@ -21,7 +20,7 @@ interface InboxPickerProps {
   selectAll?: boolean
   selectAllLabel?: string
   className?: string
-  inboxes?: InboxWithRelations[]
+  inboxes?: InboxItem[]
   children?: React.ReactNode
   align?: 'start' | 'center' | 'end'
   side?: 'top' | 'right' | 'bottom' | 'left'
@@ -50,7 +49,7 @@ export function InboxPicker({
   ...props
 }: InboxPickerProps) {
   // Fetch inboxes if not provided
-  const { inboxes: fetchedInboxes } = useInbox()
+  const { inboxes: fetchedInboxes } = useInboxes()
   const inboxes = externalInboxes || fetchedInboxes || []
 
   // Dialog state for creating new inbox

@@ -11,7 +11,6 @@ export type EmailActions = {
   onReplyAll: (message: MessageType) => void
   onForward: (message: MessageType) => void
   onResend: (message: MessageType) => void | Promise<void>
-  onMarkUnread: (message: MessageType) => void | Promise<void>
   onDelete: (message: MessageType) => void | Promise<void>
   onDownload: (message: MessageType) => void | Promise<void>
   onPrint: (message: MessageType) => void

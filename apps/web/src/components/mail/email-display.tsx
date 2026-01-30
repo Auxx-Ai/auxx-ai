@@ -36,7 +36,7 @@ import { SendStatusIndicator } from './send-status-indicator'
 import { toastError } from '@auxx/ui/components/toast'
 import { AttachmentDisplay } from '~/components/files/utils/attachment-display'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { useMessage, useMessageParticipants } from '~/components/threads/hooks'
+import { useMessage, useMessageParticipants, useThreadReadStatus } from '~/components/threads/hooks'
 import type { MessageMeta } from '~/components/threads/store'
 
 interface EmailDisplayProps {
@@ -59,6 +59,9 @@ const EmailDisplay = ({ messageId, messageActions, isOpen }: EmailDisplayProps) 
 
   // Fetch message from store
   const { message, isLoading } = useMessage({ messageId })
+
+  // Get read status mutation for this thread
+  const { markAsUnread } = useThreadReadStatus(message?.threadId ?? null)
 
   // Fetch participants using the new hook
   const { from, to, cc } = useMessageParticipants(message?.participants ?? [])
@@ -214,7 +217,7 @@ const EmailDisplay = ({ messageId, messageActions, isOpen }: EmailDisplayProps) 
           <div className="flex shrink-0 grow-0 items-start gap-2">
             <div className="flex flex-col items-end">
               <div className="flex items-center flex-row justify-end">
-                <DropdownMenuDemo message={message} emailActions={messageActions} />
+                <DropdownMenuDemo message={message} emailActions={messageActions} onMarkUnread={markAsUnread} />
                 <Button variant="ghost" size="icon-sm" onClick={handleReply}>
                   <Reply />
                 </Button>
@@ -307,9 +310,11 @@ function EmailSkeleton() {
 export function DropdownMenuDemo({
   message,
   emailActions,
+  onMarkUnread,
 }: {
   message: MessageMeta
   emailActions: EmailActions
+  onMarkUnread: () => void
 }) {
   const handleSelect = (action: (msg: any) => void) => (event?: Event) => {
     action(message)
@@ -343,7 +348,7 @@ export function DropdownMenuDemo({
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
-          <DropdownMenuItem onSelect={handleSelect(emailActions.onMarkUnread)}>
+          <DropdownMenuItem onSelect={onMarkUnread}>
             <Mail className="opacity-60" />
             Mark as unread
           </DropdownMenuItem>

@@ -20,7 +20,7 @@ import { InboxPicker } from '../pickers/inbox-picker'
 import { TagPicker } from '../pickers/tag-picker'
 import { ActorPicker } from '../pickers/actor-picker'
 import { useThreadContext, useThreadTags } from './thread-provider'
-import { useThread, useInboxById } from '~/components/threads/hooks'
+import { useThread, useInbox } from '~/components/threads/hooks'
 import { useActor } from '~/components/resources/hooks/use-actor'
 import { useConfirm } from '~/hooks/use-confirm'
 import { toastSuccess, toastError } from '@auxx/ui/components/toast'
@@ -51,7 +51,7 @@ export function ThreadHeader() {
   const { thread } = useThread({ threadId })
 
   // Get inbox details
-  const { inbox } = useInboxById(thread?.inboxId)
+  const { inbox } = useInbox(thread?.inboxId)
 
   // Get assignee details via actor store
   // Convert ActorId object to string format expected by useActor (e.g., 'user:abc123')

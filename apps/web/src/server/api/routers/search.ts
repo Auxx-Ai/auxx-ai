@@ -8,8 +8,6 @@ import {
 } from '@auxx/database/models'
 import { listAll } from '@auxx/lib/resources'
 import { InboxService } from '@auxx/lib/inboxes'
-import { schema } from '@auxx/database'
-import { and, or, eq, ilike, inArray } from 'drizzle-orm'
 import { SearchOperator, IsOperatorValue } from '@auxx/lib/mail-query'
 import { createScopedLogger } from '@auxx/logger'
 import { ParticipantRole } from '@auxx/database/enums'

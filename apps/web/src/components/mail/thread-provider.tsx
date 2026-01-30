@@ -9,7 +9,6 @@ import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 import { useThread as useThreadFromStore, useThreadMutation } from '~/components/threads/hooks'
 import type { EditorMode } from '~/components/mail/email-editor/types'
 import type { ActorId } from '@auxx/types/actor'
-import { api } from '~/trpc/react'
 
 /** Reply box UI state */
 interface ReplyBoxState {
@@ -29,7 +28,6 @@ interface ThreadMutations {
   updateSubject: (subject: string) => Promise<void>
   moveToInbox: (inboxId: string) => Promise<void>
   deletePermanently: () => Promise<void>
-  markAsRead: () => Promise<void>
 }
 
 /** Thread action handlers */
@@ -49,7 +47,6 @@ interface EmailActions {
   onReplyAll: (message: any) => void
   onForward: (message: any) => void
   onResend: (message: any) => Promise<void>
-  onMarkUnread: (message: any) => Promise<void>
   onDelete: (message: any) => Promise<void>
   onDownload: (message: any) => Promise<void>
   onPrint: (message: any) => void
@@ -110,13 +107,6 @@ export function ThreadProvider({
 
   // Initialize new unified mutation hook
   const { update, remove } = useThreadMutation()
-
-  // Keep markAsRead mutation separate (not covered by unified endpoint)
-  const markReadMutation = api.thread.markAsRead.useMutation({
-    onError: (error) => {
-      toastError({ title: 'Failed to mark as read', description: error.message })
-    },
-  })
 
   const { selectedTags, fetchedTagsData, handleTagChange } = useThreadTagsHook(thread, {
     contextType,
@@ -226,19 +216,6 @@ export function ThreadProvider({
         }
       },
 
-      onMarkUnread: async (message: any) => {
-        try {
-          // Mark the entire thread as unread
-          await markReadMutation.mutateAsync({ threadId: thread.id })
-          toastSuccess({ title: 'Thread marked as unread' })
-        } catch (error) {
-          toastError({
-            title: 'Failed to mark as unread',
-            description: error instanceof Error ? error.message : 'Unknown error',
-          })
-        }
-      },
-
       onDelete: async (message: any) => {
         // Move entire thread to trash using optimistic update
         update(thread.id, { status: 'TRASH' })
@@ -340,7 +317,7 @@ export function ThreadProvider({
         }
       },
     }
-  }, [thread, update, markReadMutation, openEditorForAction])
+  }, [thread, update, openEditorForAction])
 
   // Create mutations object that matches the interface
   const mutations: ThreadMutations = useMemo(
@@ -369,11 +346,8 @@ export function ThreadProvider({
       deletePermanently: async () => {
         remove(threadId)
       },
-      markAsRead: async () => {
-        await markReadMutation.mutateAsync({ threadId })
-      },
     }),
-    [threadId, update, remove, markReadMutation]
+    [threadId, update, remove]
   )
 
   // Create context value - actions and UI state only, no thread data
@@ -447,6 +421,3 @@ export function useThreadEmailActions() {
   const context = useThreadContext()
   return context.emailActions
 }
-
-/** @deprecated Use useThreadTags instead */
-export const useThreadTagsFromContext = useThreadTags

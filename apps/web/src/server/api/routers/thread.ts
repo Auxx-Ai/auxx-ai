@@ -873,35 +873,17 @@ export const threadRouter = createTRPCRouter({
     const unreadService = new UnreadService(organizationId, userId)
     return await unreadService.getUnreadCountsForUser()
   }),
-  markAsRead: protectedProcedure
-    .input(z.object({ threadId: z.string() }))
+  readStatus: protectedProcedure
+    .input(
+      z.object({
+        threadId: z.union([z.string(), z.array(z.string())]),
+        isRead: z.boolean(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const { userId, organizationId } = ctx.session
       const unreadService = new UnreadService(organizationId, userId)
-      await unreadService.markThreadAsRead(input.threadId)
-    }),
-  markAsUnread: protectedProcedure
-    .input(z.object({ threadId: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      const { userId, organizationId } = ctx.session
-      const unreadService = new UnreadService(organizationId, userId)
-      await unreadService.markThreadAsUnread(input.threadId)
-    }),
-  // Mark multiple threads as read
-  markBatchRead: protectedProcedure
-    .input(z.object({ threadIds: z.array(z.string()) }))
-    .mutation(async ({ ctx, input }) => {
-      const { userId, organizationId } = ctx.session
-      const unreadService = new UnreadService(organizationId, userId)
-      await unreadService.markMultipleThreads(input.threadIds, 'read')
-    }),
-  // Mark multiple threads as unread
-  markBatchUnread: protectedProcedure
-    .input(z.object({ threadIds: z.array(z.string()) }))
-    .mutation(async ({ ctx, input }) => {
-      const { userId, organizationId } = ctx.session
-      const unreadService = new UnreadService(organizationId, userId)
-      await unreadService.markMultipleThreads(input.threadIds, 'unread')
+      await unreadService.setReadStatus(input.threadId, input.isRead)
     }),
   /**
    * Retry sending a failed message

@@ -25,7 +25,7 @@ import { CalendarIcon, Search, X } from 'lucide-react'
 import { format } from 'date-fns'
 import { cn } from '@auxx/ui/lib/utils'
 import { IsOperatorValue } from '@auxx/lib/mail-query/client'
-import { useInbox } from '~/hooks/use-inbox'
+import { useInboxes } from '~/components/threads/hooks'
 import { Badge } from '@auxx/ui/components/badge'
 import type { SearchCondition } from './store'
 
@@ -103,7 +103,7 @@ export function AdvancedFilterMode({
   const [isTagOpen, setIsTagOpen] = useState(false)
   const tagButtonRef = useRef<HTMLButtonElement>(null)
 
-  const { inboxes } = useInbox()
+  const { inboxes } = useInboxes()
 
   // Derived values from conditions
   const fromValue = getConditionValue(conditions, 'from') as string[] | undefined

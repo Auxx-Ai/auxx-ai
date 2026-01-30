@@ -5,6 +5,7 @@ import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { subscribeWithSelector } from 'zustand/middleware'
 import type { ThreadClientFilter } from '@auxx/lib/mail-query/client'
+import type { ActorId } from '@auxx/types/actor'
 
 /** Re-export filter type for convenience */
 export type { ThreadClientFilter as ThreadFilter }
@@ -20,10 +21,6 @@ export type ThreadStatus = 'OPEN' | 'ARCHIVED' | 'SPAM' | 'TRASH'
 export type IntegrationProvider = 'GMAIL' | 'OUTLOOK' | 'FACEBOOK' | 'INSTAGRAM' | 'OPENPHONE'
 
 /** Actor ID with type discriminator (matches backend) */
-export interface ActorId {
-  type: 'user' | 'contact'
-  id: string
-}
 
 /** Tag summary for display in thread list */
 export interface ThreadTagSummary {

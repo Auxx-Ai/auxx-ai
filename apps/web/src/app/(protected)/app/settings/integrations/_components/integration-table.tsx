@@ -44,7 +44,8 @@ import {
 } from '~/components/global/integration-status-indicator'
 import { ReauthBanner } from '~/components/global/reauth-banner'
 import { cn } from '@auxx/ui/lib/utils'
-import type { Inbox, ChatWidget } from '@auxx/database/types'
+import type { ChatWidget } from '@auxx/database/types'
+import type { InboxItem } from '~/components/threads/hooks'
 // Define type for integration (simplified, adjust based on actual API response)
 interface DisplayIntegration {
   id: string
@@ -67,7 +68,7 @@ interface DisplayIntegration {
 }
 interface IntegrationTableProps {
   integrations: DisplayIntegration[]
-  inboxes: Inbox[]
+  inboxes: InboxItem[]
 }
 /**
  * Get provider icon based on provider type
@@ -134,12 +135,10 @@ const isClickOnInteractiveElement = (event: React.MouseEvent): boolean => {
 export default function IntegrationTable({ integrations, inboxes }: IntegrationTableProps) {
   const router = useRouter()
   const { toggleIntegration, disconnectIntegration, syncMessages } = useIntegration()
-  // Find connected inbox for an integration
-  const getConnectedInbox = (integrationId: string) => {
-    const inbox = inboxes?.find((inbox) =>
-      inbox.integrations?.some((i) => i.integrationId === integrationId)
-    )
-    return inbox
+  /** Find connected inbox for an integration using its inboxId */
+  const getConnectedInbox = (integration: DisplayIntegration) => {
+    if (!integration.inboxId) return undefined
+    return inboxes?.find((inbox) => inbox.id === integration.inboxId)
   }
   // Handle toggle integration status
   const handleToggle = (id: string, currentState: boolean) => {
@@ -191,7 +190,7 @@ export default function IntegrationTable({ integrations, inboxes }: IntegrationT
             </TableRow>
           ) : (
             integrations.map((integration) => {
-              const connectedInbox = getConnectedInbox(integration.id)
+              const connectedInbox = getConnectedInbox(integration)
               const providerDisplayName = getProviderName(integration.provider)
               const displayName =
                 integration.name ||

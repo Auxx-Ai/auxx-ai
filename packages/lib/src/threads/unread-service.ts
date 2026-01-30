@@ -147,172 +147,23 @@ export class UnreadService {
   }
 
   /**
-   * Marks a thread as read for a user.
-   * Handles updating aggregate counts and cache.
+   * Sets the read status for one or more threads.
    */
-  async markThreadAsRead(
-    threadId: string,
-    userId?: string,
-    lastSeenMessageId?: string
+  async setReadStatus(
+    threadId: string | string[],
+    isRead: boolean,
+    userId?: string
   ): Promise<void> {
-    if (!userId) userId = this.userId
+    const targetUserId = userId ?? this.userId
+    const threadIds = Array.isArray(threadId) ? threadId : [threadId]
 
-    // Get thread info with direct inboxId
-    const [thread] = await db
-      .select({
-        inboxId: schema.Thread.inboxId,
-        lastMessageAt: schema.Thread.lastMessageAt,
-      })
-      .from(schema.Thread)
-      .where(
-        and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, this.organizationId))
-      )
-      .limit(1)
-
-    if (!thread || !thread.inboxId) {
-      logger.warn(`Thread ${threadId} not found or has no inboxId, cannot mark read.`)
-      return
-    }
-
-    // Get latest message if not provided
-    let latestMessageId = lastSeenMessageId
-    if (!latestMessageId) {
-      const [latestMessage] = await db
-        .select({ id: schema.Message.id })
-        .from(schema.Message)
-        .where(eq(schema.Message.threadId, threadId))
-        .orderBy(sql`${schema.Message.sentAt} DESC`)
-        .limit(1)
-      latestMessageId = latestMessage?.id ?? null
-    }
-
-    const now = new Date()
-
-    // Use Drizzle transaction
-    await db.transaction(async (tx) => {
-      // Check if read status exists
-      const [existingStatus] = await tx
-        .select()
-        .from(schema.ThreadReadStatus)
-        .where(
-          and(
-            eq(schema.ThreadReadStatus.threadId, threadId),
-            eq(schema.ThreadReadStatus.userId, userId)
-          )
-        )
-        .limit(1)
-
-      if (existingStatus) {
-        // Update existing status
-        await tx
-          .update(schema.ThreadReadStatus)
-          .set({
-            isRead: true,
-            lastReadAt: now,
-            lastSeenMessageId: latestMessageId,
-          })
-          .where(
-            and(
-              eq(schema.ThreadReadStatus.threadId, threadId),
-              eq(schema.ThreadReadStatus.userId, userId)
-            )
-          )
-      } else {
-        // Create new status
-        await tx.insert(schema.ThreadReadStatus).values({
-          threadId,
-          userId,
-          organizationId: this.organizationId,
-          isRead: true,
-          lastReadAt: now,
-          lastSeenMessageId: latestMessageId,
-        })
-      }
-
-      // Trigger count update (can be awaited or done async/queued)
-      await this.updateUserInboxUnreadCount(thread.inboxId!, userId) // Await for consistency in this example
-    })
-    logger.info(`Marked thread ${threadId} as read for user ${userId}`)
-  }
-
-  /**
-   * Marks a thread as unread for a user.
-   */
-  async markThreadAsUnread(threadId: string, userId?: string): Promise<void> {
-    if (!userId) userId = this.userId // Use the class userId if not provided
-
-    // Get thread with direct inboxId
-    const [thread] = await db
-      .select({ inboxId: schema.Thread.inboxId })
-      .from(schema.Thread)
-      .where(
-        and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, this.organizationId))
-      )
-      .limit(1)
-
-    if (!thread || !thread.inboxId) {
-      logger.warn(`Thread ${threadId} not found or has no inboxId, cannot mark unread.`)
-      return
-    }
-
-    const now = new Date()
-
-    await db.transaction(async (tx) => {
-      // Check if read status exists
-      const [existingStatus] = await tx
-        .select()
-        .from(schema.ThreadReadStatus)
-        .where(
-          and(
-            eq(schema.ThreadReadStatus.threadId, threadId),
-            eq(schema.ThreadReadStatus.userId, userId)
-          )
-        )
-        .limit(1)
-
-      if (existingStatus) {
-        // Update existing status
-        await tx
-          .update(schema.ThreadReadStatus)
-          .set({
-            isRead: false,
-            lastReadAt: null,
-          })
-          .where(
-            and(
-              eq(schema.ThreadReadStatus.threadId, threadId),
-              eq(schema.ThreadReadStatus.userId, userId)
-            )
-          )
-      } else {
-        // Create new status
-        await tx.insert(schema.ThreadReadStatus).values({
-          threadId,
-          userId,
-          organizationId: this.organizationId,
-          isRead: false,
-          lastReadAt: null,
-        })
-      }
-
-      // Trigger count update
-      await this.updateUserInboxUnreadCount(thread.inboxId!, userId) // Await for consistency in this example
-    })
-    logger.info(`Marked thread ${threadId} as unread for user ${userId}`)
-  }
-
-  /**
-   * Marks multiple threads as read/unread in batch.
-   */
-  async markMultipleThreads(threadIds: string[], markAs: 'read' | 'unread'): Promise<void> {
     if (threadIds.length === 0) return
 
-    // Get threads with direct inboxId
+    // Fetch threads with inboxIds
     const threads = await db
       .select({
         id: schema.Thread.id,
         inboxId: schema.Thread.inboxId,
-        lastMessageAt: schema.Thread.lastMessageAt,
       })
       .from(schema.Thread)
       .where(
@@ -324,80 +175,65 @@ export class UnreadService {
 
     if (threads.length === 0) return
 
-    // Get latest messages for each thread
-    const threadMessageMap = new Map<string, string>()
-    for (const thread of threads) {
-      const [latestMessage] = await db
-        .select({ id: schema.Message.id })
+    // Get latest message IDs only when marking as read
+    const threadMessageMap = new Map<string, string | null>()
+    if (isRead) {
+      const messages = await db
+        .select({
+          threadId: schema.Message.threadId,
+          id: schema.Message.id,
+        })
         .from(schema.Message)
-        .where(eq(schema.Message.threadId, thread.id))
+        .where(inArray(schema.Message.threadId, threadIds))
         .orderBy(sql`${schema.Message.sentAt} DESC`)
-        .limit(1)
-      if (latestMessage) {
-        threadMessageMap.set(thread.id, latestMessage.id)
+
+      // Keep only the first (latest) message per thread
+      for (const msg of messages) {
+        if (!threadMessageMap.has(msg.threadId)) {
+          threadMessageMap.set(msg.threadId, msg.id)
+        }
       }
     }
 
-    const affectedInboxIds = [
-      ...new Set(threads.map((t) => t.inboxId).filter((id) => id !== null)),
-    ] as string[]
+    const affectedInboxIds = [...new Set(threads.map((t) => t.inboxId).filter(Boolean))] as string[]
     const now = new Date()
 
     await db.transaction(async (tx) => {
-      const upsertPromises = threads.map(async (thread) => {
-        const latestMessageId = threadMessageMap.get(thread.id) ?? null
+      // Upsert read status for each thread
+      await Promise.all(
+        threads.map(async (thread) => {
+          const latestMessageId = threadMessageMap.get(thread.id) ?? null
 
-        // Check if read status exists
-        const [existingStatus] = await tx
-          .select()
-          .from(schema.ThreadReadStatus)
-          .where(
-            and(
-              eq(schema.ThreadReadStatus.threadId, thread.id),
-              eq(schema.ThreadReadStatus.userId, this.userId)
-            )
-          )
-          .limit(1)
-
-        if (existingStatus) {
-          // Update existing status
           await tx
-            .update(schema.ThreadReadStatus)
-            .set({
-              isRead: markAs === 'read',
-              lastReadAt: markAs === 'read' ? now : null,
-              lastSeenMessageId:
-                markAs === 'read' ? latestMessageId : existingStatus.lastSeenMessageId,
+            .insert(schema.ThreadReadStatus)
+            .values({
+              threadId: thread.id,
+              userId: targetUserId,
+              organizationId: this.organizationId,
+              isRead,
+              lastReadAt: isRead ? now : null,
+              lastSeenMessageId: isRead ? latestMessageId : null,
             })
-            .where(
-              and(
-                eq(schema.ThreadReadStatus.threadId, thread.id),
-                eq(schema.ThreadReadStatus.userId, this.userId)
-              )
-            )
-        } else {
-          // Create new status
-          await tx.insert(schema.ThreadReadStatus).values({
-            threadId: thread.id,
-            userId: this.userId,
-            organizationId: this.organizationId,
-            isRead: markAs === 'read',
-            lastReadAt: markAs === 'read' ? now : null,
-            lastSeenMessageId: markAs === 'read' ? latestMessageId : null,
-          })
-        }
-      })
-
-      await Promise.all(upsertPromises)
+            .onConflictDoUpdate({
+              target: [schema.ThreadReadStatus.threadId, schema.ThreadReadStatus.userId],
+              set: {
+                isRead,
+                lastReadAt: isRead ? now : null,
+                ...(isRead && { lastSeenMessageId: latestMessageId }),
+              },
+            })
+        })
+      )
 
       // Update counts for all affected inboxes
-      const updateCountPromises = affectedInboxIds.map(
-        (inboxId) => this.updateUserInboxUnreadCount(inboxId) // Call the method that also updates cache
+      await Promise.all(
+        affectedInboxIds.map((inboxId) => this.updateUserInboxUnreadCount(inboxId, targetUserId))
       )
-      await Promise.all(updateCountPromises)
     })
 
-    logger.info(`Marked ${threads.length} threads as ${markAs} for user ${this.userId}`)
+    logger.info(
+      `Set ${threads.length} thread(s) to ${isRead ? 'read' : 'unread'} for user ${targetUserId}`
+    )
   }
 
   /**

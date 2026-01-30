@@ -8,7 +8,6 @@ import {
   useMessageStore,
   useParticipantStore,
   useThreadDraftStore,
-  useThreadReadStatusStore,
 } from '../store'
 import { useThreadRealtime } from '../realtime'
 
@@ -38,7 +37,6 @@ export function ThreadDataProvider({ children }: ThreadDataProviderProps) {
   const pendingThreadCount = useThreadStore((s) => s.pendingIds.size)
   const startThreadBatch = useThreadStore((s) => s.startBatch)
   const completeThreadBatch = useThreadStore((s) => s.completeBatch)
-  const setReadStatusBatch = useThreadReadStatusStore((s) => s.setStatusBatch)
 
   const { mutateAsync: fetchThreads } = api.thread.getByIds.useMutation()
 
@@ -54,13 +52,6 @@ export function ThreadDataProvider({ children }: ThreadDataProviderProps) {
         const foundIds = new Set(threads.map((t) => t.id))
         const notFoundIds = batch.filter((id) => !foundIds.has(id))
         completeThreadBatch(threads, notFoundIds)
-
-        // Sync read status to read-status-store for optimistic updates
-        const readStatusEntries = threads.map((t) => ({
-          threadId: t.id,
-          isUnread: t.isUnread,
-        }))
-        setReadStatusBatch(readStatusEntries)
       } catch (error) {
         console.error('Thread batch fetch failed:', error)
         completeThreadBatch([], batch) // Mark all as not found on error
@@ -68,7 +59,7 @@ export function ThreadDataProvider({ children }: ThreadDataProviderProps) {
     }, 50)
 
     return () => clearTimeout(timer)
-  }, [pendingThreadCount, startThreadBatch, completeThreadBatch, fetchThreads, setReadStatusBatch])
+  }, [pendingThreadCount, startThreadBatch, completeThreadBatch, fetchThreads])
 
   // ============================================================
   // Message batch fetching

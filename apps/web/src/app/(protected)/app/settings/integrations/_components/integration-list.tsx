@@ -2,7 +2,7 @@
 // ~/app/(protected)/app/settings/integrations/_components/integration-list.tsx
 import React from 'react'
 import { useIntegration } from '~/hooks/use-integration'
-import { useInbox } from '~/hooks/use-inbox'
+import { useInboxes } from '~/components/threads/hooks'
 import { Button } from '@auxx/ui/components/button'
 import { Plus, Waypoints } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -19,7 +19,7 @@ import { EmptyState } from '~/components/global/empty-state'
 export default function IntegrationList() {
   const router = useRouter()
   const { integrations, isLoading } = useIntegration()
-  const { inboxes } = useInbox()
+  const { inboxes } = useInboxes()
 
   const { hasAccess, getLimit, isLoading: isFeatureLoading } = useFeatureFlags()
 

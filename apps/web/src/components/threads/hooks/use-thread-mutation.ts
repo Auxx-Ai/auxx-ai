@@ -27,7 +27,7 @@ export type ThreadUpdates = Partial<
  *
  * // Single thread operations
  * update(threadId, { status: 'ARCHIVED' })
- * update(threadId, { assigneeId: { type: 'user', id: 'abc123' } })
+ * update(threadId, { assigneeId: 'user:abc123' })
  * update(threadId, { subject: 'New subject' })
  *
  * // Bulk operations
@@ -64,18 +64,9 @@ export function useThreadMutation() {
       // 2. Create RecordId and call backend mutation
       const recordId = toRecordId('thread', threadId)
 
-      // Convert assigneeId from ActorId object to string for API
-      const apiUpdates = {
-        ...updates,
-        assigneeId: updates.assigneeId === undefined
-          ? undefined
-          : updates.assigneeId === null
-            ? null
-            : `${updates.assigneeId.type}:${updates.assigneeId.id}`,
-      }
-
+      // assigneeId is already in "user:abc123" format from ActorPicker
       updateMutation.mutate(
-        { recordId, updates: apiUpdates },
+        { recordId, updates },
         {
           onSuccess: () => confirmOptimistic(threadId, version),
           onError: (error) => {
@@ -103,18 +94,9 @@ export function useThreadMutation() {
       // 2. Create RecordIds and call backend mutation
       const recordIds = threadIds.map((id) => toRecordId('thread', id))
 
-      // Convert assigneeId from ActorId object to string for API
-      const apiUpdates = {
-        ...updates,
-        assigneeId: updates.assigneeId === undefined
-          ? undefined
-          : updates.assigneeId === null
-            ? null
-            : `${updates.assigneeId.type}:${updates.assigneeId.id}`,
-      }
-
+      // assigneeId is already in "user:abc123" format from ActorPicker
       updateBulkMutation.mutate(
-        { recordIds, updates: apiUpdates },
+        { recordIds, updates },
         {
           onSuccess: () => {
             versions.forEach(({ id, version }) => confirmOptimistic(id, version))

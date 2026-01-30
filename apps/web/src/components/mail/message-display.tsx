@@ -35,7 +35,7 @@ import { type EmailActions } from './email-actions'
 import { SendStatusIndicator } from './send-status-indicator'
 import { toastError } from '@auxx/ui/components/toast'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { useMessage, useMessageParticipants } from '~/components/threads/hooks'
+import { useMessage, useMessageParticipants, useThreadReadStatus } from '~/components/threads/hooks'
 import type { MessageMeta } from '~/components/threads/store'
 
 interface MessageDisplayProps {
@@ -57,6 +57,9 @@ const MessageDisplay = ({ messageId, messageActions, isOpen }: MessageDisplayPro
 
   // Fetch message from store
   const { message, isLoading } = useMessage({ messageId })
+
+  // Get read status mutation for this thread
+  const { markAsUnread } = useThreadReadStatus(message?.threadId ?? null)
 
   // Fetch sender participant using the new hook
   const { from: sender } = useMessageParticipants(message?.participants ?? [])
@@ -148,7 +151,7 @@ const MessageDisplay = ({ messageId, messageActions, isOpen }: MessageDisplayPro
               </div>
               <div className="pr-2 pt-2">
                 <div className="flex items-center">
-                  <MessageDropdownMenu message={message} emailActions={messageActions} />
+                  <MessageDropdownMenu message={message} emailActions={messageActions} onMarkUnread={markAsUnread} />
                 </div>
               </div>
             </div>
@@ -213,9 +216,11 @@ function MessageSkeleton() {
 function MessageDropdownMenu({
   message,
   emailActions,
+  onMarkUnread,
 }: {
   message: MessageMeta
   emailActions: EmailActions
+  onMarkUnread: () => void
 }) {
   const handleSelect = (action: (msg: any) => void) => (event?: Event) => {
     action(message)
@@ -249,7 +254,7 @@ function MessageDropdownMenu({
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
-          <DropdownMenuItem onSelect={handleSelect(emailActions.onMarkUnread)}>
+          <DropdownMenuItem onSelect={onMarkUnread}>
             <Mail className="opacity-60" />
             Mark as unread
           </DropdownMenuItem>

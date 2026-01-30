@@ -7,7 +7,6 @@ import { useUser } from '~/hooks/use-user'
 import { useThreadStore } from '../store/thread-store'
 import { useMessageStore } from '../store/message-store'
 import { useMessageListStore } from '../store/message-list-store'
-import { useThreadReadStatusStore } from '../store/thread-read-status-store'
 import type {
   SessionCreatedEvent,
   SessionClosedEvent,
@@ -42,8 +41,6 @@ export function useThreadRealtime() {
 
   const requestMessage = useMessageStore((s) => s.requestMessage)
   const appendMessage = useMessageListStore((s) => s.appendMessage)
-
-  const setReadStatus = useThreadReadStatusStore((s) => s.setStatus)
 
   /**
    * Handle session-created event.
@@ -109,11 +106,8 @@ export function useThreadRealtime() {
         latestMessageId: data.message?.id || null,
         isUnread: true,
       })
-
-      // Also update the separate read status store for backward compatibility
-      setReadStatus(data.threadId, true)
     },
-    [requestMessage, appendMessage, updateThread, setReadStatus]
+    [requestMessage, appendMessage, updateThread]
   )
 
   /**
@@ -150,10 +144,10 @@ export function useThreadRealtime() {
 
       // If an agent read the messages, mark the thread as read
       if (data.reader === 'agent') {
-        setReadStatus(data.threadId, false)
+        updateThread(data.threadId, { isUnread: false })
       }
     },
-    [setReadStatus]
+    [updateThread]
   )
 
   // Subscribe to Pusher events

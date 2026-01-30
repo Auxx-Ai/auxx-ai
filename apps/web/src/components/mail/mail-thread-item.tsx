@@ -22,7 +22,6 @@ import { Button } from '@auxx/ui/components/button'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { WorkflowSubMenu } from '~/components/workflow/workflow-submenu'
 import { toRecordId } from '@auxx/types/resource'
-import { api } from '~/trpc/react'
 
 // NEW: Import from new hooks
 import { useThread, useMessage, useThreadReadStatus, useThreadDraftStatus, useThreadMutation } from '~/components/threads/hooks'
@@ -112,7 +111,7 @@ export function MailThreadItem({
     messageId: thread?.latestMessageId,
     enabled: !!thread?.latestMessageId,
   })
-  const { isUnread } = useThreadReadStatus(threadId)
+  const { isUnread, markAsRead } = useThreadReadStatus(threadId)
   const { hasDraft } = useThreadDraftStatus(threadId)
 
   // --- Selection store actions ---
@@ -121,9 +120,6 @@ export function MailThreadItem({
 
   // --- Thread mutations using new unified hook ---
   const { update, isUpdating } = useThreadMutation()
-
-  // Keep markAsRead separate (used when clicking on thread)
-  const markReadMutation = api.thread.markAsRead.useMutation()
 
   // --- Selection state ---
   const isMultiSelected = useMemo(
@@ -158,11 +154,11 @@ export function MailThreadItem({
 
         // Mark as read if thread is currently unread
         if (isUnread) {
-          markReadMutation.mutate({ threadId })
+          markAsRead()
         }
       }
     },
-    [handleThreadClick, threadId, markReadMutation, isUnread, viewMode, toggleSelection, setActiveThread]
+    [handleThreadClick, threadId, markAsRead, isUnread, viewMode, toggleSelection, setActiveThread]
   )
 
   // --- Derived values ---
