@@ -19,7 +19,8 @@ import {
 import { InboxPicker } from '../pickers/inbox-picker'
 import { TagPicker } from '../pickers/tag-picker'
 import { ActorPicker } from '../pickers/actor-picker'
-import { useThreadContext, useThreadTags } from './thread-provider'
+import { useThreadContext } from './thread-provider'
+import { useThreadTags } from '~/components/tags/hooks/use-thread-tags'
 import { useThread, useInbox } from '~/components/threads/hooks'
 import { useActor } from '~/components/resources/hooks/use-actor'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -45,7 +46,7 @@ export function ThreadHeader() {
 
   // Get context for mutations and handlers
   const { threadId, handlers, mutations } = useThreadContext()
-  const { selectedTags, availableTags, updateTags } = useThreadTags()
+  const { selectedTags, handleTagChange } = useThreadTags(threadId)
 
   // Get thread data from store
   const { thread } = useThread({ threadId })
@@ -195,7 +196,6 @@ export function ThreadHeader() {
   }, [thread, mutations, confirm])
 
   if (!thread) return null
-  const fetchedTagsData = availableTags
 
   return (
     <>
@@ -268,7 +268,7 @@ export function ThreadHeader() {
                 onOpenChange={setOpen}
                 anchorRef={tagButtonRef}
                 selectedTags={selectedTags}
-                onChange={updateTags}
+                onChange={handleTagChange}
                 allowMultiple={true}
               />
             )}
@@ -358,9 +358,9 @@ export function ThreadHeader() {
               onSave={handleSubjectChange}
             />
           </div>
-          {fetchedTagsData && fetchedTagsData.length > 0 && (
+          {thread.tags && thread.tags.length > 0 && (
             <div className="flex flex-row no-wrap gap-2 shrink-0">
-              {fetchedTagsData.map((tag) => (
+              {thread.tags.map((tag) => (
                 <ThreadTag
                   tag={tag}
                   threadId={threadId}
@@ -368,7 +368,7 @@ export function ThreadHeader() {
                   onRemove={() => {
                     // Remove this tag from the current tags list
                     const newTagIds = selectedTags.filter((id) => id !== tag.id)
-                    updateTags(newTagIds)
+                    handleTagChange(newTagIds)
                   }}
                 />
               ))}

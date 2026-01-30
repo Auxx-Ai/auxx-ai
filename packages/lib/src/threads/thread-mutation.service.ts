@@ -1,7 +1,7 @@
 // packages/lib/src/threads/thread-mutation.service.ts
 
 import { type Database, schema } from '@auxx/database'
-import { ThreadStatus, DraftMode } from '@auxx/database/enums'
+import { DraftMode } from '@auxx/database/enums'
 import { eq, and, inArray, isNotNull } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
 import { generateId } from '@auxx/utils'
@@ -45,172 +45,6 @@ export class ThreadMutationService {
   constructor(organizationId: string, db: Database) {
     this.organizationId = organizationId
     this.db = db
-  }
-
-  /**
-   * Updates the status of a single thread.
-   * Returns MutationResult - frontend uses optimistic updates.
-   */
-  async updateThreadStatus(
-    threadId: string,
-    status: (typeof ThreadStatus)[keyof typeof ThreadStatus]
-  ): Promise<MutationResult> {
-    logger.info('Updating thread status', { threadId, status, organizationId: this.organizationId })
-
-    try {
-      const result = await this.db
-        .update(schema.Thread)
-        .set({
-          status: status as any,
-        })
-        .where(
-          and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, this.organizationId))
-        )
-        .returning({
-          id: schema.Thread.id,
-          status: schema.Thread.status,
-        })
-
-      if (result.length === 0) {
-        throw new Error(`Thread ${threadId} not found`)
-      }
-
-      return {
-        id: threadId,
-        success: true,
-        updatedFields: { status },
-        timestamp: new Date(),
-      }
-    } catch (error: unknown) {
-      logger.error('Failed to update thread status', {
-        threadId,
-        status,
-        error: error instanceof Error ? error.message : error,
-      })
-      throw new Error(
-        `Database error updating status for thread ${threadId}: ${error instanceof Error ? error.message : error}`
-      )
-    }
-  }
-
-  /**
-   * Updates the subject of a thread.
-   * Returns MutationResult - frontend uses optimistic updates.
-   */
-  async updateThreadSubject(threadId: string, subject: string): Promise<MutationResult> {
-    logger.info('Updating thread subject', {
-      threadId,
-      subject,
-      organizationId: this.organizationId,
-    })
-
-    // Trim the subject to maximum 100 characters
-    const trimmedSubject = subject.trim().substring(0, 100)
-
-    try {
-      const result = await this.db
-        .update(schema.Thread)
-        .set({
-          subject: trimmedSubject,
-        })
-        .where(
-          and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, this.organizationId))
-        )
-        .returning({
-          id: schema.Thread.id,
-          subject: schema.Thread.subject,
-        })
-
-      if (result.length === 0) {
-        throw new Error(`Thread ${threadId} not found`)
-      }
-
-      return {
-        id: threadId,
-        success: true,
-        updatedFields: { subject: trimmedSubject },
-        timestamp: new Date(),
-      }
-    } catch (error: unknown) {
-      logger.error('Failed to update thread subject', {
-        threadId,
-        subject,
-        error: error instanceof Error ? error.message : error,
-      })
-
-      throw new Error(
-        `Database error updating subject for thread ${threadId}: ${error instanceof Error ? error.message : error}`
-      )
-    }
-  }
-
-  /**
-   * Assigns or unassigns a thread to a user.
-   * Accepts ActorId format (e.g., 'user:abc123') or null to unassign.
-   * Returns MutationResult - frontend uses optimistic updates.
-   */
-  async assignThread(
-    threadId: string,
-    assigneeActorId: ActorId | null
-  ): Promise<MutationResult> {
-    // Parse ActorId to extract user ID for database storage
-    const assigneeUserId = assigneeActorId ? parseActorId(assigneeActorId).id : null
-
-    logger.info('Assigning thread', {
-      threadId,
-      assigneeActorId,
-      assigneeUserId,
-      organizationId: this.organizationId,
-    })
-
-    try {
-      // Verify user belongs to the organization if not null
-      if (assigneeUserId) {
-        const memberExists = await this.db.query.OrganizationMember.findFirst({
-          where: (members, { eq, and }) =>
-            and(eq(members.userId, assigneeUserId), eq(members.organizationId, this.organizationId)),
-          columns: { id: true },
-        })
-        if (!memberExists) {
-          throw new Error(
-            `Assignee user ${assigneeUserId} is not part of organization ${this.organizationId}.`
-          )
-        }
-      }
-
-      const result = await this.db
-        .update(schema.Thread)
-        .set({
-          assigneeId: assigneeUserId,
-        })
-        .where(
-          and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, this.organizationId))
-        )
-        .returning({
-          id: schema.Thread.id,
-          assigneeId: schema.Thread.assigneeId,
-        })
-
-      if (result.length === 0) {
-        throw new Error(`Thread ${threadId} not found`)
-      }
-
-      return {
-        id: threadId,
-        success: true,
-        updatedFields: { assigneeId: assigneeActorId },
-        timestamp: new Date(),
-      }
-    } catch (error: unknown) {
-      logger.error('Failed to assign thread', {
-        threadId,
-        assigneeActorId,
-        error: error instanceof Error ? error.message : error,
-      })
-      throw new Error(
-        `Database error assigning thread ${threadId}: ${error instanceof Error ? error.message : error}`
-      )
-    }
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -367,128 +201,11 @@ export class ThreadMutationService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // LEGACY METHODS (kept for backward compatibility during migration)
+  // TAG OPERATIONS
   // ═══════════════════════════════════════════════════════════════
 
   /**
-   * Updates the status of multiple threads in bulk with ultra-fast performance
-   */
-  async updateThreadStatusBulk(
-    threadIds: string[],
-    status: (typeof ThreadStatus)[keyof typeof ThreadStatus],
-    options: { returnAffectedCount?: boolean } = {}
-  ): Promise<{ count: number; affectedIds?: string[] }> {
-    if (!threadIds || threadIds.length === 0) return { count: 0 }
-
-    logger.info('Bulk updating thread status', {
-      count: threadIds.length,
-      status,
-      organizationId: this.organizationId,
-    })
-
-    try {
-      // Single optimized query
-      const result = await this.db
-        .update(schema.Thread)
-        .set({
-          status: status as any,
-        })
-        .where(
-          and(
-            inArray(schema.Thread.id, threadIds),
-            eq(schema.Thread.organizationId, this.organizationId)
-          )
-        )
-        .returning(
-          options.returnAffectedCount ? { id: schema.Thread.id } : { id: schema.Thread.id }
-        )
-
-      return {
-        count: result.length,
-        ...(options.returnAffectedCount && { affectedIds: result.map((r) => r.id) }),
-      }
-    } catch (error: unknown) {
-      logger.error('Failed to update thread status in bulk', {
-        count: threadIds.length,
-        status,
-        error: error instanceof Error ? error.message : error,
-      })
-      throw new Error(
-        `Database error updating status for threads: ${error instanceof Error ? error.message : error}`
-      )
-    }
-  }
-
-  /**
-   * Assigns multiple threads to a user or unassigns them in bulk with validation.
-   * Accepts ActorId format (e.g., 'user:abc123') or null to unassign.
-   */
-  async assignThreadBulk(
-    threadIds: string[],
-    assigneeActorId: ActorId | null,
-    options: { validateUser?: boolean } = { validateUser: true }
-  ): Promise<{ count: number; errors: string[] }> {
-    if (!threadIds || threadIds.length === 0) return { count: 0, errors: [] }
-
-    // Parse ActorId to extract user ID for database storage
-    const assigneeUserId = assigneeActorId ? parseActorId(assigneeActorId).id : null
-
-    logger.info('Bulk assigning threads', {
-      count: threadIds.length,
-      assigneeActorId,
-      assigneeUserId,
-      organizationId: this.organizationId,
-    })
-
-    const errors: string[] = []
-
-    try {
-      // Optional user validation (only if needed)
-      if (options.validateUser && assigneeUserId) {
-        const userExists = await this.db.query.OrganizationMember.findFirst({
-          where: (members, { eq, and }) =>
-            and(eq(members.userId, assigneeUserId), eq(members.organizationId, this.organizationId)),
-          columns: { id: true },
-        })
-
-        if (!userExists) {
-          errors.push(`User ${assigneeUserId} not found`)
-          return { count: 0, errors }
-        }
-      }
-
-      // Fast bulk assignment
-      const result = await this.db
-        .update(schema.Thread)
-        .set({
-          assigneeId: assigneeUserId,
-        })
-        .where(
-          and(
-            inArray(schema.Thread.id, threadIds),
-            eq(schema.Thread.organizationId, this.organizationId)
-          )
-        )
-        .returning({ id: schema.Thread.id })
-
-      return {
-        count: result.length,
-        errors,
-      }
-    } catch (error: unknown) {
-      logger.error('Failed to assign threads in bulk', {
-        count: threadIds.length,
-        assigneeActorId,
-        error: error instanceof Error ? error.message : error,
-      })
-      throw new Error(
-        `Database error assigning threads: ${error instanceof Error ? error.message : error}`
-      )
-    }
-  }
-
-  /**
-   * Most performance-critical operation - uses FieldValue storage for tags.
+   * Bulk tag operation - uses FieldValue storage for tags.
    * Tags are stored as RELATIONSHIP field values with systemAttribute='thread_tags'.
    */
   async tagThreadsBulk(
@@ -704,51 +421,9 @@ export class ThreadMutationService {
     }
   }
 
-  // Convenience status update methods
-  async markAsSpam(threadId: string): Promise<MutationResult> {
-    return this.updateThreadStatus(threadId, 'SPAM')
-  }
-
-  async moveToTrash(threadId: string): Promise<MutationResult> {
-    return this.updateThreadStatus(threadId, 'TRASH')
-  }
-
-  async archiveThread(threadId: string): Promise<MutationResult> {
-    return this.updateThreadStatus(threadId, 'ARCHIVED')
-  }
-
-  async unarchiveThread(threadId: string): Promise<MutationResult> {
-    return this.updateThreadStatus(threadId, 'OPEN')
-  }
-
-  // Convenience bulk status methods
-  async markAsSpamBulk(
-    threadIds: string[],
-    options?: { returnAffectedCount?: boolean }
-  ): Promise<{ count: number; affectedIds?: string[] }> {
-    return this.updateThreadStatusBulk(threadIds, 'SPAM', options)
-  }
-
-  async moveToTrashBulk(
-    threadIds: string[],
-    options?: { returnAffectedCount?: boolean }
-  ): Promise<{ count: number; affectedIds?: string[] }> {
-    return this.updateThreadStatusBulk(threadIds, 'TRASH', options)
-  }
-
-  async archiveThreadBulk(
-    threadIds: string[],
-    options?: { returnAffectedCount?: boolean }
-  ): Promise<{ count: number; affectedIds?: string[] }> {
-    return this.updateThreadStatusBulk(threadIds, 'ARCHIVED', options)
-  }
-
-  async unarchiveThreadBulk(
-    threadIds: string[],
-    options?: { returnAffectedCount?: boolean }
-  ): Promise<{ count: number; affectedIds?: string[] }> {
-    return this.updateThreadStatusBulk(threadIds, 'OPEN', options)
-  }
+  // ═══════════════════════════════════════════════════════════════
+  // METADATA OPERATIONS (internal use)
+  // ═══════════════════════════════════════════════════════════════
 
   /**
    * Updates thread metadata after message operations

@@ -114,6 +114,9 @@ export const converters: Record<FieldType, FieldValueConverter> = {
 
   // Actor field - stores user or group reference
   ACTOR: actorConverter,
+
+  // Generic JSON - stores as valueJson in database
+  JSON: jsonConverter,
 }
 
 export {

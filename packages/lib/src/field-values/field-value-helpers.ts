@@ -496,6 +496,12 @@ export async function validateSingleValue(
       return null // unreachable but TypeScript needs it
     }
 
+    case 'JSON': {
+      const result = ctx.validator.validateJson(value)
+      if (!result.success) throwValidationError(result)
+      return { type: 'json', value: result.data || {} }
+    }
+
     default: {
       const result = ctx.validator.validateJson(value)
       if (!result.success) throwValidationError(result)

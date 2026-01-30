@@ -50,6 +50,8 @@ export function mapFieldTypeToBaseType(fieldType: FieldType | string): BaseType 
       return BaseType.RELATION
     case FieldTypeEnum.ACTOR:
       return BaseType.ACTOR
+    case FieldTypeEnum.JSON:
+      return BaseType.JSON
     default:
       console.warn(`Unknown FieldType: ${fieldType}, defaulting to STRING`)
       return BaseType.STRING

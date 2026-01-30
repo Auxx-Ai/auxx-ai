@@ -19,6 +19,7 @@ import { AddressStructInputField } from './address-struct-input-field'
 import { NameInputField } from './name-input-field'
 import { RelationshipInputField } from './relationship-input-field'
 import { ActorInputField } from './actor-input-field'
+import { JsonInputField } from './json-input-field'
 
 /**
  * Returns the appropriate input component for a field type.
@@ -62,6 +63,8 @@ export function getInputComponentForFieldType(fieldType: FieldType): ReactNode {
       return <RelationshipInputField />
     case FieldTypeEnum.ACTOR:
       return <ActorInputField />
+    case FieldTypeEnum.JSON:
+      return <JsonInputField />
     default:
       return <TextInputField />
   }

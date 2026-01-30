@@ -705,17 +705,14 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
    * Execute thread action-based operations
    *
    * Thread operations are ACTION-BASED, not field-based:
-   * - Each field maps to a specific service method
-   * - Multiple actions can be performed in a single update
+   * - Standard fields (status, subject, assigneeId, inboxId) use unified update()
+   * - Special fields use dedicated methods (tags, readStatus)
    * - Only UPDATE mode is supported (threads are created via email sync)
    *
-   * Action Field Mapping:
-   * - status    -> ThreadMutationService.updateThreadStatus()
-   * - subject   -> ThreadMutationService.updateThreadSubject()
-   * - assignee  -> ThreadMutationService.assignThread()
+   * Field Handling:
+   * - status, subject, assigneeId, inboxId -> ThreadMutationService.update()
    * - readStatus -> UnreadService.setReadStatus()
-   * - tags      -> ThreadMutationService.tagThreadsBulk()
-   * - inbox     -> ThreadMutationService.moveThreadsToInbox()
+   * - tags -> ThreadMutationService.tagThreadsBulk()
    */
   private async executeThreadOperation(
     mode: 'create' | 'update' | 'delete',
@@ -756,62 +753,72 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
     }
     const errors: string[] = []
 
-    // Execute actions in parallel (they're independent)
+    // Build unified updates object for standard fields
+    const unifiedUpdates: {
+      status?: 'OPEN' | 'ARCHIVED' | 'SPAM' | 'TRASH'
+      subject?: string
+      assigneeId?: string | null
+      inboxId?: string
+    } = {}
+
+    // Collect standard field updates
+    if (data.status !== undefined && data.status !== '') {
+      unifiedUpdates.status = data.status
+    }
+    if (data.subject !== undefined && data.subject !== '') {
+      unifiedUpdates.subject = data.subject
+    }
+    if (data.assigneeId !== undefined) {
+      // Empty string or null means unassign
+      unifiedUpdates.assigneeId = data.assigneeId === '' ? null : data.assigneeId
+    }
+    if (data.inboxId !== undefined && data.inboxId !== '') {
+      unifiedUpdates.inboxId = data.inboxId
+    }
+
+    // Execute actions in parallel
     const actionPromises: Promise<void>[] = []
 
-    // ACTION: Update Status
-    if (data.status !== undefined && data.status !== '') {
+    // UNIFIED UPDATE: status, subject, assigneeId, inboxId in one call
+    if (Object.keys(unifiedUpdates).length > 0) {
+      const recordId = toRecordId('thread', resourceId)
       actionPromises.push(
         mutationService
-          .updateThreadStatus(resourceId, data.status)
-          .then(() => {
-            results.statusUpdated = true
-            results.newStatus = data.status
-            results.actionsPerformed.push(`Status changed to ${data.status}`)
+          .update(recordId, unifiedUpdates)
+          .then((result) => {
+            // Track individual field updates for results
+            if (unifiedUpdates.status) {
+              results.statusUpdated = true
+              results.newStatus = unifiedUpdates.status
+              results.actionsPerformed.push(`Status changed to ${unifiedUpdates.status}`)
+            }
+            if (unifiedUpdates.subject) {
+              results.subjectUpdated = true
+              results.newSubject = unifiedUpdates.subject
+              results.actionsPerformed.push(`Subject renamed to "${unifiedUpdates.subject}"`)
+            }
+            if (unifiedUpdates.assigneeId !== undefined) {
+              results.assigneeUpdated = true
+              results.newAssigneeId = unifiedUpdates.assigneeId
+              results.actionsPerformed.push(
+                unifiedUpdates.assigneeId
+                  ? `Assigned to user ${unifiedUpdates.assigneeId}`
+                  : 'Unassigned'
+              )
+            }
+            if (unifiedUpdates.inboxId) {
+              results.inboxUpdated = true
+              results.newInboxId = unifiedUpdates.inboxId
+              results.actionsPerformed.push(`Moved to inbox ${unifiedUpdates.inboxId}`)
+            }
           })
           .catch((err) => {
-            errors.push(`Status update failed: ${err.message}`)
+            errors.push(`Thread update failed: ${err.message}`)
           })
       )
     }
 
-    // ACTION: Update Subject (Rename)
-    if (data.subject !== undefined && data.subject !== '') {
-      actionPromises.push(
-        mutationService
-          .updateThreadSubject(resourceId, data.subject)
-          .then(() => {
-            results.subjectUpdated = true
-            results.newSubject = data.subject
-            results.actionsPerformed.push(`Subject renamed to "${data.subject}"`)
-          })
-          .catch((err) => {
-            errors.push(`Subject update failed: ${err.message}`)
-          })
-      )
-    }
-
-    // ACTION: Assign/Unassign
-    if (data.assigneeId !== undefined) {
-      // Note: Empty string or null means unassign
-      const assigneeId = data.assigneeId === '' ? null : data.assigneeId
-      actionPromises.push(
-        mutationService
-          .assignThread(resourceId, assigneeId)
-          .then(() => {
-            results.assigneeUpdated = true
-            results.newAssigneeId = assigneeId
-            results.actionsPerformed.push(
-              assigneeId ? `Assigned to user ${assigneeId}` : 'Unassigned'
-            )
-          })
-          .catch((err) => {
-            errors.push(`Assignee update failed: ${err.message}`)
-          })
-      )
-    }
-
-    // ACTION: Mark Read/Unread (Virtual Field)
+    // SPECIAL: Mark Read/Unread (uses UnreadService)
     if (data.readStatus !== undefined && data.readStatus !== '') {
       actionPromises.push(
         unreadService
@@ -827,7 +834,7 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
       )
     }
 
-    // ACTION: Update Tags (Virtual Field with Operation Mode)
+    // SPECIAL: Update Tags (uses tagThreadsBulk with operation mode)
     if (data.tags !== undefined && data.tags !== '') {
       const tagOperation = data.tagOperation || 'add'
       const { tagIds } = this.parseTagsInputForThread(data.tags)
@@ -845,22 +852,6 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
             })
         )
       }
-    }
-
-    // ACTION: Move to Inbox
-    if (data.inboxId !== undefined && data.inboxId !== '') {
-      actionPromises.push(
-        mutationService
-          .moveThreadsToInbox([resourceId], data.inboxId, userId)
-          .then(() => {
-            results.inboxUpdated = true
-            results.newInboxId = data.inboxId
-            results.actionsPerformed.push(`Moved to inbox ${data.inboxId}`)
-          })
-          .catch((err) => {
-            errors.push(`Inbox move failed: ${err.message}`)
-          })
-      )
     }
 
     // Execute all actions in parallel

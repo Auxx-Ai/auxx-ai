@@ -2,8 +2,6 @@
 'use client'
 
 import React, { createContext, useContext, useMemo, type RefObject } from 'react'
-import { useMailFilter } from '~/components/mail/mail-filter-context'
-import { useThreadTags as useThreadTagsHook } from '~/hooks/use-thread-tags'
 import { useReplyBox } from '~/hooks/use-reply-box'
 import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 import { useThread as useThreadFromStore, useThreadMutation } from '~/components/threads/hooks'
@@ -35,7 +33,6 @@ interface ThreadHandlers {
   updateStatus: (done: boolean) => Promise<void>
   updateAssignee: (actorId: ActorId | null | undefined) => Promise<void>
   updateSubject: (subject: string) => Promise<void>
-  updateTags: (tagIds: string[]) => Promise<void>
   moveToInbox: (inboxId: string) => Promise<void>
   openReplyBox: (mode: EditorMode | 'generic', message?: any) => void
   closeReplyBox: () => void
@@ -61,10 +58,6 @@ interface EmailActions {
 interface ThreadContextValue {
   // Thread ID for reference
   threadId: string
-
-  // Tag Management
-  selectedTags: string[]
-  availableTags: any[]
 
   // Reply Box State
   replyBox: ReplyBoxState
@@ -93,8 +86,6 @@ export function ThreadProvider({
   children: React.ReactNode
   threadId: string
 }) {
-  const { contextType, contextId, statusSlug, searchQuery } = useMailFilter()
-
   // Get thread from store (for mutations that need thread data)
   const { thread } = useThreadFromStore({ threadId })
 
@@ -107,15 +98,6 @@ export function ThreadProvider({
 
   // Initialize new unified mutation hook
   const { update, remove } = useThreadMutation()
-
-  const { selectedTags, fetchedTagsData, handleTagChange } = useThreadTagsHook(thread, {
-    contextType,
-    contextId,
-    statusSlug,
-    searchQuery,
-  })
-  const availableTags = fetchedTagsData || []
-  const updateTags = handleTagChange
 
   const {
     isShowReplyBox,
@@ -147,8 +129,6 @@ export function ThreadProvider({
         update(threadId, { subject })
       },
 
-      updateTags,
-
       moveToInbox: async (inboxId: string) => {
         // Use optimistic update via unified hook
         update(threadId, { inboxId })
@@ -177,7 +157,6 @@ export function ThreadProvider({
       thread,
       threadId,
       update,
-      updateTags,
       openEditorForAction,
       handleShowGenericReply,
       closeWithSuppress,
@@ -355,10 +334,6 @@ export function ThreadProvider({
     // Thread ID for reference
     threadId,
 
-    // Tag Management
-    selectedTags,
-    availableTags,
-
     // Reply Box State
     replyBox: { isOpen: isShowReplyBox, mode: editorMode, sourceMessage, ref: replyBoxRef },
 
@@ -403,16 +378,6 @@ export function useThreadReply() {
     ...context.replyBox,
     openReplyBox: context.handlers.openReplyBox,
     closeReplyBox: context.handlers.closeReplyBox,
-  }
-}
-
-/** Returns tag selection state and update handler */
-export function useThreadTags() {
-  const context = useThreadContext()
-  return {
-    selectedTags: context.selectedTags,
-    availableTags: context.availableTags,
-    updateTags: context.handlers.updateTags,
   }
 }
 

@@ -231,6 +231,11 @@ export const fieldTypeOptions: Record<FieldType, FieldTypeOption> = {
     description: 'Assign users or groups to a record',
     minWidth: 200,
   },
+  [FieldTypeEnum.JSON]: {
+    label: 'JSON',
+    iconId: 'braces',
+    description: 'Arbitrary JSON data storage',
+  },
 }
 /**
  * Record of default empty values for each FieldType
@@ -264,6 +269,7 @@ export const fieldTypeDefaults: Record<FieldType, unknown> = {
   [FieldTypeEnum.RELATIONSHIP]: null,
   [FieldTypeEnum.CALC]: null, // Computed, no default
   [FieldTypeEnum.ACTOR]: null, // Users or groups, depends on multiple setting
+  [FieldTypeEnum.JSON]: {}, // Empty object default
 }
 /**
  * Common options for all field types
@@ -381,6 +387,7 @@ export const fieldTypeOptionsSchemaMap: Record<FieldType, z.ZodTypeAny> = {
   [FieldTypeEnum.RELATIONSHIP]: relationshipFieldOptionsSchema,
   [FieldTypeEnum.CALC]: calcFieldOptionsSchema,
   [FieldTypeEnum.ACTOR]: actorFieldOptionsSchema,
+  [FieldTypeEnum.JSON]: baseFieldOptionsSchema,
 }
 /**
  * Get the correct Zod schema for a field type

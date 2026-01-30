@@ -35,6 +35,7 @@ export const FIELD_TYPE_TO_VALUE_TYPE = {
   [FieldType.ADDRESS_STRUCT]: 'json',
   [FieldType.CALC]: 'computed', // Computed on-the-fly, not stored
   [FieldType.ACTOR]: 'actor', // User or group reference
+  [FieldType.JSON]: 'json', // Arbitrary JSON data
 } as const
 
 /** Value type discriminator */
@@ -64,6 +65,7 @@ export const FIELD_TYPE_TO_COLUMN = {
   [FieldType.ADDRESS]: 'valueText',
   [FieldType.ADDRESS_STRUCT]: 'valueJson',
   [FieldType.ACTOR]: 'actorId', // User ID when actorType is 'user', or uses relatedEntityId for groups
+  [FieldType.JSON]: 'valueJson', // Arbitrary JSON data
 } as const
 
 /** Column name in FieldValue table */

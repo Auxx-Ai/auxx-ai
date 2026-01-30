@@ -1,89 +1,93 @@
 // apps/web/src/components/tags/hooks/use-thread-tags.ts
+// Simplified hook for managing thread tags using the FieldValue system.
+// Uses useSaveFieldValue with RELATIONSHIP field type.
 
 import { useState, useEffect, useCallback } from 'react'
+import { toastError } from '@auxx/ui/components/toast'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
-import { toRecordId, type RecordId } from '@auxx/lib/resources/client'
-import { useTagHierarchy } from './use-tag-hierarchy'
-import type { TagNode } from '../types'
-
-interface UseThreadTagsOptions {
-  /** Thread RecordId (e.g., "thread-def-id:thread-instance-id") */
-  threadRecordId: RecordId
-  /** Current tag RecordIds on the thread */
-  currentTagRecordIds: RecordId[]
-}
-
-interface UseThreadTagsResult {
-  /** Currently selected tags */
-  selectedTags: TagNode[]
-  /** Selected tag IDs (instance IDs, not RecordIds) */
-  selectedTagIds: string[]
-  /** Handle tag selection change - accepts plain tag IDs */
-  handleTagChange: (tagIds: string[]) => void
-  /** Whether mutation is pending */
-  isPending: boolean
-}
+import { useResource, useSystemField } from '~/components/resources/hooks'
+import { useThread } from '~/components/threads/hooks'
+import { toRecordId } from '@auxx/lib/resources/client'
+import type { RecordId } from '@auxx/types/resource'
 
 /**
- * Hook for managing tags on a thread.
- * Uses the RELATIONSHIP field type via useSaveFieldValue.
+ * Hook for managing thread tags using the FieldValue system.
+ * Uses useSaveFieldValue with RELATIONSHIP field type for tag assignment.
  *
- * @example
- * ```tsx
- * import { useThreadTags } from '~/components/tags/hooks/use-thread-tags'
- *
- * const { selectedTags, handleTagChange, isPending } = useThreadTags({
- *   threadRecordId: toRecordId(threadEntityDefId, thread.id),
- *   currentTagRecordIds: thread.tags.map(t => toRecordId(tagEntityDefId, t.id)),
- * })
- * ```
+ * @param threadId The thread ID to manage tags for
+ * @returns Tag state and operations: { selectedTags, handleTagChange, isPending }
  */
-export function useThreadTags({
-  threadRecordId,
-  currentTagRecordIds,
-}: UseThreadTagsOptions): UseThreadTagsResult {
-  const { tagMap, entityDefinitionId } = useTagHierarchy()
+export function useThreadTags(threadId: string) {
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
 
-  // Track selected tag IDs locally (instance IDs, not RecordIds)
-  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
+  // Get thread from store
+  const { thread } = useThread({ threadId })
 
-  // Sync with current values from props
+  // Get entity definition IDs for thread and tag from resource store
+  const { resource: threadResource } = useResource('thread')
+  const { resource: tagResource } = useResource('tag')
+
+  const threadEntityDefId = threadResource?.entityDefinitionId ?? null
+  const tagEntityDefId = tagResource?.entityDefinitionId ?? null
+
+  // Get the tags field with actual CustomField UUID
+  const tagsField = useSystemField('thread_tags')
+  const tagsFieldId = tagsField?.id ?? null
+
+  // Sync local tag state with thread tags from store
   useEffect(() => {
-    // Extract instance IDs from RecordIds
-    const ids = currentTagRecordIds
-      .map((rid) => rid.split(':')[1] ?? '')
-      .filter(Boolean)
-    setSelectedTagIds(ids)
-  }, [currentTagRecordIds])
+    if (thread?.tags) {
+      const tagIds = thread.tags.map((tag) => tag.id)
+      setSelectedTags(tagIds)
+    } else {
+      setSelectedTags([])
+    }
+  }, [thread?.tags])
 
-  // Get selected TagNode objects
-  const selectedTags = selectedTagIds
-    .map((id) => tagMap.get(id))
-    .filter((t): t is TagNode => t !== undefined)
-
-  // Save field value mutation
+  // Use the unified field value save hook (no invalidation callbacks needed - zustand handles state)
   const { saveFieldValue, isPending } = useSaveFieldValue()
 
-  // Handle tag change - accepts plain IDs, converts to RecordIds
+  /**
+   * Handle tag change - updates thread's tags using FieldValue relationship
+   */
   const handleTagChange = useCallback(
-    (tagIds: string[]) => {
-      if (!entityDefinitionId) return
+    async (incomingTagIds: string[]) => {
+      if (!thread || !threadEntityDefId || !tagEntityDefId || !tagsFieldId) {
+        console.warn('Cannot update tags: missing thread, entity definition IDs, or tags field')
+        return
+      }
 
-      // Convert to RecordIds
-      const recordIds = tagIds.map((id) => toRecordId(entityDefinitionId, id))
+      // TagPicker passes an array of tag IDs directly
+      const newTagIds = [...incomingTagIds.filter(Boolean)]
+      const currentTagIds = [...selectedTags]
 
-      // Optimistic update
-      setSelectedTagIds(tagIds)
+      // Update local state immediately for responsiveness (optimistic update)
+      setSelectedTags([...newTagIds])
 
-      // Save via useSaveFieldValue
-      saveFieldValue(threadRecordId, 'tags', recordIds, 'RELATIONSHIP')
+      try {
+        // Convert tag IDs to RecordIds
+        const tagRecordIds: RecordId[] = newTagIds.map((tagId) => toRecordId(tagEntityDefId, tagId))
+
+        // Build the thread RecordId
+        const threadRecordId = toRecordId(threadEntityDefId, thread.id)
+
+        // Save via FieldValue system with RELATIONSHIP field type
+        saveFieldValue(threadRecordId, tagsFieldId, tagRecordIds, 'RELATIONSHIP')
+      } catch (error) {
+        console.error('Error updating tags:', error)
+        // Revert optimistic update on error
+        setSelectedTags([...currentTagIds])
+        toastError({
+          title: 'Failed to update tags',
+          description: error instanceof Error ? error.message : 'Unknown error',
+        })
+      }
     },
-    [entityDefinitionId, saveFieldValue, threadRecordId]
+    [thread, threadEntityDefId, tagEntityDefId, tagsFieldId, selectedTags, saveFieldValue]
   )
 
   return {
     selectedTags,
-    selectedTagIds,
     handleTagChange,
     isPending,
   }

@@ -17,6 +17,7 @@ import { DisplayFile } from './display-file'
 import { DisplayName } from './display-name'
 import { DisplayRelationship } from './display-relationship'
 import { DisplayActor } from './display-actor'
+import { DisplayJson } from './display-json'
 import { usePropertyContext } from '../property-provider'
 import { useDisplayOnlyContext } from '../display-only-provider'
 import { FieldType } from '@auxx/database/enums'
@@ -92,6 +93,8 @@ export function DisplayField() {
       return <DisplayRelationship />
     case FieldType.ACTOR:
       return <DisplayActor />
+    case FieldType.JSON:
+      return <DisplayJson />
     default:
       return <DisplayText />
   }
