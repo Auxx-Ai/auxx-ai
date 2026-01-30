@@ -44,8 +44,8 @@ export const recordBadgeVariants = cva(
  * Props for the RecordBadge component.
  */
 interface RecordBadgeProps extends VariantProps<typeof recordBadgeVariants> {
-  /** RecordId in format "entityDefinitionId:entityInstanceId" */
-  recordId: RecordId
+  /** RecordId in format "entityDefinitionId:entityInstanceId" - optional, shows loading when undefined */
+  recordId?: RecordId
   /** Whether to show icon/avatar (default: true) */
   showIcon?: boolean
   /** Additional CSS classes */
@@ -90,12 +90,13 @@ export function RecordBadge({
   className,
   variant,
   link,
+  ...props
 }: RecordBadgeProps) {
   // Fetch record data (displayName, avatarUrl)
-  const { record, isLoading: isLoadingRecord, isNotFound } = useRecord({ recordId })
+  const { record, isLoading: isLoadingRecord, isNotFound } = useRecord({ recordId, enabled: !!recordId })
 
   // Extract entityDefinitionId from recordId
-  const entityDefinitionId = getDefinitionId(recordId)
+  const entityDefinitionId = recordId ? getDefinitionId(recordId) : undefined
 
   // Fetch resource metadata (icon, color) - only used when no avatar exists
   const { resource, isLoading: isLoadingResource } = useResource(entityDefinitionId)
@@ -107,8 +108,8 @@ export function RecordBadge({
   // Determine display name
   const displayName = isNotFound ? 'Unknown' : (record?.displayName ?? 'Unknown')
 
-  // Show loading state when loading AND no cached data exists
-  const isLoading = (isLoadingRecord || isLoadingResource) && !record
+  // Show loading state when recordId is undefined or when loading AND no cached data exists
+  const isLoading = !recordId || ((isLoadingRecord || isLoadingResource) && !record)
 
   // Determine variant: if link is provided, default to 'link' variant unless explicitly set
   const effectiveVariant = variant ?? (link ? 'link' : 'default')
@@ -121,7 +122,8 @@ export function RecordBadge({
       data-slot="record-badge"
       aria-busy={isLoading}
       {...(link && href ? { href } : {})}
-      className={cn(recordBadgeVariants({ variant: effectiveVariant }), className)}>
+      className={cn(recordBadgeVariants({ variant: effectiveVariant }), className)}
+      {...props}>
       {isLoading ? (
         <>
           {showIcon && <Skeleton className="size-4 rounded-full" />}

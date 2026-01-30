@@ -1,6 +1,7 @@
 // packages/lib/src/mail-query/client.ts
 
 export { SearchOperator, IsOperatorValue, parseSearchQuery, type SearchToken } from './search-query-parser'
+import type { RecordId } from '@auxx/types/resource'
 
 // Structured search filters for the searchbar
 export {
@@ -46,8 +47,8 @@ export interface ThreadClientFilter {
   /** Filter by thread status (OPEN, ARCHIVED, TRASH, SPAM) */
   status?: ThreadStatusValue | ThreadStatusValue[]
 
-  /** Filter by inbox ID */
-  inboxId?: string
+  /** Filter by inbox RecordId (format: "entityDefinitionId:instanceId") */
+  inboxId?: RecordId
 
   /** Filter by assignment presence: true = has assignee, false = unassigned */
   hasAssignee?: boolean
@@ -141,7 +142,8 @@ export interface FilterableThread {
   isUnread?: boolean
   /** Tag RecordIds (format: "entityDefinitionId:instanceId") */
   tagIds?: string[]
-  inboxId?: string | null
+  /** Inbox RecordId (format: "entityDefinitionId:instanceId") */
+  inboxId?: RecordId | null
 }
 
 /**

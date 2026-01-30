@@ -25,6 +25,8 @@ import { parseSearchQuery } from '../mail-query/search-query-parser'
 import { MessageAttachmentService } from '../messages/message-attachment.service'
 import { spliceAttachmentsIntoMessages } from '../messages/attachment-transformers'
 import { toActorId } from '@auxx/types/actor'
+import { toRecordId } from '@auxx/types/resource'
+import { ResourceRegistryService } from '../resources/registry/resource-registry-service'
 
 import {
   type DraftMessageType,
@@ -650,6 +652,10 @@ export class ThreadQueryService {
     // Note: batchGetThreadTagIds returns RecordIds (from FieldValue.relatedEntityId which stores RecordIds)
     const tagIdMap = await batchGetThreadTagIds(this.db, ids, this.organizationId)
 
+    // Resolve inbox entityDefinitionId for RecordId conversion
+    const registryService = new ResourceRegistryService(this.organizationId, this.db)
+    const inboxEntityDefId = await registryService.resolveEntityDefId('inbox')
+
     // Fetch read status for all threads for this user
     const readStatuses = await this.db
       .select({
@@ -708,7 +714,7 @@ export class ThreadQueryService {
           assigneeId: t.assigneeId ? toActorId('user', t.assigneeId) : null,
           latestMessageId: t.latestMessageId ?? null,
           latestCommentId: t.latestCommentId ?? null,
-          inboxId: t.inboxId ?? null,
+          inboxId: t.inboxId ? toRecordId(inboxEntityDefId, t.inboxId) : null,
           externalId: t.externalId ?? null,
           tagIds,
           isUnread,

@@ -38,8 +38,8 @@ export const actorBadgeVariants = cva(
  * Props for the ActorBadge component.
  */
 interface ActorBadgeProps extends VariantProps<typeof actorBadgeVariants> {
-  /** ActorId in format "user:userId" or "group:groupId" */
-  actorId: ActorId
+  /** ActorId in format "user:userId" or "group:groupId" - optional, shows loading when undefined */
+  actorId?: ActorId
   /** Whether to show avatar icon (default: true) */
   showIcon?: boolean
   /** Additional CSS classes */
@@ -69,25 +69,33 @@ interface ActorBadgeProps extends VariantProps<typeof actorBadgeVariants> {
  * // Without icon
  * <ActorBadge actorId={actorId} showIcon={false} />
  */
-export function ActorBadge({ actorId, showIcon = true, className, variant, onRemove }: ActorBadgeProps) {
-  const { actor, isLoading, isNotFound } = useActor({ actorId })
+export function ActorBadge({
+  actorId,
+  showIcon = true,
+  className,
+  variant,
+  onRemove,
+  ...props
+}: ActorBadgeProps) {
+  const { actor, isLoading, isNotFound } = useActor({ actorId, enabled: !!actorId })
 
   // Parse type for fallback icon
-  const { type } = parseActorId(actorId)
+  const type = actorId ? parseActorId(actorId).type : 'user'
 
   // Determine display name: name → email (for users) → 'Unknown'
   const displayName = isNotFound
     ? 'Unknown'
     : actor?.name || (actor?.type === 'user' && actor?.email) || 'Unknown'
 
-  // Show loading state when loading AND no cached data exists
-  const showLoading = isLoading && !actor
+  // Show loading state when actorId is undefined or when loading AND no cached data exists
+  const showLoading = !actorId || (isLoading && !actor)
 
   return (
     <div
       data-slot="actor-badge"
       aria-busy={showLoading}
-      className={cn(actorBadgeVariants({ variant }), className)}>
+      className={cn(actorBadgeVariants({ variant }), className)}
+      {...props}>
       {showLoading ? (
         <>
           {showIcon && <Skeleton className="size-4 rounded-full" />}
@@ -104,7 +112,7 @@ export function ActorBadge({ actorId, showIcon = true, className, variant, onRem
             </Avatar>
           )}
           <span data-slot="actor-display">{displayName}</span>
-          {onRemove && (
+          {onRemove && actorId && (
             <button
               type="button"
               onClick={(e) => {

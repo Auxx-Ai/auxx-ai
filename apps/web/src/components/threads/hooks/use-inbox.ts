@@ -1,5 +1,6 @@
 // apps/web/src/components/threads/hooks/use-inbox.ts
 
+import type { RecordId } from '@auxx/types'
 import { useMemo } from 'react'
 import { useAllRecords, type FieldInfo } from '~/components/resources/hooks/use-all-records'
 import type { RecordMeta } from '~/components/resources/store/record-store'
@@ -23,6 +24,7 @@ export interface InboxRecord extends RecordMeta {
  */
 export interface InboxItem {
   id: string
+  recordId: RecordId
   name: string
   description?: string | null
   color?: string | null
@@ -37,8 +39,8 @@ interface UseInboxesResult {
   inboxes: InboxItem[]
   /** Raw records from store */
   records: InboxRecord[]
-  /** Map for quick lookup by ID */
-  inboxMap: Map<string, InboxItem>
+  /** Map for quick lookup by RecordId */
+  inboxMap: Map<RecordId, InboxItem>
   /** Field definitions */
   fields: Record<string, FieldInfo>
   /** Loading state */
@@ -61,18 +63,20 @@ export function useInboxes(): UseInboxesResult {
   // Transform records to simplified inbox items
   const { inboxes, inboxMap } = useMemo(() => {
     if (!records.length) {
-      return { inboxes: [], inboxMap: new Map<string, InboxItem>() }
+      return { inboxes: [], inboxMap: new Map<RecordId, InboxItem>() }
     }
 
     const items: InboxItem[] = records.map((record) => ({
       id: record.id,
+      recordId: record.recordId,
       name: record.fieldValues?.name ?? record.displayName ?? 'Untitled',
       description: record.fieldValues?.description ?? null,
       color: record.fieldValues?.color ?? null,
       status: record.fieldValues?.status,
     }))
 
-    const map = new Map<string, InboxItem>(items.map((item) => [item.id, item]))
+    // Key map by recordId for direct lookup (thread.inboxId is now RecordId)
+    const map = new Map<RecordId, InboxItem>(items.map((item) => [item.recordId, item]))
 
     return { inboxes: items, inboxMap: map }
   }, [records])
@@ -97,14 +101,15 @@ interface UseInboxResult {
 }
 
 /**
- * Hook to get a single inbox by ID.
+ * Hook to get a single inbox by RecordId.
+ * Since thread.inboxId is now RecordId, lookup is direct.
  */
-export function useInbox(inboxId: string | null | undefined): UseInboxResult {
+export function useInbox(inboxId: RecordId | null | undefined): UseInboxResult {
   const { inboxMap, isLoading } = useInboxes()
 
   const inbox = useMemo(() => {
     if (!inboxId) return undefined
-    return inboxMap.get(inboxId)
+    return inboxMap.get(inboxId) // Direct lookup by recordId
   }, [inboxId, inboxMap])
 
   return { inbox, isLoading }

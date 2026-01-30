@@ -6,7 +6,7 @@ import { eq, and, inArray, isNotNull } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
 import { generateId } from '@auxx/utils'
 import { parseActorId, type ActorId } from '@auxx/types/actor'
-import { parseRecordId, type RecordId } from '@auxx/types/resource'
+import { parseRecordId, getInstanceId, type RecordId } from '@auxx/types/resource'
 
 const logger = createScopedLogger('thread-mutation-service')
 
@@ -18,7 +18,8 @@ export interface ThreadUpdates {
   status?: 'OPEN' | 'ARCHIVED' | 'SPAM' | 'TRASH'
   subject?: string
   assigneeId?: ActorId | null
-  inboxId?: string
+  /** Inbox RecordId (format: "entityDefinitionId:instanceId") or null to unassign */
+  inboxId?: RecordId | null
   isUnread?: boolean
 }
 
@@ -79,7 +80,7 @@ export class ThreadMutationService {
         dbUpdates.assigneeId = updates.assigneeId ? parseActorId(updates.assigneeId).id : null
       }
       if (updates.inboxId !== undefined) {
-        dbUpdates.inboxId = updates.inboxId
+        dbUpdates.inboxId = updates.inboxId ? getInstanceId(updates.inboxId) : null
       }
 
       // isUnread is handled separately via UnreadService, but for now we skip it
@@ -150,7 +151,7 @@ export class ThreadMutationService {
         dbUpdates.assigneeId = updates.assigneeId ? parseActorId(updates.assigneeId).id : null
       }
       if (updates.inboxId !== undefined) {
-        dbUpdates.inboxId = updates.inboxId
+        dbUpdates.inboxId = updates.inboxId ? getInstanceId(updates.inboxId) : null
       }
 
       if (Object.keys(dbUpdates).length === 0) {

@@ -624,7 +624,7 @@ export const threadRouter = createTRPCRouter({
           status: z.enum(['OPEN', 'ARCHIVED', 'SPAM', 'TRASH']).optional(),
           subject: z.string().optional(),
           assigneeId: z.string().nullable().optional(),
-          inboxId: z.string().optional(),
+          inboxId: recordIdSchema.nullable().optional(),
           isUnread: z.boolean().optional(),
         }),
       })
@@ -662,7 +662,7 @@ export const threadRouter = createTRPCRouter({
         updates: z.object({
           status: z.enum(['OPEN', 'ARCHIVED', 'SPAM', 'TRASH']).optional(),
           assigneeId: z.string().nullable().optional(),
-          inboxId: z.string().optional(),
+          inboxId: recordIdSchema.nullable().optional(),
         }),
       })
     )

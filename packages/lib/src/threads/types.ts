@@ -169,8 +169,8 @@ export interface ThreadMeta {
   latestMessageId: string | null
   latestCommentId: string | null
 
-  // Inbox association
-  inboxId: string | null
+  /** Inbox RecordId (format: "entityDefinitionId:instanceId") or null if unassigned */
+  inboxId: RecordId | null
 
   // External ID for chat threads (e.g., Facebook conversation ID)
   externalId: string | null

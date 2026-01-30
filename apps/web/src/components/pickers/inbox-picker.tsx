@@ -58,7 +58,7 @@ export function InboxPicker({
   // Convert inboxes to SelectOption format
   const options: SelectOption[] = useMemo(() => {
     const baseOptions = inboxes.map((inbox) => ({
-      value: inbox.id,
+      value: inbox.recordId,
       label: inbox.name,
       color: inbox.color || '#4F46E5',
     }))
@@ -108,11 +108,11 @@ export function InboxPicker({
 
   // Handle dialog success (optionally select the new inbox)
   const handleDialogSuccess = useCallback(
-    (inbox: { id: string; name: string }) => {
+    (inbox: InboxItem) => {
       if (allowMultiple) {
-        onChange?.([...selected.filter((id) => id !== INBOX_SELECT_ALL_VALUE), inbox.id])
+        onChange?.([...selected.filter((id) => id !== INBOX_SELECT_ALL_VALUE), inbox.recordId])
       } else {
-        onChange?.([inbox.id])
+        onChange?.([inbox.recordId])
         onOpenChange?.(false)
       }
     },

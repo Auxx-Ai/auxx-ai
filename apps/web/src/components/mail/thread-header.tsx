@@ -36,6 +36,7 @@ import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button
 import { toRecordId } from '@auxx/types/resource'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import type { ActorId, ActorId as ActorIdString } from '@auxx/types/actor'
+import { RecordBadge } from '../resources/ui'
 
 /**
  * Header component for thread details with thread actions.
@@ -51,22 +52,19 @@ export function ThreadHeader() {
   // Get thread data from store
   const { thread } = useThread({ threadId })
 
-  // Get inbox details
+  // Get inbox details - thread.inboxId is now RecordId, direct lookup works
   const { inbox } = useInbox(thread?.inboxId)
-
   // Get tag entity definition ID for TagPicker RecordId integration
   const { resource: tagResource } = useResource('tag')
   const tagEntityDefId = tagResource?.entityDefinitionId ?? undefined
 
   // Get assignee details via actor store
   // Convert ActorId object to string format expected by useActor (e.g., 'user:abc123')
-  const assigneeActorId: ActorIdString | null = thread?.assigneeId
-    ? (`${thread.assigneeId.type}:${thread.assigneeId.id}` as ActorIdString)
-    : null
-  const { actor: assignee } = useActor({ actorId: assigneeActorId })
+
+  const { actor: assignee } = useActor({ actorId: thread?.assigneeId })
 
   // Convert to ActorPicker value format
-  const assigneeValue: ActorId[] = assigneeActorId ? [assigneeActorId as ActorId] : []
+  const assigneeValue: ActorId[] = thread?.assigneeId ? [thread?.assigneeId] : []
 
   // Derive state
   const isDone = thread?.status === 'ARCHIVED'
@@ -209,13 +207,14 @@ export function ThreadHeader() {
           <div className="flex shrink-0 items-start pt-0.5 ps-0.5">
             <InboxPicker
               onChange={handleInboxChange}
-              selected={thread.inboxId ? [thread.inboxId] : undefined}
+              selected={thread?.inboxId ? [thread.inboxId] : undefined}
               allowMultiple={false}>
-              <Badge
+              <RecordBadge recordId={thread?.inboxId} size="sm" className="me-2" />
+              {/* <Badge
                 variant="blue"
                 className="cursor-pointer data-[state=open]:brightness-90 shrink-0 text-nowrap rounded-full">
                 {inbox?.name || 'Loading...'}
-              </Badge>
+              </Badge> */}
             </InboxPicker>
           </div>
           <div className=" flex items-center ">
@@ -341,12 +340,10 @@ export function ThreadHeader() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                {isTrash && (
-                  <DropdownMenuItem onClick={handlePermanentlyDelete} variant="destructive">
-                    <Trash />
-                    Permanently delete
-                  </DropdownMenuItem>
-                )}
+                <DropdownMenuItem onClick={handlePermanentlyDelete} variant="destructive">
+                  <Trash />
+                  Permanently delete
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>

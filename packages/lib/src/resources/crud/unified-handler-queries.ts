@@ -290,6 +290,7 @@ export interface ListAllInput {
  * Record with field values
  */
 export type ListAllItem = EntityInstanceEntity & {
+  recordId: RecordId
   fieldValues: Record<string, unknown>
 }
 
@@ -443,7 +444,11 @@ export async function listAll(
   // If no fields, return records without field values
   if (fieldReferences.length === 0) {
     return {
-      items: records.map((r) => ({ ...r, fieldValues: {} })),
+      items: records.map((r) => ({
+        ...r,
+        recordId: toRecordId(entityDefId, r.id),
+        fieldValues: {},
+      })),
       entityDefinitionId: entityDefId,
       fields: fieldsMap,
     }
@@ -480,10 +485,14 @@ export async function listAll(
   }
 
   // Merge field values into records
-  const items = records.map((record) => ({
-    ...record,
-    fieldValues: fieldValuesByRecord.get(toRecordId(entityDefId, record.id)) ?? {},
-  }))
+  const items = records.map((record) => {
+    const recordId = toRecordId(entityDefId, record.id)
+    return {
+      ...record,
+      recordId,
+      fieldValues: fieldValuesByRecord.get(recordId) ?? {},
+    }
+  })
 
   return {
     items,
