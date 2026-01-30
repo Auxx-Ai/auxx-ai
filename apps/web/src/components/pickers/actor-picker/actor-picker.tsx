@@ -2,8 +2,13 @@
 
 'use client'
 
-import { useState, useEffect, useCallback, type ReactNode } from 'react'
-import { Popover, PopoverContentDialogAware, PopoverTrigger } from '@auxx/ui/components/popover'
+import { useState, useEffect, useCallback, useRef, type ReactNode, type RefObject } from 'react'
+import {
+  Popover,
+  PopoverAnchor,
+  PopoverContentDialogAware,
+  PopoverTrigger,
+} from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
 import { ActorPickerContent, type ActorPickerContentProps } from './actor-picker-content'
 import { ActorBadge } from '~/components/resources/ui/actor-badge'
@@ -24,6 +29,9 @@ export interface ActorPickerProps
 
   /** Callback when open state changes */
   onOpenChange?: (open: boolean) => void
+
+  /** External anchor ref - popover anchors to this element instead of trigger */
+  anchorRef?: RefObject<HTMLElement | null>
 
   /** Default trigger: label when no items selected */
   emptyLabel?: string
@@ -58,6 +66,7 @@ export function ActorPicker({
   children,
   open,
   onOpenChange,
+  anchorRef,
   emptyLabel = 'Select...',
   align = 'start',
   side = 'bottom',
@@ -73,6 +82,9 @@ export function ActorPicker({
 }: ActorPickerProps) {
   // Internal open state (for uncontrolled mode)
   const [internalOpen, setInternalOpen] = useState(false)
+
+  // Ref for content to focus input when using anchorRef
+  const contentRef = useRef<HTMLDivElement>(null)
 
   // Use controlled or uncontrolled state
   const isOpen = open ?? internalOpen
@@ -136,14 +148,35 @@ export function ActorPicker({
     </PickerTrigger>
   )
 
+  // When anchorRef is provided (e.g., from ActionBar overflow), anchor to it
+  // Otherwise use the trigger element
   return (
     <Popover open={isOpen} onOpenChange={handleOpenChange}>
-      <PopoverTrigger asChild>{triggerElement}</PopoverTrigger>
+      {anchorRef ? (
+        <PopoverAnchor virtualRef={anchorRef} />
+      ) : (
+        <PopoverTrigger asChild>{triggerElement}</PopoverTrigger>
+      )}
       <PopoverContentDialogAware
+        ref={contentRef}
         className={cn('w-72 p-0', contentClassName)}
         align={align}
         side={side}
-        sideOffset={sideOffset}>
+        sideOffset={sideOffset}
+        onOpenAutoFocus={(e) => {
+          // Prevent default focus behavior when using anchorRef, then focus the input manually
+          if (anchorRef) {
+            e.preventDefault()
+            requestAnimationFrame(() => {
+              const input = contentRef.current?.querySelector('input')
+              input?.focus()
+            })
+          }
+        }}
+        onFocusOutside={(e) => {
+          // Prevent closing on focus changes when using anchorRef
+          if (anchorRef) e.preventDefault()
+        }}>
         <ActorPickerContent
           value={value}
           onChange={onChange}

@@ -96,7 +96,7 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
     type: BaseType.ENUM,
     fieldType: FieldType.SINGLE_SELECT,
     isSystem: true,
-    systemAttribute: 'status',
+    systemAttribute: 'thread_status',
     systemSortOrder: 'a2',
     dbColumn: 'status',
     nullable: false,

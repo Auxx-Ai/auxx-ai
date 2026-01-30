@@ -315,7 +315,7 @@ function ThreadTag({ tag, isMultiSelected }: { tag: ThreadTagSummary; isMultiSel
         'flex items-center gap-1 overflow-hidden whitespace-nowrap rounded-[5px] border px-[3px] py-[1px] text-xs text-muted-foreground',
         isMultiSelected && 'text-background/80 border-black/20'
       )}>
-      {tag.emoji} {tag.title}
+      {tag.tag_emoji} {tag.title}
     </div>
   )
 }

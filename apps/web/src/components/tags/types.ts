@@ -10,9 +10,9 @@ import type { RecordId } from '@auxx/lib/resources/client'
 export interface TagRecord extends RecordMeta {
   fieldValues: {
     title?: string
-    description?: string
-    emoji?: string
-    color?: string
+    tag_description?: string
+    tag_emoji?: string
+    tag_color?: string
     tag_parent?: RecordId[]
     is_system_tag?: boolean
   }
@@ -25,9 +25,9 @@ export interface TagNode {
   id: string
   recordId: RecordId
   title: string
-  description: string | null
-  emoji: string | null
-  color: string
+  tag_description: string | null
+  tag_emoji: string | null
+  tag_color: string
   parentId: string | null
   isSystemTag: boolean
   children: TagNode[]

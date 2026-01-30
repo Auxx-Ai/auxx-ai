@@ -232,3 +232,33 @@ export function useFieldSelectOption(
   const options = field.options.options as SelectOption[]
   return options.find((o) => o.value === optionValue) ?? null
 }
+
+/**
+ * Subscribe to a system field by its systemAttribute.
+ * Returns the field with the actual CustomField UUID (not static registry key).
+ *
+ * All systemAttributes are globally unique:
+ * - Most fields use their natural name: 'thread_tags', 'primary_email', 'ticket_status'
+ * - Universal fields use "{entityType}_{attribute}": 'thread_created_at', 'contact_id'
+ *
+ * @param systemAttribute - The system attribute (e.g., 'thread_tags', 'thread_created_at')
+ * @returns ResourceFieldWithEffective or undefined if not found
+ *
+ * @example
+ * const tagsField = useSystemField('thread_tags')
+ * const emailField = useSystemField('primary_email')
+ * const threadCreatedAt = useSystemField('thread_created_at')
+ * const contactId = useSystemField('contact_id')
+ */
+export function useSystemField(
+  systemAttribute: string | null | undefined
+): ResourceFieldWithEffective | undefined {
+  // Look up the ResourceFieldId from systemAttributeMap
+  const resourceFieldId = useResourceStore((state) => {
+    if (!systemAttribute) return undefined
+    return state.systemAttributeMap[systemAttribute]
+  })
+
+  // Delegate to useField for actual field retrieval
+  return useField(resourceFieldId)
+}

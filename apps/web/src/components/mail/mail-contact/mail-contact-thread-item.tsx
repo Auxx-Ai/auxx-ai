@@ -132,7 +132,7 @@ function getTagForThread(tag: ThreadListItem['tags'][number]): React.ReactNode {
     <div
       key={tag.id}
       className={`flex items-center gap-1 overflow-hidden whitespace-nowrap rounded-[5px] border px-[3px] py-px text-xs text-[#4B5563] group-aria-selected:text-background/80`}>
-      {tag.emoji} {name}
+      {tag.tag_emoji} {name}
     </div>
   )
 }

@@ -5,6 +5,7 @@ import { ThreadStatus, DraftMode } from '@auxx/database/enums'
 import { eq, and, inArray, isNotNull } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
 import { generateId } from '@auxx/utils'
+import { parseActorId, type ActorId } from '@auxx/types'
 
 const logger = createScopedLogger('thread-mutation-service')
 
@@ -132,25 +133,34 @@ export class ThreadMutationService {
 
   /**
    * Assigns or unassigns a thread to a user.
+   * Accepts ActorId format (e.g., 'user:abc123') or null to unassign.
    * Returns MutationResult - frontend uses optimistic updates.
    */
   async assignThread(
     threadId: string,
-    assigneeId: string | null // User ID or null to unassign
+    assigneeActorId: ActorId | null
   ): Promise<MutationResult> {
-    logger.info('Assigning thread', { threadId, assigneeId, organizationId: this.organizationId })
+    // Parse ActorId to extract user ID for database storage
+    const assigneeUserId = assigneeActorId ? parseActorId(assigneeActorId).id : null
+
+    logger.info('Assigning thread', {
+      threadId,
+      assigneeActorId,
+      assigneeUserId,
+      organizationId: this.organizationId,
+    })
 
     try {
-      // Verify assigneeId belongs to the organization if not null
-      if (assigneeId) {
+      // Verify user belongs to the organization if not null
+      if (assigneeUserId) {
         const memberExists = await this.db.query.OrganizationMember.findFirst({
           where: (members, { eq, and }) =>
-            and(eq(members.userId, assigneeId), eq(members.organizationId, this.organizationId)),
+            and(eq(members.userId, assigneeUserId), eq(members.organizationId, this.organizationId)),
           columns: { id: true },
         })
         if (!memberExists) {
           throw new Error(
-            `Assignee user ${assigneeId} is not part of organization ${this.organizationId}.`
+            `Assignee user ${assigneeUserId} is not part of organization ${this.organizationId}.`
           )
         }
       }
@@ -158,7 +168,7 @@ export class ThreadMutationService {
       const result = await this.db
         .update(schema.Thread)
         .set({
-          assigneeId,
+          assigneeId: assigneeUserId,
         })
         .where(
           and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, this.organizationId))
@@ -175,13 +185,13 @@ export class ThreadMutationService {
       return {
         id: threadId,
         success: true,
-        updatedFields: { assigneeId },
+        updatedFields: { assigneeId: assigneeActorId },
         timestamp: new Date(),
       }
     } catch (error: unknown) {
       logger.error('Failed to assign thread', {
         threadId,
-        assigneeId,
+        assigneeActorId,
         error: error instanceof Error ? error.message : error,
       })
       throw new Error(
@@ -240,18 +250,23 @@ export class ThreadMutationService {
   }
 
   /**
-   * Assigns multiple threads to a user or unassigns them in bulk with validation
+   * Assigns multiple threads to a user or unassigns them in bulk with validation.
+   * Accepts ActorId format (e.g., 'user:abc123') or null to unassign.
    */
   async assignThreadBulk(
     threadIds: string[],
-    assigneeId: string | null,
+    assigneeActorId: ActorId | null,
     options: { validateUser?: boolean } = { validateUser: true }
   ): Promise<{ count: number; errors: string[] }> {
     if (!threadIds || threadIds.length === 0) return { count: 0, errors: [] }
 
+    // Parse ActorId to extract user ID for database storage
+    const assigneeUserId = assigneeActorId ? parseActorId(assigneeActorId).id : null
+
     logger.info('Bulk assigning threads', {
       count: threadIds.length,
-      assigneeId,
+      assigneeActorId,
+      assigneeUserId,
       organizationId: this.organizationId,
     })
 
@@ -259,15 +274,15 @@ export class ThreadMutationService {
 
     try {
       // Optional user validation (only if needed)
-      if (options.validateUser && assigneeId) {
+      if (options.validateUser && assigneeUserId) {
         const userExists = await this.db.query.OrganizationMember.findFirst({
           where: (members, { eq, and }) =>
-            and(eq(members.userId, assigneeId), eq(members.organizationId, this.organizationId)),
-          columns: { id: true }, // Minimal select
+            and(eq(members.userId, assigneeUserId), eq(members.organizationId, this.organizationId)),
+          columns: { id: true },
         })
 
         if (!userExists) {
-          errors.push(`User ${assigneeId} not found`)
+          errors.push(`User ${assigneeUserId} not found`)
           return { count: 0, errors }
         }
       }
@@ -276,7 +291,7 @@ export class ThreadMutationService {
       const result = await this.db
         .update(schema.Thread)
         .set({
-          assigneeId,
+          assigneeId: assigneeUserId,
         })
         .where(
           and(
@@ -293,7 +308,7 @@ export class ThreadMutationService {
     } catch (error: unknown) {
       logger.error('Failed to assign threads in bulk', {
         count: threadIds.length,
-        assigneeId,
+        assigneeActorId,
         error: error instanceof Error ? error.message : error,
       })
       throw new Error(

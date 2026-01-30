@@ -1547,8 +1547,8 @@ export class ThreadQueryService {
     return {
       id: tag.id,
       title: tag.title,
-      color: tag.color ?? null,
-      emoji: tag.emoji ?? null,
+      tag_color: tag.color ?? null,
+      tag_emoji: tag.emoji ?? null,
     }
   }
 }

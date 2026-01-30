@@ -28,8 +28,8 @@ import type { TagNode } from '../types'
 interface Tag {
   id: string
   title: string
-  emoji?: string | null
-  color?: string | null
+  tag_emoji?: string | null
+  tag_color?: string | null
   children: Tag[]
   parentId?: string | null
 }
@@ -76,8 +76,8 @@ function tagNodeToTag(node: TagNode): Tag {
   return {
     id: node.id,
     title: node.title,
-    emoji: node.emoji,
-    color: node.color,
+    tag_emoji: node.tag_emoji,
+    tag_color: node.tag_color,
     children: node.children.map(tagNodeToTag),
     parentId: node.parentId,
   }
@@ -122,12 +122,12 @@ function TagList({
                 isKeyboardSelected && 'bg-accent text-accent-foreground'
               )}>
               <div className="flex items-center">
-                {tag.emoji ? (
-                  <span className="mr-2">{tag.emoji}</span>
+                {tag.tag_emoji ? (
+                  <span className="mr-2">{tag.tag_emoji}</span>
                 ) : (
                   <div
                     className="mr-2 size-3 rounded-full"
-                    style={{ backgroundColor: tag.color || '#94a3b8' }}
+                    style={{ backgroundColor: tag.tag_color || '#94a3b8' }}
                   />
                 )}
                 <span>{tag.title}</span>
@@ -244,7 +244,7 @@ function TagPickerContent({
       return flatTags.filter(
         (tag) =>
           tag.title.toLowerCase().includes(search.toLowerCase()) ||
-          (tag.emoji && tag.emoji.includes(search))
+          (tag.tag_emoji && tag.tag_emoji.includes(search))
       )
     }
 

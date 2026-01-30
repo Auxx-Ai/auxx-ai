@@ -9,8 +9,8 @@ import type { TagNode } from '~/components/tags/types'
 interface Tag {
   id: string
   title: string
-  emoji?: string | null
-  color?: string | null
+  tag_emoji?: string | null
+  tag_color?: string | null
 }
 
 /**
@@ -36,7 +36,7 @@ export function useTags() {
   const getTagDisplayName = (id: string): string => {
     const tag = getTagById(id)
     if (!tag) return id
-    return tag.emoji ? `${tag.emoji} ${tag.title}` : tag.title
+    return tag.tag_emoji ? `${tag.tag_emoji} ${tag.title}` : tag.title
   }
 
   /** Get multiple tags by IDs */

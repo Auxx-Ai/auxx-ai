@@ -207,7 +207,7 @@ export function ChatThreadItem({ item, basePath, isSelected }: ChatThreadItemPro
                 tag // Limit displayed tags
               ) => (
                 <Badge key={tag.id} variant="outline" className="px-1 py-0 text-xs">
-                  {tag.emoji} {tag.title}
+                  {tag.tag_emoji} {tag.title}
                 </Badge>
               )
             )}

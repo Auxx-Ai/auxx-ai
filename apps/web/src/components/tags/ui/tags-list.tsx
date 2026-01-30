@@ -168,14 +168,14 @@ export function TagTreeView() {
             onClick={() => hasChildren && toggleExpanded(tag.id)}>
             <div
               className="size-7 mr-2 flex items-center justify-center rounded-full shrink-0"
-              style={{ backgroundColor: tag.color || '#94a3b8' }}>
-              {tag.emoji && <span className="shrink-0">{tag.emoji}</span>}
+              style={{ backgroundColor: tag.tag_color || '#94a3b8' }}>
+              {tag.tag_emoji && <span className="shrink-0">{tag.tag_emoji}</span>}
             </div>
 
             <span className="font-medium shrink-0">{tag.title}</span>
 
-            {tag.description && (
-              <span className="ml-2 truncate text-sm text-muted-foreground">{tag.description}</span>
+            {tag.tag_description && (
+              <span className="ml-2 truncate text-sm text-muted-foreground">{tag.tag_description}</span>
             )}
           </div>
 

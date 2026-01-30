@@ -29,8 +29,8 @@ export interface ActorId {
 export interface ThreadTagSummary {
   id: string
   title: string
-  color?: string | null
-  emoji?: string | null
+  tag_color?: string | null
+  tag_emoji?: string | null
 }
 
 /**

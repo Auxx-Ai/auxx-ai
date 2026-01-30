@@ -35,8 +35,8 @@ export function filterHierarchy(
   /** Check if a tag matches the query */
   const checkMatch = (node: TagNode): boolean => {
     const titleMatch = node.title.toLowerCase().includes(normalizedQuery)
-    const descMatch = node.description?.toLowerCase().includes(normalizedQuery)
-    const emojiMatch = node.emoji?.includes(normalizedQuery)
+    const descMatch = node.tag_description?.toLowerCase().includes(normalizedQuery)
+    const emojiMatch = node.tag_emoji?.includes(normalizedQuery)
     return titleMatch || !!descMatch || !!emojiMatch
   }
 

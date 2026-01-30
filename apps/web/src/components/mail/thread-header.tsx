@@ -1,6 +1,7 @@
 // src/components/mail/thread-header.tsx
 'use client'
-import { useState, useRef } from 'react'
+
+import { useState, useRef, useCallback } from 'react'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { EditableText } from '../editor/editable-text'
@@ -17,10 +18,12 @@ import {
 } from 'lucide-react'
 import { InboxPicker } from '../pickers/inbox-picker'
 import { TagPicker } from '../pickers/tag-picker'
-import { AssigneePicker } from '../pickers/assignee-picker'
+import { ActorPicker } from '../pickers/actor-picker'
 import { useThreadContext, useThreadTags } from './thread-provider'
 import { useThread, useInboxById } from '~/components/threads/hooks'
 import { useActor } from '~/components/resources/hooks/use-actor'
+import { useConfirm } from '~/hooks/use-confirm'
+import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,32 +34,17 @@ import { ThreadTag } from './thread-tag'
 import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button'
 import { toRecordId } from '@auxx/types/resource'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
-import type { ActorId as ActorIdString } from '@auxx/types/actor'
+import type { ActorId, ActorId as ActorIdString } from '@auxx/types/actor'
 
 /**
- * Header component for thread details with thread actions
+ * Header component for thread details with thread actions.
+ * Uses ThreadContext for all mutations - no props needed.
  */
-export function ThreadHeader({
-  onMarkDone,
-  onMarkTrash,
-  onMarkSpam,
-  onInboxChange,
-  onAssigneeChange,
-  onSubjectChange,
-  onPermanentlyDelete,
-  // onRule,
-}: {
-  onMarkDone: () => void
-  onMarkTrash: () => void
-  onMarkSpam: () => void
-  onInboxChange: (inbox: string[]) => void
-  onAssigneeChange: (assignee: any[] | null) => void
-  onSubjectChange: (subject: string) => void
-  onPermanentlyDelete?: () => void
-  // onRule: () => void
-}) {
-  // Get threadId and handlers from context
-  const { threadId, handlers } = useThreadContext()
+export function ThreadHeader() {
+  const [confirm, ConfirmDialog] = useConfirm()
+
+  // Get context for mutations and handlers
+  const { threadId, handlers, mutations } = useThreadContext()
   const { selectedTags, availableTags, updateTags } = useThreadTags()
 
   // Get thread data from store
@@ -72,23 +60,151 @@ export function ThreadHeader({
     : null
   const { actor: assignee } = useActor({ actorId: assigneeActorId })
 
+  // Convert to ActorPicker value format
+  const assigneeValue: ActorId[] = assigneeActorId ? [assigneeActorId as ActorId] : []
+
   // Derive state
   const isDone = thread?.status === 'ARCHIVED'
+  const isTrash = thread?.status === 'TRASH'
 
   // Local state for tag popover
   const [open, setOpen] = useState(false)
   const tagButtonRef = useRef<HTMLButtonElement>(null)
+
+  // --- Handlers ---
+
+  /**
+   * Handle archive/unarchive toggle
+   */
+  const handleMarkDone = useCallback(async () => {
+    if (!thread) return
+    await handlers.updateStatus(!isDone)
+  }, [thread, isDone, handlers])
+
+  /**
+   * Handle move to trash with confirmation
+   */
+  const handleMarkTrash = useCallback(async () => {
+    if (!thread) return
+
+    const confirmed = await confirm({
+      title: 'Move to trash?',
+      description: 'This thread will be moved to trash. You can restore it later if needed.',
+      confirmText: 'Move to trash',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+
+    if (confirmed) {
+      try {
+        await mutations.moveToTrash()
+        toastSuccess({ title: 'Thread moved to trash' })
+      } catch (error) {
+        toastError({ title: 'Failed to move thread to trash' })
+      }
+    }
+  }, [thread, mutations, confirm])
+
+  /**
+   * Handle mark as spam with confirmation
+   */
+  const handleMarkSpam = useCallback(async () => {
+    if (!thread) return
+
+    const confirmed = await confirm({
+      title: 'Mark as spam?',
+      description: 'This thread will be marked as spam and moved to the spam folder.',
+      confirmText: 'Mark as spam',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+
+    if (confirmed) {
+      try {
+        await mutations.markAsSpam()
+        toastSuccess({ title: 'Thread marked as spam' })
+      } catch (error) {
+        toastError({ title: 'Failed to mark thread as spam' })
+      }
+    }
+  }, [thread, mutations, confirm])
+
+  /**
+   * Handle inbox change
+   */
+  const handleInboxChange = useCallback(
+    async (selectedInboxIds: string[]) => {
+      if (!thread) return
+      const targetInboxId = selectedInboxIds?.[0]
+      if (!targetInboxId || targetInboxId === thread.inboxId) {
+        return
+      }
+      await handlers.moveToInbox(targetInboxId)
+    },
+    [thread, handlers]
+  )
+
+  /**
+   * Handle assignee change from ActorPicker
+   */
+  const handleAssigneeChange = useCallback(
+    (actorIds: ActorId[]) => {
+      const actorId = actorIds.length > 0 ? actorIds[0] : null
+      handlers.updateAssignee(actorId)
+    },
+    [handlers]
+  )
+
+  /**
+   * Handle subject change
+   */
+  const handleSubjectChange = useCallback(
+    async (newSubject: string) => {
+      if (!thread) return
+      const trimmedSubject = newSubject.trim()
+      if (thread.subject === trimmedSubject || !trimmedSubject) {
+        return
+      }
+      await handlers.updateSubject(trimmedSubject)
+    },
+    [thread, handlers]
+  )
+
+  /**
+   * Handle permanent deletion with confirmation
+   */
+  const handlePermanentlyDelete = useCallback(async () => {
+    if (!thread) return
+
+    const confirmed = await confirm({
+      title: 'Permanently delete thread?',
+      description:
+        'This action cannot be undone. The thread and all its messages will be permanently removed.',
+      confirmText: 'Delete permanently',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+
+    if (confirmed) {
+      try {
+        await mutations.deletePermanently()
+      } catch (error) {
+        toastError({ title: 'Failed to delete thread' })
+      }
+    }
+  }, [thread, mutations, confirm])
 
   if (!thread) return null
   const fetchedTagsData = availableTags
 
   return (
     <>
+      <ConfirmDialog />
       <div className="flex items-center px-4 py-2 sticky inset-x-0 top-0 z-1 bg-secondary dark:bg-primary-100 pb-3 mask-b-from-80% mask-b-to-100% w-full">
         <div className="flex  w-full justify-between shrink-0 overflow-x-auto no-scrollbar ">
           <div className="flex shrink-0 items-start pt-0.5 ps-0.5">
             <InboxPicker
-              onChange={onInboxChange}
+              onChange={handleInboxChange}
               selected={thread.inboxId ? [thread.inboxId] : undefined}
               allowMultiple={false}>
               <Badge
@@ -104,7 +220,7 @@ export function ThreadHeader({
                 variant="ghost"
                 size="icon"
                 disabled={!thread}
-                onClick={onMarkDone}
+                onClick={handleMarkDone}
                 className="rounded-full hover:bg-foreground/10">
                 {isDone ? <PackageOpen /> : <Archive />}
                 <span className="sr-only">Mark done/undone</span>
@@ -116,7 +232,7 @@ export function ThreadHeader({
                 variant="ghost"
                 size="icon"
                 disabled={!thread}
-                onClick={onMarkTrash}
+                onClick={handleMarkTrash}
                 className="rounded-full hover:bg-foreground/10">
                 <Trash />
                 <span className="sr-only">Delete</span>
@@ -127,7 +243,7 @@ export function ThreadHeader({
                 variant="ghost"
                 size="icon"
                 disabled={!thread}
-                onClick={onMarkSpam}
+                onClick={handleMarkSpam}
                 className="rounded-full hover:bg-foreground/10">
                 <MailWarning />
                 <span className="sr-only">Mark as spam</span>
@@ -169,11 +285,13 @@ export function ThreadHeader({
               </Tooltip>
             </ManualTriggerButton>
 
-            <AssigneePicker
+            <ActorPicker
               key={`assignee-${thread.id}`}
-              onChange={onAssigneeChange}
-              placeholder="Assign"
-              selected={assignee || undefined}>
+              value={assigneeValue}
+              onChange={handleAssigneeChange}
+              multi={false}
+              target="user"
+              emptyLabel="Assign">
               <div>
                 <Tooltip content={assignee ? assignee.name || 'Assigned' : 'Assign'}>
                   <Button
@@ -203,7 +321,7 @@ export function ThreadHeader({
                   </Button>
                 </Tooltip>
               </div>
-            </AssigneePicker>
+            </ActorPicker>
 
             {/* More actions dropdown */}
             <DropdownMenu>
@@ -218,13 +336,11 @@ export function ThreadHeader({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                {onPermanentlyDelete && (
-                  <>
-                    <DropdownMenuItem onClick={onPermanentlyDelete} variant="destructive">
-                      <Trash />
-                      Permanently delete
-                    </DropdownMenuItem>
-                  </>
+                {isTrash && (
+                  <DropdownMenuItem onClick={handlePermanentlyDelete} variant="destructive">
+                    <Trash />
+                    Permanently delete
+                  </DropdownMenuItem>
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
@@ -239,7 +355,7 @@ export function ThreadHeader({
             <EditableText
               key={`editable-${thread.id}`}
               initialText={thread.subject}
-              onSave={onSubjectChange}
+              onSave={handleSubjectChange}
             />
           </div>
           {fetchedTagsData && fetchedTagsData.length > 0 && (

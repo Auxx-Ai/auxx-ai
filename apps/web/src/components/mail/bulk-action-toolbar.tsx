@@ -8,8 +8,9 @@ import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { useMailFilter } from './mail-filter-context'
 import { useConfirm } from '~/hooks/use-confirm'
 import { ActionBar, type ActionBarAction } from '@auxx/ui/components/action-bar'
-import { AssigneePicker } from '~/components/pickers/assignee-picker'
+import { ActorPicker } from '~/components/pickers/actor-picker'
 import { TagPicker } from '~/components/pickers/tag-picker'
+import type { ActorId } from '@auxx/types/actor'
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
 import { toRecordId } from '~/components/resources'
 import {
@@ -142,8 +143,8 @@ export default function BulkActionToolbar() {
 
   // --- Handlers ---
   const handleAssigneeChange = useCallback(
-    (selected: any[]) => {
-      const assigneeId = selected?.[0]?.id
+    (actorIds: ActorId[]) => {
+      const assigneeId = actorIds.length > 0 ? actorIds[0] : null
       if (selectionCount > 0 && assigneeId) {
         assignBulk.mutate({ threadIds: selectedThreadIds, assigneeId })
       }
@@ -234,11 +235,13 @@ export default function BulkActionToolbar() {
         disabled: assignBulk.isPending || disabled,
         tooltip: 'Assign to team member',
         picker: {
-          component: AssigneePicker,
+          component: ActorPicker,
           props: {
+            value: [],
             onChange: handleAssigneeChange,
-            placeholder: 'Assign',
-            selected: undefined,
+            multi: false,
+            target: 'user',
+            emptyLabel: 'Assign',
             align: 'end',
           },
         },

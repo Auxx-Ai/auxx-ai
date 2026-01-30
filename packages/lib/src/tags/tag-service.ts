@@ -15,9 +15,9 @@ export interface TagData {
   recordId: RecordId
   id: string
   title: string
-  description: string | null
-  emoji: string | null
-  color: string
+  tag_description: string | null
+  tag_emoji: string | null
+  tag_color: string
   parentId: string | null
   parentRecordId: RecordId | null
   isSystemTag: boolean
@@ -33,18 +33,18 @@ export interface TagWithChildren extends TagData {
 /** Input for creating a tag */
 export interface CreateTagInput {
   title: string
-  description?: string
-  emoji?: string
-  color?: string
+  tag_description?: string
+  tag_emoji?: string
+  tag_color?: string
   parentId?: RecordId
 }
 
 /** Input for updating a tag */
 export interface UpdateTagInput {
   title?: string
-  description?: string | null
-  emoji?: string | null
-  color?: string | null
+  tag_description?: string | null
+  tag_emoji?: string | null
+  tag_color?: string | null
   parentId?: RecordId | null
 }
 
@@ -129,9 +129,9 @@ export class TagService {
       recordId,
       id: item.id,
       title: (item.fieldValues.title as string) ?? item.displayName ?? '',
-      description: (item.fieldValues.description as string) ?? null,
-      emoji: (item.fieldValues.emoji as string) ?? null,
-      color: (item.fieldValues.color as string) ?? '#94a3b8',
+      tag_description: (item.fieldValues.tag_description as string) ?? null,
+      tag_emoji: (item.fieldValues.tag_emoji as string) ?? null,
+      tag_color: (item.fieldValues.tag_color as string) ?? '#94a3b8',
       parentId,
       parentRecordId,
       isSystemTag: (item.fieldValues.is_system_tag as boolean) ?? false,
@@ -226,9 +226,9 @@ export class TagService {
     try {
       const values: Record<string, unknown> = {
         title: data.title,
-        description: data.description,
-        emoji: data.emoji,
-        color: data.color,
+        tag_description: data.tag_description,
+        tag_emoji: data.tag_emoji,
+        tag_color: data.tag_color,
       }
 
       // If parentId (RecordId) is provided, use it directly
@@ -247,9 +247,9 @@ export class TagService {
         recordId,
         id: entityInstanceId,
         title: data.title,
-        description: data.description ?? null,
-        emoji: data.emoji ?? null,
-        color: data.color ?? '#94a3b8',
+        tag_description: data.tag_description ?? null,
+        tag_emoji: data.tag_emoji ?? null,
+        tag_color: data.tag_color ?? '#94a3b8',
         parentId,
         parentRecordId,
         isSystemTag: false,
@@ -274,9 +274,9 @@ export class TagService {
 
       // Only include fields that are explicitly set
       if (data.title !== undefined) values.title = data.title
-      if (data.description !== undefined) values.description = data.description
-      if (data.emoji !== undefined) values.emoji = data.emoji
-      if (data.color !== undefined) values.color = data.color
+      if (data.tag_description !== undefined) values.tag_description = data.tag_description
+      if (data.tag_emoji !== undefined) values.tag_emoji = data.tag_emoji
+      if (data.tag_color !== undefined) values.tag_color = data.tag_color
 
       // Handle parent relationship
       if (data.parentId !== undefined) {
@@ -345,7 +345,7 @@ export class TagService {
    */
   async findOrCreateTag(
     name: string,
-    metadata?: { description?: string; color?: string; emoji?: string; parentId?: RecordId }
+    metadata?: { tag_description?: string; tag_color?: string; tag_emoji?: string; parentId?: RecordId }
   ): Promise<TagData> {
     try {
       const existingTag = await this.findTagByName(name)
@@ -355,9 +355,9 @@ export class TagService {
 
       return await this.createTag({
         title: name,
-        description: metadata?.description,
-        color: metadata?.color,
-        emoji: metadata?.emoji,
+        tag_description: metadata?.tag_description,
+        tag_color: metadata?.tag_color,
+        tag_emoji: metadata?.tag_emoji,
         parentId: metadata?.parentId,
       })
     } catch (error) {

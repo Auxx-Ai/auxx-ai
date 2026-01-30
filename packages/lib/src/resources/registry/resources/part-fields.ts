@@ -87,7 +87,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     type: BaseType.STRING,
     fieldType: FieldType.TEXT,
     isSystem: true,
-    systemAttribute: 'description',
+    systemAttribute: 'part_description',
     systemSortOrder: 'a3',
     dbColumn: 'description',
     nullable: true,

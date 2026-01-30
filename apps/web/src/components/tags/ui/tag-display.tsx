@@ -90,7 +90,7 @@ export function SelectedTagsDisplay({
   const getTagDisplayName = (id: string): string => {
     const tag = getTagById(id)
     if (!tag) return id
-    return tag.emoji ? `${tag.emoji} ${tag.title}` : tag.title
+    return tag.tag_emoji ? `${tag.tag_emoji} ${tag.title}` : tag.title
   }
 
   if (!tagIds || tagIds.length === 0) {
@@ -112,8 +112,8 @@ export function SelectedTagsDisplay({
             variant="secondary"
             className="inline-flex items-center gap-1 text-xs"
             style={{
-              backgroundColor: tag?.color ? `${tag.color}20` : undefined,
-              borderColor: tag?.color || undefined,
+              backgroundColor: tag?.tag_color ? `${tag.tag_color}20` : undefined,
+              borderColor: tag?.tag_color || undefined,
             }}>
             <span>{displayName}</span>
             {showRemove && onRemove && (
@@ -151,7 +151,7 @@ export function SearchTagDisplay({ tagIds }: { tagIds: string[] }) {
   const getTagDisplayName = (id: string): string => {
     const tag = tagMap.get(id)
     if (!tag) return id
-    return tag.emoji ? `${tag.emoji} ${tag.title}` : tag.title
+    return tag.tag_emoji ? `${tag.tag_emoji} ${tag.title}` : tag.title
   }
 
   if (!tagIds || tagIds.length === 0) {

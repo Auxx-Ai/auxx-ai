@@ -50,9 +50,9 @@ import type { FieldType } from '@auxx/database/types'
 /** Schema for tag form validation */
 const tagFormSchema = z.object({
   title: z.string().min(1, 'Title is required'),
-  description: z.string().optional().nullable(),
-  emoji: z.string().optional().nullable(),
-  color: z.string().optional().nullable(),
+  tag_description: z.string().optional().nullable(),
+  tag_emoji: z.string().optional().nullable(),
+  tag_color: z.string().optional().nullable(),
   parentId: z.string().optional().nullable(),
 })
 
@@ -90,9 +90,9 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
     resolver: standardSchemaResolver(tagFormSchema),
     defaultValues: {
       title: '',
-      description: '',
-      emoji: '',
-      color: '#94a3b8',
+      tag_description: '',
+      tag_emoji: '',
+      tag_color: '#94a3b8',
       parentId: undefined,
     },
   })
@@ -109,9 +109,9 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
         if (tag) {
           form.reset({
             title: tag.title,
-            description: tag.description || '',
-            emoji: tag.emoji || '',
-            color: tag.color || '#94a3b8',
+            tag_description: tag.tag_description || '',
+            tag_emoji: tag.tag_emoji || '',
+            tag_color: tag.tag_color || '#94a3b8',
             parentId: tag.parentId || undefined,
           })
         }
@@ -119,9 +119,9 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
         // Create mode: reset to defaults
         form.reset({
           title: '',
-          description: '',
-          emoji: '',
-          color: '#94a3b8',
+          tag_description: '',
+          tag_emoji: '',
+          tag_color: '#94a3b8',
           parentId: undefined,
         })
       }
@@ -146,9 +146,9 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
   const resetForm = useCallback(() => {
     form.reset({
       title: '',
-      description: '',
-      emoji: '',
-      color: '#94a3b8',
+      tag_description: '',
+      tag_emoji: '',
+      tag_color: '#94a3b8',
       parentId: undefined,
     })
   }, [form])
@@ -174,9 +174,9 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
         // Build field values array with resolved field IDs
         const fieldValues: Array<{ fieldId: string; value: unknown; fieldType: FieldType }> = [
           { fieldId: getFieldId('title'), value: values.title, fieldType: 'TEXT' },
-          { fieldId: getFieldId('description'), value: values.description || null, fieldType: 'RICH_TEXT' },
-          { fieldId: getFieldId('emoji'), value: values.emoji || null, fieldType: 'TEXT' },
-          { fieldId: getFieldId('color'), value: values.color || '#94a3b8', fieldType: 'TEXT' },
+          { fieldId: getFieldId('tag_description'), value: values.tag_description || null, fieldType: 'RICH_TEXT' },
+          { fieldId: getFieldId('tag_emoji'), value: values.tag_emoji || null, fieldType: 'TEXT' },
+          { fieldId: getFieldId('tag_color'), value: values.tag_color || '#94a3b8', fieldType: 'TEXT' },
         ]
 
         // Handle parent relationship (key is 'tag_parent')
@@ -195,9 +195,9 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
         // Create mode: use record.create
         const formValues: Record<string, unknown> = {
           title: values.title,
-          description: values.description || null,
-          emoji: values.emoji || null,
-          color: values.color || '#94a3b8',
+          tag_description: values.tag_description || null,
+          tag_emoji: values.tag_emoji || null,
+          tag_color: values.tag_color || '#94a3b8',
         }
 
         // Handle parent relationship for create (key is 'tag_parent')
@@ -250,7 +250,7 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
           <div key={tag.id}>
             <SelectItem value={tag.id}>
               {prefix}
-              {tag.emoji && `${tag.emoji} `}
+              {tag.tag_emoji && `${tag.tag_emoji} `}
               {tag.title}
             </SelectItem>
             {tag.children?.length > 0 && renderTagOptions(tag.children, depth + 1, excludeId)}
@@ -281,7 +281,7 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
                 <div>
                   <FormField
                     control={form.control}
-                    name="emoji"
+                    name="tag_emoji"
                     render={({ field }) => (
                       <FormItem>
                         <FormControl>
@@ -317,7 +317,7 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
               {/* Description */}
               <FormField
                 control={form.control}
-                name="description"
+                name="tag_description"
                 render={({ field }) => (
                   <FormItem>
                     <FormControl>
@@ -337,7 +337,7 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
               {/* Color picker */}
               <FormField
                 control={form.control}
-                name="color"
+                name="tag_color"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Color</FormLabel>

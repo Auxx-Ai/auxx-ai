@@ -103,7 +103,7 @@ export function ThreadTag({ tag, threadId, onRemove }: ThreadTagProps) {
               'flex cursor-pointer items-center gap-1 overflow-hidden whitespace-nowrap rounded-[5px] border border-foreground/20 px-[3px] py-px text-xs',
               'data-[state=open]:bg-accent data-[state=open]:text-accent-foreground'
             )}>
-            {tag.emoji} {tag.title}
+            {tag.tag_emoji} {tag.title}
           </div>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">

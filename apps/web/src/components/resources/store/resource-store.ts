@@ -105,6 +105,9 @@ interface ResourceStoreState {
   /** Field-level lookup map with optimistic overlay (O(1) lookups by ResourceFieldId) */
   fieldMap: Record<ResourceFieldId, ResourceField>
 
+  /** Global map for O(1) lookups: systemAttribute -> ResourceFieldId */
+  systemAttributeMap: Record<string, ResourceFieldId>
+
   // ─────────────────────────────────────────────────────────────────
   // ACTIONS
   // ─────────────────────────────────────────────────────────────────
@@ -319,6 +322,7 @@ const initialState = {
   resourceMap: new Map<string, Resource>(),
   serverFieldMap: {} as Record<ResourceFieldId, ResourceField>,
   fieldMap: {} as Record<ResourceFieldId, ResourceField>,
+  systemAttributeMap: {} as Record<string, ResourceFieldId>,
   // Field optimistic state
   pendingFieldUpdates: {} as Record<ResourceFieldId, PendingFieldUpdate>,
   optimisticNewFields: {} as Record<ResourceFieldId, ResourceField>,
@@ -357,12 +361,31 @@ export const useResourceStore = create<ResourceStoreState>()(
       // Filter custom resources
       const customResources = resources.filter(isCustomResource)
 
-      // Build server field map
+      // Build server field map and systemAttribute lookup map
       const serverFieldMap: Record<ResourceFieldId, ResourceField> = {}
+      const systemAttributeMap: Record<string, ResourceFieldId> = {}
+      const UNIVERSAL_ATTRIBUTES = ['id', 'record_id', 'created_at', 'updated_at']
+
       resources.forEach((resource) => {
+        // Get entityType for universal field mapping (e.g., 'thread', 'contact', 'ticket')
+        const entityType = resource.entityType || resource.apiSlug
+
         resource.fields.forEach((field) => {
           const resourceFieldId = field.resourceFieldId || toResourceFieldId(resource.id, field.id)
           serverFieldMap[resourceFieldId] = { ...field, resourceFieldId }
+
+          // Build systemAttribute lookup map
+          if (field.systemAttribute && entityType) {
+            if (UNIVERSAL_ATTRIBUTES.includes(field.systemAttribute)) {
+              // Universal fields: map to "{entityType}_{attribute}"
+              // e.g., "thread_created_at", "contact_id"
+              const mappedKey = `${entityType}_${field.systemAttribute}`
+              systemAttributeMap[mappedKey] = resourceFieldId
+            } else {
+              // Unique fields: use systemAttribute directly as key
+              systemAttributeMap[field.systemAttribute] = resourceFieldId
+            }
+          }
         })
       })
 
@@ -454,6 +477,7 @@ export const useResourceStore = create<ResourceStoreState>()(
         resourceMap,
         serverFieldMap,
         fieldMap,
+        systemAttributeMap,
         // Field optimistic state
         pendingFieldUpdates: newPendingFieldUpdates,
         optimisticNewFields: newOptimisticNewFields,
@@ -1262,6 +1286,7 @@ export const useResourceStore = create<ResourceStoreState>()(
         resourceMap: new Map<string, Resource>(),
         serverFieldMap: {} as Record<ResourceFieldId, ResourceField>,
         fieldMap: {} as Record<ResourceFieldId, ResourceField>,
+        systemAttributeMap: {} as Record<string, ResourceFieldId>,
         // Field optimistic state
         pendingFieldUpdates: {} as Record<ResourceFieldId, PendingFieldUpdate>,
         optimisticNewFields: {} as Record<ResourceFieldId, ResourceField>,

@@ -722,54 +722,29 @@ export const threadRouter = createTRPCRouter({
     }),
   /**
    * Assign a thread to a user or unassign it.
-   * Updated to use ThreadMutationService.
+   * Accepts ActorId format (e.g., 'user:abc123') or null for unassigning.
    */
   assign: protectedProcedure
     .input(
       z.object({
         threadId: z.string(),
-        assigneeId: z.string().nullable(), // Allow null for unassigning
+        assigneeId: z.string().nullable(), // ActorId format: 'user:abc123' or null
       })
     )
     .mutation(async ({ ctx, input }) => {
       const { threadMutation, organizationId, userId } = getServiceDependencies(ctx)
       try {
-        // Optional but Recommended: Validate assignee exists in the organization within the API layer
-        if (input.assigneeId) {
-          const [assigneeUser] = await ctx.db
-            .select({ id: schema.User.id })
-            .from(schema.User)
-            .leftJoin(
-              schema.OrganizationMember,
-              eq(schema.User.id, schema.OrganizationMember.userId)
-            )
-            .where(
-              and(
-                eq(schema.User.id, input.assigneeId),
-                eq(schema.OrganizationMember.organizationId, organizationId)
-              )
-            )
-            .limit(1)
-          if (!assigneeUser) {
-            logger.warn('Assignee validation failed: User not found or not in organization', {
-              assigneeId: input.assigneeId,
-              organizationId,
-              performingUserId: userId,
-            })
-            throw new TRPCError({
-              code: 'BAD_REQUEST',
-              message: `Assignee user (${input.assigneeId}) not found or not part of your organization.`,
-            })
-          }
-        }
         logger.info('API: Assigning thread', {
           threadId: input.threadId,
           assigneeId: input.assigneeId,
           userId,
           organizationId,
         })
-        // Service handles org scoping
-        const updatedThread = await threadMutation.assignThread(input.threadId, input.assigneeId)
+        // Service handles ActorId parsing and validation
+        const updatedThread = await threadMutation.assignThread(
+          input.threadId,
+          input.assigneeId as any
+        )
         return updatedThread
       } catch (error: unknown) {
         if (error instanceof TRPCError) throw error
@@ -779,7 +754,7 @@ export const threadRouter = createTRPCRouter({
           threadId: input.threadId,
           assigneeId: input.assigneeId,
         })
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed assigning thread.' }) // Fallback
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed assigning thread.' })
       }
     }),
   // --- Convenience Mutations ---
@@ -976,48 +951,22 @@ export const threadRouter = createTRPCRouter({
       }
     }),
   /**
-   * Assign multiple threads to a user in bulk
-   * Updated to use ThreadMutationService.
+   * Assign multiple threads to a user in bulk.
+   * Accepts ActorId format (e.g., 'user:abc123') or null for unassigning.
    */
   assignBulk: protectedProcedure
     .input(z.object({ threadIds: z.array(z.string()).min(1), assigneeId: z.string().nullable() }))
     .mutation(async ({ ctx, input }) => {
       const { threadMutation, organizationId, userId } = getServiceDependencies(ctx)
       try {
-        // Optional validation if needed at API layer
-        if (input.assigneeId) {
-          const [assigneeUser] = await ctx.db
-            .select({ id: schema.User.id })
-            .from(schema.User)
-            .leftJoin(
-              schema.OrganizationMember,
-              eq(schema.User.id, schema.OrganizationMember.userId)
-            )
-            .where(
-              and(
-                eq(schema.User.id, input.assigneeId),
-                eq(schema.OrganizationMember.organizationId, organizationId)
-              )
-            )
-            .limit(1)
-          if (!assigneeUser) {
-            logger.warn('API: Assignee validation failed', {
-              assigneeId: input.assigneeId,
-              organizationId,
-            })
-            throw new TRPCError({
-              code: 'BAD_REQUEST',
-              message: `Assignee user (${input.assigneeId}) not found or not part of your organization.`,
-            })
-          }
-        }
         logger.info('API: Bulk assigning threads', {
           threadCount: input.threadIds.length,
           assigneeId: input.assigneeId,
           userId,
           organizationId,
         })
-        return await threadMutation.assignThreadBulk(input.threadIds, input.assigneeId)
+        // Service handles ActorId parsing and validation
+        return await threadMutation.assignThreadBulk(input.threadIds, input.assigneeId as any)
       } catch (error: unknown) {
         if (error instanceof TRPCError) throw error
         handleServiceError(error, 'threadMutation.assignThreadBulk', {

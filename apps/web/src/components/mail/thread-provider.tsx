@@ -10,6 +10,7 @@ import { useRuleTest } from '~/hooks/use-rule-test'
 import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 import { useThread as useThreadFromStore } from '~/components/threads/hooks'
 import type { EditorMode } from '~/components/mail/email-editor/types'
+import type { ActorId } from '@auxx/types/actor'
 
 /** Reply box UI state */
 interface ReplyBoxState {
@@ -25,7 +26,7 @@ interface ThreadMutations {
   unarchiveThread: () => Promise<void>
   moveToTrash: () => Promise<void>
   markAsSpam: () => Promise<void>
-  updateAssignee: (assigneeId: string | null) => Promise<void>
+  updateAssignee: (assigneeId: ActorId | null | undefined) => Promise<void>
   updateSubject: (subject: string) => Promise<void>
   moveToInbox: (inboxId: string) => Promise<void>
   deletePermanently: () => Promise<void>
@@ -35,7 +36,7 @@ interface ThreadMutations {
 /** Thread action handlers */
 interface ThreadHandlers {
   updateStatus: (done: boolean) => Promise<void>
-  updateAssignee: (userId: string | null) => Promise<void>
+  updateAssignee: (actorId: ActorId | null | undefined) => Promise<void>
   updateSubject: (subject: string) => Promise<void>
   updateTags: (tagIds: string[]) => Promise<void>
   moveToInbox: (inboxId: string) => Promise<void>
@@ -162,9 +163,9 @@ export function ThreadProvider({
         }
       },
 
-      updateAssignee: async (userId: string | null) => {
+      updateAssignee: async (actorId: ActorId | null) => {
         try {
-          await threadMutations.updateAssignee.mutateAsync({ threadId, assigneeId: userId })
+          await threadMutations.updateAssignee.mutateAsync({ threadId, assigneeId: actorId })
           // Store will be updated by mutation's cache invalidation
         } catch (error) {
           toastError({
@@ -221,7 +222,15 @@ export function ThreadProvider({
         closeWithSuppress()
       },
     }),
-    [thread, threadId, threadMutations, updateTags, openEditorForAction, handleShowGenericReply, closeWithSuppress]
+    [
+      thread,
+      threadId,
+      threadMutations,
+      updateTags,
+      openEditorForAction,
+      handleShowGenericReply,
+      closeWithSuppress,
+    ]
   )
 
   // Create email actions
@@ -396,7 +405,7 @@ export function ThreadProvider({
       markAsSpam: async () => {
         await threadMutations.markAsSpam.mutateAsync({ threadId })
       },
-      updateAssignee: async (assigneeId: string | null) => {
+      updateAssignee: async (assigneeId: ActorId | null) => {
         await threadMutations.updateAssignee.mutateAsync({ threadId, assigneeId })
       },
       updateSubject: async (subject: string) => {

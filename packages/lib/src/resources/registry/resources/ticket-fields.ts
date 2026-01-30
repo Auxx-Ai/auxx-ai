@@ -197,7 +197,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
     type: BaseType.STRING,
     fieldType: FieldType.RICH_TEXT,
     isSystem: true,
-    systemAttribute: 'description',
+    systemAttribute: 'ticket_description',
     systemSortOrder: 'a3',
     dbColumn: 'description',
     nullable: true,

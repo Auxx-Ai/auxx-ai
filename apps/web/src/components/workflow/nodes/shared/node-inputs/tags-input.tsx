@@ -86,12 +86,12 @@ export const TagsInput = createNodeInput<TagsInputProps>(
                       variant="pill"
                       size="xs"
                       className="gap-1 h-5 cursor-pointer">
-                      {tag.emoji ? (
-                        <span>{tag.emoji}</span>
+                      {tag.tag_emoji ? (
+                        <span>{tag.tag_emoji}</span>
                       ) : (
                         <div
                           className="size-2 rounded-full"
-                          style={{ backgroundColor: tag.color || '#94a3b8' }}
+                          style={{ backgroundColor: tag.tag_color || '#94a3b8' }}
                         />
                       )}
                       <span>{tag.title}</span>

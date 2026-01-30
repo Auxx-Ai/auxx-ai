@@ -228,8 +228,8 @@ export const searchRouter = createTRPCRouter({
               type: 'tag',
               value: item.fieldValues.title ?? item.displayName ?? '',
               label: item.fieldValues.title ?? item.displayName ?? '',
-              emoji: item.fieldValues.emoji ?? null,
-              color: item.fieldValues.color ?? null,
+              emoji: item.fieldValues.tag_emoji ?? null,
+              color: item.fieldValues.tag_color ?? null,
             }))
           )
           break

@@ -6,7 +6,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { api } from '~/trpc/react'
 import { toastError } from '@auxx/ui/components/toast'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
-import { useResource } from '~/components/resources'
+import { useResource, useSystemField } from '~/components/resources/hooks'
 import { toRecordId } from '@auxx/lib/resources/client'
 import type { ThreadMeta } from '~/components/threads/store'
 import type { RecordId } from '@auxx/types/resource'
@@ -56,6 +56,10 @@ export function useThreadTags(
   const threadEntityDefId = threadResource?.entityDefinitionId ?? null
   const tagEntityDefId = tagResource?.entityDefinitionId ?? null
 
+  // Get the tags field with actual CustomField UUID
+  const tagsField = useSystemField('thread_tags')
+  const tagsFieldId = tagsField?.id ?? null
+
   // Extract tags from thread data (no separate API call needed)
   const fetchedTagsData = useMemo(() => {
     return thread?.tags || []
@@ -94,8 +98,8 @@ export function useThreadTags(
    */
   const handleTagChange = useCallback(
     async (incomingTagIds: string[]) => {
-      if (!thread || !threadEntityDefId || !tagEntityDefId) {
-        console.warn('Cannot update tags: missing thread or entity definition IDs')
+      if (!thread || !threadEntityDefId || !tagEntityDefId || !tagsFieldId) {
+        console.warn('Cannot update tags: missing thread, entity definition IDs, or tags field')
         return
       }
 
@@ -109,15 +113,14 @@ export function useThreadTags(
 
       try {
         // Convert tag IDs to RecordIds
-        const tagRecordIds: RecordId[] = newTagIds.map((tagId) =>
-          toRecordId(tagEntityDefId, tagId)
-        )
+        const tagRecordIds: RecordId[] = newTagIds.map((tagId) => toRecordId(tagEntityDefId, tagId))
 
         // Build the thread RecordId
         const threadRecordId = toRecordId(threadEntityDefId, thread.id)
 
         // Save via FieldValue system with RELATIONSHIP field type
-        saveFieldValue(threadRecordId, 'tags', tagRecordIds, 'RELATIONSHIP')
+        // Use the actual CustomField UUID from useSystemField
+        saveFieldValue(threadRecordId, tagsFieldId, tagRecordIds, 'RELATIONSHIP')
       } catch (error) {
         console.error('Error updating tags:', error)
         // Revert optimistic update on error
@@ -129,7 +132,7 @@ export function useThreadTags(
         })
       }
     },
-    [thread, threadEntityDefId, tagEntityDefId, selectedTagIds, saveFieldValue]
+    [thread, threadEntityDefId, tagEntityDefId, tagsFieldId, selectedTagIds, saveFieldValue]
   )
 
   return {
