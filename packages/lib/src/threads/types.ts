@@ -1,6 +1,5 @@
 // packages/lib/src/threads/types.ts
 
-import type { MessageAttachmentInfo } from '../messages/attachment-transformers'
 import { InternalFilterContextType } from '../mail-query/types'
 import { UrlBasedStatusFilter } from '../mail-query/filter-types'
 import type { ActorId } from '@auxx/types/actor'
@@ -21,48 +20,6 @@ export type UserUnreadCounts = {
 } & {
   inbox?: number
   assigned?: number
-}
-
-/** Represents a draft message returned by the detailed thread query. */
-export interface DraftMessageType {
-  id: string
-  subject?: string | null
-  snippet?: string | null
-  sentAt?: Date | null
-  sendStatus?: string | null
-  providerError?: string | null
-  attempts?: number | null
-  lastAttemptAt?: Date | null
-  createdById?: string | null
-  createdAt: Date
-  isInbound: boolean
-  participants?: any[]
-  from?: any
-  replyTo?: any
-  signature?: any
-  attachments?: MessageAttachmentInfo[]
-}
-
-/** Detailed thread response returned by getThreadById. */
-export interface ThreadWithDetails {
-  id: string
-  subject: string
-  organizationId: string
-  status: string
-  lastMessageAt?: Date | null
-  firstMessageAt?: Date | null
-  messageCount: number
-  participantCount: number
-  assigneeId?: string | null
-  createdAt: Date
-  labels?: any[]
-  tags?: any[]
-  assignee?: any
-  inbox?: any
-  comments?: any[]
-  messages: DraftMessageType[]
-  isUnread?: boolean
-  draftMessage: DraftMessageType | null
 }
 
 /** Input payload accepted by the thread list service. */

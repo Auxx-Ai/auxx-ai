@@ -1,9 +1,10 @@
 // packages/lib/src/ai-features/compose/ai-compose.service.ts
-import type { Database } from '@auxx/database'
+import { type Database, schema } from '@auxx/database'
+import { and, eq } from 'drizzle-orm'
 import { createScopedLogger } from '../../logger'
 import { LLMOrchestrator } from '../../ai/orchestrator/llm-orchestrator'
 import { UsageTrackingService } from '../../ai/usage/usage-tracking-service'
-import { ThreadQueryService } from '../../threads/thread-query.service'
+import { MessageQueryService } from '../../messages/message-query.service'
 import type { LLMInvocationRequest } from '../../ai/orchestrator/types'
 import type { Message } from '../../ai/clients/base/types'
 import {
@@ -142,59 +143,45 @@ export class AIComposeService {
   }
 
   /**
-   * Get thread context using ThreadQueryService
+   * Get thread context using MessageQueryService and simple thread query
    */
   private async getThreadContext(
     threadId: string,
     organizationId: string,
-    userId: string
+    _userId: string
   ): Promise<ThreadContext> {
     try {
-      // Use ThreadQueryService to get thread with messages
-      const threadQueryService = new ThreadQueryService(organizationId, this.db)
+      // Get messages using MessageQueryService
+      const messageQuery = new MessageQueryService(organizationId, this.db)
+      const { messages: rawMessages } = await messageQuery.getMessagesByThread(threadId)
 
-      const thread = await threadQueryService.getThreadById(threadId, userId, {
-        include: {
-          messages: {
-            orderBy: { sentAt: 'desc' },
-            take: this.config.maxContextMessages,
-            select: {
-              id: true,
-              textHtml: true,
-              textPlain: true,
-              snippet: true,
-              subject: true,
-              sentAt: true,
-              isInbound: true,
-              from: {
-                select: {
-                  identifier: true,
-                  name: true,
-                  displayName: true,
-                },
-              },
-            },
-          },
-        },
-      })
+      // Get thread subject with simple query
+      const [thread] = await this.db
+        .select({ id: schema.Thread.id, subject: schema.Thread.subject })
+        .from(schema.Thread)
+        .where(and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, organizationId)))
+        .limit(1)
 
       if (!thread) {
         throw new Error(`Thread ${threadId} not found`)
       }
 
+      // Take only the most recent messages for context
+      const recentMessages = rawMessages.slice(-this.config.maxContextMessages)
+
       // Format messages for context
-      const messages = thread.messages.map((msg) => ({
+      const messages = recentMessages.map((msg) => ({
         id: msg.id,
         content: msg.textPlain || stripHtml(msg.textHtml || msg.snippet || ''),
-        sender: msg.from?.displayName || msg.from?.name || msg.from?.identifier || 'Unknown',
-        timestamp: msg.sentAt || new Date(),
-        type: !msg.isInbound ? ('sent' as const) : ('received' as const),
+        sender: msg.isInbound ? 'Customer' : 'Agent',
+        timestamp: msg.sentAt ? new Date(msg.sentAt) : new Date(),
+        type: msg.isInbound ? ('received' as const) : ('sent' as const),
       }))
 
       return {
         threadId: thread.id,
         subject: thread.subject || undefined,
-        messages: messages.reverse(), // Chronological order
+        messages,
       }
     } catch (error) {
       logger.error('Failed to get thread context', {

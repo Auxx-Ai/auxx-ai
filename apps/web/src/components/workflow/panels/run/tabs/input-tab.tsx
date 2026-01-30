@@ -2,23 +2,17 @@
 
 import React, { useState, useEffect, useCallback } from 'react'
 import { Button } from '@auxx/ui/components/button'
-import { Label } from '@auxx/ui/components/label'
-import { Input } from '@auxx/ui/components/input'
-import { Textarea } from '@auxx/ui/components/textarea'
-import { Switch } from '@auxx/ui/components/switch'
 import { Alert, AlertIcon, AlertDescription } from '@auxx/ui/components/alert'
-import { Loader2, Play, AlertCircle, AlertTriangle } from 'lucide-react'
+import { Play, AlertCircle, AlertTriangle } from 'lucide-react'
 import { useStoreApi } from '@xyflow/react'
 import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
 import { useRunStore } from '~/components/workflow/store/run-store'
 import { usePanelStore } from '~/components/workflow/store/panel-store'
 import { useWorkflowTrigger } from '~/components/workflow/hooks'
 import { useWorkflowRun } from '~/hooks/use-workflow-run'
-import { api } from '~/trpc/react'
 import { toastError } from '@auxx/ui/components/toast'
 import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
-
-// Import transform function
+import { useThread, useMessages, useMessageParticipants } from '~/components/threads/hooks'
 import { transformThreadToWorkflowInput } from '~/components/workflow/nodes/shared/node-inputs'
 import { initializeTriggers } from '~/components/workflow/nodes/initialize-triggers'
 
@@ -52,12 +46,29 @@ export function InputTab({ workflowId, workflowAppId }: InputTabProps) {
   const [inputs, setInputs] = useState<Record<string, any>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-  // Get full thread details when a thread is selected (for MESSAGE_RECEIVED)
+  // Get thread and messages when a thread is selected (for MESSAGE_RECEIVED)
   const selectedThreadId = inputs.threadId as string | undefined
-  const threadDetailQuery = api.thread.getById.useQuery(
-    { threadId: selectedThreadId! },
-    { enabled: !!selectedThreadId && triggerType === WorkflowTriggerType.MESSAGE_RECEIVED }
-  )
+  const isMessageReceivedTrigger = triggerType === WorkflowTriggerType.MESSAGE_RECEIVED
+
+  const { thread, isLoading: threadLoading } = useThread({
+    threadId: selectedThreadId,
+    enabled: !!selectedThreadId && isMessageReceivedTrigger,
+  })
+
+  const { messages, isLoading: messagesLoading } = useMessages({
+    threadId: selectedThreadId,
+    enabled: !!selectedThreadId && isMessageReceivedTrigger,
+  })
+
+  // Get the latest message (messages are ordered by sentAt desc)
+  const latestMessage = messages[0]
+
+  // Resolve participants for the latest message
+  const participantIds = latestMessage?.participants ?? []
+  const { from, to, cc, isLoading: participantsLoading } = useMessageParticipants(participantIds)
+
+  // Combined loading state
+  const threadDataLoading = threadLoading || messagesLoading || participantsLoading
 
   // Initialize inputs based on workflow and trigger
   useEffect(() => {
@@ -200,11 +211,7 @@ export function InputTab({ workflowId, workflowAppId }: InputTabProps) {
     }
 
     // If thread is selected but details are still loading, wait
-    if (
-      triggerType === WorkflowTriggerType.MESSAGE_RECEIVED &&
-      inputs.threadId &&
-      threadDetailQuery.isLoading
-    ) {
+    if (isMessageReceivedTrigger && inputs.threadId && threadDataLoading) {
       toastError({
         title: 'Loading thread details',
         description: 'Please wait while we load the thread information',
@@ -213,18 +220,18 @@ export function InputTab({ workflowId, workflowAppId }: InputTabProps) {
     }
 
     try {
-      // Enable dry run mode for test runs
-
       // Prepare inputs based on trigger type
       let finalInputs = { ...inputs }
 
       // Transform inputs for MESSAGE_RECEIVED trigger
-      if (
-        triggerType === WorkflowTriggerType.MESSAGE_RECEIVED &&
-        inputs.threadId &&
-        threadDetailQuery.data
-      ) {
-        const transformedInputs = transformThreadToWorkflowInput(threadDetailQuery.data)
+      if (isMessageReceivedTrigger && inputs.threadId && thread && latestMessage) {
+        const transformedInputs = transformThreadToWorkflowInput({
+          thread,
+          latestMessage,
+          from,
+          to,
+          cc,
+        })
         finalInputs = { ...finalInputs, ...transformedInputs }
       }
 
@@ -323,9 +330,7 @@ export function InputTab({ workflowId, workflowAppId }: InputTabProps) {
           disabled={
             !hasTrigger ||
             (isRunning && activeRun?.status === 'RUNNING') ||
-            (triggerType === WorkflowTriggerType.MESSAGE_RECEIVED &&
-              inputs.threadId &&
-              threadDetailQuery.isLoading)
+            (isMessageReceivedTrigger && inputs.threadId && threadDataLoading)
           }
           loading={isRunning && activeRun?.status === 'RUNNING'}
           loadingText="Running..."

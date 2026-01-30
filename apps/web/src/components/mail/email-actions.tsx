@@ -1,7 +1,5 @@
 // src/components/mail/email-actions.tsx
-import { RouterOutputs } from '~/trpc/react'
-
-type MessageType = RouterOutputs['thread']['getById']['messages'][number]
+import type { MessageType } from './email-editor/types'
 
 /**
  * Type definition for email action handlers

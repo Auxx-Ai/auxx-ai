@@ -1,12 +1,12 @@
 'use client'
 // src/hooks/use-reply-box.tsx
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { type RouterOutputs } from '~/trpc/react'
-import type { EditorMode } from '~/components/mail/email-editor' // Import the editor mode type
-
-type ThreadWithDetails = RouterOutputs['thread']['getById']
-type MessageType = ThreadWithDetails['messages'][number] // Type for sent messages
-type DraftMessageType = Exclude<ThreadWithDetails['draftMessage'], null> // Type for draft message
+import type {
+  EditorMode,
+  ThreadWithDetails,
+  MessageType,
+  DraftMessageType,
+} from '~/components/mail/email-editor/types'
 
 /**
  * Custom hook for managing the state of the Reply/Compose editor.

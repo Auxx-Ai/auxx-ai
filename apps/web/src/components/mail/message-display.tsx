@@ -66,11 +66,6 @@ const MessageDisplay = ({ messageId, messageActions, isOpen }: MessageDisplayPro
 
   // Retry send mutation
   const retrySendMessage = api.thread.retrySendMessage.useMutation({
-    onSuccess: () => {
-      if (message) {
-        utils.thread.getById.invalidate({ id: message.threadId })
-      }
-    },
     onError: (error) => {
       toastError({
         title: 'Failed to retry sending',
@@ -151,7 +146,11 @@ const MessageDisplay = ({ messageId, messageActions, isOpen }: MessageDisplayPro
               </div>
               <div className="pr-2 pt-2">
                 <div className="flex items-center">
-                  <MessageDropdownMenu message={message} emailActions={messageActions} onMarkUnread={markAsUnread} />
+                  <MessageDropdownMenu
+                    message={message}
+                    emailActions={messageActions}
+                    onMarkUnread={markAsUnread}
+                  />
                 </div>
               </div>
             </div>

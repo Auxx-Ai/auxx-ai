@@ -39,7 +39,6 @@ export function ThreadTag({ tagId, threadId, onRemove }: ThreadTagProps) {
   const deleteRecord = api.record.delete.useMutation({
     onSuccess: () => {
       refresh()
-      utils.thread.getById.invalidate({ threadId })
     },
     onError: (error) => {
       toastError({
@@ -57,7 +56,6 @@ export function ThreadTag({ tagId, threadId, onRemove }: ThreadTagProps) {
   /** Called when tag edit is successful */
   function handleEditSuccess() {
     refresh()
-    utils.thread.getById.invalidate({ threadId })
   }
 
   /** Handles deleting the tag entirely (from all threads) */

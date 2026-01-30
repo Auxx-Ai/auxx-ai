@@ -107,11 +107,6 @@ const EmailDisplay = ({ messageId, messageActions, isOpen }: EmailDisplayProps) 
 
   // Retry send mutation
   const retrySendMessage = api.thread.retrySendMessage.useMutation({
-    onSuccess: () => {
-      if (message) {
-        utils.thread.getById.invalidate({ id: message.threadId })
-      }
-    },
     onError: (error) => {
       toastError({
         title: 'Failed to retry sending',
@@ -217,7 +212,11 @@ const EmailDisplay = ({ messageId, messageActions, isOpen }: EmailDisplayProps) 
           <div className="flex shrink-0 grow-0 items-start gap-2">
             <div className="flex flex-col items-end">
               <div className="flex items-center flex-row justify-end">
-                <DropdownMenuDemo message={message} emailActions={messageActions} onMarkUnread={markAsUnread} />
+                <DropdownMenuDemo
+                  message={message}
+                  emailActions={messageActions}
+                  onMarkUnread={markAsUnread}
+                />
                 <Button variant="ghost" size="icon-sm" onClick={handleReply}>
                   <Reply />
                 </Button>

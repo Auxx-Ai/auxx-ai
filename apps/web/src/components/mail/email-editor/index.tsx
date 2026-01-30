@@ -299,9 +299,6 @@ function ReplyComposeEditorComponent({
     onMutate: () => setIsSending(true),
     onSuccess: () => {
       toastSuccess({ description: 'Message sent successfully' })
-      if (thread?.id) {
-        utils.thread.getById.invalidate({ threadId: thread.id })
-      }
       onSendSuccess()
       onClose()
     },
@@ -312,39 +309,16 @@ function ReplyComposeEditorComponent({
   })
   const deleteDraftMutation = api.draft.delete.useMutation({
     onMutate: async ({ draftId }) => {
-      // Cancel any outgoing refetches
-      await utils.thread.getById.cancel()
-      // Snapshot the previous value
-      const previousThread = thread ? utils.thread.getById.getData({ threadId: thread.id }) : null
-      // Optimistically update to remove the draft
-      if (thread?.id) {
-        utils.thread.getById.setData({ threadId: thread.id }, (old) => {
-          if (!old) return old
-          return {
-            ...old,
-            // Ensure reply box logic won't see a draft immediately after delete
-            draftMessage: old.draftMessage?.id === draftId ? null : (old.draftMessage ?? null),
-          }
-        })
-      }
       // Clear local draft state immediately
       setState((prev) => ({ ...prev, draftId: null }))
-      return { previousThread, draftId }
+      return { draftId }
     },
     onError: (err, variables, context) => {
       // Rollback on error
-      if (context?.previousThread && thread?.id) {
-        utils.thread.getById.setData({ threadId: thread.id }, context.previousThread)
-      }
       if (context?.draftId) {
         setState((prev) => ({ ...prev, draftId: context.draftId }))
       }
       toastError({ title: 'Failed to discard draft', description: err.message })
-    },
-    onSuccess: () => {
-      if (thread?.id) {
-        utils.thread.getById.invalidate({ threadId: thread.id })
-      }
     },
   })
   // Debounced delete to prevent double-click issues
@@ -402,14 +376,7 @@ function ReplyComposeEditorComponent({
       })
       setIsDraftSaved(true)
     },
-    onCacheSync: ({ threadId, draftData }) => {
-      // Simplified cache sync - just invalidate thread cache
-      // The new draft table system doesn't need complex reconciliation
-      const cacheThreadId = thread?.id || threadId || state.threadId
-      if (cacheThreadId) {
-        utils.thread.getById.invalidate({ threadId: cacheThreadId })
-      }
-    },
+    onCacheSync: ({ threadId, draftData }) => {},
   })
   // Recipient management
   const upsertRecipient = useCallback((role: keyof Recipients, recipient: RecipientState) => {
@@ -652,16 +619,6 @@ function ReplyComposeEditorComponent({
     // Abort any pending autosaves immediately
     discardAfterSave.current = true
     draftAutosave.abort()
-    // Proactively clear cached draftMessage to avoid auto-reopen
-    if (thread?.id) {
-      utils.thread.getById.setData({ threadId: thread.id }, (old) => {
-        if (!old) return old
-        return {
-          ...old,
-          draftMessage: null,
-        }
-      })
-    }
     if (state.draftId) {
       // Use debounced delete to prevent double-clicks
       debouncedDelete(state.draftId)

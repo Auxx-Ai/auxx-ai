@@ -29,6 +29,3 @@ export { DisplayOnlyProvider, useDisplayOnlyContext } from './display-only-provi
 // Dynamic options registry and hooks
 export { DYNAMIC_OPTIONS_REGISTRY, getDynamicOptionsEntry, type DynamicOption } from './registries/dynamic-options-registry'
 export { useDynamicFieldOptions, useFieldDynamicOptions } from './hooks/use-dynamic-field-options'
-
-// NOTE: model-field-configs.ts is deprecated - use ResourceField from @auxx/lib/resources/client instead
-// The unified field definitions are now in the resource registry with isSystem, dynamicOptionsKey, etc.

@@ -1,7 +1,7 @@
 // apps/web/src/components/mail/types.ts
 
-import type { RouterOutputs } from '~/trpc/react'
 import type { ApiSearchFilter, ActorIdObject } from '@auxx/lib/mail-query/client'
+import type { MessageType } from './email-editor/types'
 
 export const VALID_STATUS_SLUGS = [
   'open',
@@ -52,4 +52,4 @@ export type ThreadsFilterInput = {
   sortBy?: 'newest' | 'oldest' | 'sender' | 'subject'
   sortDirection?: 'asc' | 'desc'
 }
-export type Message = RouterOutputs['thread']['getById']['messages'][number]
+export type Message = MessageType

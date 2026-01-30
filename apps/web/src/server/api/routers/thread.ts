@@ -14,12 +14,11 @@ import {
   type ThreadSortDescriptor,
   type ListThreadIdsInput,
 } from '@auxx/lib/threads'
-import { DraftService } from '@auxx/lib/drafts'
 import { ProviderRegistryService } from '@auxx/lib/providers'
 import { MessageSenderService } from '@auxx/lib/messages'
 import { InternalFilterContextType, mapUrlSlugToStatusFilter } from '@auxx/lib/types' // Import context enum
-import { IdentifierType, ThreadStatus as ThreadStatusEnum } from '@auxx/database/enums'
-import { whereThreadMessageType, getMessageTypeFromProvider } from '@auxx/lib/providers'
+import { IdentifierType } from '@auxx/database/enums'
+import { whereThreadMessageType } from '@auxx/lib/providers'
 const logger = createScopedLogger('thread-router')
 
 // Participant Input Schema (reusable)
@@ -271,111 +270,6 @@ export const threadRouter = createTRPCRouter({
       }
     }),
 
-  /**
-   * Get a single thread by ID.
-   * Updated to use ThreadQueryService.
-   * Also fetches draft from new Draft table.
-   */
-  getById: protectedProcedure
-    .input(z.object({ threadId: z.string() }))
-    .query(async ({ ctx, input }) => {
-      const { threadQuery, organizationId, userId } = getServiceDependencies(ctx)
-      try {
-        const thread = await threadQuery.getThreadById(input.threadId, userId) // Service handles org scoping
-        if (!thread) {
-          throw new TRPCError({
-            code: 'NOT_FOUND',
-            message: `Thread '${input.threadId}' not found.`,
-          })
-        }
-
-        // Add computed messageType field for backward compatibility
-        const messageType = thread.integration?.provider
-          ? getMessageTypeFromProvider(thread.integration.provider as any)
-          : 'EMAIL'
-
-        // Also add messageType to each message for consistency
-        const messagesWithType = thread.messages?.map(msg => ({
-          ...msg,
-          messageType,  // All messages in a thread share the same type
-        })) ?? []
-
-        // Fetch draft from new Draft table
-        const draftService = new DraftService(ctx.db, organizationId, userId)
-        const draft = await draftService.getByThreadId(input.threadId)
-
-        // Transform draft to expected format if it exists
-        let draftMessage = null
-        if (draft) {
-          const content = draft.content
-          draftMessage = {
-            id: draft.id,
-            threadId: draft.threadId,
-            subject: content.subject || '',
-            textHtml: content.bodyHtml || '',
-            textPlain: content.bodyText || '',
-            signatureId: content.signatureId || null,
-            participants: [
-              ...content.recipients.to.map((p) => ({
-                role: 'TO' as const,
-                participant: {
-                  id: p.participantId || p.identifier,
-                  identifier: p.identifier,
-                  identifierType: p.identifierType,
-                  name: p.name || null,
-                },
-              })),
-              ...content.recipients.cc.map((p) => ({
-                role: 'CC' as const,
-                participant: {
-                  id: p.participantId || p.identifier,
-                  identifier: p.identifier,
-                  identifierType: p.identifierType,
-                  name: p.name || null,
-                },
-              })),
-              ...content.recipients.bcc.map((p) => ({
-                role: 'BCC' as const,
-                participant: {
-                  id: p.participantId || p.identifier,
-                  identifier: p.identifier,
-                  identifierType: p.identifierType,
-                  name: p.name || null,
-                },
-              })),
-            ],
-            attachments: content.attachments.map((a) => ({
-              id: a.fileId,
-              name: a.filename,
-              size: a.size,
-              mimeType: a.contentType,
-              type: 'file' as const,
-            })),
-            metadata: content.metadata || {},
-            createdAt: draft.createdAt.toISOString(),
-            updatedAt: draft.updatedAt.toISOString(),
-          }
-        }
-
-        return {
-          ...thread,
-          messageType,
-          messages: messagesWithType,
-          draftMessage,
-        }
-      } catch (error: unknown) {
-        if (error instanceof TRPCError) throw error // Re-throw known TRPC errors
-        handleServiceError(error, 'threadQuery.getThreadById', {
-          organizationId: organizationId,
-          userId: ctx.session.user.id,
-          threadId: input.threadId,
-        })
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed fetching thread details.',
-        }) // Fallback
-      }
-    }),
   getChatMessages: protectedProcedure
     .input(
       z.object({

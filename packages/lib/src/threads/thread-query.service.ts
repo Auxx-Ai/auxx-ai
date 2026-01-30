@@ -21,15 +21,11 @@ import { MailViewService } from '../mail-views/mail-view-service'
 import { createScopedLogger } from '@auxx/logger'
 import { type MailViewFilter } from '../mail-query/types'
 import { parseSearchQuery } from '../mail-query/search-query-parser'
-import { MessageAttachmentService } from '../messages/message-attachment.service'
-import { spliceAttachmentsIntoMessages } from '../messages/attachment-transformers'
 import { toActorId } from '@auxx/types/actor'
 import { toRecordId } from '@auxx/types/resource'
 import { ResourceRegistryService } from '../resources/registry/resource-registry-service'
 
 import {
-  type DraftMessageType,
-  type ThreadWithDetails,
   type ThreadSortDescriptor,
   type ThreadSortField,
   type ListThreadIdsInput,
@@ -328,139 +324,6 @@ export class ThreadQueryService {
     }
 
     return parsed
-  }
-
-  /**
-   * Fetches a single thread by its ID, including detailed information
-   */
-  async getThreadById(
-    threadId: string,
-    userId?: string,
-    _options?: { include?: any }
-  ): Promise<ThreadWithDetails | null> {
-    logger.debug(`Fetching thread detail`, { threadId, organizationId: this.organizationId })
-
-    try {
-      const thread = await this.db.query.Thread.findFirst({
-        where: (threads, { eq, and }) =>
-          and(eq(threads.id, threadId), eq(threads.organizationId, this.organizationId)),
-        with: {
-          labels: {
-            with: {
-              label: true,
-            },
-          },
-          // tags: TEMPORARILY DISABLED - migration to FieldValue in progress
-          // tags: { with: { tag: true } },
-          assignee: true,
-          // Note: inbox relation removed - Thread.inboxId was removed in migration 0028
-          integration: true, // Added to support provider-based type derivation
-          messages: {
-            // All messages are now "real" messages - drafts are stored separately
-            orderBy: (messages, { asc }) => [
-              asc(messages.sentAt),
-              asc(messages.lastAttemptAt),
-              asc(messages.createdAt),
-            ],
-            with: {
-              participants: {
-                orderBy: (participants, { asc }) => [asc(participants.role)],
-                with: {
-                  participant: {
-                    with: {
-                      entityInstance: true,
-                    },
-                  },
-                },
-              },
-              from: true,
-              replyTo: true,
-              signature: true,
-            },
-          },
-          // Comments are now fetched separately via CommentService/useComments hook
-          ...(userId && {
-            readStatusEntries: {
-              where: (entries, { eq }) => eq(entries.userId, userId),
-              limit: 1,
-            },
-          }),
-        },
-      })
-
-      if (!thread) {
-        return null
-      }
-
-      // Messages are now all "real" messages - drafts are in separate Draft table
-      // Drafts are fetched separately in the router via DraftService
-      const sentMessages: DraftMessageType[] = (thread.messages || []).map((msg) => ({
-        ...msg,
-        attachments: [],
-      })) as DraftMessageType[]
-
-      sentMessages.sort((a, b) => {
-        const aTime = (a.sentAt ?? a.lastAttemptAt ?? a.createdAt).getTime()
-        const bTime = (b.sentAt ?? b.lastAttemptAt ?? b.createdAt).getTime()
-        return aTime - bTime
-      })
-
-      // Determine isUnread status
-      let isUnread: boolean | null = userId ? true : null
-      if (userId && thread.readStatusEntries) {
-        const userStatus = thread.readStatusEntries[0]
-        const lastMessageTime = thread.lastMessageAt ?? thread.firstMessageAt
-
-        isUnread =
-          !userStatus ||
-          !userStatus.isRead ||
-          Boolean(
-            userStatus.lastReadAt &&
-              lastMessageTime &&
-              new Date(lastMessageTime) > new Date(userStatus.lastReadAt)
-          )
-      }
-
-      const { messages, readStatusEntries, ...restOfThread } = thread
-
-      // Load attachments for all messages
-      let messagesWithAttachments = sentMessages
-
-      if (sentMessages.length > 0) {
-        // For now, we'll create a temporary MessageAttachmentService
-        // In a real implementation, this might be passed in or created differently to avoid userId dependency
-        const tempUserId = userId || 'system' // Fallback for when userId is not provided
-        const messageAttachmentService = new MessageAttachmentService(
-          this.organizationId,
-          tempUserId,
-          this.db
-        )
-
-        const messageIds = sentMessages.map((msg) => msg.id)
-        const attachmentMap = await messageAttachmentService.fetchAttachmentsForMessages(messageIds)
-
-        // Splice attachments into messages
-        messagesWithAttachments = spliceAttachmentsIntoMessages(sentMessages, attachmentMap)
-      }
-
-      // draftMessage is now null here - it's fetched separately from the Draft table in the router
-      const finalThread: ThreadWithDetails = {
-        ...restOfThread,
-        messages: messagesWithAttachments,
-        isUnread: isUnread ?? undefined,
-        draftMessage: null,
-      }
-
-      return finalThread
-    } catch (error: unknown) {
-      logger.error('Failed to get thread by ID', {
-        threadId,
-        error: error instanceof Error ? error.message : error,
-      })
-      throw new Error(
-        `Database error fetching thread ${threadId}: ${error instanceof Error ? error.message : error}`
-      )
-    }
   }
 
   /**

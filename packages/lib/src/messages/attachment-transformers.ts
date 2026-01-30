@@ -61,18 +61,3 @@ export function transformAttachmentsForMessages(
   return transformedMap
 }
 
-/**
- * Splice transformed attachments into message objects
- * @param messages - Array of messages
- * @param attachmentMap - Map from message ID to transformed attachments
- * @returns Messages with attachments spliced in
- */
-export function spliceAttachmentsIntoMessages<T extends { id: string }>(
-  messages: T[],
-  attachmentMap: Map<string, MessageAttachmentInfo[]>
-): (T & { attachments: MessageAttachmentInfo[] })[] {
-  return messages.map((message) => ({
-    ...message,
-    attachments: attachmentMap.get(message.id) || [],
-  }))
-}

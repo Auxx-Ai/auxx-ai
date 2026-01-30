@@ -45,26 +45,6 @@ export interface ChatMessageType {
   agent?: AgentInfo
   agentId?: string | null
 }
-// interface ChatSessionType {
-//   id: string
-//   organizationId: string
-//   widgetId: string
-//   threadId: string | null
-//   status: 'active' | 'closed'
-//   createdAt: Date | string
-//   lastActivityAt: Date | string
-//   visitorId: string
-//   visitorName?: string | null
-//   visitorEmail?: string | null
-//   url?: string | null
-//   referrer?: string | null
-// }
-// interface ThreadDataType {
-//   id: string
-//   subject: string
-//   status: ThreadStatus
-//   assignee?: AgentInfo | null // Assuming assignee info is included
-// }
 interface ChatInterfaceProps {
   threadId: string
 }
@@ -91,15 +71,7 @@ export default function ChatInterface({ threadId }: ChatInterfaceProps) {
   const { data: agentSession } = useSession() // Get current agent session
   const agentId = agentSession?.user?.id
   const utils = api.useUtils() // Get tRPC utils for cache invalidation
-  // --- Data Fetching Hooks ---
-  const {
-    data: threadData,
-    isLoading: isLoadingThread,
-    error: threadError,
-  } = api.thread.getById.useQuery(
-    { threadId },
-    { staleTime: 5 * 60 * 1000, refetchOnWindowFocus: false }
-  )
+
   const {
     data: sessionData, // This is the *ChatSession* data
     isLoading: isLoadingSession,
@@ -250,9 +222,7 @@ export default function ChatInterface({ threadId }: ChatInterfaceProps) {
             name: string
           }
         }) => {
-          console.log('ChatInterface: Received session-closed event:', data)
           toastSuccess({ description: `Chat closed by ${data.closedBy?.name ?? 'agent'}` })
-          utils.thread.getById.invalidate({ threadId })
           utils.thread.getChatSessionByThreadId.invalidate({ threadId })
         }
       )
@@ -299,7 +269,6 @@ export default function ChatInterface({ threadId }: ChatInterfaceProps) {
   const closeSessionMutation = api.chat.closeSession.useMutation({
     onSuccess: () => {
       toastSuccess({ description: 'Chat session closed.' })
-      utils.thread.getById.invalidate({ threadId })
       utils.thread.getChatSessionByThreadId.invalidate({ threadId })
     },
     onError: (error) => {
@@ -339,8 +308,8 @@ export default function ChatInterface({ threadId }: ChatInterfaceProps) {
   }, [fetchNextPage, hasNextPage, isFetchingNextPage])
   // --- End Actions ---
   // --- Loading / Error Handling ---
-  const isLoading = isLoadingThread || isLoadingSession || (isLoadingMessages && !messagePages)
-  const queryError = threadError || sessionError || messagesError
+  const isLoading = isLoadingSession || (isLoadingMessages && !messagePages)
+  const queryError = sessionError || messagesError
   if (isLoading && !queryError) {
     // Show skeleton only on initial load without errors
     return (
@@ -392,7 +361,7 @@ export default function ChatInterface({ threadId }: ChatInterfaceProps) {
     )
   }
   // Ensure data is available after loading and error checks
-  if (!threadData || !sessionData) {
+  if (!sessionData) {
     return (
       <div className="p-4 text-center text-muted-foreground">
         Chat data not available. Please try reloading.
@@ -400,14 +369,14 @@ export default function ChatInterface({ threadId }: ChatInterfaceProps) {
     )
   }
   // --- Render Chat UI ---
-  const isResolved =
-    threadData.status === ThreadStatus.CLOSED || threadData.status === ThreadStatus.RESOLVED
+  const isResolved = false
+
   return (
     <div className="flex h-full flex-col bg-card">
       {/* Chat Header */}
       <div className="flex items-center justify-between border-b p-3">
         <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold">{threadData.subject}</h2>
+          <h2 className="text-sm font-semibold">Subject</h2>
           {/* Status Badges */}
           {isResolved && (
             <Badge
@@ -416,41 +385,16 @@ export default function ChatInterface({ threadId }: ChatInterfaceProps) {
               Resolved
             </Badge>
           )}
-          {!isResolved && threadData.status === ThreadStatus.OPEN && (
-            <Badge
-              variant="outline"
-              className="border-blue-300 bg-blue-100 text-xs text-blue-800 dark:border-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
-              Open
-            </Badge>
-          )}
-          {!isResolved && threadData.status === ThreadStatus.PENDING && (
-            <Badge
-              variant="outline"
-              className="border-yellow-300 bg-yellow-100 text-xs text-yellow-800 dark:border-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-300">
-              Pending
-            </Badge>
-          )}
+          <Badge
+            variant="outline"
+            className="border-blue-300 bg-blue-100 text-xs text-blue-800 dark:border-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
+            Open
+          </Badge>
+
           {/* Add more statuses as needed */}
         </div>
         <div className="flex items-center gap-2">
-          {/* Assignee Display */}
-          {threadData.assignee ? (
-            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-              <Avatar className="h-5 w-5">
-                <AvatarImage
-                  src={threadData.assignee.image ?? undefined}
-                  alt={threadData.assignee.name ?? 'Agent'}
-                />
-                <AvatarFallback className="text-[9px]">
-                  {(threadData.assignee.name ?? '?').substring(0, 1)}
-                </AvatarFallback>
-              </Avatar>
-              {threadData.assignee.name}
-            </div>
-          ) : (
-            <span className="text-xs italic text-muted-foreground">Unassigned</span>
-          )}
-          {/* Actions */}
+          <span className="text-xs italic text-muted-foreground">Unassigned</span>
           {!isResolved && (
             <Button
               size="sm"

@@ -3,12 +3,7 @@ import { Ellipsis, X } from 'lucide-react'
 import React from 'react'
 import { Letter } from 'react-letter'
 import { Button } from '@auxx/ui/components/button'
-import type { RouterOutputs } from '~/trpc/react'
-
-// Reuse types from the editor
-type ThreadWithDetails = RouterOutputs['thread']['getById']
-type MessageType = ThreadWithDetails['messages'][number]
-type DraftMessageType = Exclude<ThreadWithDetails['draftMessage'], null>
+import type { MessageType, DraftMessageType } from './types'
 
 interface PrevMessageProps {
   message: MessageType | DraftMessageType // Pass the full message object
