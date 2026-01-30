@@ -19,7 +19,6 @@ export { TagsInput } from './tags-input'
 export { PhoneInput } from './phone-input'
 
 // Export complex input components
-export { MessageInput } from './message-input'
 export { ParticipantInput } from './participant-input'
 // export { ContactInput } from './contact-input' // TODO: Implement
 // export { OrderInput } from './order-input' // TODO: Implement

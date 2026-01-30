@@ -12,10 +12,9 @@ import {
   ThreadQueryService,
   ThreadMutationService,
   UnreadService,
-  type ListThreadsInput,
   type ThreadSortDescriptor,
   type ListThreadIdsInput,
-} from '@auxx/lib/threads' // Import service and its input type
+} from '@auxx/lib/threads'
 import { ProviderRegistryService } from '@auxx/lib/providers'
 import {
   MessageSenderService,
@@ -26,30 +25,7 @@ import { InternalFilterContextType, mapUrlSlugToStatusFilter } from '@auxx/lib/t
 import { IdentifierType, ThreadStatus as ThreadStatusEnum } from '@auxx/database/enums'
 import { whereThreadMessageType, getMessageTypeFromProvider } from '@auxx/lib/providers'
 const logger = createScopedLogger('thread-router')
-// Captures the necessary information derived from various URL patterns
-export const ThreadListInputSchema = z.object({
-  limit: z.number().min(1).max(100).default(30),
-  cursor: z.string().nullish(),
-  searchQuery: z.string().optional(),
-  // Context - Represents the primary view/scope
-  contextType: z.enum([
-    'personal_assigned', // /mail/assigned/*
-    'personal_inbox', // /mail/inbox/*
-    'drafts', // /mail/drafts
-    'sent', // /mail/sent
-    'tag', // /mail/tags/[id]/*
-    'view', // /mail/views/[id]/*
-    'all_inboxes', // /mail/inboxes/all/*
-    'all',
-    'specific_inbox', // /mail/inboxes/[id]/*
-  ]),
-  contextId: z.string().optional(), // Required for tag, view, specific_inbox
-  // Status - Represents the refinement based on the last URL segment
-  statusSlug: z.string().optional(), // e.g., "open", "done", "assigned", "unassigned"
-  // Sorting options
-  sortBy: z.enum(['newest', 'oldest', 'sender', 'subject']).optional(),
-  sortDirection: z.enum(['asc', 'desc']).optional(),
-})
+
 // Participant Input Schema (reusable)
 const ParticipantInputSchema = z.object({
   identifier: z.string(),
@@ -171,99 +147,6 @@ const handleServiceError = (
 }
 // --- tRPC Router Definition ---
 export const threadRouter = createTRPCRouter({
-  /**
-   * Fetches a paginated list of threads based on context and status filters.
-   * Updated to use ThreadQueryService.
-   */
-  list: protectedProcedure.input(ThreadListInputSchema).query(async ({ ctx, input }) => {
-    const { threadQuery, organizationId, userId } = getServiceDependencies(ctx)
-
-    const internalContextType =
-      InternalFilterContextType[
-        input.contextType.toUpperCase() as keyof typeof InternalFilterContextType
-      ]
-    if (!internalContextType) {
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: `Invalid context type provided: ${input.contextType}`,
-      })
-    }
-    let contextForService: ListThreadsInput['context']
-    const requiresContextId = [
-      InternalFilterContextType.TAG,
-      InternalFilterContextType.VIEW,
-      InternalFilterContextType.SPECIFIC_INBOX,
-    ].includes(internalContextType)
-    if (requiresContextId) {
-      if (!input.contextId) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: `contextId is required for context type '${input.contextType}'`,
-        })
-      }
-      contextForService = { type: internalContextType, id: input.contextId }
-    } else {
-      // Use type assertion to help TypeScript understand the specific union member
-      contextForService = { type: internalContextType } as ListThreadsInput['context']
-    }
-    const statusFilter = input.statusSlug ? mapUrlSlugToStatusFilter(input.statusSlug) : undefined
-    if (input.statusSlug && !statusFilter) {
-      logger.warn(`Unknown status slug received: '${input.statusSlug}', ignoring status filter.`)
-      // Decide: throw error or proceed without status filter? Proceeding for now.
-      // throw new TRPCError({ code: 'BAD_REQUEST', message: `Invalid status filter: ${input.statusSlug}`});
-    }
-    // Maps UI sort options to the shared descriptor contract understood by the service.
-    const resolveSortDescriptor = (
-      sortBy?: string,
-      sortDirection?: string
-    ): ThreadSortDescriptor | undefined => {
-      switch (sortBy) {
-        case 'newest':
-          return { field: 'lastMessageAt', direction: 'desc' }
-        case 'oldest':
-          return { field: 'lastMessageAt', direction: 'asc' }
-        case 'subject':
-          return { field: 'subject', direction: sortDirection === 'desc' ? 'desc' : 'asc' }
-        case 'sender':
-          return { field: 'sender', direction: sortDirection === 'desc' ? 'desc' : 'asc' }
-        default:
-          return undefined
-      }
-    }
-
-    const sortDescriptor = resolveSortDescriptor(input.sortBy, input.sortDirection)
-
-    const serviceInput: ListThreadsInput = {
-      userId, // Pass user ID for personal context filtering
-      context: contextForService,
-      statusFilter: statusFilter,
-      searchQuery: input.searchQuery,
-      ...(sortDescriptor ? { sort: sortDescriptor } : {}),
-    }
-
-    try {
-      // Call the ThreadQueryService with the structured input
-      logger.debug('Calling threadQuery.listThreads', {
-        serviceInput,
-        sortDescriptor: sortDescriptor ?? 'default',
-      })
-      const result = await threadQuery.listThreads(serviceInput, {
-        limit: input.limit,
-        cursor: input.cursor,
-      })
-      return result
-    } catch (error: unknown) {
-      // Pass relevant context to error handler
-      handleServiceError(error, 'threadQuery.listThreads', { organizationId, userId, serviceInput })
-      // handleServiceError should throw, but add fallback
-      throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed fetching threads.' })
-    }
-  }),
-
-  // ============================================================================
-  // New ID-first batch-fetch endpoints (Phase 1 refactor)
-  // ============================================================================
-
   /**
    * Returns only thread IDs with pagination info.
    * Frontend calls getByIds to batch-fetch metadata separately.

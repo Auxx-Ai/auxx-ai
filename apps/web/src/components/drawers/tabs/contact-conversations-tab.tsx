@@ -1,12 +1,12 @@
 // apps/web/src/components/drawers/tabs/contact-conversations-tab.tsx
 'use client'
 import { Mail, Plus, Loader2 } from 'lucide-react'
-import React, { useState, useEffect } from 'react'
+import React, { useEffect } from 'react'
 import { useInView } from 'react-intersection-observer'
 import { EmptyState } from '~/components/global/empty-state'
 import { MailContactThreadItem } from '~/components/mail/mail-contact/mail-contact-thread-item'
 import { Button } from '@auxx/ui/components/button'
-import useThreads from '~/hooks/use-threads-filter'
+import { useThreadList } from '~/components/threads/hooks/use-thread-list'
 import { api } from '~/trpc/react'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 
@@ -21,27 +21,29 @@ export function ContactConversationsTab({ entityInstanceId }: DrawerTabProps) {
     { enabled: !!contactId }
   )
 
+  // Build filter only when contact email is available
+  const contactEmail = contact?.email
   const {
     threads,
-    isLoading, // Represents initial fetch loading state
+    isLoading: isLoadingThreads,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-  } = useThreads(
-    {
-      contextType: 'all',
-      searchQuery: `recipient:${contact?.email}`,
-      // searchQuery: filter.searchQuery,
-    },
-    { enabled: contact && contact.email !== undefined, limit: 10 }
-  )
+  } = useThreadList({
+    contextType: 'all',
+    // Use structured filter instead of searchQuery
+    filter: contactEmail ? { to: [contactEmail] } : undefined,
+  })
 
   const { ref, inView } = useInView({ threshold: 0 })
   useEffect(() => {
-    if (inView) {
+    if (inView && hasNextPage && !isFetchingNextPage) {
       fetchNextPage()
     }
   }, [inView, fetchNextPage, hasNextPage, isFetchingNextPage])
+
+  // Show loading while contact or threads are loading
+  const isLoading = isLoadingContact || isLoadingThreads
 
   if (isLoading) {
     return (

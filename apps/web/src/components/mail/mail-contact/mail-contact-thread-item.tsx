@@ -3,16 +3,12 @@
 
 import React, { useMemo, useCallback } from 'react'
 import { formatDistanceToNowStrict } from 'date-fns'
-import { getInitialsFromName } from '@auxx/utils'
-import DOMPurify from 'dompurify'
 import { cn } from '@auxx/ui/lib/utils'
-import { Badge } from '@auxx/ui/components/badge'
-import { type ThreadListItem } from '../types'
+import { type ThreadMeta } from '~/components/threads/store'
 import { getIntegrationIcon } from '../mail-status-config'
 
 interface MailThreadItemProps {
-  item: ThreadListItem
-  // isSelected: boolean
+  item: ThreadMeta
 }
 /** Displays a single thread preview inside the contact mail view. */
 export function MailContactThreadItem({ item }: MailThreadItemProps) {
@@ -25,61 +21,40 @@ export function MailContactThreadItem({ item }: MailThreadItemProps) {
 
   const formattedDate = useMemo(() => {
     return item.lastMessageAt
-      ? formatDistanceToNowStrict(new Date(item.lastMessageAt), { addSuffix: false }) // Simpler format
+      ? formatDistanceToNowStrict(new Date(item.lastMessageAt), { addSuffix: false })
       : ''
   }, [item.lastMessageAt])
 
-  const latestEmail = item.latestMessage ?? item.messages?.[0] ?? null
-  const senderName = useMemo(
-    () => latestEmail?.from?.name || latestEmail?.from?.identifier || 'Unknown',
-    [latestEmail]
-  )
-  const snippet = useMemo(() => {
-    // Sanitize snippet HTML. Ensure DOMPurify runs client-side only.
-    if (typeof window !== 'undefined') {
-      return DOMPurify.sanitize(latestEmail?.snippet ?? '', { USE_PROFILES: { html: true } })
-    }
-    return latestEmail?.snippet ?? '' // Fallback for SSR/initial render
-  }, [latestEmail?.snippet])
-
-  const sanitizedCommentContent = useMemo(() => {
-    // Sanitize comment content to prevent XSS
-    if (typeof window !== 'undefined' && item.latestComment?.content) {
-      return DOMPurify.sanitize(item.latestComment.content, { USE_PROFILES: { html: true } })
-    }
-    return item.latestComment?.content ?? ''
-  }, [item.latestComment?.content])
+  /** Message count display for context */
+  const messageCountText = useMemo(() => {
+    const count = item.messageCount ?? 0
+    return count === 1 ? '1 message' : `${count} messages`
+  }, [item.messageCount])
 
   return (
-    // Main button element - draggable and clickable
     <button
       className={cn(
-        // Base styles
         'group relative flex w-full cursor-grab flex-col items-start gap-1 rounded-lg border bg-background px-6 py-3 text-left text-sm shadow-xs transition-all duration-100 ease-in-out active:cursor-grabbing dark:bg-slate-700'
-        // Hover styles (only when not actively selected)
       )}
       onClick={handleClick}
-      // Prevent default browser drag behavior which can interfere
-      type="button" // Ensure it's treated as a button
-    >
+      type="button">
       {/* Unread indicator dot */}
       {item.isUnread && (
         <div
-          className={cn('absolute left-2 top-5 h-2 w-2 -translate-y-1/2 rounded-full')}
+          className={cn('absolute left-2 top-5 h-2 w-2 -translate-y-1/2 rounded-full bg-blue-500')}
           aria-label="Unread message"
         />
       )}
       {/* Content */}
       <div className="flex w-full flex-col gap-1">
         <div className="flex items-center">
-          {/* Sender Name */}
+          {/* Integration icon and message count */}
           <div className="flex shrink-0 grow items-center gap-1 overflow-hidden">
             <div className="flex rounded-full border p-0.5 text-blue-500 group-aria-selected:text-background">
-              {/* Integration type derived from item.integration.provider */}
-              {getIntegrationIcon(item.integration?.provider)}
+              {getIntegrationIcon(item.integrationProvider)}
             </div>
             <div className="flex grow items-center gap-2 overflow-hidden">
-              <span className={cn('truncate font-semibold')}>{senderName}</span>
+              <span className={cn('truncate text-xs text-muted-foreground')}>{messageCountText}</span>
             </div>
           </div>
           {/* Date */}
@@ -97,54 +72,17 @@ export function MailContactThreadItem({ item }: MailThreadItemProps) {
           </div>
         </div>
       </div>
-      {/* Snippet */}
-      <div
-        className={cn('line-clamp-2 w-full break-words text-xs')}
-        dangerouslySetInnerHTML={{ __html: snippet }} // Use sanitized snippet
-      />
-      {item.latestComment && (
-        <div className="">
-          <div
-            className={cn(
-              'flex min-w-0 items-center gap-1 rounded-[10px] bg-[rgba(93,105,133,0.18)] pe-2 text-xs group-aria-selected:text-background'
-            )}>
-            <span
-              className={cn(
-                'flex h-5 w-5 items-center justify-center rounded-full bg-[rgba(93,105,133,0.5)] text-xs text-background'
-              )}>
-              {getInitialsFromName(item.latestComment.createdBy.name)}
-            </span>
-            <div
-              dangerouslySetInnerHTML={{ __html: sanitizedCommentContent }}
-            />
-          </div>
-        </div>
-      )}
     </button>
   )
 }
 
-/** Renders a tidied badge for a tag in contact thread context. */
-function getTagForThread(tag: ThreadListItem['tags'][number]): React.ReactNode {
-  const name = tag.title
-  // Add logic here to map label names/properties to Badge variants/colors
+/** Renders a tag badge for thread display. */
+function getTagForThread(tag: ThreadMeta['tags'][number]): React.ReactNode {
   return (
     <div
       key={tag.id}
-      className={`flex items-center gap-1 overflow-hidden whitespace-nowrap rounded-[5px] border px-[3px] py-px text-xs text-[#4B5563] group-aria-selected:text-background/80`}>
-      {tag.tag_emoji} {name}
+      className="flex items-center gap-1 overflow-hidden whitespace-nowrap rounded-[5px] border px-[3px] py-px text-xs text-[#4B5563] group-aria-selected:text-background/80">
+      {tag.tag_emoji} {tag.title}
     </div>
   )
 }
-
-// Helper function for rendering label badges (if needed later)
-function getBadgeVariantFromLabel(label: { label: { name: string } }): React.ReactNode {
-  const name = label.label.name
-  // Add logic here to map label names/properties to Badge variants/colors
-  return (
-    <Badge key={name} variant="outline">
-      {name}
-    </Badge>
-  )
-}
-// --- END OF FILE ~/components/mail/mail-contact/mail-contact-thread-item.tsx ---

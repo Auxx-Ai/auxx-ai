@@ -1,8 +1,6 @@
 // apps/web/src/components/mail/types.ts
 
 import type { RouterOutputs } from '~/trpc/react'
-import { MessageType } from '@auxx/database/enums'
-import type { ThreadListItem as ServiceThreadListItem } from '@auxx/lib/threads/types'
 import type { ApiSearchFilter, ActorIdObject } from '@auxx/lib/mail-query/client'
 
 export const VALID_STATUS_SLUGS = [
@@ -55,8 +53,3 @@ export type ThreadsFilterInput = {
   sortDirection?: 'asc' | 'desc'
 }
 export type Message = RouterOutputs['thread']['getById']['messages'][number]
-
-/** Thread list item shape consumed by the web mail UI. */
-export type ThreadListItem = Omit<ServiceThreadListItem, 'messageType'> & {
-  messageType?: MessageType
-}

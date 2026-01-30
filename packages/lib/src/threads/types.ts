@@ -22,71 +22,6 @@ export interface ThreadTagSummary {
   tag_emoji?: string | null
 }
 
-/** Represents a user or participant associated with a message or comment. */
-export interface ThreadActorSummary {
-  id?: string
-  name?: string | null
-  displayName?: string | null
-  identifier?: string | null
-  image?: string | null
-}
-
-/** Represents a participant entry for the summarized latest message. */
-export interface ThreadParticipantSummary {
-  role: string
-  participant: ThreadActorSummary
-}
-
-/** Lightweight representation of the latest message for list responses. */
-export interface ThreadMessageSummary {
-  id: string
-  threadId: string
-  subject?: string | null
-  snippet?: string | null
-  textHtml?: string | null
-  textPlain?: string | null
-  sentAt?: Date | null
-  lastAttemptAt?: Date | null
-  createdAt: Date
-  isInbound: boolean
-  organizationId: string
-  from?: ThreadActorSummary | null
-  replyTo?: ThreadActorSummary | null
-  participants?: ThreadParticipantSummary[]
-}
-
-/** Lightweight representation of the latest comment for list responses. */
-export interface ThreadCommentSummary {
-  id: string
-  threadId: string
-  content: string
-  createdAt: Date
-  createdBy: ThreadActorSummary
-}
-
-/**
- * Thread row returned by list queries. Includes lightweight relations required by the UI.
- */
-export interface ThreadListItem {
-  id: string
-  subject: string
-  organizationId: string
-  status: string
-  lastMessageAt?: Date | null
-  firstMessageAt?: Date | null
-  messageCount: number
-  participantCount: number
-  assigneeId?: string | null
-  createdAt: Date
-  assignee?: any
-  inbox?: any
-  isUnread?: boolean
-  latestMessage?: ThreadMessageSummary | null
-  messages?: ThreadMessageSummary[]
-  latestComment?: ThreadCommentSummary | null
-  tags?: ThreadTagSummary[]
-}
-
 /** Mapping of inbox/user unread counts keyed by scope. */
 export type UserUnreadCounts = {
   [inboxId: string]: number
@@ -175,13 +110,6 @@ export interface ListThreadsInput {
   statusFilter?: UrlBasedStatusFilter
   searchQuery?: string
   sort?: ThreadSortDescriptor
-}
-
-/** Paginated result returned by listThreads. */
-export interface PaginatedThreadsResult {
-  items: ThreadListItem[]
-  nextCursor: string | null
-  totalCount?: number
 }
 
 // ============================================================================

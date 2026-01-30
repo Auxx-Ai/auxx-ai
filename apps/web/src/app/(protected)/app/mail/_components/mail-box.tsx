@@ -241,7 +241,7 @@ function MailboxInner({
     ]
   )
 
-  // Construct the filter object passed to the useThreads hook
+  // Construct the filter object passed to the useThreadList hook
   // Uses structured filters from the store (preferred) or falls back to deferred search query
   const threadFilterForHook: ThreadsFilterInput = useMemo(
     () => ({

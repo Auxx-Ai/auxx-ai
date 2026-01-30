@@ -9,19 +9,21 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { Loader2 } from 'lucide-react'
+import { formatDistanceToNowStrict } from 'date-fns'
+import { useThreadList } from '~/components/threads/hooks/use-thread-list'
 import { api } from '~/trpc/react'
 import type { NodeInputProps } from './base-node-input'
 
 /**
- * Input component for thread selection
- * Can be used for MESSAGE_RECEIVED trigger or any node that needs thread input
+ * Input component for thread selection.
+ * Can be used for MESSAGE_RECEIVED trigger or any node that needs thread input.
  */
-export function ThreadInput({ inputs, errors, onChange, onError, isLoading }: NodeInputProps) {
-  // Get recent threads
-  const threadsQuery = api.thread.list.useQuery(
-    { contextType: 'all', limit: 20, sortBy: 'newest' },
-    { enabled: !isLoading }
-  )
+export function ThreadInput({ inputs, onChange, isLoading }: NodeInputProps) {
+  // Get recent threads using the Zustand-based hook
+  const { threads, isLoading: threadsLoading } = useThreadList({
+    contextType: 'all',
+    sortBy: 'newest',
+  })
 
   // Get full thread details when a thread is selected
   const selectedThreadId = inputs.threadId as string | undefined
@@ -31,9 +33,9 @@ export function ThreadInput({ inputs, errors, onChange, onError, isLoading }: No
   )
 
   // Find the selected thread for display
-  const selectedThread = threadsQuery.data?.items?.find((t: any) => t.id === selectedThreadId)
+  const selectedThread = threads.find((t) => t.id === selectedThreadId)
 
-  // Memoize the onChange handler to prevent re-renders
+  // Handle thread selection
   const handleThreadChange = React.useCallback(
     (value: string) => {
       onChange('threadId', value)
@@ -46,40 +48,32 @@ export function ThreadInput({ inputs, errors, onChange, onError, isLoading }: No
     [onChange, threadDetailQuery.data]
   )
 
-  // Return just the thread selector without wrappers or error displays
   return (
     <div className="space-y-2">
       <Select
         value={inputs.threadId || ''}
         onValueChange={handleThreadChange}
-        disabled={threadsQuery.isLoading || isLoading}>
+        disabled={threadsLoading || isLoading}>
         <SelectTrigger id="threadId">
           <SelectValue
-            placeholder={threadsQuery.isLoading ? 'Loading threads...' : 'Select a thread'}>
-            <div>
-              {selectedThread &&
-                (selectedThread.subject || selectedThread.messages?.[0]?.subject || 'No subject')}
-            </div>
+            placeholder={threadsLoading ? 'Loading threads...' : 'Select a thread'}>
+            <div>{selectedThread && (selectedThread.subject || 'No subject')}</div>
           </SelectValue>
         </SelectTrigger>
         <SelectContent className="max-w-100">
-          {threadsQuery.data?.items?.map((thread: any) => {
-            const latestMessage = thread.messages?.[0]
-            const sender = latestMessage?.from
+          {threads.map((thread) => {
+            const dateStr = thread.lastMessageAt
+              ? formatDistanceToNowStrict(new Date(thread.lastMessageAt), { addSuffix: true })
+              : ''
             return (
               <SelectItem key={thread.id} value={thread.id}>
                 <div className="flex flex-col gap-1">
                   <span className="font-medium line-clamp-1">
-                    {thread.subject || latestMessage?.subject || 'No subject'}
+                    {thread.subject || 'No subject'}
                   </span>
                   <span className="text-sm text-muted-foreground line-clamp-1">
-                    From: {sender?.name || sender?.displayName || sender?.identifier || 'Unknown'}
+                    {thread.messageCount} message{thread.messageCount !== 1 ? 's' : ''} · {dateStr}
                   </span>
-                  {latestMessage?.snippet && (
-                    <span className="text-xs text-muted-foreground line-clamp-1">
-                      {latestMessage.snippet}
-                    </span>
-                  )}
                 </div>
               </SelectItem>
             )
