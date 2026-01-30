@@ -18,15 +18,13 @@ import {
 } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { createPortal } from 'react-dom'
-import { api } from '~/trpc/react'
 import { toast } from 'sonner'
 import MailThreadItemDragOverlay from '~/components/mail/mail-thread-item-drag-overlay'
 import { DndStateProvider } from '~/app/context/dnd-state-context'
 import { snapCenterToCursor } from '@dnd-kit/modifiers'
 import { PusherProvider } from '~/providers/pusher-provider'
 import { ThreadDataProvider } from '~/components/threads'
-import { useQueryClient } from '@tanstack/react-query'
-import { getQueryKey } from '@trpc/react-query'
+import { useThreadMutation } from '~/components/threads/hooks'
 import { SidebarInset, SidebarProvider } from '@auxx/ui/components/sidebar'
 import {
   useDehydratedOrganization,
@@ -68,9 +66,6 @@ export const Dashboard = ({
     setActiveDndItem(event.active)
   }, [])
 
-  const utils = api.useUtils()
-  const queryClient = useQueryClient()
-
   // Redirect to onboarding if org hasn't completed it (client-side only)
   React.useEffect(() => {
     if (!orgCompletedOnboarding && !pathname.includes('/app/onboarding')) {
@@ -88,72 +83,8 @@ export const Dashboard = ({
     }
   }
 
-  const moveBulkToInbox = api.thread.moveBulkToInbox.useMutation({
-    // onSuccess is async to allow awaiting refetchQueries
-    onSuccess: async (data, variables) => {
-      toast.success(`${variables.threadIds.length} thread(s) moved.`)
-      console.log('[Move Success] Mutation successful. Variables:', variables)
-
-      const threadListQueryKey = getQueryKey(api.thread.list)
-
-      // --- SOLUTION ---
-      // Invalidate ALL matching queries, not just active ones.
-      queryClient.invalidateQueries({
-        queryKey: threadListQueryKey,
-        exact: false,
-        // REMOVE type: 'active'
-      })
-      // --- END SOLUTION ---
-      const targetInboxId = variables.targetInboxId
-      const potentialTargetQuery = queryClient
-        .getQueryCache()
-        .getAll()
-        .find((query) => {
-          const queryKey = query.queryKey
-          // Check if it's an infinite thread list query
-          if (
-            Array.isArray(queryKey) &&
-            queryKey[0]?.[0] === 'thread' &&
-            queryKey[0]?.[1] === 'list' &&
-            queryKey[1]?.type === 'infinite'
-          ) {
-            const input = queryKey[1]?.input as any
-            // Check if it's for the target specific inbox
-            return input?.contextType === 'specific_inbox' && input?.contextId === targetInboxId
-            // PROBLEM: We don't know the statusSlug ('unassigned', 'assigned' etc.) the user WILL see
-            // Let's assume 'unassigned' is the most likely state after a move
-            // return input?.contextType === 'specific_inbox' && input?.contextId === targetInboxId && input?.statusSlug === 'unassigned';
-          }
-          return false
-        })
-
-      if (potentialTargetQuery) {
-        console.log(
-          `[Move Success] Found potential target query in cache (Key: ${JSON.stringify(potentialTargetQuery.queryKey)}). Triggering manual refetch...`
-        )
-        try {
-          // Refetch this specific query instance
-          await queryClient.refetchQueries({ queryKey: potentialTargetQuery.queryKey, exact: true })
-          console.log('[Move Success] Manual refetch of target query completed.')
-        } catch (error) {
-          console.error('[Move Success] Error manually refetching target query:', error)
-        }
-      } else {
-        console.log(
-          '[Move Success] Did not find an existing query for the target inbox in the cache to manually refetch.'
-        )
-        // If not found, we rely SOLELY on the broad invalidation + refetchOnMount when user navigates.
-        // Since that isn't working, this manual trigger won't help here.
-      }
-
-      console.log('[Move Success] invalidateQueries call completed.')
-    },
-    onError: (error) => {
-      // This part seems less relevant now if onSuccess is called, but keep for completeness
-      toast.error(`Failed to move threads: ${error.message}`)
-      console.error('Move Error:', error)
-    },
-  })
+  // Use unified mutation hook for optimistic updates
+  const { updateBulk } = useThreadMutation()
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
@@ -169,12 +100,14 @@ export const Dashboard = ({
           const droppedThreadIds: string[] = activeData.draggedThreadIds ?? []
           const targetInboxId: string = overData.inboxId
           if (droppedThreadIds.length > 0 && targetInboxId) {
-            moveBulkToInbox.mutate({ threadIds: droppedThreadIds, targetInboxId })
+            // Use optimistic update - store updates immediately
+            updateBulk(droppedThreadIds, { inboxId: targetInboxId })
+            toast.success(`${droppedThreadIds.length} thread(s) moved.`)
           }
         }
       }
     },
-    [moveBulkToInbox, utils]
+    [updateBulk]
   )
 
   return (

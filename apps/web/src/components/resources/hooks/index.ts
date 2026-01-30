@@ -28,8 +28,10 @@ export { useAllRecords, type FieldInfo } from './use-all-records'
 export { useEntityValues } from './use-entity-values'
 
 // Field value hooks (extracted from store)
-export { useFieldValue, useResourceFieldValues } from './use-field-values'
+export { useFieldValue, useFieldValues } from './use-field-values'
+export { useSystemValues } from './use-system-values'
 export { useSaveFieldValue } from './use-save-field-value'
+export { useSaveSystemValues } from './use-save-system-values'
 
 // Record hydration hook
 export { useRecordHydration } from './use-record-hydration'

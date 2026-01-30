@@ -181,22 +181,22 @@ export class OrganizationSeeder {
     // UnifiedCrudHandler.create() throws on error, so if we get a result, it succeeded
     const topicResult = await handler.create('tag', {
       title: 'Topic Categorization',
-      description: 'Top-level categorization for support tickets',
-      emoji: '🏷️',
-      color: '#A7C1F2',
+      tag_description: 'Top-level categorization for support tickets',
+      tag_emoji: '🏷️',
+      tag_color: '#A7C1F2',
     })
 
     // Create child tags under Topic Categorization using parent relationship
     // Must be sequential to avoid inverse relationship sync conflicts (sortKey collisions)
     const topicSubTags = [
-      { title: 'Account Management', emoji: '👤', color: '#F2A99B' },
-      { title: 'Billing', emoji: '💳', color: '#B9E3B9' },
-      { title: 'Customer Feedback', emoji: '💬', color: '#F5C8A3' },
-      { title: 'Legal', emoji: '⚖️', color: '#8D8D8D' },
-      { title: 'Sales', emoji: '💼', color: '#D7A4D3' },
-      { title: 'Security', emoji: '🔒', color: '#C9B6F2' },
-      { title: 'Shipping', emoji: '🚚', color: '#F5E7A3' },
-      { title: 'Troubleshooting', emoji: '🛠️', color: '#A7D8E2' },
+      { title: 'Account Management', tag_emoji: '👤', tag_color: '#F2A99B' },
+      { title: 'Billing', tag_emoji: '💳', tag_color: '#B9E3B9' },
+      { title: 'Customer Feedback', tag_emoji: '💬', tag_color: '#F5C8A3' },
+      { title: 'Legal', tag_emoji: '⚖️', tag_color: '#8D8D8D' },
+      { title: 'Sales', tag_emoji: '💼', tag_color: '#D7A4D3' },
+      { title: 'Security', tag_emoji: '🔒', tag_color: '#C9B6F2' },
+      { title: 'Shipping', tag_emoji: '🚚', tag_color: '#F5E7A3' },
+      { title: 'Troubleshooting', tag_emoji: '🛠️', tag_color: '#A7D8E2' },
     ]
 
     for (const tag of topicSubTags) {
@@ -208,10 +208,10 @@ export class OrganizationSeeder {
 
     // Create independent tags (no parent) - can be parallel since no inverse sync needed
     const independentTags = [
-      { title: 'Support', emoji: '🆘', color: '#F2A99B' },
-      { title: 'Urgent', emoji: '🚨', color: '#C9B6F2' },
-      { title: 'Orders', emoji: '📦', color: '#F5E7A3' },
-      { title: 'VIP', emoji: '⭐', color: '#F5C8A3' },
+      { title: 'Support', tag_emoji: '🆘', tag_color: '#F2A99B' },
+      { title: 'Urgent', tag_emoji: '🚨', tag_color: '#C9B6F2' },
+      { title: 'Orders', tag_emoji: '📦', tag_color: '#F5E7A3' },
+      { title: 'VIP', tag_emoji: '⭐', tag_color: '#F5C8A3' },
     ]
 
     await Promise.all(independentTags.map((tag) => handler.create('tag', tag)))

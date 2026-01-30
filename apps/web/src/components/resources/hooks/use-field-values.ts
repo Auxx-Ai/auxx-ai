@@ -88,33 +88,79 @@ export function useFieldValue(
 }
 
 /**
+ * Options for useFieldValues hook.
+ */
+interface UseFieldValuesOptions {
+  /** When true, automatically fetch missing values via fieldValueFetchQueue */
+  autoFetch?: boolean
+}
+
+/**
  * Get multiple values for a single resource by FieldReferences.
  * Uses stable selector with useShallow for memoization to prevent infinite loops.
  * Returns Record keyed by fieldRefKey (use fieldRefToKey for consistent keys).
+ *
+ * @example
+ * // Passive subscription (no auto-fetch)
+ * const { values, isLoading } = useFieldValues(recordId, fieldRefs)
+ *
+ * @example
+ * // With auto-fetch for single-record views
+ * const { values, isLoading } = useFieldValues(recordId, fieldRefs, { autoFetch: true })
  */
-export function useResourceFieldValues(
+export function useFieldValues(
   recordId: RecordId,
-  fieldRefs: FieldReference[]
-): Record<string, StoredFieldValue | undefined> {
-  // Use fieldRefToKey for stable string keys
+  fieldRefs: FieldReference[],
+  options: UseFieldValuesOptions = {}
+): { values: Record<string, StoredFieldValue | undefined>; isLoading: boolean } {
+  const { autoFetch = false } = options
   const refsKey = fieldRefs.map(fieldRefToKey).join(',')
 
-  // Create stable selector that only changes when inputs change
-  const selector = useCallback(
-    (state: CustomFieldValueState) => {
-      const result: Record<string, StoredFieldValue | undefined> = {}
-      for (const fieldRef of fieldRefs) {
-        const key = buildFieldValueKey(recordId, fieldRef)
-        const refKey = fieldRefToKey(fieldRef)
-        result[refKey] = state.values[key]
-      }
-      return result
-    },
-    [refsKey, recordId]
+  // Subscribe to values
+  const values = useFieldValueStore(
+    useShallow(
+      useCallback(
+        (state: CustomFieldValueState) => {
+          const result: Record<string, StoredFieldValue | undefined> = {}
+          for (const fieldRef of fieldRefs) {
+            const storeKey = buildFieldValueKey(recordId, fieldRef)
+            result[fieldRefToKey(fieldRef)] = state.values[storeKey]
+          }
+          return result
+        },
+        [recordId, refsKey]
+      )
+    )
   )
 
-  // Wrap stable selector with useShallow for shallow comparison
-  const memoizedSelector = useShallow(selector)
+  // Subscribe to loading state
+  const isLoading = useFieldValueStore(
+    useCallback(
+      (state: CustomFieldValueState) => {
+        for (const fieldRef of fieldRefs) {
+          if (state.isKeyFetching(buildFieldValueKey(recordId, fieldRef))) return true
+        }
+        return false
+      },
+      [recordId, refsKey]
+    )
+  )
 
-  return useFieldValueStore(memoizedSelector)
+  // Auto-fetch: queue once per unique (recordId + fieldRefs) combination
+  const queuedKeyRef = useRef<string>('')
+
+  useLayoutEffect(() => {
+    if (!autoFetch || fieldRefs.length === 0) return
+
+    const requestKey = `${recordId}:${refsKey}`
+    if (queuedKeyRef.current === requestKey) return
+    queuedKeyRef.current = requestKey
+
+    // Use batch queue - handles deduplication internally
+    fieldValueFetchQueue.queueFetchBatch(
+      fieldRefs.map((fieldRef) => ({ recordId, fieldRef }))
+    )
+  }, [autoFetch, recordId, refsKey, fieldRefs])
+
+  return { values, isLoading }
 }

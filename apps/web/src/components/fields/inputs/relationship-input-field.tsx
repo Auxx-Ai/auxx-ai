@@ -26,7 +26,7 @@ import { api } from '~/trpc/react'
  * Input component for RELATIONSHIP field type.
  * Uses RecordPicker for the UI and manages save-on-close pattern.
  *
- * Pattern E: Save-on-close
+ * Save-on-close
  * - Local state for selection tracking
  * - Uses onBeforeClose hook for fire-and-forget save
  * - Delegates UI to RecordPicker component

@@ -20,12 +20,12 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { Button } from '@auxx/ui/components/button'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { useThreadMutations } from '~/hooks/use-thread-mutations'
 import { WorkflowSubMenu } from '~/components/workflow/workflow-submenu'
 import { toRecordId } from '@auxx/types/resource'
+import { api } from '~/trpc/react'
 
 // NEW: Import from new hooks
-import { useThread, useMessage, useThreadReadStatus, useThreadDraftStatus } from '~/components/threads/hooks'
+import { useThread, useMessage, useThreadReadStatus, useThreadDraftStatus, useThreadMutation } from '~/components/threads/hooks'
 import { useThreadSelectionStore, type ThreadTagSummary } from '~/components/threads/store'
 
 /**
@@ -33,10 +33,12 @@ import { useThreadSelectionStore, type ThreadTagSummary } from '~/components/thr
  */
 function ProcessingMenu({
   threadId,
-  threadMutations,
+  update,
+  isUpdating,
 }: {
   threadId: string
-  threadMutations: ReturnType<typeof useThreadMutations>
+  update: (threadId: string, updates: { status?: 'OPEN' | 'ARCHIVED' | 'SPAM' | 'TRASH' }) => void
+  isUpdating: boolean
 }) {
   const onSuccess = useCallback(() => {
     console.log('Workflow triggered successfully')
@@ -53,21 +55,21 @@ function ProcessingMenu({
         <WorkflowSubMenu recordId={toRecordId('thread', threadId)} onSuccess={onSuccess} />
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          onClick={() => threadMutations.archiveThread.mutate({ threadId })}
-          disabled={threadMutations.archiveThread.isPending}>
+          onClick={() => update(threadId, { status: 'ARCHIVED' })}
+          disabled={isUpdating}>
           <Archive />
           Archive
         </DropdownMenuItem>
         <DropdownMenuItem
-          onClick={() => threadMutations.moveToTrash.mutate({ threadId })}
-          disabled={threadMutations.moveToTrash.isPending}
+          onClick={() => update(threadId, { status: 'TRASH' })}
+          disabled={isUpdating}
           variant="destructive">
           <Trash2 />
           Trash Thread
         </DropdownMenuItem>
         <DropdownMenuItem
-          onClick={() => threadMutations.markAsSpam.mutate({ threadId })}
-          disabled={threadMutations.markAsSpam.isPending}>
+          onClick={() => update(threadId, { status: 'SPAM' })}
+          disabled={isUpdating}>
           <MailWarning />
           Mark as spam
         </DropdownMenuItem>
@@ -117,13 +119,11 @@ export function MailThreadItem({
   const toggleSelection = useThreadSelectionStore((s) => s.toggleSelection)
   const setActiveThread = useThreadSelectionStore((s) => s.setActiveThread)
 
-  // --- Thread mutations ---
-  const threadMutations = useThreadMutations(threadId, {
-    contextType,
-    contextId,
-    statusSlug,
-    searchQuery,
-  })
+  // --- Thread mutations using new unified hook ---
+  const { update, isUpdating } = useThreadMutation()
+
+  // Keep markAsRead separate (used when clicking on thread)
+  const markReadMutation = api.thread.markAsRead.useMutation()
 
   // --- Selection state ---
   const isMultiSelected = useMemo(
@@ -158,11 +158,11 @@ export function MailThreadItem({
 
         // Mark as read if thread is currently unread
         if (isUnread) {
-          threadMutations.markReadMutation.mutate({ threadId })
+          markReadMutation.mutate({ threadId })
         }
       }
     },
-    [handleThreadClick, threadId, threadMutations.markReadMutation, isUnread, viewMode, toggleSelection, setActiveThread]
+    [handleThreadClick, threadId, markReadMutation, isUnread, viewMode, toggleSelection, setActiveThread]
   )
 
   // --- Derived values ---
@@ -282,7 +282,7 @@ export function MailThreadItem({
           style={{ boxShadow: 'inset 25px 0 25px -25px #000, 1px 1px 3px rgba(0,0,0,0.2)' }}
         />
         <div className="flex flex-col justify-start h-full">
-          <ProcessingMenu threadId={threadId} threadMutations={threadMutations} />
+          <ProcessingMenu threadId={threadId} update={update} isUpdating={isUpdating} />
         </div>
       </div>
     </div>

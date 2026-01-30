@@ -6,6 +6,7 @@ import { schema } from '@auxx/database'
 import { eq, and } from 'drizzle-orm'
 import { getUserOrganizationId } from '@auxx/lib/email' // Adjust import path if needed
 import { createScopedLogger } from '@auxx/logger'
+import { recordIdSchema } from '@auxx/types/resource'
 import {
   DraftService,
   ThreadQueryService,
@@ -683,410 +684,6 @@ export const threadRouter = createTRPCRouter({
     }
   }),
   /**
-   * Update the status of a thread (OPEN, ARCHIVED, TRASH, SPAM).
-   * Updated to use ThreadMutationService.
-   */
-  updateStatus: protectedProcedure
-    .input(
-      z.object({
-        threadId: z.string(),
-        status: z.enum(ThreadStatusEnum), // Use db enum directly
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const { threadMutation, organizationId, userId } = getServiceDependencies(ctx)
-      const { threadId, status } = input
-      try {
-        logger.info('API: Updating thread status', {
-          threadId,
-          newStatus: status,
-          userId,
-          organizationId,
-        })
-        // Service handles org scoping
-        const updatedThread = await threadMutation.updateThreadStatus(threadId, status)
-        return updatedThread
-      } catch (error: unknown) {
-        if (error instanceof TRPCError) throw error
-        handleServiceError(error, 'threadMutation.updateThreadStatus', {
-          organizationId,
-          userId,
-          threadId,
-          status,
-        })
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed updating thread status.',
-        }) // Fallback
-      }
-    }),
-  /**
-   * Assign a thread to a user or unassign it.
-   * Accepts ActorId format (e.g., 'user:abc123') or null for unassigning.
-   */
-  assign: protectedProcedure
-    .input(
-      z.object({
-        threadId: z.string(),
-        assigneeId: z.string().nullable(), // ActorId format: 'user:abc123' or null
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const { threadMutation, organizationId, userId } = getServiceDependencies(ctx)
-      try {
-        logger.info('API: Assigning thread', {
-          threadId: input.threadId,
-          assigneeId: input.assigneeId,
-          userId,
-          organizationId,
-        })
-        // Service handles ActorId parsing and validation
-        const updatedThread = await threadMutation.assignThread(
-          input.threadId,
-          input.assigneeId as any
-        )
-        return updatedThread
-      } catch (error: unknown) {
-        if (error instanceof TRPCError) throw error
-        handleServiceError(error, 'threadMutation.assignThread', {
-          organizationId,
-          userId,
-          threadId: input.threadId,
-          assigneeId: input.assigneeId,
-        })
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed assigning thread.' })
-      }
-    }),
-  // --- Convenience Mutations ---
-  markAsSpam: protectedProcedure
-    .input(z.object({ threadId: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      const { threadMutation, organizationId, userId } = getServiceDependencies(ctx)
-      try {
-        logger.info('API: Marking as SPAM', { threadId: input.threadId, userId, organizationId })
-        return await threadMutation.markAsSpam(input.threadId)
-      } catch (error: unknown) {
-        handleServiceError(error, 'threadMutation.markAsSpam', {
-          organizationId,
-          userId,
-          threadId: input.threadId,
-        })
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed marking as spam.' }) // Fallback
-      }
-    }),
-  moveToTrash: protectedProcedure
-    .input(z.object({ threadId: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      const { threadMutation, organizationId, userId } = getServiceDependencies(ctx)
-      try {
-        logger.info('API: Moving to TRASH', { threadId: input.threadId, userId, organizationId })
-        return await threadMutation.moveToTrash(input.threadId)
-      } catch (error: unknown) {
-        handleServiceError(error, 'threadMutation.moveToTrash', {
-          organizationId,
-          userId,
-          threadId: input.threadId,
-        })
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed moving to trash.' }) // Fallback
-      }
-    }),
-  archive: protectedProcedure
-    .input(z.object({ threadId: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      const { threadMutation, organizationId, userId } = getServiceDependencies(ctx)
-      try {
-        logger.info('API: Archiving thread', { threadId: input.threadId, userId, organizationId })
-        return await threadMutation.archiveThread(input.threadId)
-      } catch (error: unknown) {
-        handleServiceError(error, 'threadMutation.archiveThread', {
-          organizationId,
-          userId,
-          threadId: input.threadId,
-        })
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed archiving thread.' }) // Fallback
-      }
-    }),
-  unarchive: protectedProcedure
-    .input(z.object({ threadId: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      const { threadMutation, organizationId, userId } = getServiceDependencies(ctx)
-      try {
-        logger.info('API: Unarchiving thread', { threadId: input.threadId, userId, organizationId })
-        return await threadMutation.unarchiveThread(input.threadId)
-      } catch (error: unknown) {
-        handleServiceError(error, 'threadMutation.unarchiveThread', {
-          organizationId,
-          userId,
-          threadId: input.threadId,
-        })
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed unarchiving thread.',
-        }) // Fallback
-      }
-    }),
-  /**
-   * Permanently delete a thread. Requires careful permission checks.
-   * Updated to use ThreadMutationService.
-   */
-  deletePermanently: protectedProcedure
-    .input(z.object({ threadId: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      const { threadMutation, organizationId, userId } = getServiceDependencies(ctx)
-      try {
-        // Optional: Add permission check (e.g., only allow admins)
-        // if (!ctx.session.user.isAdmin) { // Assuming isAdmin flag exists
-        //     throw new TRPCError({ code: 'FORBIDDEN', message: 'Only administrators can permanently delete threads.' });
-        // }
-        logger.warn('API: Permanently deleting thread', {
-          threadId: input.threadId,
-          userId,
-          organizationId,
-        })
-        // Service handles org scope
-        return await threadMutation.deletePermanently(input.threadId)
-      } catch (error: unknown) {
-        if (error instanceof TRPCError) throw error
-        handleServiceError(error, 'threadMutation.deletePermanently', {
-          organizationId,
-          userId,
-          threadId: input.threadId,
-        })
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed deleting thread permanently.',
-        }) // Fallback
-      }
-    }),
-  /**
-   * Permanently delete multiple threads in bulk. Requires careful permission checks.
-   * Use with extreme caution as this action cannot be undone!
-   * Updated to use ThreadMutationService.
-   */
-  deletePermanentlyBulk: protectedProcedure
-    .input(z.object({ threadIds: z.array(z.string()).min(1) }))
-    .mutation(async ({ ctx, input }) => {
-      const { threadMutation, organizationId, userId } = getServiceDependencies(ctx)
-      try {
-        // Optional: Add permission check (e.g., only allow admins)
-        // if (!ctx.session.user.isAdmin) { // Assuming isAdmin flag exists
-        //     throw new TRPCError({ code: 'FORBIDDEN', message: 'Only administrators can permanently delete threads.' });
-        // }
-        logger.warn('API: Permanently deleting threads in bulk', {
-          threadCount: input.threadIds.length,
-          userId,
-          organizationId,
-        })
-        // Service handles org scope
-        return await threadMutation.bulkDeletePermanently(input.threadIds)
-      } catch (error: unknown) {
-        if (error instanceof TRPCError) throw error
-        handleServiceError(error, 'threadMutation.bulkDeletePermanently', {
-          organizationId,
-          userId,
-          threadIds: input.threadIds,
-        })
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed deleting threads permanently.',
-        }) // Fallback
-      }
-    }),
-  /**
-   * Update the subject of a thread.
-   * Updated to use ThreadMutationService.
-   */
-  updateSubject: protectedProcedure
-    .input(z.object({ threadId: z.string(), subject: z.string().min(1).max(255) }))
-    .mutation(async ({ ctx, input }) => {
-      const { threadMutation, organizationId, userId } = getServiceDependencies(ctx)
-      try {
-        // Service handles org scoping
-        const updatedThread = await threadMutation.updateThreadSubject(
-          input.threadId,
-          input.subject
-        )
-        return updatedThread
-      } catch (error: unknown) {
-        if (error instanceof TRPCError) throw error
-        handleServiceError(error, 'threadMutation.updateThreadSubject', {
-          organizationId,
-          userId,
-          threadId: input.threadId,
-          subject: input.subject,
-        })
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed updating thread subject.',
-        })
-      }
-    }),
-  /**
-   * Update the status of multiple threads in bulk
-   * Updated to use ThreadMutationService.
-   */
-  updateStatusBulk: protectedProcedure
-    .input(z.object({ threadIds: z.array(z.string()).min(1), status: z.enum(ThreadStatusEnum) }))
-    .mutation(async ({ ctx, input }) => {
-      const { threadMutation, organizationId, userId } = getServiceDependencies(ctx)
-      try {
-        logger.info('API: Bulk updating thread status', {
-          threadCount: input.threadIds.length,
-          newStatus: input.status,
-          userId,
-          organizationId,
-        })
-        return await threadMutation.updateThreadStatusBulk(input.threadIds, input.status)
-      } catch (error: unknown) {
-        handleServiceError(error, 'threadMutation.updateThreadStatusBulk', {
-          organizationId,
-          userId,
-          threadIds: input.threadIds,
-          status: input.status,
-        })
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed bulk updating thread status.',
-        })
-      }
-    }),
-  /**
-   * Assign multiple threads to a user in bulk.
-   * Accepts ActorId format (e.g., 'user:abc123') or null for unassigning.
-   */
-  assignBulk: protectedProcedure
-    .input(z.object({ threadIds: z.array(z.string()).min(1), assigneeId: z.string().nullable() }))
-    .mutation(async ({ ctx, input }) => {
-      const { threadMutation, organizationId, userId } = getServiceDependencies(ctx)
-      try {
-        logger.info('API: Bulk assigning threads', {
-          threadCount: input.threadIds.length,
-          assigneeId: input.assigneeId,
-          userId,
-          organizationId,
-        })
-        // Service handles ActorId parsing and validation
-        return await threadMutation.assignThreadBulk(input.threadIds, input.assigneeId as any)
-      } catch (error: unknown) {
-        if (error instanceof TRPCError) throw error
-        handleServiceError(error, 'threadMutation.assignThreadBulk', {
-          organizationId,
-          userId,
-          threadIds: input.threadIds,
-          assigneeId: input.assigneeId,
-        })
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed bulk assigning threads.',
-        })
-      }
-    }),
-  /**
-   * Mark multiple threads as spam in bulk
-   * Updated to use ThreadMutationService.
-   */
-  markAsSpamBulk: protectedProcedure
-    .input(z.object({ threadIds: z.array(z.string()).min(1) }))
-    .mutation(async ({ ctx, input }) => {
-      const { threadMutation, organizationId, userId } = getServiceDependencies(ctx)
-      try {
-        logger.info('API: Marking threads as SPAM', {
-          threadCount: input.threadIds.length,
-          userId,
-          organizationId,
-        })
-        return await threadMutation.markAsSpamBulk(input.threadIds)
-      } catch (error: unknown) {
-        handleServiceError(error, 'threadMutation.markAsSpamBulk', {
-          organizationId,
-          userId,
-          threadIds: input.threadIds,
-        })
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed marking threads as spam.',
-        })
-      }
-    }),
-  /**
-   * Move multiple threads to trash in bulk
-   * Updated to use ThreadMutationService.
-   */
-  moveToTrashBulk: protectedProcedure
-    .input(z.object({ threadIds: z.array(z.string()).min(1) }))
-    .mutation(async ({ ctx, input }) => {
-      const { threadMutation, organizationId, userId } = getServiceDependencies(ctx)
-      try {
-        logger.info('API: Moving threads to TRASH', {
-          threadCount: input.threadIds.length,
-          userId,
-          organizationId,
-        })
-        return await threadMutation.moveToTrashBulk(input.threadIds)
-      } catch (error: unknown) {
-        handleServiceError(error, 'threadMutation.moveToTrashBulk', {
-          organizationId,
-          userId,
-          threadIds: input.threadIds,
-        })
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed moving threads to trash.',
-        })
-      }
-    }),
-  /**
-   * Archive multiple threads in bulk
-   * Updated to use ThreadMutationService.
-   */
-  archiveBulk: protectedProcedure
-    .input(z.object({ threadIds: z.array(z.string()).min(1) }))
-    .mutation(async ({ ctx, input }) => {
-      const { threadMutation, organizationId, userId } = getServiceDependencies(ctx)
-      try {
-        logger.info('API: Archiving threads', {
-          threadCount: input.threadIds.length,
-          userId,
-          organizationId,
-        })
-        return await threadMutation.archiveThreadBulk(input.threadIds)
-      } catch (error: unknown) {
-        handleServiceError(error, 'threadMutation.archiveThreadBulk', {
-          organizationId,
-          userId,
-          threadIds: input.threadIds,
-        })
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed archiving threads.' })
-      }
-    }),
-  /**
-   * Unarchive multiple threads in bulk
-   * Updated to use ThreadMutationService.
-   */
-  unarchiveBulk: protectedProcedure
-    .input(z.object({ threadIds: z.array(z.string()).min(1) }))
-    .mutation(async ({ ctx, input }) => {
-      const { threadMutation, organizationId, userId } = getServiceDependencies(ctx)
-      try {
-        logger.info('API: Unarchiving threads', {
-          threadCount: input.threadIds.length,
-          userId,
-          organizationId,
-        })
-        return await threadMutation.unarchiveThreadBulk(input.threadIds)
-      } catch (error: unknown) {
-        handleServiceError(error, 'threadMutation.unarchiveThreadBulk', {
-          organizationId,
-          userId,
-          threadIds: input.threadIds,
-        })
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed unarchiving threads.',
-        })
-      }
-    }),
-  /**
    * Tag multiple threads in bulk
    * Updated to use ThreadMutationService.
    */
@@ -1127,6 +724,150 @@ export const threadRouter = createTRPCRouter({
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed tagging threads.' })
       }
     }),
+
+  // ═══════════════════════════════════════════════════════════════
+  // UNIFIED ENDPOINTS (RecordId-based)
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Unified update endpoint for a single thread.
+   * Accepts RecordId and partial ThreadUpdates.
+   */
+  update: protectedProcedure
+    .input(
+      z.object({
+        recordId: recordIdSchema,
+        updates: z.object({
+          status: z.enum(['OPEN', 'ARCHIVED', 'SPAM', 'TRASH']).optional(),
+          subject: z.string().optional(),
+          assigneeId: z.string().nullable().optional(),
+          inboxId: z.string().optional(),
+          isUnread: z.boolean().optional(),
+        }),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { threadMutation, organizationId, userId } = getServiceDependencies(ctx)
+      try {
+        logger.info('API: Unified thread update', {
+          recordId: input.recordId,
+          updates: input.updates,
+          userId,
+          organizationId,
+        })
+        return await threadMutation.update(input.recordId, input.updates as any)
+      } catch (error: unknown) {
+        if (error instanceof TRPCError) throw error
+        handleServiceError(error, 'threadMutation.update', {
+          organizationId,
+          userId,
+          recordId: input.recordId,
+          updates: input.updates,
+        })
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed updating thread.' })
+      }
+    }),
+
+  /**
+   * Unified bulk update endpoint for multiple threads.
+   * Accepts RecordIds and partial ThreadUpdates.
+   */
+  updateBulk: protectedProcedure
+    .input(
+      z.object({
+        recordIds: z.array(recordIdSchema),
+        updates: z.object({
+          status: z.enum(['OPEN', 'ARCHIVED', 'SPAM', 'TRASH']).optional(),
+          assigneeId: z.string().nullable().optional(),
+          inboxId: z.string().optional(),
+        }),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { threadMutation, organizationId, userId } = getServiceDependencies(ctx)
+      try {
+        logger.info('API: Unified bulk thread update', {
+          count: input.recordIds.length,
+          updates: input.updates,
+          userId,
+          organizationId,
+        })
+        return await threadMutation.updateBulk(input.recordIds, input.updates as any)
+      } catch (error: unknown) {
+        if (error instanceof TRPCError) throw error
+        handleServiceError(error, 'threadMutation.updateBulk', {
+          organizationId,
+          userId,
+          recordIds: input.recordIds,
+          updates: input.updates,
+        })
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed bulk updating threads.',
+        })
+      }
+    }),
+
+  /**
+   * Unified remove endpoint for permanent thread deletion.
+   * Accepts RecordId.
+   */
+  remove: protectedProcedure
+    .input(z.object({ recordId: recordIdSchema }))
+    .mutation(async ({ ctx, input }) => {
+      const { threadMutation, organizationId, userId } = getServiceDependencies(ctx)
+      try {
+        logger.warn('API: Unified thread removal (permanent delete)', {
+          recordId: input.recordId,
+          userId,
+          organizationId,
+        })
+        return await threadMutation.remove(input.recordId)
+      } catch (error: unknown) {
+        if (error instanceof TRPCError) throw error
+        handleServiceError(error, 'threadMutation.remove', {
+          organizationId,
+          userId,
+          recordId: input.recordId,
+        })
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed removing thread.',
+        })
+      }
+    }),
+
+  /**
+   * Unified bulk remove endpoint for permanent thread deletion.
+   * Accepts RecordIds.
+   */
+  removeBulk: protectedProcedure
+    .input(z.object({ recordIds: z.array(recordIdSchema) }))
+    .mutation(async ({ ctx, input }) => {
+      const { threadMutation, organizationId, userId } = getServiceDependencies(ctx)
+      try {
+        logger.warn('API: Unified bulk thread removal (permanent delete)', {
+          count: input.recordIds.length,
+          userId,
+          organizationId,
+        })
+        return await threadMutation.removeBulk(input.recordIds)
+      } catch (error: unknown) {
+        if (error instanceof TRPCError) throw error
+        handleServiceError(error, 'threadMutation.removeBulk', {
+          organizationId,
+          userId,
+          recordIds: input.recordIds,
+        })
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed bulk removing threads.',
+        })
+      }
+    }),
+
+  // ═══════════════════════════════════════════════════════════════
+
   getCounts: protectedProcedure.query(async ({ ctx }) => {
     const { userId, organizationId } = ctx.session
     const unreadService = new UnreadService(organizationId, userId)

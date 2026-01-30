@@ -1,7 +1,7 @@
 // apps/web/src/components/resources/hooks/use-entity-values.ts
 
 import { useMemo } from 'react'
-import { useResourceFieldValues } from './use-field-values'
+import { useFieldValues } from './use-field-values'
 import {
   type StoredFieldValue,
   parseRecordId,
@@ -60,7 +60,7 @@ export function useEntityValues({ recordId }: UseEntityValuesOptions): UseEntity
   }, [fieldIdsKey])
 
   // Get field values from store using RecordId directly
-  const rawFieldValues = useResourceFieldValues(recordId ?? ('' as RecordId), activeFieldIds)
+  const rawFieldValues = useFieldValues(recordId ?? ('' as RecordId), activeFieldIds)
 
   // Stabilize fieldValues - only change when actual content changes
   const fieldValuesKey = JSON.stringify(rawFieldValues)

@@ -3,195 +3,191 @@
 import { useCallback } from 'react'
 import { useThreadStore, type ThreadMeta } from '../store'
 import { toastError } from '@auxx/ui/components/toast'
-
-interface UseThreadMutationOptions {
-  /** Custom error message prefix */
-  errorPrefix?: string
-}
-
-interface MutationLike<TInput, TOutput> {
-  mutate: (
-    input: TInput,
-    options?: {
-      onSuccess?: (data: TOutput) => void
-      onError?: (error: Error) => void
-    }
-  ) => void
-}
+import { api } from '~/trpc/react'
+import { toRecordId, type RecordId } from '@auxx/types/resource'
 
 /**
- * Hook for optimistic thread mutations.
+ * Partial thread updates that can be applied optimistically.
+ */
+export type ThreadUpdates = Partial<
+  Pick<ThreadMeta, 'status' | 'subject' | 'assigneeId' | 'inboxId' | 'isUnread'>
+>
+
+/**
+ * Hook for optimistic thread mutations with simplified API.
  *
- * This hook provides helpers for performing optimistic updates to threads.
- * When you call mutateThread, it:
- * 1. Immediately applies the update to the store (optimistic)
- * 2. Fires the actual mutation
- * 3. On success: confirms the optimistic update
- * 4. On error: rolls back only the keys this mutation changed
- *
- * The version-tracking system allows concurrent mutations on different fields
- * to coexist safely - if mutation A (archive) fails, it won't rollback
- * mutation B's changes (assign).
+ * This hook provides a clean interface for thread mutations:
+ * - Mutations are created internally (no need to pass them)
+ * - Optimistic updates are applied automatically
+ * - Rollback happens on error
  *
  * @example
  * ```typescript
- * const { mutateThread, updateStatus } = useThreadMutation()
- * const archiveMutation = api.thread.archive.useMutation()
+ * const { update, updateBulk, remove, removeBulk } = useThreadMutation()
  *
- * // Generic approach
- * mutateThread(
- *   threadId,
- *   { status: 'ARCHIVED' },
- *   archiveMutation,
- *   { threadId }
- * )
+ * // Single thread operations
+ * update(threadId, { status: 'ARCHIVED' })
+ * update(threadId, { assigneeId: { type: 'user', id: 'abc123' } })
+ * update(threadId, { subject: 'New subject' })
  *
- * // Or use the convenience method
- * updateStatus(threadId, 'ARCHIVED', archiveMutation)
+ * // Bulk operations
+ * updateBulk(threadIds, { status: 'TRASH' })
+ * updateBulk(threadIds, { inboxId: 'inbox123' })
+ *
+ * // Permanent delete
+ * remove(threadId)
+ * removeBulk(threadIds)
  * ```
  */
 export function useThreadMutation() {
+  // Store methods for optimistic updates
   const updateThreadOptimistic = useThreadStore((s) => s.updateThreadOptimistic)
   const confirmOptimistic = useThreadStore((s) => s.confirmOptimistic)
   const rollbackOptimistic = useThreadStore((s) => s.rollbackOptimistic)
+  const removeThread = useThreadStore((s) => s.removeThread)
+
+  // Create mutations internally
+  const updateMutation = api.thread.update.useMutation()
+  const updateBulkMutation = api.thread.updateBulk.useMutation()
+  const removeMutation = api.thread.remove.useMutation()
+  const removeBulkMutation = api.thread.removeBulk.useMutation()
 
   /**
-   * Perform optimistic thread mutation.
-   *
-   * @param threadId - Thread to mutate
-   * @param updates - Optimistic updates to apply immediately
-   * @param mutation - tRPC mutation (or any mutation-like object with mutate method)
-   * @param mutationInput - Input for the mutation
-   * @param options - Optional error handling config
+   * Update a single thread optimistically.
+   * Applies update to store immediately, then syncs with backend.
    */
-  const mutateThread = useCallback(
-    <TInput, TOutput>(
-      threadId: string,
-      updates: Partial<ThreadMeta>,
-      mutation: MutationLike<TInput, TOutput>,
-      mutationInput: TInput,
-      options?: UseThreadMutationOptions
-    ) => {
-      // 1. Apply optimistic update, get version for this specific mutation
+  const update = useCallback(
+    (threadId: string, updates: ThreadUpdates) => {
+      // 1. Apply optimistic update to store
       const version = updateThreadOptimistic(threadId, updates)
 
-      // 2. Fire mutation
-      mutation.mutate(mutationInput, {
-        onSuccess: () => {
-          // Confirm this specific mutation (pass version)
-          confirmOptimistic(threadId, version)
-        },
-        onError: (error) => {
-          // Rollback only this mutation's changes (pass version)
-          rollbackOptimistic(threadId, version)
+      // 2. Create RecordId and call backend mutation
+      const recordId = toRecordId('thread', threadId)
 
-          const message = error instanceof Error ? error.message : 'Unknown error'
-          toastError({
-            title: options?.errorPrefix ?? 'Update failed',
-            description: message,
-          })
-        },
-      })
-    },
-    [updateThreadOptimistic, confirmOptimistic, rollbackOptimistic]
-  )
+      // Convert assigneeId from ActorId object to string for API
+      const apiUpdates = {
+        ...updates,
+        assigneeId: updates.assigneeId === undefined
+          ? undefined
+          : updates.assigneeId === null
+            ? null
+            : `${updates.assigneeId.type}:${updates.assigneeId.id}`,
+      }
 
-  /**
-   * Convenience method for status changes.
-   */
-  const updateStatus = useCallback(
-    <TInput extends { threadId: string }, TOutput>(
-      threadId: string,
-      status: ThreadMeta['status'],
-      mutation: MutationLike<TInput, TOutput>,
-      options?: UseThreadMutationOptions
-    ) => {
-      mutateThread(threadId, { status }, mutation, { threadId } as TInput, options)
-    },
-    [mutateThread]
-  )
-
-  /**
-   * Convenience method for bulk status changes.
-   */
-  const updateStatusBulk = useCallback(
-    <TInput extends { threadIds: string[] }, TOutput>(
-      threadIds: string[],
-      status: ThreadMeta['status'],
-      mutation: MutationLike<TInput, TOutput>,
-      options?: UseThreadMutationOptions
-    ) => {
-      // Apply optimistic updates to all threads, track each version
-      const versions = threadIds.map((id) => ({
-        id,
-        version: updateThreadOptimistic(id, { status }),
-      }))
-
-      mutation.mutate({ threadIds } as TInput, {
-        onSuccess: () => {
-          // Confirm each mutation with its specific version
-          versions.forEach(({ id, version }) => {
-            confirmOptimistic(id, version)
-          })
-        },
-        onError: (error) => {
-          // Rollback each mutation with its specific version
-          versions.forEach(({ id, version }) => {
-            rollbackOptimistic(id, version)
-          })
-
-          const message = error instanceof Error ? error.message : 'Unknown error'
-          toastError({
-            title: options?.errorPrefix ?? 'Bulk update failed',
-            description: message,
-          })
-        },
-      })
-    },
-    [updateThreadOptimistic, confirmOptimistic, rollbackOptimistic]
-  )
-
-  /**
-   * Convenience method for assignment changes.
-   */
-  const updateAssignee = useCallback(
-    <TInput extends { threadId: string; assigneeId: ThreadMeta['assigneeId'] }, TOutput>(
-      threadId: string,
-      assigneeId: ThreadMeta['assigneeId'],
-      mutation: MutationLike<TInput, TOutput>,
-      options?: UseThreadMutationOptions
-    ) => {
-      mutateThread(
-        threadId,
-        { assigneeId },
-        mutation,
-        { threadId, assigneeId } as TInput,
-        options
+      updateMutation.mutate(
+        { recordId, updates: apiUpdates },
+        {
+          onSuccess: () => confirmOptimistic(threadId, version),
+          onError: (error) => {
+            rollbackOptimistic(threadId, version)
+            toastError({ title: 'Update failed', description: error.message })
+          },
+        }
       )
     },
-    [mutateThread]
+    [updateThreadOptimistic, confirmOptimistic, rollbackOptimistic, updateMutation]
   )
 
   /**
-   * Convenience method for read status changes.
+   * Update multiple threads optimistically.
+   * Applies updates to all threads in store, then syncs with backend.
    */
-  const updateReadStatus = useCallback(
-    <TInput extends { threadId: string }, TOutput>(
-      threadId: string,
-      isUnread: boolean,
-      mutation: MutationLike<TInput, TOutput>,
-      options?: UseThreadMutationOptions
-    ) => {
-      mutateThread(threadId, { isUnread }, mutation, { threadId } as TInput, options)
+  const updateBulk = useCallback(
+    (threadIds: string[], updates: ThreadUpdates) => {
+      // 1. Apply optimistic updates to all threads
+      const versions = threadIds.map((id) => ({
+        id,
+        version: updateThreadOptimistic(id, updates),
+      }))
+
+      // 2. Create RecordIds and call backend mutation
+      const recordIds = threadIds.map((id) => toRecordId('thread', id))
+
+      // Convert assigneeId from ActorId object to string for API
+      const apiUpdates = {
+        ...updates,
+        assigneeId: updates.assigneeId === undefined
+          ? undefined
+          : updates.assigneeId === null
+            ? null
+            : `${updates.assigneeId.type}:${updates.assigneeId.id}`,
+      }
+
+      updateBulkMutation.mutate(
+        { recordIds, updates: apiUpdates },
+        {
+          onSuccess: () => {
+            versions.forEach(({ id, version }) => confirmOptimistic(id, version))
+          },
+          onError: (error) => {
+            versions.forEach(({ id, version }) => rollbackOptimistic(id, version))
+            toastError({ title: 'Bulk update failed', description: error.message })
+          },
+        }
+      )
     },
-    [mutateThread]
+    [updateThreadOptimistic, confirmOptimistic, rollbackOptimistic, updateBulkMutation]
+  )
+
+  /**
+   * Permanently remove a thread.
+   * Removes from store optimistically, then syncs with backend.
+   */
+  const remove = useCallback(
+    (threadId: string) => {
+      // 1. Remove from store optimistically
+      removeThread(threadId)
+
+      // 2. Create RecordId and call backend mutation
+      const recordId = toRecordId('thread', threadId)
+
+      removeMutation.mutate(
+        { recordId },
+        {
+          onError: (error) => {
+            // Note: Can't easily rollback a delete - would need to re-fetch
+            toastError({ title: 'Delete failed', description: error.message })
+          },
+        }
+      )
+    },
+    [removeThread, removeMutation]
+  )
+
+  /**
+   * Permanently remove multiple threads.
+   * Removes all from store optimistically, then syncs with backend.
+   */
+  const removeBulk = useCallback(
+    (threadIds: string[]) => {
+      // 1. Remove all from store optimistically
+      threadIds.forEach((id) => removeThread(id))
+
+      // 2. Create RecordIds and call backend mutation
+      const recordIds = threadIds.map((id) => toRecordId('thread', id))
+
+      removeBulkMutation.mutate(
+        { recordIds },
+        {
+          onError: (error) => {
+            // Note: Can't easily rollback bulk delete - would need to re-fetch
+            toastError({ title: 'Bulk delete failed', description: error.message })
+          },
+        }
+      )
+    },
+    [removeThread, removeBulkMutation]
   )
 
   return {
-    mutateThread,
-    updateStatus,
-    updateStatusBulk,
-    updateAssignee,
-    updateReadStatus,
+    update,
+    updateBulk,
+    remove,
+    removeBulk,
+    // Expose isPending states for UI
+    isUpdating: updateMutation.isPending,
+    isBulkUpdating: updateBulkMutation.isPending,
+    isRemoving: removeMutation.isPending,
+    isBulkRemoving: removeBulkMutation.isPending,
   }
 }

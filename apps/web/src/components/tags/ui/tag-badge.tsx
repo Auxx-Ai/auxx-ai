@@ -4,9 +4,8 @@
 import { X } from 'lucide-react'
 import { cn } from '@auxx/ui/lib/utils'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { getDefinitionId, type RecordId } from '@auxx/lib/resources/client'
-import { toResourceFieldIds } from '@auxx/types/field'
-import { useRecord, useResourceFieldValues } from '~/components/resources/hooks'
+import type { RecordId } from '@auxx/lib/resources/client'
+import { useRecord, useSystemValues } from '~/components/resources/hooks'
 
 interface TagBadgeProps {
   /** RecordId in format "entityDefinitionId:instanceId" */
@@ -25,20 +24,14 @@ interface TagBadgeProps {
  */
 export function TagBadge({ recordId, size = 'md', onRemove, className }: TagBadgeProps) {
   // Get base record data (displayName)
-  const { record, isLoading } = useRecord({ recordId })
+  const { record, isLoading: recordLoading } = useRecord({ recordId })
 
-  // Extract entityDefinitionId from recordId to build field references
-  const entityDefId = getDefinitionId(recordId)
+  // Get tag-specific field values using system attributes
+  const { values, isLoading: valuesLoading } = useSystemValues(recordId, ['tag_color', 'tag_emoji'])
+  const color = values.tag_color as string | undefined
+  const emoji = values.tag_emoji as string | undefined
 
-  // Build field references for tag-specific fields using toResourceFieldIds
-  const [colorFieldRef, emojiFieldRef] = toResourceFieldIds(entityDefId, ['color', 'emoji'])
-
-  // Get multiple field values at once (more efficient than multiple useFieldValue calls)
-  const fieldValues = useResourceFieldValues(recordId, [colorFieldRef, emojiFieldRef])
-
-  // Extract values (keyed by ResourceFieldId format)
-  const color = fieldValues[colorFieldRef] as string | undefined
-  const emoji = fieldValues[emojiFieldRef] as string | undefined
+  const isLoading = recordLoading || valuesLoading
 
   const displayName = record?.displayName ?? 'Unknown'
   const sizeClasses = size === 'sm' ? 'text-xs px-1.5 py-0.5' : 'text-sm px-2 py-1'
@@ -49,22 +42,14 @@ export function TagBadge({ recordId, size = 'md', onRemove, className }: TagBadg
 
   return (
     <span
-      className={cn(
-        'inline-flex items-center gap-1 rounded-md border',
-        sizeClasses,
-        className
-      )}
+      className={cn('inline-flex items-center gap-1 rounded-md border', sizeClasses, className)}
       style={{
         backgroundColor: color ? `${color}20` : undefined,
         borderColor: color ? `${color}40` : undefined,
-      }}
-    >
+      }}>
       {emoji && <span>{emoji}</span>}
       {color && !emoji && (
-        <span
-          className="h-2 w-2 rounded-full"
-          style={{ backgroundColor: color }}
-        />
+        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
       )}
       <span className="font-medium">{displayName}</span>
       {onRemove && (
@@ -74,8 +59,7 @@ export function TagBadge({ recordId, size = 'md', onRemove, className }: TagBadg
             e.stopPropagation()
             onRemove()
           }}
-          className="ml-0.5 rounded hover:bg-muted"
-        >
+          className="ml-0.5 rounded hover:bg-muted">
           <X className="h-3 w-3" />
         </button>
       )}

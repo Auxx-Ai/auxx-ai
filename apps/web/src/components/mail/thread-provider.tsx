@@ -3,14 +3,13 @@
 
 import React, { createContext, useContext, useMemo, type RefObject } from 'react'
 import { useMailFilter } from '~/components/mail/mail-filter-context'
-import { useThreadMutations } from '~/hooks/use-thread-mutations'
 import { useThreadTags as useThreadTagsHook } from '~/hooks/use-thread-tags'
 import { useReplyBox } from '~/hooks/use-reply-box'
-import { useRuleTest } from '~/hooks/use-rule-test'
 import { toastSuccess, toastError } from '@auxx/ui/components/toast'
-import { useThread as useThreadFromStore } from '~/components/threads/hooks'
+import { useThread as useThreadFromStore, useThreadMutation } from '~/components/threads/hooks'
 import type { EditorMode } from '~/components/mail/email-editor/types'
 import type { ActorId } from '@auxx/types/actor'
+import { api } from '~/trpc/react'
 
 /** Reply box UI state */
 interface ReplyBoxState {
@@ -109,12 +108,14 @@ export function ThreadProvider({
     return params.get('contactId')
   }, [])
 
-  // Initialize hooks
-  const threadMutations = useThreadMutations(threadId, {
-    contextType,
-    contextId,
-    statusSlug,
-    searchQuery,
+  // Initialize new unified mutation hook
+  const { update, remove } = useThreadMutation()
+
+  // Keep markAsRead mutation separate (not covered by unified endpoint)
+  const markReadMutation = api.thread.markAsRead.useMutation({
+    onError: (error) => {
+      toastError({ title: 'Failed to mark as read', description: error.message })
+    },
   })
 
   const { selectedTags, fetchedTagsData, handleTagChange } = useThreadTagsHook(thread, {
@@ -137,71 +138,31 @@ export function ThreadProvider({
     closeWithSuppress,
   } = useReplyBox(thread || ({ id: '', draftMessage: null } as any))
 
-  // Rule testing functionality (kept for potential future use)
-  const { testRule, runRule } = useRuleTest({
-    showToasts: true,
-  })
-
   // Create handlers
   const handlers: ThreadHandlers = useMemo(
     () => ({
       updateStatus: async (done: boolean) => {
         if (!thread) return
-
-        try {
-          if (done) {
-            await threadMutations.archiveThread.mutateAsync({ threadId })
-          } else {
-            await threadMutations.unarchiveThread.mutateAsync({ threadId })
-          }
-          // Store will be updated by mutation's cache invalidation
-        } catch (error) {
-          toastError({
-            title: 'Failed to update status',
-            description: error instanceof Error ? error.message : 'Unknown error',
-          })
-        }
+        // Use optimistic update via unified hook
+        update(threadId, { status: done ? 'ARCHIVED' : 'OPEN' })
       },
 
       updateAssignee: async (actorId: ActorId | null) => {
-        try {
-          await threadMutations.updateAssignee.mutateAsync({ threadId, assigneeId: actorId })
-          // Store will be updated by mutation's cache invalidation
-        } catch (error) {
-          toastError({
-            title: 'Failed to update assignee',
-            description: error instanceof Error ? error.message : 'Unknown error',
-          })
-        }
+        // Use optimistic update via unified hook
+        update(threadId, { assigneeId: actorId })
       },
 
       updateSubject: async (subject: string) => {
-        try {
-          await threadMutations.updateSubject.mutateAsync({ threadId, subject })
-          // toastSuccess({ title: 'Subject updated', description: '' })
-        } catch (error) {
-          toastError({
-            title: 'Failed to update subject',
-            description: error instanceof Error ? error.message : 'Unknown error',
-          })
-        }
+        // Use optimistic update via unified hook
+        update(threadId, { subject })
       },
 
       updateTags,
 
       moveToInbox: async (inboxId: string) => {
-        try {
-          await threadMutations.moveBulkToInbox.mutateAsync({
-            threadIds: [threadId],
-            targetInboxId: inboxId,
-          })
-          toastSuccess({ title: 'Thread moved to inbox', description: '' })
-        } catch (error) {
-          toastError({
-            title: 'Failed to move thread',
-            description: error instanceof Error ? error.message : 'Unknown error',
-          })
-        }
+        // Use optimistic update via unified hook
+        update(threadId, { inboxId })
+        toastSuccess({ title: 'Thread moved to inbox' })
       },
 
       openReplyBox: (mode: EditorMode | 'generic', message?: any) => {
@@ -225,7 +186,7 @@ export function ThreadProvider({
     [
       thread,
       threadId,
-      threadMutations,
+      update,
       updateTags,
       openEditorForAction,
       handleShowGenericReply,
@@ -268,7 +229,7 @@ export function ThreadProvider({
       onMarkUnread: async (message: any) => {
         try {
           // Mark the entire thread as unread
-          await threadMutations.markReadMutation.mutateAsync({ threadId: thread.id })
+          await markReadMutation.mutateAsync({ threadId: thread.id })
           toastSuccess({ title: 'Thread marked as unread' })
         } catch (error) {
           toastError({
@@ -279,17 +240,8 @@ export function ThreadProvider({
       },
 
       onDelete: async (message: any) => {
-        try {
-          // For now, move entire thread to trash.
-          // TODO: Implement single message deletion if needed
-          await threadMutations.moveToTrash.mutateAsync({ threadId: thread.id })
-          toastSuccess({ title: 'Thread moved to trash' })
-        } catch (error) {
-          toastError({
-            title: 'Failed to delete',
-            description: error instanceof Error ? error.message : 'Unknown error',
-          })
-        }
+        // Move entire thread to trash using optimistic update
+        update(thread.id, { status: 'TRASH' })
       },
 
       onDownload: async (message: any) => {
@@ -388,43 +340,40 @@ export function ThreadProvider({
         }
       },
     }
-  }, [thread, threadMutations, openEditorForAction])
+  }, [thread, update, markReadMutation, openEditorForAction])
 
   // Create mutations object that matches the interface
   const mutations: ThreadMutations = useMemo(
     () => ({
       archiveThread: async () => {
-        await threadMutations.archiveThread.mutateAsync({ threadId })
+        update(threadId, { status: 'ARCHIVED' })
       },
       unarchiveThread: async () => {
-        await threadMutations.unarchiveThread.mutateAsync({ threadId })
+        update(threadId, { status: 'OPEN' })
       },
       moveToTrash: async () => {
-        await threadMutations.moveToTrash.mutateAsync({ threadId })
+        update(threadId, { status: 'TRASH' })
       },
       markAsSpam: async () => {
-        await threadMutations.markAsSpam.mutateAsync({ threadId })
+        update(threadId, { status: 'SPAM' })
       },
       updateAssignee: async (assigneeId: ActorId | null) => {
-        await threadMutations.updateAssignee.mutateAsync({ threadId, assigneeId })
+        update(threadId, { assigneeId })
       },
       updateSubject: async (subject: string) => {
-        await threadMutations.updateSubject.mutateAsync({ threadId, subject })
+        update(threadId, { subject })
       },
       moveToInbox: async (inboxId: string) => {
-        await threadMutations.moveBulkToInbox.mutateAsync({
-          threadIds: [threadId],
-          targetInboxId: inboxId,
-        })
+        update(threadId, { inboxId })
       },
       deletePermanently: async () => {
-        await threadMutations.deletePermanently.mutateAsync({ threadId })
+        remove(threadId)
       },
       markAsRead: async () => {
-        await threadMutations.markReadMutation.mutateAsync({ threadId })
+        await markReadMutation.mutateAsync({ threadId })
       },
     }),
-    [threadId, threadMutations]
+    [threadId, update, remove, markReadMutation]
   )
 
   // Create context value - actions and UI state only, no thread data

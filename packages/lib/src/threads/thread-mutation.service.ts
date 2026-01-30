@@ -5,9 +5,22 @@ import { ThreadStatus, DraftMode } from '@auxx/database/enums'
 import { eq, and, inArray, isNotNull } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
 import { generateId } from '@auxx/utils'
-import { parseActorId, type ActorId } from '@auxx/types'
+import { parseActorId, type ActorId } from '@auxx/types/actor'
+import { parseRecordId, type RecordId } from '@auxx/types/resource'
 
 const logger = createScopedLogger('thread-mutation-service')
+
+/**
+ * Unified thread updates interface.
+ * Used by the update() and updateBulk() methods.
+ */
+export interface ThreadUpdates {
+  status?: 'OPEN' | 'ARCHIVED' | 'SPAM' | 'TRASH'
+  subject?: string
+  assigneeId?: ActorId | null
+  inboxId?: string
+  isUnread?: boolean
+}
 
 /**
  * Standard result returned by all mutation operations.
@@ -199,6 +212,163 @@ export class ThreadMutationService {
       )
     }
   }
+
+  // ═══════════════════════════════════════════════════════════════
+  // UNIFIED UPDATE METHODS (RecordId-based)
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Unified update method for a single thread.
+   * Accepts RecordId and applies partial updates.
+   */
+  async update(recordId: RecordId, updates: ThreadUpdates): Promise<MutationResult> {
+    const { entityInstanceId: threadId } = parseRecordId(recordId)
+
+    logger.info('Updating thread via unified method', {
+      threadId,
+      updates,
+      organizationId: this.organizationId,
+    })
+
+    try {
+      // Build the update object dynamically
+      const dbUpdates: Record<string, any> = {}
+
+      if (updates.status !== undefined) {
+        dbUpdates.status = updates.status
+      }
+      if (updates.subject !== undefined) {
+        dbUpdates.subject = updates.subject.trim().substring(0, 100)
+      }
+      if (updates.assigneeId !== undefined) {
+        // Parse ActorId to extract user ID for database storage
+        dbUpdates.assigneeId = updates.assigneeId ? parseActorId(updates.assigneeId).id : null
+      }
+      if (updates.inboxId !== undefined) {
+        dbUpdates.inboxId = updates.inboxId
+      }
+
+      // isUnread is handled separately via UnreadService, but for now we skip it
+      // The frontend store handles optimistic updates for read status
+
+      if (Object.keys(dbUpdates).length === 0) {
+        return {
+          id: threadId,
+          success: true,
+          updatedFields: updates,
+          timestamp: new Date(),
+        }
+      }
+
+      const result = await this.db
+        .update(schema.Thread)
+        .set(dbUpdates)
+        .where(
+          and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, this.organizationId))
+        )
+        .returning({ id: schema.Thread.id })
+
+      if (result.length === 0) {
+        throw new Error(`Thread ${threadId} not found`)
+      }
+
+      return {
+        id: threadId,
+        success: true,
+        updatedFields: updates,
+        timestamp: new Date(),
+      }
+    } catch (error: unknown) {
+      logger.error('Failed to update thread', {
+        threadId,
+        updates,
+        error: error instanceof Error ? error.message : error,
+      })
+      throw new Error(
+        `Database error updating thread ${threadId}: ${error instanceof Error ? error.message : error}`
+      )
+    }
+  }
+
+  /**
+   * Unified bulk update method for multiple threads.
+   * Accepts RecordIds and applies partial updates to all.
+   */
+  async updateBulk(recordIds: RecordId[], updates: ThreadUpdates): Promise<{ count: number }> {
+    if (!recordIds || recordIds.length === 0) return { count: 0 }
+
+    const threadIds = recordIds.map((id) => parseRecordId(id).entityInstanceId)
+
+    logger.info('Bulk updating threads via unified method', {
+      count: threadIds.length,
+      updates,
+      organizationId: this.organizationId,
+    })
+
+    try {
+      // Build the update object dynamically
+      const dbUpdates: Record<string, any> = {}
+
+      if (updates.status !== undefined) {
+        dbUpdates.status = updates.status
+      }
+      if (updates.assigneeId !== undefined) {
+        dbUpdates.assigneeId = updates.assigneeId ? parseActorId(updates.assigneeId).id : null
+      }
+      if (updates.inboxId !== undefined) {
+        dbUpdates.inboxId = updates.inboxId
+      }
+
+      if (Object.keys(dbUpdates).length === 0) {
+        return { count: threadIds.length }
+      }
+
+      const result = await this.db
+        .update(schema.Thread)
+        .set(dbUpdates)
+        .where(
+          and(
+            inArray(schema.Thread.id, threadIds),
+            eq(schema.Thread.organizationId, this.organizationId)
+          )
+        )
+        .returning({ id: schema.Thread.id })
+
+      return { count: result.length }
+    } catch (error: unknown) {
+      logger.error('Failed to bulk update threads', {
+        count: threadIds.length,
+        updates,
+        error: error instanceof Error ? error.message : error,
+      })
+      throw new Error(
+        `Database error bulk updating threads: ${error instanceof Error ? error.message : error}`
+      )
+    }
+  }
+
+  /**
+   * Unified remove method for permanent deletion.
+   * Accepts RecordId.
+   */
+  async remove(recordId: RecordId): Promise<{ success: boolean }> {
+    const { entityInstanceId: threadId } = parseRecordId(recordId)
+    return this.deletePermanently(threadId)
+  }
+
+  /**
+   * Unified bulk remove method for permanent deletion.
+   * Accepts RecordIds.
+   */
+  async removeBulk(recordIds: RecordId[]): Promise<{ count: number }> {
+    if (!recordIds || recordIds.length === 0) return { count: 0 }
+    const threadIds = recordIds.map((id) => parseRecordId(id).entityInstanceId)
+    return this.bulkDeletePermanently(threadIds)
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // LEGACY METHODS (kept for backward compatibility during migration)
+  // ═══════════════════════════════════════════════════════════════
 
   /**
    * Updates the status of multiple threads in bulk with ultra-fast performance

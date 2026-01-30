@@ -11,11 +11,7 @@ import {
   DialogFooter,
 } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import {
-  Field,
-  FieldLabel,
-  FieldGroup,
-} from '@auxx/ui/components/field'
+import { Field, FieldLabel, FieldGroup } from '@auxx/ui/components/field'
 import { Input } from '@auxx/ui/components/input'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { Button } from '@auxx/ui/components/button'
@@ -23,6 +19,8 @@ import { RadioGroup, RadioGroupItem } from '@auxx/ui/components/radio-group'
 import { Label } from '@auxx/ui/components/label'
 import { api } from '~/trpc/react'
 import { toastError } from '@auxx/ui/components/toast'
+import { useConfirm } from '~/hooks/use-confirm'
+import { Trash2 } from 'lucide-react'
 import { FormColorTagPicker } from '~/components/pickers/color-tag-picker'
 import { MemberGroupFormField } from '~/components/pickers/member-group-form-picker'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
@@ -31,10 +29,7 @@ import { useForm } from 'react-hook-form'
 import { Form } from '@auxx/ui/components/form'
 import type { InboxVisibility } from '@auxx/lib/inboxes'
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
-import { useResourceFields } from '~/components/resources/hooks'
-import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
-import { formatToRawValue } from '@auxx/lib/field-values/client'
-
+import { useSystemValues, useSaveSystemValues } from '~/components/resources/hooks'
 
 /** Props for InboxDialog */
 interface InboxDialogProps {
@@ -59,44 +54,28 @@ interface InboxFormData {
 }
 
 /** Dialog for creating and editing inboxes */
-export function InboxDialog({
-  open,
-  onOpenChange,
-  recordId,
-  onSuccess,
-}: InboxDialogProps) {
+export function InboxDialog({ open, onOpenChange, recordId, onSuccess }: InboxDialogProps) {
   // Determine if editing based on prop
   const isEditing = !!recordId
 
   // Extract inboxId from recordId for mutations
   const inboxId = recordId ? parseRecordId(recordId).entityInstanceId : null
 
-  // Get field definitions for inboxes
-  const { fields } = useResourceFields('inboxes')
-
-  // Get specific fields we need
-  const editableFields = useMemo(() => {
-    return fields.filter(
-      (f) =>
-        ['name', 'description', 'color', 'visibility'].includes(f.key ?? '') &&
-        f.capabilities?.updatable !== false
-    )
-  }, [fields])
-
-  // Build arrays for syncer
-  const recordIds = useMemo(() => (recordId ? [recordId] : []), [recordId])
-  const resourceFieldIds = useMemo(
-    () => editableFields.map((f) => f.resourceFieldId!).filter(Boolean),
-    [editableFields]
+  // Fetch inbox data directly for edit mode
+  const { data: inboxData } = api.inbox.getById.useQuery(
+    { inboxId: inboxId! },
+    { enabled: isEditing && !!inboxId }
   )
 
-  // Sync field values from store
-  const { getValue } = useFieldValueSyncer({
-    recordIds,
-    resourceFieldIds,
-    columnVisibility: {},
-    enabled: isEditing && resourceFieldIds.length > 0,
-  })
+  // Fetch system field values for edit mode
+  const { values: fieldValues, isLoading: isLoadingValues } = useSystemValues(
+    recordId,
+    ['name', 'inbox_description', 'inbox_color', 'visibility'],
+    { autoFetch: true, enabled: isEditing && !!recordId }
+  )
+
+  // Save system values with optimistic updates
+  const { save: saveSystemValues, isPending: isSavingValues } = useSaveSystemValues(recordId)
 
   // Track if form has been initialized this open cycle
   const isInitialized = useRef(false)
@@ -147,46 +126,30 @@ export function InboxDialog({
       // Skip if already initialized
       if (isInitialized.current) return
 
-      // In edit mode, wait for fields to be ready
-      if (isEditing && editableFields.length === 0) return
-
-      isInitialized.current = true
-
       if (isEditing && recordId) {
-        // Edit mode: get values from field value store
-        const nameField = editableFields.find((f) => f.key === 'name')
-        const descField = editableFields.find((f) => f.key === 'description')
-        const colorField = editableFields.find((f) => f.key === 'color')
-        const visibilityField = editableFields.find((f) => f.key === 'visibility')
+        // In edit mode, wait for values to load (name is required)
+        if (isLoadingValues || fieldValues.name === undefined) return
 
-        const name = nameField?.resourceFieldId ? getValue(recordId, nameField.resourceFieldId) : ''
-        const description = descField?.resourceFieldId
-          ? getValue(recordId, descField.resourceFieldId)
-          : ''
-        const color = colorField?.resourceFieldId
-          ? getValue(recordId, colorField.resourceFieldId)
-          : '#4F46E5'
-        const visibility = visibilityField?.resourceFieldId
-          ? getValue(recordId, visibilityField.resourceFieldId)
-          : 'org_members'
+        isInitialized.current = true
 
+        const name = (fieldValues.name as string) ?? ''
+        const description = (fieldValues.inbox_description as string) ?? ''
+        const color = (fieldValues.inbox_color as string) ?? '#4F46E5'
+        const visibility = fieldValues.visibility ?? 'org_members'
         const accessType = visibility === 'org_members' ? 'anyone' : 'restricted'
 
         form.reset({
-          name: (formatToRawValue(name, 'TEXT') as string) ?? '',
-          description: (formatToRawValue(description, 'RICH_TEXT') as string) ?? '',
-          color: (formatToRawValue(color, 'TEXT') as string) ?? '#4F46E5',
+          name,
+          description,
+          color,
           accessType,
           memberGroupSelection: { memberIds: [], groupIds: [] },
         })
-        setInitial({
-          name: (formatToRawValue(name, 'TEXT') as string) ?? '',
-          description: (formatToRawValue(description, 'RICH_TEXT') as string) ?? '',
-          color: (formatToRawValue(color, 'TEXT') as string) ?? '#4F46E5',
-          accessType,
-        })
+        setInitial({ name, description, color, accessType })
       } else {
         // Create mode: reset to defaults
+        isInitialized.current = true
+
         form.reset({
           name: '',
           description: '',
@@ -205,10 +168,13 @@ export function InboxDialog({
       // Reset flag when dialog closes
       isInitialized.current = false
     }
-  }, [open, isEditing, recordId, editableFields, getValue, form, setInitial])
+  }, [open, isEditing, recordId, fieldValues, isLoadingValues, form, setInitial])
 
   // Get tRPC utils for cache invalidation
   const utils = api.useUtils()
+
+  // Confirmation dialog for delete
+  const [confirm, ConfirmDeleteDialog] = useConfirm()
 
   // Create inbox mutation
   const createInbox = api.inbox.create.useMutation({
@@ -222,20 +188,18 @@ export function InboxDialog({
     },
   })
 
-  // Update inbox mutation
-  const updateInbox = api.inbox.update.useMutation({
+  // Delete inbox mutation
+  const deleteInbox = api.inbox.delete.useMutation({
     onSuccess: () => {
       utils.inbox.getAll.invalidate()
-      utils.inbox.getById.invalidate({ inboxId: inboxId! })
       onOpenChange(false)
-      onSuccess?.({ id: inboxId!, name: form.getValues('name') })
     },
     onError: (error) => {
-      toastError({ title: 'Error updating inbox', description: error.message })
+      toastError({ title: 'Error deleting inbox', description: error.message })
     },
   })
 
-  const isPending = createInbox.isPending || updateInbox.isPending
+  const isPending = createInbox.isPending || isSavingValues || deleteInbox.isPending
 
   // Form validation
   const isValid = (form.watch('name') ?? '').trim().length > 0
@@ -245,22 +209,43 @@ export function InboxDialog({
     form.setValue('color', color)
   }
 
+  // Handle delete with confirmation
+  const handleDelete = async () => {
+    if (!inboxId) return
+
+    const confirmed = await confirm({
+      title: 'Delete inbox?',
+      description:
+        'This will permanently delete this inbox and all its settings. This action cannot be undone.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+
+    if (confirmed) {
+      deleteInbox.mutate({ inboxId })
+    }
+  }
+
   // Handle form submission
-  const handleSubmit = (data: InboxFormData) => {
+  const handleSubmit = async (data: InboxFormData) => {
     if (!isValid) return
 
     const visibility: InboxVisibility = data.accessType === 'anyone' ? 'org_members' : 'custom'
 
-    if (isEditing && inboxId) {
-      updateInbox.mutate({
-        inboxId,
-        data: {
-          name: data.name.trim(),
-          description: data.description,
-          color: data.color,
-          visibility,
-        },
+    if (isEditing && recordId) {
+      // Save field values with optimistic updates
+      const success = await saveSystemValues({
+        name: data.name.trim(),
+        inbox_description: data.description,
+        inbox_color: data.color,
+        visibility,
       })
+
+      if (success) {
+        onOpenChange(false)
+        onSuccess?.({ id: inboxId!, name: data.name })
+      }
     } else {
       createInbox.mutate({
         name: data.name.trim(),
@@ -353,24 +338,40 @@ export function InboxDialog({
                 )}
               </FieldGroup>
 
-              <DialogFooter>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={guardedClose}
-                  disabled={isPending}>
-                  Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  type="submit"
-                  loading={isPending}
-                  loadingText="Saving..."
-                  disabled={!isValid || isPending}>
-                  {isEditing ? 'Update Inbox' : 'Create Inbox'} <KbdSubmit variant="outline" size="sm" />
-                </Button>
+              <DialogFooter className="flex sm:justify-between!">
+                {isEditing ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleDelete}
+                    disabled={isPending}
+                    className="text-destructive hover:text-destructive">
+                    <Trash2 /> Delete
+                  </Button>
+                ) : (
+                  <div />
+                )}
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={guardedClose}
+                    disabled={isPending}>
+                    Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    type="submit"
+                    loading={isPending}
+                    loadingText="Saving..."
+                    disabled={!isValid || isPending}>
+                    {isEditing ? 'Update Inbox' : 'Create Inbox'}{' '}
+                    <KbdSubmit variant="outline" size="sm" />
+                  </Button>
+                </div>
               </DialogFooter>
             </form>
           </Form>
@@ -378,6 +379,7 @@ export function InboxDialog({
       </Dialog>
 
       <ConfirmDialog />
+      <ConfirmDeleteDialog />
     </>
   )
 }

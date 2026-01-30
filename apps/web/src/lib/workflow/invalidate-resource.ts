@@ -35,16 +35,9 @@ export function invalidateResource(recordId: RecordId) {
   switch (invalidationType) {
     case 'thread':
     case 'message':
-      // Invalidate specific thread
-      queryClient.invalidateQueries({
-        queryKey: getQueryKey(api.thread.getById, { threadId: entityInstanceId }, 'query'),
-      })
-      // Invalidate thread lists (will refetch with updated data)
-      queryClient.invalidateQueries({
-        queryKey: getQueryKey(api.thread.list),
-        exact: false,
-      })
-      // Invalidate counts (status may have changed)
+      // With optimistic store updates, thread lists don't need invalidation.
+      // The store is the source of truth and updates are already applied.
+      // Only invalidate getCounts (workflow may have changed status).
       queryClient.invalidateQueries({
         queryKey: getQueryKey(api.thread.getCounts),
         exact: false,
@@ -132,17 +125,9 @@ export function invalidateBatchResources(recordIds: RecordId[]) {
   switch (invalidationType) {
     case 'thread':
     case 'message':
-      // Invalidate each specific thread
-      entityInstanceIds.forEach((entityInstanceId) => {
-        queryClient.invalidateQueries({
-          queryKey: getQueryKey(api.thread.getById, { threadId: entityInstanceId }, 'query'),
-        })
-      })
-      // Invalidate list and counts ONCE
-      queryClient.invalidateQueries({
-        queryKey: getQueryKey(api.thread.list),
-        exact: false,
-      })
+      // With optimistic store updates, thread lists don't need invalidation.
+      // The store is the source of truth and updates are already applied.
+      // Only invalidate getCounts (workflow may have changed status).
       queryClient.invalidateQueries({
         queryKey: getQueryKey(api.thread.getCounts),
         exact: false,
