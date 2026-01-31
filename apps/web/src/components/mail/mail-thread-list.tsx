@@ -56,7 +56,7 @@ export function ThreadList({
   selectedThreadId,
   onLoadingChange,
 }: ThreadListProps) {
-  // Use ID-based hook with structured filters
+  // Use ID-based hook with unified condition-based filter
   const {
     threadIds,
     total,
@@ -66,13 +66,8 @@ export function ThreadList({
     hasNextPage,
     refresh,
   } = useThreadList({
-    contextType: filter.contextType,
-    contextId: filter.contextId,
-    statusSlug: filter.statusSlug,
     filter: filter.filter,
-    searchQuery: filter.searchQuery,
-    sortBy: filter.sortBy,
-    sortDirection: filter.sortDirection,
+    sort: filter.sort,
   })
 
   // Selection hooks - use new thread selection system
@@ -90,11 +85,7 @@ export function ThreadList({
   })
 
   // Reset selection when filter changes
-  useSelectionReset({
-    contextType: filter.contextType,
-    contextId: filter.contextId,
-    statusSlug: filter.statusSlug,
-  })
+  useSelectionReset(filter.filter)
 
   // Auto-animation for list changes
   const [parent] = useAutoAnimate<HTMLDivElement>()

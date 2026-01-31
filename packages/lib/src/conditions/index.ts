@@ -3,6 +3,10 @@
 // Types
 export type { Condition, ConditionGroup, ConditionValidationResult } from './types'
 
+// Condition evaluator for client-side filtering
+export { evaluateConditions } from './evaluate'
+export type { FieldResolver } from './evaluate'
+
 // Schemas
 export { conditionSchema, conditionGroupSchema, conditionGroupsSchema } from './schema'
 

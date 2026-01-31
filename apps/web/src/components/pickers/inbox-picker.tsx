@@ -36,8 +36,8 @@ export const INBOX_SELECT_ALL_VALUE = '__all__'
  * Popover-based picker for selecting inbox(es) using MultiSelectPicker.
  */
 export function InboxPicker({
-  open,
-  onOpenChange,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
   selected = [],
   onChange,
   allowMultiple = false,
@@ -48,6 +48,11 @@ export function InboxPicker({
   children,
   ...props
 }: InboxPickerProps) {
+  // Internal state for uncontrolled mode
+  const [internalOpen, setInternalOpen] = useState(false)
+  const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen
+  const setIsOpen = controlledOnOpenChange || setInternalOpen
+
   // Fetch inboxes if not provided
   const { inboxes: fetchedInboxes } = useInboxes()
   const inboxes = externalInboxes || fetchedInboxes || []
@@ -96,9 +101,9 @@ export function InboxPicker({
   // Handle single select (close popover)
   const handleSelectSingle = useCallback(
     (_value: string) => {
-      onOpenChange?.(false)
+      setIsOpen(false)
     },
-    [onOpenChange]
+    [setIsOpen]
   )
 
   // Handle create button click
@@ -113,15 +118,15 @@ export function InboxPicker({
         onChange?.([...selected.filter((id) => id !== INBOX_SELECT_ALL_VALUE), inbox.recordId])
       } else {
         onChange?.([inbox.recordId])
-        onOpenChange?.(false)
+        setIsOpen(false)
       }
     },
-    [allowMultiple, selected, onChange, onOpenChange]
+    [allowMultiple, selected, onChange, setIsOpen]
   )
 
   return (
     <>
-      <Popover open={open} onOpenChange={onOpenChange}>
+      <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>
           {children || <Button variant="outline">Select Inbox{allowMultiple ? 'es' : ''}</Button>}
         </PopoverTrigger>

@@ -8,26 +8,21 @@ import {
   createThreadSelector,
   type ThreadFilter,
 } from '../store/thread-selectors'
-import {
-  mapStatusSlugToClientFilter,
-  type ThreadClientFilter,
-  type ApiSearchFilter,
-  type ActorIdObject,
-} from '@auxx/lib/mail-query/client'
+import type { ConditionGroup } from '@auxx/lib/conditions'
 import { api } from '~/trpc/react'
 
-interface ThreadListFilter {
-  contextType: string
-  contextId?: string
-  /** Current user's ActorId for personal_inbox/personal_assigned filtering */
-  actorId?: ActorIdObject
-  statusSlug?: string
-  /** Legacy search query string (deprecated, use filter instead) */
-  searchQuery?: string
-  /** Structured API filter (preferred over searchQuery) */
-  filter?: ApiSearchFilter
-  sortBy?: 'newest' | 'oldest' | 'sender' | 'subject'
-  sortDirection?: 'asc' | 'desc'
+/** Sort descriptor for thread lists */
+interface ThreadSortDescriptor {
+  field: 'lastMessageAt' | 'subject' | 'sender'
+  direction: 'asc' | 'desc'
+}
+
+/** Input for useThreadList hook - unified condition-based filtering */
+interface UseThreadListInput {
+  /** Condition-based filter (ConditionGroup[]) */
+  filter: ConditionGroup[]
+  /** Sort options */
+  sort?: ThreadSortDescriptor
 }
 
 interface UseThreadListResult {
@@ -50,105 +45,31 @@ interface UseThreadListResult {
 }
 
 /**
- * Map sortBy option to ThreadSort.
- */
-function mapSortOption(sortBy?: string, sortDirection?: string): ThreadSort {
-  const direction = (sortDirection === 'asc' ? 'asc' : 'desc') as 'asc' | 'desc'
-
-  switch (sortBy) {
-    case 'oldest':
-      return { field: 'lastMessageAt', direction: 'asc' }
-    case 'newest':
-      return { field: 'lastMessageAt', direction: 'desc' }
-    case 'subject':
-      return { field: 'subject', direction }
-    default:
-      return { field: 'lastMessageAt', direction: 'desc' }
-  }
-}
-
-/**
  * Hook to get thread list by filter.
  *
- * Uses hybrid approach:
- * 1. Server fetches thread IDs for the context (pagination, search)
- * 2. Client derives filtered view from loaded threads
- * 3. Optimistic updates just modify thread properties - views update automatically
+ * Uses unified condition-based filtering:
+ * 1. Filter is a ConditionGroup[] combining context + search conditions
+ * 2. Server fetches thread IDs using condition-query-builder
+ * 3. Client fetches thread metadata and stores in thread store
  *
  * @example
  * const { threads, threadIds, isLoading, fetchNextPage } = useThreadList({
- *   contextType: 'personal_inbox',
- *   statusSlug: 'open'
+ *   filter: buildConditionGroups({ contextType: 'personal_inbox', statusSlug: 'open' }),
+ *   sort: { field: 'lastMessageAt', direction: 'desc' }
  * })
- *
- * return threads.map(thread => <ThreadItem key={thread.id} thread={thread} />)
  */
-export function useThreadList(filter: ThreadListFilter): UseThreadListResult {
-  const contextKey = useMemo(() => createContextKey(filter), [filter])
+export function useThreadList({ filter, sort }: UseThreadListInput): UseThreadListResult {
+  // Create a stable context key from the filter for caching
+  const contextKey = useMemo(() => JSON.stringify({ filter, sort }), [filter, sort])
 
   // Store selectors
   const contextPagination = useThreadStore((s) => s.loadedContexts.get(contextKey))
   const setContextLoaded = useThreadStore((s) => s.setContextLoaded)
   const invalidateContext = useThreadStore((s) => s.invalidateContext)
   const requestThread = useThreadStore((s) => s.requestThread)
+  const getThread = useThreadStore((s) => s.threads)
 
-  // Build client-side filter for derived view using shared utility
-  // This mirrors server-side behavior for consistent optimistic updates
-  const clientFilter = useMemo((): ThreadClientFilter => {
-    // If user explicitly set status in search conditions (filter.filter.is), use that (override)
-    // Otherwise use URL-based statusSlug as default constraint
-    // This mirrors the server-side logic in thread.ts:370-378
-    const statusSource = filter.filter?.is?.[0] ?? filter.statusSlug
-    const slugFilter = mapStatusSlugToClientFilter(statusSource)
-
-    const f: ThreadClientFilter = { ...slugFilter }
-
-    // Inbox filter for specific_inbox context
-    if (filter.contextType === 'specific_inbox' && filter.contextId) {
-      f.inboxId = filter.contextId
-    }
-
-    // Assignee filter for personal contexts (mirrors backend mail-query-builder.ts:282-286)
-    if (
-      (filter.contextType === 'personal_inbox' || filter.contextType === 'personal_assigned') &&
-      filter.actorId
-    ) {
-      f.assigneeId = filter.actorId
-    }
-
-    return f
-  }, [filter.contextType, filter.contextId, filter.statusSlug, filter.filter?.is, filter.actorId])
-
-  const sortOption = useMemo(
-    () => mapSortOption(filter.sortBy, filter.sortDirection),
-    [filter.sortBy, filter.sortDirection]
-  )
-
-  // Create selector for this filter - memoized to prevent recreation
-  const threadSelector = useMemo(
-    () => createThreadSelector(clientFilter, sortOption),
-    [clientFilter, sortOption]
-  )
-
-  // Subscribe to derived thread list
-  // useShallow prevents re-renders when array contents are identical
-  // (immer creates new Map references on any thread update)
-  const threads = useThreadStore(useShallow(threadSelector))
-
-  // Build API filter - prefer structured filter, fall back to legacy searchQuery
-  const apiFilter = useMemo((): ApiSearchFilter | undefined => {
-    // If structured filter is provided, use it
-    if (filter.filter) {
-      return filter.filter
-    }
-    // Fall back to legacy search query string
-    if (filter.searchQuery) {
-      return { search: filter.searchQuery }
-    }
-    return undefined
-  }, [filter.filter, filter.searchQuery])
-
-  // Fetch IDs via tRPC infinite query
+  // Fetch IDs via tRPC infinite query with unified condition-based filter
   const {
     data,
     isLoading,
@@ -157,25 +78,23 @@ export function useThreadList(filter: ThreadListFilter): UseThreadListResult {
     fetchNextPage: fetchMore,
     refetch,
   } = api.thread.listIds.useInfiniteQuery(
-    {
-      contextType: filter.contextType as any,
-      contextId: filter.contextId,
-      statusSlug: filter.statusSlug,
-      sortBy: filter.sortBy,
-      sortDirection: filter.sortDirection,
-      filter: apiFilter,
-    },
+    { filter, sort },
     {
       getNextPageParam: (lastPage) => lastPage.nextCursor,
       staleTime: 30_000,
     }
   )
 
+  // Get all thread IDs from paginated data
+  const threadIds = useMemo(() => {
+    if (!data?.pages) return []
+    return data.pages.flatMap((p) => p.ids)
+  }, [data?.pages])
+
   // Sync fetched data to store and queue metadata fetches
   useEffect(() => {
     if (!data?.pages) return
 
-    const allIds = data.pages.flatMap((p) => p.ids)
     const total = data.pages[0]?.total ?? 0
     const lastPage = data.pages[data.pages.length - 1]
     const hasMore = !!lastPage?.nextCursor
@@ -184,10 +103,19 @@ export function useThreadList(filter: ThreadListFilter): UseThreadListResult {
     setContextLoaded(contextKey, lastPage?.nextCursor ?? null, hasMore, total)
 
     // Queue metadata fetch for uncached threads
-    for (const id of allIds) {
+    for (const id of threadIds) {
       requestThread(id)
     }
-  }, [data, contextKey, setContextLoaded, requestThread])
+  }, [data, contextKey, setContextLoaded, requestThread, threadIds])
+
+  // Get thread metadata from store for the IDs we have
+  // Note: Client-side filtering is now done by each MailThreadItem for efficiency
+  const threads = useMemo(() => {
+    const threadMap = getThread
+    return threadIds
+      .map((id) => threadMap.get(id))
+      .filter((t): t is ThreadMeta => t !== undefined)
+  }, [threadIds, getThread])
 
   // Refresh handler - invalidate context and refetch
   const refresh = useCallback(() => {
@@ -201,9 +129,6 @@ export function useThreadList(filter: ThreadListFilter): UseThreadListResult {
       fetchMore()
     }
   }, [fetchMore, isFetchingNextPage, queryHasNextPage, contextPagination])
-
-  // Derive thread IDs from threads for backward compatibility
-  const threadIds = useMemo(() => threads.map((t) => t.id), [threads])
 
   return {
     threadIds,

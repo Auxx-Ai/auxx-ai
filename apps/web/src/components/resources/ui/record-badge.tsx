@@ -45,7 +45,7 @@ export const recordBadgeVariants = cva(
  */
 interface RecordBadgeProps extends VariantProps<typeof recordBadgeVariants> {
   /** RecordId in format "entityDefinitionId:entityInstanceId" - optional, shows loading when undefined */
-  recordId?: RecordId
+  recordId?: RecordId | null
   /** Whether to show icon/avatar (default: true) */
   showIcon?: boolean
   /** Additional CSS classes */
@@ -93,7 +93,11 @@ export function RecordBadge({
   ...props
 }: RecordBadgeProps) {
   // Fetch record data (displayName, avatarUrl)
-  const { record, isLoading: isLoadingRecord, isNotFound } = useRecord({ recordId, enabled: !!recordId })
+  const {
+    record,
+    isLoading: isLoadingRecord,
+    isNotFound,
+  } = useRecord({ recordId, enabled: !!recordId })
 
   // Extract entityDefinitionId from recordId
   const entityDefinitionId = recordId ? getDefinitionId(recordId) : undefined

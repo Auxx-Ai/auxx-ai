@@ -15,6 +15,13 @@ export {
   hasActiveConditions,
 } from './search-filters'
 
+// Context to conditions converter
+export {
+  buildContextConditions,
+  buildConditionGroups,
+  type ContextConditionParams,
+} from './context-to-conditions'
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Thread Client Filter Types and Utilities
 // ═══════════════════════════════════════════════════════════════════════════

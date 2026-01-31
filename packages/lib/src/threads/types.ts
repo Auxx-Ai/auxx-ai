@@ -1,9 +1,8 @@
 // packages/lib/src/threads/types.ts
 
-import { InternalFilterContextType } from '../mail-query/types'
-import { UrlBasedStatusFilter } from '../mail-query/filter-types'
 import type { ActorId } from '@auxx/types/actor'
 import type { RecordId } from '@auxx/types/resource'
+import type { ConditionGroup } from '../conditions/types'
 
 /** Allowed fields that can be used when sorting thread lists. */
 export type ThreadSortField = 'lastMessageAt' | 'subject' | 'sender'
@@ -67,12 +66,13 @@ export interface ListThreadsInput {
 
 /** Input for listing thread IDs with pagination. */
 export interface ListThreadIdsInput {
-  context: ListThreadsInput['context']
-  userId?: string
-  statusFilter?: UrlBasedStatusFilter
-  filter?: ThreadFilter
+  /** Condition-based filter (ConditionGroup[]) */
+  filter: ConditionGroup[]
+  /** Sort options */
   sort?: ThreadSortDescriptor
+  /** Pagination cursor */
   cursor?: string
+  /** Page size (max 100) */
   limit?: number
 }
 

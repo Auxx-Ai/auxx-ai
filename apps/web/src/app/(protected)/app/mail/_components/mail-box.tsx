@@ -67,7 +67,8 @@ import { ContactDrawer } from '~/components/contacts/drawer/contact-drawer'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
 // import { MailFilterProvider } from '~/context/mail-filter-context' // Import the provider
-import { useSearchFiltersForQuery } from '~/components/mail/searchbar/hooks/use-search-filters'
+import { useSearchConditions } from '~/components/mail/searchbar/hooks/use-search-filters'
+import { buildConditionGroups } from '@auxx/lib/mail-query/client'
 
 /**
  * Props for the Mailbox component.
@@ -187,8 +188,8 @@ function MailboxInner({
   // Deferred version of the search query to avoid blocking UI updates during typing
   const deferredSearchQuery = useDeferredValue(searchQuery)
 
-  // Get structured filters from search store (preferred over searchQuery)
-  const storeApiFilter = useSearchFiltersForQuery()
+  // Get search conditions from store for condition-based filtering
+  const searchConditions = useSearchConditions()
 
   // State for the currently selected thread ID, derived from URL search parameter 'thread'
   const selectedThreadId = searchParams?.get('selected')
@@ -211,6 +212,22 @@ function MailboxInner({
   const displayTabs = getDisplayTabsForContext(contextType)
   const breadcrumbTitle = getBreadcrumbTitleForContext(contextType)
 
+  // Build the unified filter using condition groups
+  // Combines context (from URL) with search conditions (from searchbar store)
+  const filterConditions = useMemo(
+    () =>
+      buildConditionGroups(
+        {
+          contextType,
+          contextId,
+          statusSlug: activeStatusSlug === 'all' ? undefined : activeStatusSlug,
+          userId,
+        },
+        searchConditions
+      ),
+    [contextType, contextId, activeStatusSlug, userId, searchConditions]
+  )
+
   getMailboxContextType(pathname)
   const mailFilterContextValue = useMemo(
     () => ({
@@ -222,6 +239,7 @@ function MailboxInner({
       viewMode, // Add view mode state
       sortBy, // Add sort option state
       sortDirection, // Add sort direction state
+      filterConditions, // Pre-built conditions for client-side filtering
       setViewMode, // Add view mode setter
       setSortBy, // Add sort option setter
       setSortDirection, // Add sort direction setter
@@ -235,31 +253,40 @@ function MailboxInner({
       viewMode,
       sortBy,
       sortDirection,
+      filterConditions,
       setViewMode,
       setSortBy,
       setSortDirection,
     ]
   )
 
-  // Construct the filter object passed to the useThreadList hook
-  // Uses structured filters from the store (preferred) or falls back to deferred search query
+  // Helper to map UI sort options to sort field names
+  const mapSortByToField = (
+    sortBy: string
+  ): 'lastMessageAt' | 'subject' | 'sender' => {
+    switch (sortBy) {
+      case 'newest':
+      case 'oldest':
+        return 'lastMessageAt'
+      case 'subject':
+        return 'subject'
+      case 'sender':
+        return 'sender'
+      default:
+        return 'lastMessageAt'
+    }
+  }
+
+  // Build the thread filter input using pre-built conditions
   const threadFilterForHook: ThreadsFilterInput = useMemo(
     () => ({
-      contextType: contextType,
-      contextId: contextId,
-      // Pass current user's ActorId for client-side filtering in personal contexts
-      actorId: userId ? { type: 'user' as const, id: userId } : undefined,
-      // Always pass URL-based statusSlug as default constraint
-      // Server/client will use filter.is if user explicitly adds status condition (override)
-      statusSlug: activeStatusSlug === 'all' ? undefined : activeStatusSlug,
-      // Prefer store API filter, fall back to legacy search query
-      filter: storeApiFilter,
-      searchQuery: !storeApiFilter ? deferredSearchQuery || undefined : undefined,
-      // Include sorting parameters
-      sortBy: sortBy,
-      sortDirection: sortDirection,
+      filter: filterConditions,
+      sort: {
+        field: mapSortByToField(sortBy),
+        direction: sortDirection,
+      },
     }),
-    [contextType, contextId, userId, activeStatusSlug, storeApiFilter, deferredSearchQuery, sortBy, sortDirection]
+    [filterConditions, sortBy, sortDirection]
   )
 
   // Calculate the base path for constructing links within the ThreadList using utility

@@ -7,6 +7,8 @@ import DOMPurify from 'dompurify'
 import { useDraggable } from '@dnd-kit/core'
 import { useMailFilter } from './mail-filter-context'
 import { MoreVertical, Archive, Trash2, MailWarning } from 'lucide-react'
+import { evaluateConditions } from '@auxx/lib/conditions'
+import { threadFieldResolver } from '~/components/threads/utils/thread-field-resolver'
 
 import { cn } from '@auxx/ui/lib/utils'
 import { Checkbox } from '@auxx/ui/components/checkbox'
@@ -109,8 +111,7 @@ export function MailThreadItem({
   handleThreadClick,
 }: MailThreadItemProps) {
   // --- Get filter context ---
-  const { selectedThreadIds, contextType, contextId, statusSlug, searchQuery, viewMode } =
-    useMailFilter()
+  const { selectedThreadIds, viewMode, filterConditions } = useMailFilter()
 
   // --- NEW: Use ID-based hooks ---
   const { thread, isLoading: isThreadLoading } = useThread({ threadId })
@@ -120,15 +121,22 @@ export function MailThreadItem({
   })
   const { isUnread, markAsRead } = useThreadReadStatus(threadId)
 
-  // Draft status is now embedded in ThreadMeta
-  const hasDraft = (thread?.draftIds?.length ?? 0) > 0
-
   // --- Selection store actions ---
   const toggleSelection = useThreadSelectionStore((s) => s.toggleSelection)
   const setActiveThread = useThreadSelectionStore((s) => s.setActiveThread)
 
   // --- Thread mutations using new unified hook ---
   const { update, isUpdating } = useThreadMutation()
+
+  // --- Client-side filtering for optimistic updates ---
+  // Evaluate if this thread matches the current filter conditions
+  const matchesFilter = useMemo(() => {
+    if (!thread) return true // Show loading state
+    return evaluateConditions(thread, filterConditions, threadFieldResolver)
+  }, [thread, filterConditions])
+
+  // Draft status is now embedded in ThreadMeta
+  const hasDraft = (thread?.draftIds?.length ?? 0) > 0
 
   // --- Selection state ---
   const isMultiSelected = useMemo(
@@ -194,6 +202,12 @@ export function MailThreadItem({
   // --- Loading state ---
   if (isThreadLoading || !thread) {
     return <ThreadItemSkeleton />
+  }
+
+  // --- Client-side filter check (for optimistic updates) ---
+  // Thread was loaded but doesn't match current filter (e.g., just archived)
+  if (!matchesFilter) {
+    return null
   }
 
   return (

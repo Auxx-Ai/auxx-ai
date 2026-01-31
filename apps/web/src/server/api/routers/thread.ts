@@ -14,6 +14,7 @@ import {
   type ThreadSortDescriptor,
   type ListThreadIdsInput,
 } from '@auxx/lib/threads'
+import { conditionGroupsSchema } from '@auxx/lib/conditions'
 import { ProviderRegistryService } from '@auxx/lib/providers'
 import { MessageSenderService } from '@auxx/lib/messages'
 import { InternalFilterContextType, mapUrlSlugToStatusFilter } from '@auxx/lib/types' // Import context enum
@@ -118,123 +119,33 @@ export const threadRouter = createTRPCRouter({
   /**
    * Returns only thread IDs with pagination info.
    * Frontend calls getByIds to batch-fetch metadata separately.
+   *
+   * Uses unified condition-based filtering - filter is a ConditionGroup[].
    */
   listIds: protectedProcedure
     .input(
       z.object({
-        contextType: z.enum([
-          'personal_assigned',
-          'personal_inbox',
-          'drafts',
-          'sent',
-          'tag',
-          'view',
-          'all_inboxes',
-          'all',
-          'specific_inbox',
-        ]),
-        contextId: z.string().optional(),
-        statusSlug: z.string().optional(), // e.g., "open", "done", "assigned", "unassigned"
-        filter: z
+        /** Condition-based filter (ConditionGroup[]) */
+        filter: conditionGroupsSchema,
+        /** Sort options */
+        sort: z
           .object({
-            // Free text search
-            search: z.string().optional(),
-            // Participant filters
-            from: z.array(z.string()).optional(),
-            to: z.array(z.string()).optional(),
-            // Entity ID filters
-            tagIds: z.array(z.string()).optional(),
-            assigneeIds: z.array(z.string()).optional(),
-            inboxIds: z.array(z.string()).optional(),
-            // Text field filters
-            subject: z.string().optional(),
-            body: z.string().optional(),
-            // Status filters (read, unread, starred, etc.)
-            is: z.array(z.string()).optional(),
-            // Property filters
-            hasAttachments: z.boolean().optional(),
-            isUnread: z.boolean().optional(), // Legacy compat
-            // Date filters (ISO string format)
-            before: z.string().optional(),
-            after: z.string().optional(),
+            field: z.enum(['lastMessageAt', 'subject', 'sender']),
+            direction: z.enum(['asc', 'desc']),
           })
           .optional(),
-        sortBy: z.enum(['newest', 'oldest', 'sender', 'subject']).optional(),
-        sortDirection: z.enum(['asc', 'desc']).optional(),
+        /** Pagination cursor */
         cursor: z.string().optional(),
+        /** Page size (max 100) */
         limit: z.number().min(1).max(100).default(50),
       })
     )
     .query(async ({ ctx, input }) => {
       const { threadQuery, organizationId, userId } = getServiceDependencies(ctx)
 
-      // Map context type to internal enum
-      const internalContextType =
-        InternalFilterContextType[
-          input.contextType.toUpperCase() as keyof typeof InternalFilterContextType
-        ]
-      if (!internalContextType) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: `Invalid context type provided: ${input.contextType}`,
-        })
-      }
-
-      // Build context for service
-      let context: ListThreadIdsInput['context']
-      const requiresContextId = [
-        InternalFilterContextType.TAG,
-        InternalFilterContextType.VIEW,
-        InternalFilterContextType.SPECIFIC_INBOX,
-      ].includes(internalContextType)
-
-      if (requiresContextId) {
-        if (!input.contextId) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: `contextId is required for context type '${input.contextType}'`,
-          })
-        }
-        context = { type: internalContextType, id: input.contextId }
-      } else {
-        context = { type: internalContextType } as ListThreadIdsInput['context']
-      }
-
-      // Map sort options
-      const resolveSortDescriptor = (
-        sortBy?: string,
-        sortDirection?: string
-      ): ThreadSortDescriptor | undefined => {
-        switch (sortBy) {
-          case 'newest':
-            return { field: 'lastMessageAt', direction: 'desc' }
-          case 'oldest':
-            return { field: 'lastMessageAt', direction: 'asc' }
-          case 'subject':
-            return { field: 'subject', direction: sortDirection === 'desc' ? 'desc' : 'asc' }
-          case 'sender':
-            return { field: 'sender', direction: sortDirection === 'desc' ? 'desc' : 'asc' }
-          default:
-            return undefined
-        }
-      }
-
-      // Map status to internal filter
-      // Prefer filter.is (from searchbar conditions) over statusSlug (from URL)
-      let statusFilter: ReturnType<typeof mapUrlSlugToStatusFilter> | undefined
-      if (input.filter?.is && input.filter.is.length > 0) {
-        // Convert filter.is values to statusFilter (e.g., 'unassigned' -> { hasAssignee: false, status: 'OPEN' })
-        statusFilter = mapUrlSlugToStatusFilter(input.filter.is[0])
-      } else if (input.statusSlug) {
-        statusFilter = mapUrlSlugToStatusFilter(input.statusSlug)
-      }
-
       const serviceInput: ListThreadIdsInput = {
-        context,
-        userId,
-        statusFilter,
         filter: input.filter,
-        sort: resolveSortDescriptor(input.sortBy, input.sortDirection),
+        sort: input.sort,
         cursor: input.cursor,
         limit: input.limit,
       }

@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useMemo, ReactNode } from 'react'
 
 import type { Active } from '@dnd-kit/core' // Import Active type
+import type { ConditionGroup } from '@auxx/lib/conditions'
 
 // Types for view mode and sorting
 export type ViewMode = 'view' | 'edit'
@@ -30,6 +31,9 @@ interface MailFilterState {
   sortBy: SortOption
   /** Current sort direction */
   sortDirection: SortDirection
+
+  /** Pre-built filter conditions for client-side filtering (optimistic updates) */
+  filterConditions: ConditionGroup[]
   // activeDragItem: Active | null
 }
 
@@ -76,6 +80,7 @@ export function MailFilterProvider({ children, value }: MailFilterProviderProps)
       value.viewMode,
       value.sortBy,
       value.sortDirection,
+      value.filterConditions,
       value.setViewMode,
       value.setSortBy,
       value.setSortDirection,

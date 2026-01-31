@@ -16,6 +16,7 @@ import {
   type Column,
 } from 'drizzle-orm'
 import { MailQueryBuilder, type MailQueryInput } from '../mail-query/mail-query-builder'
+import { buildConditionGroupsQuery } from '../mail-query/condition-query-builder'
 import { InternalFilterContextType } from '../mail-query/types'
 import { MailViewService } from '../mail-views/mail-view-service'
 import { createScopedLogger } from '@auxx/logger'
@@ -388,51 +389,30 @@ export class ThreadQueryService {
   /**
    * Returns only thread IDs with pagination info.
    * The frontend will then batch-fetch metadata separately via getThreadMetaBatch.
+   *
+   * Uses unified condition-based filtering - filter is a ConditionGroup[].
    */
   async listThreadIds(input: ListThreadIdsInput): Promise<PaginatedIdsResult> {
-    const { context, userId, statusFilter, filter, sort, cursor, limit = 50 } = input
+    const { filter, sort, cursor, limit = 50 } = input
     const effectiveLimit = Math.min(limit, 100)
 
     logger.info('Listing thread IDs', {
       organizationId: this.organizationId,
-      contextType: context.type,
-      statusFilter,
+      conditionGroups: filter.length,
+      totalConditions: filter.reduce((sum, g) => sum + g.conditions.length, 0),
       limit: effectiveLimit,
       hasCursor: Boolean(cursor),
     })
 
-    // Build query input for MailQueryBuilder
-    const queryBuilderInput: MailQueryInput = {
-      organizationId: this.organizationId,
-      userId,
-      contextType: context.type,
-      contextId: 'id' in context ? context.id : undefined,
-      statusFilter,
-      searchQuery: filter?.search,
-    }
-
-    if (filter?.search) {
-      const parsedSearch = parseSearchQuery(filter.search)
-      queryBuilderInput.parsedSearch = parsedSearch
-    }
-
-    // Handle MailView context to get filters
-    if (context.type === InternalFilterContextType.VIEW && 'id' in context) {
-      const mailView = await this.mailViewService.getMailView(context.id)
-      if (mailView?.filters) {
-        queryBuilderInput.mailViewFilter = mailView.filters as unknown as MailViewFilter
-      }
-    }
-
-    const queryBuilder = new MailQueryBuilder(queryBuilderInput)
-    const mailQueryWhere = queryBuilder.buildWhereCondition()
+    // Build WHERE clause from condition groups
+    const whereCondition = buildConditionGroupsQuery(filter, this.organizationId)
 
     const resolvedSort = this.resolveSortDescriptor(sort)
     const orderByExpressions = this.createOrderByFromDescriptor(resolvedSort)
 
     // Use existing getThreadIds logic to get IDs
     const { orderedThreadIds, nextCursor } = await this.getThreadIdsInternal(
-      mailQueryWhere,
+      whereCondition,
       { limit: effectiveLimit, cursor },
       { orderBy: orderByExpressions, sort: resolvedSort }
     )
@@ -443,7 +423,7 @@ export class ThreadQueryService {
       const countResult = await this.db
         .select({ count: count() })
         .from(schema.Thread)
-        .where(mailQueryWhere)
+        .where(whereCondition)
       total = countResult[0]?.count ?? 0
     } catch (error) {
       logger.warn('Failed to get total count for listThreadIds', {

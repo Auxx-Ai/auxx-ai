@@ -104,6 +104,10 @@ function buildConditionQuery(condition: Condition, organizationId: string): SQL<
         return buildHasAttachmentsQuery(op, value)
       case 'freeText':
         return buildFreeTextQuery(op, value)
+      case 'hasDraft':
+        return buildHasDraftQuery(op, value)
+      case 'sent':
+        return buildSentQuery(op, value)
       default:
         logger.warn(`Unknown fieldId: ${fieldId}`)
         return null
@@ -182,42 +186,30 @@ function buildAssigneeQuery(operator: Operator, value: any): SQL<unknown> | null
 
 /**
  * Build inbox condition query.
- * Filters through InboxIntegration join.
+ * Uses the direct Thread.inboxId column (denormalized from InboxIntegration).
  */
 function buildInboxQuery(operator: Operator, value: any): SQL<unknown> | null {
   const inboxIds = Array.isArray(value) ? value : [value]
 
   switch (operator) {
     case 'empty':
-      return not(exists(
-        db.select({ id: sql`1` }).from(schema.InboxIntegration)
-          .where(eq(schema.InboxIntegration.integrationId, Thread.integrationId))
-      ))
+      return isNull(Thread.inboxId)
     case 'not empty':
-      return exists(
-        db.select({ id: sql`1` }).from(schema.InboxIntegration)
-          .where(eq(schema.InboxIntegration.integrationId, Thread.integrationId))
-      )
-    case 'in':
+      return isNotNull(Thread.inboxId)
     case 'is':
       if (inboxIds.length === 0) return null
-      return exists(
-        db.select({ id: sql`1` }).from(schema.InboxIntegration)
-          .where(and(
-            eq(schema.InboxIntegration.integrationId, Thread.integrationId),
-            inArray(schema.InboxIntegration.inboxId, inboxIds)
-          ))
-      )
-    case 'not in':
+      if (inboxIds.length === 1) return eq(Thread.inboxId, inboxIds[0])
+      return inArray(Thread.inboxId, inboxIds)
+    case 'in':
+      if (inboxIds.length === 0) return null
+      return inArray(Thread.inboxId, inboxIds)
     case 'is not':
       if (inboxIds.length === 0) return null
-      return not(exists(
-        db.select({ id: sql`1` }).from(schema.InboxIntegration)
-          .where(and(
-            eq(schema.InboxIntegration.integrationId, Thread.integrationId),
-            inArray(schema.InboxIntegration.inboxId, inboxIds)
-          ))
-      ))
+      if (inboxIds.length === 1) return not(eq(Thread.inboxId, inboxIds[0]))
+      return not(inArray(Thread.inboxId, inboxIds))
+    case 'not in':
+      if (inboxIds.length === 0) return null
+      return not(inArray(Thread.inboxId, inboxIds))
     default:
       return null
   }
@@ -231,6 +223,8 @@ function buildStatusQuery(operator: Operator, value: any): SQL<unknown> | null {
   // Map user-facing status values to database conditions
   const getStatusCondition = (statusValue: string): SQL<unknown> | null => {
     switch (statusValue) {
+      case 'open':
+        return eq(Thread.status, 'OPEN')
       case 'unassigned':
         return and(isNull(Thread.assigneeId), eq(Thread.status, 'OPEN'))!
       case 'assigned':
@@ -238,12 +232,33 @@ function buildStatusQuery(operator: Operator, value: any): SQL<unknown> | null {
       case 'done':
         return eq(Thread.status, 'ARCHIVED')
       case 'trash':
+      case 'TRASH':
         return eq(Thread.status, 'TRASH')
       case 'spam':
+      case 'SPAM':
         return eq(Thread.status, 'SPAM')
       default:
         return null
     }
+  }
+
+  // Handle 'not in' operator with array of status values (e.g., ['TRASH', 'SPAM'])
+  if (operator === 'not in' && Array.isArray(value)) {
+    const conditions = value
+      .map((v) => getStatusCondition(v))
+      .filter(Boolean) as SQL<unknown>[]
+    if (conditions.length === 0) return null
+    // NOT (status = TRASH OR status = SPAM) => status NOT IN (TRASH, SPAM)
+    return not(or(...conditions)!)
+  }
+
+  // Handle 'in' operator with array of status values
+  if (operator === 'in' && Array.isArray(value)) {
+    const conditions = value
+      .map((v) => getStatusCondition(v))
+      .filter(Boolean) as SQL<unknown>[]
+    if (conditions.length === 0) return null
+    return or(...conditions)
   }
 
   const condition = getStatusCondition(value)
@@ -585,4 +600,53 @@ function buildFreeTextQuery(operator: Operator, value: any): SQL<unknown> | null
         ))
     )
   )
+}
+
+/**
+ * Build hasDraft condition query.
+ * Filters threads that have at least one draft message.
+ */
+function buildHasDraftQuery(operator: Operator, value: any): SQL<unknown> | null {
+  const { Draft } = schema
+  const hasDraft = value === true || value === 'true'
+
+  if (hasDraft) {
+    return exists(
+      db.select({ id: sql`1` }).from(Draft)
+        .where(eq(Draft.threadId, Thread.id))
+    )
+  } else {
+    return not(exists(
+      db.select({ id: sql`1` }).from(Draft)
+        .where(eq(Draft.threadId, Thread.id))
+    ))
+  }
+}
+
+/**
+ * Build sent condition query.
+ * Filters threads where at least one message was sent by an internal user (outbound).
+ */
+function buildSentQuery(operator: Operator, value: any): SQL<unknown> | null {
+  const { Message } = schema
+  const isSent = value === true || value === 'true'
+
+  // Sent messages have direction = 'OUTBOUND'
+  if (isSent) {
+    return exists(
+      db.select({ id: sql`1` }).from(Message)
+        .where(and(
+          eq(Message.threadId, Thread.id),
+          eq(Message.direction, 'OUTBOUND')
+        ))
+    )
+  } else {
+    return not(exists(
+      db.select({ id: sql`1` }).from(Message)
+        .where(and(
+          eq(Message.threadId, Thread.id),
+          eq(Message.direction, 'OUTBOUND')
+        ))
+    ))
+  }
 }
