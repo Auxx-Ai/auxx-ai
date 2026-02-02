@@ -15,12 +15,10 @@ import {
   type SQL,
   type Column,
 } from 'drizzle-orm'
-import { MailQueryBuilder, type MailQueryInput } from '../mail-query/mail-query-builder'
 import { buildConditionGroupsQuery } from '../mail-query/condition-query-builder'
 import { InternalFilterContextType } from '../mail-query/types'
 import { MailViewService } from '../mail-views/mail-view-service'
 import { createScopedLogger } from '@auxx/logger'
-import { type MailViewFilter } from '../mail-query/types'
 import { parseSearchQuery } from '../mail-query/search-query-parser'
 import { toActorId } from '@auxx/types/actor'
 import { toRecordId } from '@auxx/types/resource'

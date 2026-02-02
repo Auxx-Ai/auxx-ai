@@ -16,14 +16,8 @@ export {
   filterThreads,
 } from './client'
 
-// Structured search filters for the new searchbar architecture
-export {
-  type FilterRef,
-  type SearchFilters,
-  type ApiSearchFilter,
-  hasActiveFilters,
-  filtersToApiFilter,
-} from './search-filters'
+// Search condition types
+export { type FilterRef, type SearchCondition } from './search-filters'
 
 // Context to conditions converter (frontend-safe)
 export {

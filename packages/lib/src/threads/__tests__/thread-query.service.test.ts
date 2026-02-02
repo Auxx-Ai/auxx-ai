@@ -45,12 +45,6 @@ vi.mock('../../mail-views/mail-view-service', () => ({
   }))
 }))
 
-vi.mock('../../mail-query/mail-query-builder', () => ({
-  MailQueryBuilder: vi.fn().mockImplementation(() => ({
-    buildWhereCondition: vi.fn().mockReturnValue({})
-  }))
-}))
-
 vi.mock('@auxx/database/enums', () => ({}))
 
 // Mock database instance

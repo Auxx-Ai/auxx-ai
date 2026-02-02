@@ -3,17 +3,8 @@
 export { SearchOperator, IsOperatorValue, parseSearchQuery, type SearchToken } from './search-query-parser'
 import { getInstanceId, isRecordId, type RecordId } from '@auxx/types/resource'
 
-// Structured search filters for the searchbar
-export {
-  type FilterRef,
-  type SearchFilters,
-  type ApiSearchFilter,
-  type SearchCondition,
-  hasActiveFilters,
-  filtersToApiFilter,
-  conditionsToApiFilter,
-  hasActiveConditions,
-} from './search-filters'
+// Search condition types
+export { type FilterRef, type SearchCondition } from './search-filters'
 
 // Context to conditions converter
 export {
@@ -76,13 +67,12 @@ export interface ThreadClientFilter {
 /**
  * Maps URL status slugs to client-side filter criteria.
  *
- * This function mirrors the server-side `buildStatusCondition()` in
- * mail-query-builder.ts (lines 425-485) to ensure client optimistic
+ * This function mirrors server-side condition building to ensure client optimistic
  * updates match server query behavior.
  *
- * Key behavior (from server):
- * - 'assigned' and 'unassigned' include `status: OPEN` (lines 447-453)
- * - 'drafts' and 'sent' are context-based, not status-based (lines 464-468)
+ * Key behavior:
+ * - 'assigned' and 'unassigned' include `status: OPEN`
+ * - 'drafts' and 'sent' are context-based, not status-based
  *
  * @param slug - URL status slug (e.g., 'open', 'done', 'assigned')
  * @returns Partial filter to merge with context filters
@@ -115,7 +105,6 @@ export function mapStatusSlugToClientFilter(slug?: string): Partial<ThreadClient
 
     // ─────────────────────────────────────────────────────────────────
     // Assignment filters (combined with OPEN status)
-    // Mirrors server: lines 447-453 in mail-query-builder.ts
     // ─────────────────────────────────────────────────────────────────
     case 'assigned':
       return { hasAssignee: true, status: 'OPEN' }

@@ -6,6 +6,8 @@ import {
   useState,
   useMemo,
   useLayoutEffect,
+  useEffect,
+  useCallback,
   Children,
   isValidElement,
   type ReactNode,
@@ -114,8 +116,8 @@ export function OverflowRow({
     [children]
   )
 
-  // Measure widths after render
-  useLayoutEffect(() => {
+  /** Measure widths from the measurement containers */
+  const measureWidths = useCallback(() => {
     const fullContainer = fullMeasureRef.current
     const collapsedContainer = collapsedMeasureRef.current
 
@@ -123,16 +125,55 @@ export function OverflowRow({
       const widths = Array.from(fullContainer.children).map(
         (el) => (el as HTMLElement).offsetWidth
       )
-      setFullWidths(widths)
+      console.log('[OverflowRow] measureWidths - fullWidths:', widths)
+      setFullWidths((prev) => {
+        // Only update if widths actually changed
+        if (prev.length !== widths.length || prev.some((w, i) => w !== widths[i])) {
+          console.log('[OverflowRow] fullWidths changed:', prev, '->', widths)
+          return widths
+        }
+        return prev
+      })
     }
 
     if (collapsedContainer) {
       const widths = Array.from(collapsedContainer.children).map(
         (el) => (el as HTMLElement).offsetWidth
       )
-      setCollapsedWidths(widths)
+      setCollapsedWidths((prev) => {
+        if (prev.length !== widths.length || prev.some((w, i) => w !== widths[i])) {
+          console.log('[OverflowRow] collapsedWidths changed:', prev, '->', widths)
+          return widths
+        }
+        return prev
+      })
     }
-  }, [children])
+  }, [])
+
+  // Initial measurement and re-measure when children change
+  useLayoutEffect(() => {
+    measureWidths()
+  }, [measureWidths, childArray.length])
+
+  // Watch for child content resizing (e.g., async content loading)
+  useEffect(() => {
+    const fullContainer = fullMeasureRef.current
+    if (!fullContainer) return
+
+    console.log('[OverflowRow] Setting up ResizeObserver for', fullContainer.children.length, 'children')
+
+    const observer = new ResizeObserver((entries) => {
+      console.log('[OverflowRow] ResizeObserver triggered, entries:', entries.length)
+      measureWidths()
+    })
+
+    // Observe all child wrapper elements
+    Array.from(fullContainer.children).forEach((child) => {
+      observer.observe(child)
+    })
+
+    return () => observer.disconnect()
+  }, [measureWidths, childArray.length])
 
   const { collapsedIndices, hiddenStartIndex } = useOverflowLayout(
     containerWidth,
@@ -140,6 +181,15 @@ export function OverflowRow({
     collapsedWidths,
     gap
   )
+
+  // Debug logging
+  console.log('[OverflowRow] render:', {
+    containerWidth,
+    childCount: childArray.length,
+    fullWidths,
+    hiddenStartIndex,
+    overflowCount: childArray.length - hiddenStartIndex,
+  })
 
   // Early return if no children - render nothing
   if (childArray.length === 0) {
@@ -195,22 +245,25 @@ export function OverflowRow({
         ))}
       </div>
 
-      {/* Visible container */}
-      <div
-        ref={containerRef}
-        className={cn('flex w-full items-center overflow-hidden', className)}
-        style={{ gap }}>
-        {childArray.map((child, i) => {
-          if (i >= hiddenStartIndex) return null
+      {/* Wrapper with relative positioning for width measurement */}
+      <div className={cn('relative min-w-0 flex-1', className)}>
+        {/* Width measurement target - spans full parent width via absolute positioning */}
+        <div ref={containerRef} className="absolute inset-0 pointer-events-none" aria-hidden />
 
-          const isCollapsed = collapsedIndices.has(i)
-          return (
-            <div key={i} data-overflow-collapsed={isCollapsed || undefined}>
-              {child}
-            </div>
-          )
-        })}
-        {overflowCount > 0 && (renderOverflow ?? defaultOverflow)(overflowCount)}
+        {/* Visible container */}
+        <div className="flex items-center overflow-hidden" style={{ gap }}>
+          {childArray.map((child, i) => {
+            if (i >= hiddenStartIndex) return null
+
+            const isCollapsed = collapsedIndices.has(i)
+            return (
+              <div key={i} data-overflow-collapsed={isCollapsed || undefined}>
+                {child}
+              </div>
+            )
+          })}
+          {overflowCount > 0 && (renderOverflow ?? defaultOverflow)(overflowCount)}
+        </div>
       </div>
     </>
   )

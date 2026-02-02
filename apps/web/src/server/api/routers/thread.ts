@@ -17,7 +17,6 @@ import {
 import { conditionGroupsSchema } from '@auxx/lib/conditions'
 import { ProviderRegistryService } from '@auxx/lib/providers'
 import { MessageSenderService } from '@auxx/lib/messages'
-import { InternalFilterContextType, mapUrlSlugToStatusFilter } from '@auxx/lib/types' // Import context enum
 import { IdentifierType } from '@auxx/database/enums'
 import { whereThreadMessageType } from '@auxx/lib/providers'
 const logger = createScopedLogger('thread-router')

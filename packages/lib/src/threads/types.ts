@@ -21,45 +21,6 @@ export type UserUnreadCounts = {
   assigned?: number
 }
 
-/** Input payload accepted by the thread list service. */
-export interface ListThreadsInput {
-  userId?: string
-  context:
-    | {
-        type: InternalFilterContextType.PERSONAL_ASSIGNED
-      }
-    | {
-        type: InternalFilterContextType.PERSONAL_INBOX
-      }
-    | {
-        type: InternalFilterContextType.DRAFTS
-      }
-    | {
-        type: InternalFilterContextType.SENT
-      }
-    | {
-        type: InternalFilterContextType.ALL_INBOXES
-      }
-    | {
-        type: InternalFilterContextType.TAG
-        id: string
-      }
-    | {
-        type: InternalFilterContextType.VIEW
-        id: string
-      }
-    | {
-        type: InternalFilterContextType.SPECIFIC_INBOX
-        id: string
-      }
-    | {
-        type: InternalFilterContextType.ALL
-      }
-  statusFilter?: UrlBasedStatusFilter
-  searchQuery?: string
-  sort?: ThreadSortDescriptor
-}
-
 // ============================================================================
 // New ID-first batch-fetch types (Phase 1 refactor)
 // ============================================================================

@@ -18,7 +18,7 @@ import {
 } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { createPortal } from 'react-dom'
-import { toast } from 'sonner'
+import { toastSuccess } from '@auxx/ui/components/toast'
 import MailThreadItemDragOverlay from '~/components/mail/mail-thread-item-drag-overlay'
 import { DndStateProvider } from '~/app/context/dnd-state-context'
 import { snapCenterToCursor } from '@dnd-kit/modifiers'
@@ -30,6 +30,7 @@ import {
   useDehydratedOrganization,
   useDehydratedOrganizationId,
 } from '~/providers/dehydrated-state-provider'
+import { toRecordId } from '@auxx/types/resource'
 
 type Props = { user?: any; children: React.ReactNode }
 
@@ -100,9 +101,11 @@ export const Dashboard = ({
           const droppedThreadIds: string[] = activeData.draggedThreadIds ?? []
           const targetInboxId: string = overData.inboxId
           if (droppedThreadIds.length > 0 && targetInboxId) {
+            // Convert raw inbox ID to RecordId format for tRPC schema validation
+            const inboxRecordId = toRecordId('inbox', targetInboxId)
             // Use optimistic update - store updates immediately
-            updateBulk(droppedThreadIds, { inboxId: targetInboxId })
-            toast.success(`${droppedThreadIds.length} thread(s) moved.`)
+            updateBulk(droppedThreadIds, { inboxId: inboxRecordId })
+            toastSuccess({ title: `${droppedThreadIds.length} thread(s) moved` })
           }
         }
       }

@@ -5,7 +5,6 @@ export { ThreadMutationService } from './thread-mutation.service'
 export type { MutationResult, ThreadUpdates } from './thread-mutation.service'
 
 export type {
-  ListThreadsInput,
   ThreadSortDescriptor,
   ThreadSortField,
   ListThreadIdsInput,
