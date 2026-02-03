@@ -16,6 +16,11 @@ import {
   type Column,
 } from 'drizzle-orm'
 import { buildConditionGroupsQuery } from '../mail-query/condition-query-builder'
+import {
+  isDraftsContextQuery,
+  hasUnsupportedDraftConditions,
+  buildDraftConditions,
+} from '../mail-query/draft-condition-builder'
 import { InternalFilterContextType } from '../mail-query/types'
 import { MailViewService } from '../mail-views/mail-view-service'
 import { createScopedLogger } from '@auxx/logger'
@@ -51,6 +56,18 @@ type EncodedCursorPayload = {
 }
 
 type DecodedCursorPayload = EncodedCursorPayload
+
+/**
+ * Cursor payload for mixed thread/draft UNION queries.
+ * Encodes enough information to resume pagination across both entity types.
+ */
+type MixedCursorPayload = {
+  sortValue: string | null // ISO date or string value
+  entityType: 'thread' | 'draft'
+  entityId: string
+  sortField: ThreadSortField
+  sortDirection: 'asc' | 'desc'
+}
 
 /**
  * Service for thread read operations (queries)
@@ -385,13 +402,14 @@ export class ThreadQueryService {
   // ============================================================================
 
   /**
-   * Returns only thread IDs with pagination info.
-   * The frontend will then batch-fetch metadata separately via getThreadMetaBatch.
+   * Returns only record IDs with pagination info.
+   * The frontend will then batch-fetch metadata separately via getThreadMetaBatch/getStandaloneDraftMetas.
    *
    * Uses unified condition-based filtering - filter is a ConditionGroup[].
+   * For DRAFTS context, returns both threads-with-drafts AND standalone drafts via UNION query.
    */
   async listThreadIds(input: ListThreadIdsInput): Promise<PaginatedIdsResult> {
-    const { filter, sort, cursor, limit = 50 } = input
+    const { filter, sort, cursor, limit = 50, userId } = input
     const effectiveLimit = Math.min(limit, 100)
 
     logger.info('Listing thread IDs', {
@@ -402,6 +420,15 @@ export class ThreadQueryService {
       hasCursor: Boolean(cursor),
     })
 
+    // Detect if this is a DRAFTS context query
+    const isDraftsContext = isDraftsContextQuery(filter)
+
+    if (isDraftsContext) {
+      // Use UNION query for proper interleaving of threads-with-drafts and standalone drafts
+      return this.listDraftsContextIds(input, effectiveLimit)
+    }
+
+    // All other contexts: thread-only query returning RecordIds
     // Build WHERE clause from condition groups
     const whereCondition = buildConditionGroupsQuery(filter, this.organizationId)
 
@@ -429,11 +456,256 @@ export class ThreadQueryService {
       })
     }
 
+    // Convert to RecordIds (thread:instanceId format)
+    const recordIds = orderedThreadIds.map((id) => toRecordId('thread', id))
+
     return {
-      ids: orderedThreadIds,
+      ids: recordIds,
       total,
       nextCursor,
     }
+  }
+
+  /**
+   * For DRAFTS context, build a UNION query combining threads-with-drafts and standalone drafts.
+   * This ensures proper interleaving and pagination across both entity types.
+   */
+  private async listDraftsContextIds(
+    input: ListThreadIdsInput,
+    effectiveLimit: number
+  ): Promise<PaginatedIdsResult> {
+    const { filter, sort, cursor, userId } = input
+
+    if (!userId) {
+      throw new Error('userId required for DRAFTS context')
+    }
+
+    const resolvedSort = this.resolveSortDescriptor(sort)
+    const decodedCursor = this.decodeMixedCursor(cursor)
+
+    // Build thread WHERE clause (existing logic)
+    const threadWhereCondition = buildConditionGroupsQuery(filter, this.organizationId)
+
+    // Check if standalone drafts should be included
+    const includeDrafts = !hasUnsupportedDraftConditions(filter)
+
+    // Build the UNION query
+    const rows = await this.buildDraftsUnionQuery({
+      threadWhereCondition,
+      includeDrafts,
+      draftConditions: includeDrafts
+        ? buildDraftConditions(filter, this.organizationId, userId)
+        : null,
+      sort: resolvedSort,
+      cursor: decodedCursor,
+      limit: effectiveLimit,
+      userId,
+    })
+
+    // Process results
+    const hasMore = rows.length > effectiveLimit
+    const items = hasMore ? rows.slice(0, -1) : rows
+
+    const recordIds: RecordId[] = items.map((row) =>
+      toRecordId(row.entityType as 'thread' | 'draft', row.entityId)
+    )
+
+    // Build next cursor from last item
+    let nextCursor: string | null = null
+    if (hasMore && items.length > 0) {
+      const lastItem = items[items.length - 1]
+      nextCursor = this.encodeMixedCursor({
+        sortValue: lastItem.sortDate,
+        entityType: lastItem.entityType as 'thread' | 'draft',
+        entityId: lastItem.entityId,
+        sortField: resolvedSort.field,
+        sortDirection: resolvedSort.direction,
+      })
+    }
+
+    // Get total count (both threads and drafts)
+    const total = await this.getDraftsContextTotalCount(
+      threadWhereCondition,
+      includeDrafts ? buildDraftConditions(filter, this.organizationId, userId) : null
+    )
+
+    return {
+      ids: recordIds,
+      total,
+      nextCursor,
+    }
+  }
+
+  /**
+   * Build the UNION query for DRAFTS context.
+   */
+  private async buildDraftsUnionQuery(params: {
+    threadWhereCondition: SQL
+    includeDrafts: boolean
+    draftConditions: SQL | null
+    sort: ThreadSortDescriptor
+    cursor: MixedCursorPayload | null
+    limit: number
+    userId: string
+  }): Promise<{ entityType: string; entityId: string; sortDate: string }[]> {
+    const { threadWhereCondition, includeDrafts, draftConditions, sort, cursor, limit } = params
+
+    // Build cursor condition SQL if present
+    const cursorCondition = cursor ? this.buildMixedCursorCondition(cursor, sort) : sql``
+
+    if (!includeDrafts || !draftConditions) {
+      // No drafts - just query threads (but still return in RecordId-compatible format)
+      const rows = await this.db.execute<{
+        entityType: string
+        entityId: string
+        sortDate: string
+      }>(sql`
+        SELECT
+          'thread' as "entityType",
+          t.id as "entityId",
+          t."lastMessageAt"::text as "sortDate"
+        FROM "Thread" t
+        WHERE ${threadWhereCondition}
+          ${cursorCondition}
+        ORDER BY t."lastMessageAt" ${sort.direction === 'desc' ? sql`DESC` : sql`ASC`},
+                 t.id ${sort.direction === 'desc' ? sql`DESC` : sql`ASC`}
+        LIMIT ${limit + 1}
+      `)
+      return rows.rows
+    }
+
+    // Full UNION query
+    const rows = await this.db.execute<{
+      entityType: string
+      entityId: string
+      sortDate: string
+    }>(sql`
+      WITH combined AS (
+        -- Threads with drafts
+        SELECT
+          'thread' as "entityType",
+          t.id as "entityId",
+          t."lastMessageAt"::text as "sortDate"
+        FROM "Thread" t
+        WHERE ${threadWhereCondition}
+
+        UNION ALL
+
+        -- Standalone drafts
+        SELECT
+          'draft' as "entityType",
+          d.id as "entityId",
+          d."updatedAt"::text as "sortDate"
+        FROM "Draft" d
+        WHERE ${draftConditions}
+      )
+      SELECT "entityType", "entityId", "sortDate"
+      FROM combined
+      WHERE 1=1 ${cursorCondition}
+      ORDER BY "sortDate" ${sort.direction === 'desc' ? sql`DESC` : sql`ASC`},
+               "entityType" ${sort.direction === 'desc' ? sql`DESC` : sql`ASC`},
+               "entityId" ${sort.direction === 'desc' ? sql`DESC` : sql`ASC`}
+      LIMIT ${limit + 1}
+    `)
+    return rows.rows
+  }
+
+  /**
+   * Get total count for DRAFTS context (threads + standalone drafts).
+   */
+  private async getDraftsContextTotalCount(
+    threadWhereCondition: SQL,
+    draftConditions: SQL | null
+  ): Promise<number> {
+    const threadCount = await this.db
+      .select({ count: count() })
+      .from(schema.Thread)
+      .where(threadWhereCondition)
+      .then((r) => r[0]?.count ?? 0)
+
+    if (!draftConditions) {
+      return threadCount
+    }
+
+    const draftCount = await this.db
+      .select({ count: count() })
+      .from(schema.Draft)
+      .where(draftConditions)
+      .then((r) => r[0]?.count ?? 0)
+
+    return threadCount + draftCount
+  }
+
+  /**
+   * Encode mixed cursor for UNION query pagination.
+   */
+  private encodeMixedCursor(payload: MixedCursorPayload): string {
+    const encoded = this.toBase64Url(JSON.stringify(payload))
+    return `v2:${encoded}`
+  }
+
+  /**
+   * Decode mixed cursor for UNION query pagination.
+   */
+  private decodeMixedCursor(cursor: string | null | undefined): MixedCursorPayload | null {
+    if (!cursor) return null
+
+    if (cursor.startsWith('v2:')) {
+      const raw = cursor.slice(3)
+      try {
+        const json = this.fromBase64Url(raw)
+        const data = JSON.parse(json)
+        if (
+          data &&
+          typeof data.entityId === 'string' &&
+          (data.entityType === 'thread' || data.entityType === 'draft') &&
+          (data.sortField === 'lastMessageAt' ||
+            data.sortField === 'subject' ||
+            data.sortField === 'sender') &&
+          (data.sortDirection === 'asc' || data.sortDirection === 'desc')
+        ) {
+          return {
+            sortValue: data.sortValue ?? null,
+            entityType: data.entityType,
+            entityId: data.entityId,
+            sortField: data.sortField,
+            sortDirection: data.sortDirection,
+          }
+        }
+      } catch (error) {
+        logger.warn('Failed to decode mixed cursor payload', {
+          organizationId: this.organizationId,
+          error: error instanceof Error ? error.message : error,
+        })
+        return null
+      }
+    }
+
+    return null
+  }
+
+  /**
+   * Build cursor condition for mixed UNION query.
+   * Uses keyset pagination: (sortDate, entityType, entityId) > (cursorValue, cursorType, cursorId)
+   */
+  private buildMixedCursorCondition(cursor: MixedCursorPayload, sort: ThreadSortDescriptor): SQL {
+    const isDesc = sort.direction === 'desc'
+
+    if (isDesc) {
+      // For DESC: find items BEFORE cursor (less than)
+      return sql`AND (
+        "sortDate" < ${cursor.sortValue}
+        OR ("sortDate" = ${cursor.sortValue} AND "entityType" < ${cursor.entityType})
+        OR ("sortDate" = ${cursor.sortValue} AND "entityType" = ${cursor.entityType} AND "entityId" < ${cursor.entityId})
+      )`
+    }
+
+    // For ASC: find items AFTER cursor (greater than)
+    return sql`AND (
+      "sortDate" > ${cursor.sortValue}
+      OR ("sortDate" = ${cursor.sortValue} AND "entityType" > ${cursor.entityType})
+      OR ("sortDate" = ${cursor.sortValue} AND "entityType" = ${cursor.entityType} AND "entityId" > ${cursor.entityId})
+    )`
   }
 
   /**

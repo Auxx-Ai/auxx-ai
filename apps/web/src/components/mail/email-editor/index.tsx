@@ -22,7 +22,7 @@ import { RecipientInput } from './recipient-input'
 import IntegrationSelector from './integration-selector'
 import { MessageFile } from './message-file'
 import { useFileSelect } from '~/components/file-select/hooks/use-file-select'
-import { useAIToolsState } from './hooks/use-ai-tools-state'
+import { useAIToolsState, useDraftMutations } from './hooks'
 import { AIStatus } from './ai-status'
 import {
   AI_OPERATION,
@@ -32,6 +32,7 @@ import {
 } from '~/types/ai-tools'
 // Local imports
 import { api } from '~/trpc/react'
+import { useConfirm } from '~/hooks/use-confirm'
 import { deriveInitialState, type InitState } from './derive-initial'
 import { useDraftAutosave } from './use-draft-autosave'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
@@ -131,7 +132,7 @@ const transformDraftAttachmentsToFileSelectItems = (attachments: any[]) => {
 function ReplyComposeEditorComponent({
   thread,
   sourceMessage,
-  draftMessage: initialDraft,
+  draft: initialDraft,
   mode,
   onClose,
   onSendSuccess,
@@ -140,6 +141,7 @@ function ReplyComposeEditorComponent({
   const utils = api.useUtils()
   const { editor } = useEditorContext()
   const activeState = useEditorActiveStateContext()
+  const [confirm, ConfirmDialog] = useConfirm()
   // Query integrations when needed
   const { data: integrations } = api.integration.getIntegrations.useQuery(undefined, {
     enabled: mode === 'new',
@@ -252,49 +254,52 @@ function ReplyComposeEditorComponent({
   // Handle draft ID update after save
   // Note: Entity ID is set during initial hook creation and remains static
   // Files uploaded before draft creation will be associated via tempEntityId
-  // Mutations
+
   // Track when user requested discard to handle late autosave completions
   const discardAfterSave = useRef(false)
-  const saveDraftMutation = api.draft.upsert.useMutation({
-    onSuccess: (data) => {
-      // If user already clicked discard and we got a late save, delete the new draft and avoid state updates
+
+  // Ref to store deleteDraft for use in onUpsertSuccess callback
+  const deleteDraftRef = useRef<((draftId: string) => Promise<void>) | undefined>(undefined)
+
+  // Draft mutations hook - centralizes upsert/delete with ThreadStore sync
+  const { upsert, deleteDraft, isUpserting, isDeleting } = useDraftMutations({
+    threadId: thread?.id ?? state.threadId,
+    onUpsertSuccess: (data) => {
+      // If user already clicked discard and we got a late save, delete the new draft
       if (discardAfterSave.current) {
         if (data?.id) {
-          deleteDraftMutation.mutate(
-            { draftId: data.id },
-            {
-              onSuccess: () => {
-                // Ensure editor closes after cleanup
-                discardAfterSave.current = false
-                onClose()
-              },
-              onSettled: () => {
-                // Reset the flag even if delete failed; UI already closed
-                discardAfterSave.current = false
-              },
-            }
-          )
+          deleteDraftRef.current?.(data.id)
+            .then(() => onClose())
+            .finally(() => {
+              discardAfterSave.current = false
+            })
         } else {
           discardAfterSave.current = false
           onClose()
         }
         return
       }
-      setState((prev) => {
-        const nextThreadId = data.threadId ?? prev.threadId
-        if (prev.draftId === data.id && prev.threadId === nextThreadId) {
-          return prev
-        }
-        return { ...prev, draftId: data.id, threadId: nextThreadId }
-      })
-      setIsDraftSaved(true)
+      // Normal success - state is updated via autosave's onSaved callback
     },
-    onError: (error) => {
+    onUpsertError: (error) => {
       // If discard was requested, suppress save errors (draft likely deleted/not found)
       if (discardAfterSave.current) return
-      toastError({ title: 'Failed to save draft', description: error.message })
+      // Error toast is handled by the hook
+    },
+    onDeleteMutate: (draftId) => {
+      // Clear local draft state immediately (optimistic update)
+      setState((prev) => ({ ...prev, draftId: null }))
+    },
+    onDeleteError: (error, draftId) => {
+      // Rollback on error
+      setState((prev) => ({ ...prev, draftId }))
+      // Error toast is handled by the hook
     },
   })
+
+  // Update ref after hook returns for use in onUpsertSuccess
+  deleteDraftRef.current = deleteDraft
+
   const sendMessageMutation = api.thread.sendMessage.useMutation({
     onMutate: () => setIsSending(true),
     onSuccess: () => {
@@ -307,34 +312,19 @@ function ReplyComposeEditorComponent({
     },
     onSettled: () => setIsSending(false),
   })
-  const deleteDraftMutation = api.draft.delete.useMutation({
-    onMutate: async ({ draftId }) => {
-      // Clear local draft state immediately
-      setState((prev) => ({ ...prev, draftId: null }))
-      return { draftId }
-    },
-    onError: (err, variables, context) => {
-      // Rollback on error
-      if (context?.draftId) {
-        setState((prev) => ({ ...prev, draftId: context.draftId }))
-      }
-      toastError({ title: 'Failed to discard draft', description: err.message })
-    },
-  })
+
   // Debounced delete to prevent double-click issues
   const debouncedDelete = useDebouncedCallback(
     (draftId: string) => {
-      deleteDraftMutation.mutate(
-        { draftId },
-        {
-          onSuccess: () => {
-            // Clear any pending saves
-            draftAutosave.abort()
-            // Editor is already closed optimistically; just reset flag
-            discardAfterSave.current = false
-          },
-        }
-      )
+      deleteDraft(draftId)
+        .then(() => {
+          // Clear any pending saves
+          draftAutosave.abort()
+        })
+        .finally(() => {
+          // Reset the flag even if delete failed; UI already closed
+          discardAfterSave.current = false
+        })
     },
     300,
     { leading: true, trailing: false } // fire immediately; ignore rapid subsequent clicks
@@ -364,7 +354,7 @@ function ReplyComposeEditorComponent({
     enabled: !isSending && !!state.integrationId,
     payload: draftPayload,
     isEmpty: () => isContentEmpty(editor),
-    createOrUpdateDraft: saveDraftMutation.mutateAsync,
+    createOrUpdateDraft: upsert,
     onSaved: ({ draftId, threadId }) => {
       setState((prev) => {
         const nextThreadId = threadId ?? prev.threadId
@@ -536,9 +526,9 @@ function ReplyComposeEditorComponent({
     draftAutosave.abort()
     try {
       // 3. Wait for any in-flight save to complete
-      if (saveDraftMutation.isPending) {
+      if (isUpserting) {
         try {
-          const result = await saveDraftMutation.mutateAsync(draftPayload)
+          const result = await upsert(draftPayload)
           if (result?.id) {
             setState((prev) => ({
               ...prev,
@@ -611,11 +601,27 @@ function ReplyComposeEditorComponent({
     sendMessageMutation,
     fileSelect.selectedItems,
     draftAutosave,
-    saveDraftMutation,
+    upsert,
+    isUpserting,
     draftPayload,
   ])
-  const handleDiscardClick = useCallback(() => {
-    if (isSending || deleteDraftMutation.isPending) return
+  const handleDiscardClick = useCallback(async () => {
+    if (isSending || isDeleting) return
+
+    // Only confirm if there's a draft with content
+    const hasContent = state.draftId || !isContentEmpty(editor)
+
+    if (hasContent) {
+      const confirmed = await confirm({
+        title: 'Discard draft?',
+        description: 'This draft will be permanently deleted.',
+        confirmText: 'Discard',
+        cancelText: 'Cancel',
+        destructive: true,
+      })
+      if (!confirmed) return
+    }
+
     // Abort any pending autosaves immediately
     discardAfterSave.current = true
     draftAutosave.abort()
@@ -628,10 +634,12 @@ function ReplyComposeEditorComponent({
   }, [
     state.draftId,
     isSending,
-    deleteDraftMutation.isPending,
+    isDeleting,
     onClose,
     draftAutosave,
     debouncedDelete,
+    editor,
+    confirm,
   ])
   const handleWrapperClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
@@ -659,21 +667,23 @@ function ReplyComposeEditorComponent({
   // Find message for previous message component
   const messageForPrevComponent = useMemo(() => {
     if (sourceMessage) return sourceMessage
-    if (state.sourceMessageId && thread) {
+    if (state.sourceMessageId && thread?.messages) {
       return thread.messages.find((m) => m.id === state.sourceMessageId) || null
     }
     return null
   }, [sourceMessage, state.sourceMessageId, thread])
 
   return (
-    <div className="transition-background flex flex-col duration-200 ease-in-out relative">
-      {/* Header */}
+    <>
+      <ConfirmDialog />
+      <div className="transition-background flex flex-col duration-200 ease-in-out relative">
+        {/* Header */}
       <div className="absolute top-[-32px] h-full w-full rounded-t-[15px] bg-gray-300  dark:bg-gray-800 ">
         <div className="flex justify-between h-[36px]">
           <div className="ps-4 flex flex-row items-center gap-2">
             <Mail size="16" className="my-1.5 text-foreground" />
             <span className="text-sm">Compose Email</span>
-            {saveDraftMutation.isPending && (
+            {isUpserting && (
               <Loader2 className="ml-auto size-4 animate-spin text-muted-foreground" />
             )}
           </div>
@@ -692,8 +702,8 @@ function ReplyComposeEditorComponent({
               variant="ghost"
               className="rounded-full text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700"
               onClick={handleDiscardClick}
-              disabled={isSending || saveDraftMutation.isPending || deleteDraftMutation.isPending}>
-              {deleteDraftMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <X />}
+              disabled={isSending || isUpserting || isDeleting}>
+              {isDeleting ? <Loader2 className="size-4 animate-spin" /> : <X />}
             </Button>
           </div>
         </div>
@@ -961,6 +971,7 @@ function ReplyComposeEditorComponent({
         </div>
       </div>
     </div>
+    </>
   )
 }
 // Editor Provider Wrapper with Active State Management

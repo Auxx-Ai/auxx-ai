@@ -14,6 +14,8 @@ interface ReplyBoxState {
   mode: EditorMode
   sourceMessage: any | null // Message from thread
   ref: RefObject<HTMLDivElement>
+  draft: any | undefined // Draft message if exists
+  isLoadingDraft: boolean
 }
 
 /** Thread mutation methods */
@@ -108,7 +110,9 @@ export function ThreadProvider({
     openEditorForAction,
     handleShowGenericReply,
     closeWithSuppress,
-  } = useReplyBox(thread || ({ id: '', draftMessage: null } as any))
+    draft,
+    isLoadingDraft,
+  } = useReplyBox(thread)
 
   // Create handlers
   const handlers: ThreadHandlers = useMemo(
@@ -335,7 +339,14 @@ export function ThreadProvider({
     threadId,
 
     // Reply Box State
-    replyBox: { isOpen: isShowReplyBox, mode: editorMode, sourceMessage, ref: replyBoxRef },
+    replyBox: {
+      isOpen: isShowReplyBox,
+      mode: editorMode,
+      sourceMessage,
+      ref: replyBoxRef,
+      draft,
+      isLoadingDraft,
+    },
 
     // Mutations
     mutations,

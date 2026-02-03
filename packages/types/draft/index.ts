@@ -146,3 +146,26 @@ export interface UpsertDraftInput {
   inReplyToMessageId?: string | null
   content: Partial<DraftContent>
 }
+
+/**
+ * Metadata for standalone drafts (drafts without a threadId).
+ * Used for displaying standalone drafts in the thread list.
+ */
+export interface StandaloneDraftMeta {
+  /** Draft ID */
+  id: string
+  /** Integration ID for the email account */
+  integrationId: string
+  /** Integration provider (GMAIL, OUTLOOK, etc.) */
+  integrationProvider: 'GMAIL' | 'OUTLOOK' | 'FACEBOOK' | 'INSTAGRAM' | 'OPENPHONE' | null
+  /** Email subject */
+  subject: string | null
+  /** Body snippet (first ~100 chars of body text) */
+  snippet: string | null
+  /** Summary of recipients (e.g., "john@example.com +2") */
+  recipientSummary: string | null
+  /** Last update time (ISO date string) */
+  updatedAt: string
+  /** Creation time (ISO date string) */
+  createdAt: string
+}

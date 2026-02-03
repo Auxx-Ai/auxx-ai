@@ -35,6 +35,8 @@ export interface ListThreadIdsInput {
   cursor?: string
   /** Page size (max 100) */
   limit?: number
+  /** User ID - required for DRAFTS context to fetch user's standalone drafts */
+  userId?: string
 }
 
 /** Optional filters for thread list queries. */
@@ -45,9 +47,10 @@ export interface ThreadFilter {
   search?: string
 }
 
-/** Paginated result containing only IDs. */
+/** Paginated result containing record IDs (may include threads and standalone drafts). */
 export interface PaginatedIdsResult {
-  ids: string[]
+  /** RecordIds in format "entityType:instanceId" (e.g., "thread:abc123" or "draft:xyz789") */
+  ids: RecordId[]
   total: number
   nextCursor: string | null
 }

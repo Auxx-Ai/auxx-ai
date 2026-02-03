@@ -1,7 +1,7 @@
 import type {
   EditorMode,
   RecipientState,
-  ThreadWithDetails,
+  EditorThread,
   MessageType,
   DraftMessageType,
   DraftMetadata,
@@ -92,7 +92,7 @@ export function deriveInitialState({
   presetValues,
 }: {
   mode: EditorMode
-  thread?: ThreadWithDetails | null
+  thread?: EditorThread | null
   sourceMessage?: MessageType | null
   draft?: DraftMessageType | null
   defaultIntegrationId?: string

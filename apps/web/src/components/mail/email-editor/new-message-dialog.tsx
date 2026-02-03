@@ -12,18 +12,42 @@ import ReplyComposeEditor from '~/components/mail/email-editor'
 import type { EditorPresetValues } from '~/components/mail/email-editor/types'
 
 interface NewMessageDialogProps {
-  trigger: React.ReactNode
+  /** Trigger element for uncontrolled mode */
+  trigger?: React.ReactNode
+  /** Called when a message is sent successfully */
   onSendSuccess?: () => void
   /** Optional preset values to initialize the editor with */
   presetValues?: EditorPresetValues
+  /** Controlled open state */
+  open?: boolean
+  /** Called when open state changes (for controlled mode) */
+  onOpenChange?: (open: boolean) => void
+  /** Draft ID to load (for editing existing drafts) */
+  draftId?: string
+  /** Editor mode: 'new' for new messages, 'draft' for editing drafts */
+  mode?: 'new' | 'draft'
 }
 
+/**
+ * Dialog for composing new messages or editing drafts.
+ * Supports both controlled and uncontrolled modes.
+ */
 const NewMessageDialog: React.FC<NewMessageDialogProps> = ({
   trigger,
   onSendSuccess,
   presetValues,
+  open: controlledOpen,
+  onOpenChange,
+  draftId,
+  mode = 'new',
 }) => {
-  const [open, setOpen] = React.useState(false)
+  // Uncontrolled internal state (used when trigger is provided)
+  const [internalOpen, setInternalOpen] = React.useState(false)
+
+  // Use controlled or uncontrolled state
+  const isControlled = controlledOpen !== undefined
+  const open = isControlled ? controlledOpen : internalOpen
+  const setOpen = isControlled ? (onOpenChange ?? (() => {})) : setInternalOpen
 
   const handleClose = () => {
     setOpen(false)
@@ -36,7 +60,7 @@ const NewMessageDialog: React.FC<NewMessageDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <DialogContent
         position="tc"
         size="xxl"
@@ -44,10 +68,13 @@ const NewMessageDialog: React.FC<NewMessageDialogProps> = ({
         className="border-none shadow-none bg-transparent p-0"
         innerClassName="p-0 ">
         <DialogHeader className="sr-only">
-          <DialogTitle className="text-2xl font-bold">Compose</DialogTitle>
+          <DialogTitle className="text-2xl font-bold">
+            {mode === 'draft' ? 'Edit Draft' : 'Compose'}
+          </DialogTitle>
         </DialogHeader>
         <ReplyComposeEditor
-          mode="new"
+          mode={mode === 'draft' ? 'draft' : 'new'}
+          draftId={draftId}
           onClose={handleClose}
           onSendSuccess={handleSendSuccess}
           presetValues={presetValues}
@@ -57,4 +84,5 @@ const NewMessageDialog: React.FC<NewMessageDialogProps> = ({
   )
 }
 
+export { NewMessageDialog }
 export default NewMessageDialog

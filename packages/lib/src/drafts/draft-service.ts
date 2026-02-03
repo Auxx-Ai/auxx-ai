@@ -1,7 +1,7 @@
 // packages/lib/src/drafts/draft-service.ts
 
 import { type Database, schema } from '@auxx/database'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, inArray, isNull } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
 import {
   type Draft,
@@ -9,6 +9,7 @@ import {
   type CreateDraftInput,
   type UpdateDraftInput,
   type UpsertDraftInput,
+  type StandaloneDraftMeta,
   DEFAULT_DRAFT_CONTENT,
 } from '@auxx/types/draft'
 
@@ -271,6 +272,78 @@ export class DraftService {
     })
 
     return drafts.map((d) => this.mapToDraft(d))
+  }
+
+  /**
+   * Gets standalone draft metadata by IDs.
+   * Only returns drafts that are standalone (no threadId) and owned by the user.
+   */
+  async getStandaloneDraftMetas(ids: string[]): Promise<StandaloneDraftMeta[]> {
+    if (ids.length === 0) return []
+
+    const drafts = await this.db.query.Draft.findMany({
+      where: and(
+        inArray(schema.Draft.id, ids),
+        isNull(schema.Draft.threadId),
+        eq(schema.Draft.createdById, this.userId),
+        eq(schema.Draft.organizationId, this.organizationId)
+      ),
+      with: {
+        integration: { columns: { provider: true } },
+      },
+    })
+
+    return drafts.map((d) => this.toStandaloneDraftMeta(d))
+  }
+
+  /**
+   * Converts a draft database row to StandaloneDraftMeta.
+   */
+  private toStandaloneDraftMeta(draft: any): StandaloneDraftMeta {
+    const content = (draft.content as DraftContent) || DEFAULT_DRAFT_CONTENT
+
+    return {
+      id: draft.id,
+      integrationId: draft.integrationId,
+      integrationProvider: draft.integration?.provider ?? null,
+      subject: content.subject || null,
+      snippet: this.extractSnippet(content),
+      recipientSummary: this.buildRecipientSummary(content),
+      updatedAt: draft.updatedAt.toISOString(),
+      createdAt: draft.createdAt.toISOString(),
+    }
+  }
+
+  /**
+   * Extracts a snippet from draft content for list display.
+   */
+  private extractSnippet(content: DraftContent): string | null {
+    if (content.bodyText) {
+      return content.bodyText.slice(0, 100)
+    }
+    if (content.bodyHtml) {
+      // Strip HTML tags for snippet
+      return content.bodyHtml.replace(/<[^>]*>/g, '').slice(0, 100)
+    }
+    return null
+  }
+
+  /**
+   * Builds a summary of recipients for list display.
+   * Format: "first@example.com" or "first@example.com +2"
+   */
+  private buildRecipientSummary(content: DraftContent): string | null {
+    const toRecipients = content.recipients?.to ?? []
+    const ccRecipients = content.recipients?.cc ?? []
+    const total = toRecipients.length + ccRecipients.length
+
+    if (total === 0) return null
+
+    const first = toRecipients[0]
+    const name = first?.name || first?.identifier || 'Unknown'
+
+    if (total === 1) return name
+    return `${name} +${total - 1}`
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

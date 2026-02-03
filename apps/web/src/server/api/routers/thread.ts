@@ -147,6 +147,7 @@ export const threadRouter = createTRPCRouter({
         sort: input.sort,
         cursor: input.cursor,
         limit: input.limit,
+        userId, // Required for DRAFTS context to fetch user's standalone drafts
       }
 
       try {

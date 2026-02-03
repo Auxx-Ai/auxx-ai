@@ -10,6 +10,7 @@ import {
 } from '../store/thread-selectors'
 import type { ConditionGroup } from '@auxx/lib/conditions'
 import { api } from '~/trpc/react'
+import { parseRecordId, type RecordId } from '@auxx/types/resource'
 
 /** Sort descriptor for thread lists */
 interface ThreadSortDescriptor {
@@ -26,7 +27,12 @@ interface UseThreadListInput {
 }
 
 interface UseThreadListResult {
-  /** Thread IDs in the list (for backward compatibility) */
+  /** Record IDs in the list (format: "thread:id" or "draft:id") */
+  recordIds: RecordId[]
+  /**
+   * Thread IDs in the list (for backward compatibility).
+   * @deprecated Use `recordIds` instead to support standalone drafts.
+   */
   threadIds: string[]
   /** Filtered and sorted threads */
   threads: ThreadMeta[]
@@ -67,6 +73,7 @@ export function useThreadList({ filter, sort }: UseThreadListInput): UseThreadLi
   const setContextLoaded = useThreadStore((s) => s.setContextLoaded)
   const invalidateContext = useThreadStore((s) => s.invalidateContext)
   const requestThread = useThreadStore((s) => s.requestThread)
+  const requestDraft = useThreadStore((s) => s.requestDraft)
   const getThread = useThreadStore((s) => s.threads)
 
   // Fetch IDs via tRPC infinite query with unified condition-based filter
@@ -85,11 +92,21 @@ export function useThreadList({ filter, sort }: UseThreadListInput): UseThreadLi
     }
   )
 
-  // Get all thread IDs from paginated data
-  const threadIds = useMemo(() => {
+  // Get all record IDs from paginated data (RecordId format: "thread:id" or "draft:id")
+  const recordIds = useMemo(() => {
     if (!data?.pages) return []
-    return data.pages.flatMap((p) => p.ids)
+    return data.pages.flatMap((p) => p.ids) as RecordId[]
   }, [data?.pages])
+
+  // Extract thread IDs for backward compatibility (threads only)
+  const threadIds = useMemo(() => {
+    return recordIds
+      .map((recordId) => {
+        const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+        return entityDefinitionId === 'thread' ? entityInstanceId : null
+      })
+      .filter((id): id is string => id !== null)
+  }, [recordIds])
 
   // Sync fetched data to store and queue metadata fetches
   useEffect(() => {
@@ -102,13 +119,18 @@ export function useThreadList({ filter, sort }: UseThreadListInput): UseThreadLi
     // Mark context as loaded with pagination info
     setContextLoaded(contextKey, lastPage?.nextCursor ?? null, hasMore, total)
 
-    // Queue metadata fetch for uncached threads
-    for (const id of threadIds) {
-      requestThread(id)
+    // Queue metadata fetch for each entity based on type
+    for (const recordId of recordIds) {
+      const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+      if (entityDefinitionId === 'thread') {
+        requestThread(entityInstanceId)
+      } else if (entityDefinitionId === 'draft') {
+        requestDraft(entityInstanceId)
+      }
     }
-  }, [data, contextKey, setContextLoaded, requestThread, threadIds])
+  }, [data, contextKey, setContextLoaded, requestThread, requestDraft, recordIds])
 
-  // Get thread metadata from store for the IDs we have
+  // Get thread metadata from store for the thread IDs we have
   // Note: Client-side filtering is now done by each MailThreadItem for efficiency
   const threads = useMemo(() => {
     const threadMap = getThread
@@ -131,6 +153,7 @@ export function useThreadList({ filter, sort }: UseThreadListInput): UseThreadLi
   }, [fetchMore, isFetchingNextPage, queryHasNextPage, contextPagination])
 
   return {
+    recordIds,
     threadIds,
     threads,
     total: contextPagination?.total ?? data?.pages?.[0]?.total ?? threads.length,

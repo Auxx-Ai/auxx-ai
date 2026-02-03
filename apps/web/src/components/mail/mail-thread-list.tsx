@@ -6,10 +6,12 @@ import { useAutoAnimate } from '@formkit/auto-animate/react'
 import { useInView } from 'react-intersection-observer'
 
 import { MailThreadItem } from './mail-thread-item'
+import { StandaloneDraftItem } from './standalone-draft-item'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { ChevronDown, Loader2, Clock, User, FileText, ArrowUpDown } from 'lucide-react'
 import type { ThreadsFilterInput } from './types'
 import { Checkbox } from '@auxx/ui/components/checkbox'
+import { parseRecordId, type RecordId } from '@auxx/types/resource'
 
 // NEW: Import selection hooks from threads module
 import {
@@ -58,6 +60,7 @@ export function ThreadList({
 }: ThreadListProps) {
   // Use ID-based hook with unified condition-based filter
   const {
+    recordIds,
     threadIds,
     total,
     isLoading,
@@ -70,7 +73,7 @@ export function ThreadList({
     sort: filter.sort,
   })
 
-  // Selection hooks - use new thread selection system
+  // Selection hooks - use new thread selection system (for threads only)
   const { handleThreadClick } = useThreadSelection({ threadIds })
 
   // Keyboard navigation - handles arrow keys, Home/End, Cmd+A, Escape, etc.
@@ -117,7 +120,7 @@ export function ThreadList({
     )
   }
 
-  const isEmpty = threadIds.length === 0 && !isFetchingNextPage
+  const isEmpty = recordIds.length === 0 && !isFetchingNextPage
 
   return (
     <div className={cn('relative flex h-full w-full flex-col', isEmpty && 'flex-1')}>
@@ -131,16 +134,25 @@ export function ThreadList({
             </div>
           )}
 
-          {/* Render thread items - each fetches its own data */}
-          {threadIds.map((threadId) => (
-            <MailThreadItem
-              key={threadId}
-              threadId={threadId}
-              basePath={basePath}
-              isSelected={threadId === selectedThreadId}
-              handleThreadClick={handleThreadClick}
-            />
-          ))}
+          {/* Render list items - route based on entity type */}
+          {recordIds.map((recordId) => {
+            const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+
+            if (entityDefinitionId === 'draft') {
+              return <StandaloneDraftItem key={recordId} draftId={entityInstanceId} />
+            }
+
+            // Default: thread
+            return (
+              <MailThreadItem
+                key={recordId}
+                threadId={entityInstanceId}
+                basePath={basePath}
+                isSelected={entityInstanceId === selectedThreadId}
+                handleThreadClick={handleThreadClick}
+              />
+            )
+          })}
 
           {isFetchingNextPage && (
             <div className="flex h-8 w-full items-center justify-center">
@@ -150,7 +162,7 @@ export function ThreadList({
         </div>
 
         <div ref={ref} className="h-1" />
-        {!hasNextPage && threadIds.length > 0 && !isFetchingNextPage && (
+        {!hasNextPage && recordIds.length > 0 && !isFetchingNextPage && (
           <div className="pb-8 pt-4 text-center text-sm text-muted-foreground">End of list.</div>
         )}
       </div>

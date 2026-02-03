@@ -196,10 +196,19 @@ export interface EditorPresetValues {
   sourceMessage?: MessageType | null
 }
 
+/** Minimal thread data needed by the editor */
+export interface EditorThread {
+  id: string
+  subject?: string
+  integrationId?: string
+  messages?: MessageType[]
+}
+
 export interface ReplyComposeEditorProps {
-  thread?: ThreadWithDetails | null
+  thread?: EditorThread | null
   sourceMessage?: MessageType | null
-  draftMessage?: DraftMessageType | null
+  /** Draft to load into the editor */
+  draft?: DraftMessageType | null
   mode: EditorMode
   onClose: () => void
   onSendSuccess: () => void

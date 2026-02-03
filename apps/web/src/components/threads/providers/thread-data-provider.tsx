@@ -116,5 +116,35 @@ export function ThreadDataProvider({ children }: ThreadDataProviderProps) {
     return () => clearTimeout(timer)
   }, [pendingParticipantCount, startParticipantBatch, completeParticipantBatch, fetchParticipants])
 
+  // ============================================================
+  // Standalone draft batch fetching
+  // ============================================================
+  const pendingDraftCount = useThreadStore((s) => s.pendingDraftIds.size)
+  const startDraftBatch = useThreadStore((s) => s.startDraftBatch)
+  const completeDraftBatch = useThreadStore((s) => s.completeDraftBatch)
+
+  const { mutateAsync: fetchDrafts } = api.draft.getByIds.useMutation()
+
+  useEffect(() => {
+    if (pendingDraftCount === 0) return
+
+    const timer = setTimeout(async () => {
+      const batch = startDraftBatch()
+      if (batch.length === 0) return
+
+      try {
+        const drafts = await fetchDrafts({ ids: batch })
+        const foundIds = new Set(drafts.map((d) => d.id))
+        const notFoundIds = batch.filter((id) => !foundIds.has(id))
+        completeDraftBatch(drafts, notFoundIds)
+      } catch (error) {
+        console.error('Draft batch fetch failed:', error)
+        completeDraftBatch([], batch) // Mark all as not found on error
+      }
+    }, 50)
+
+    return () => clearTimeout(timer)
+  }, [pendingDraftCount, startDraftBatch, completeDraftBatch, fetchDrafts])
+
   return <>{children}</>
 }

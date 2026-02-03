@@ -7,9 +7,13 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import type { ThreadClientFilter } from '@auxx/lib/mail-query/client'
 import type { ActorId } from '@auxx/types/actor'
 import type { RecordId } from '@auxx/types/resource'
+import type { StandaloneDraftMeta } from '@auxx/types/draft'
 
 /** Re-export filter type for convenience */
 export type { ThreadClientFilter as ThreadFilter }
+
+/** Re-export standalone draft meta for convenience */
+export type { StandaloneDraftMeta }
 
 /** Batching configuration */
 const BATCH_DELAY = 50
@@ -109,13 +113,32 @@ interface ThreadStoreState {
   mutationVersions: Map<string, number>
 
   // ═══════════════════════════════════════════════════════════════
-  // BATCH LOADING STATE
+  // BATCH LOADING STATE (THREADS)
   // ═══════════════════════════════════════════════════════════════
 
   pendingIds: Set<string>
   loadingIds: Set<string>
   notFoundIds: Set<string>
   batchTimer: ReturnType<typeof setTimeout> | null
+
+  // ═══════════════════════════════════════════════════════════════
+  // STANDALONE DRAFT STATE
+  // ═══════════════════════════════════════════════════════════════
+
+  /** All loaded standalone drafts */
+  standaloneDrafts: Map<string, StandaloneDraftMeta>
+
+  /** Pending draft IDs to fetch */
+  pendingDraftIds: Set<string>
+
+  /** Draft IDs currently being loaded */
+  loadingDraftIds: Set<string>
+
+  /** Draft IDs that were not found */
+  notFoundDraftIds: Set<string>
+
+  /** Timer for draft batch loading */
+  draftBatchTimer: ReturnType<typeof setTimeout> | null
 
   // ═══════════════════════════════════════════════════════════════
   // ACTIONS
@@ -144,14 +167,26 @@ interface ThreadStoreState {
   invalidateContext: (contextKey: string) => void
   invalidateAllContexts: () => void
 
-  // Batch loading
+  // Batch loading (threads)
   requestThread: (id: string) => void
   startBatch: () => string[]
   completeBatch: (threads: ThreadMeta[], notFoundIds: string[]) => void
 
+  // Standalone draft CRUD
+  setDrafts: (drafts: StandaloneDraftMeta[]) => void
+  updateDraft: (id: string, updates: Partial<StandaloneDraftMeta>) => void
+  removeDraft: (id: string) => void
+
+  // Batch loading (drafts)
+  requestDraft: (id: string) => void
+  startDraftBatch: () => string[]
+  completeDraftBatch: (drafts: StandaloneDraftMeta[], notFoundIds: string[]) => void
+
   // Selectors (for use outside React)
   getThread: (id: string) => ThreadMeta | undefined
+  getDraft: (id: string) => StandaloneDraftMeta | undefined
   isThreadLoading: (id: string) => boolean
+  isDraftLoading: (id: string) => boolean
 
   reset: () => void
 }
@@ -176,12 +211,21 @@ export const useThreadStore = create<ThreadStoreState>()(
       mutationVersions: new Map(),
 
       // ═══════════════════════════════════════════════════════════════
-      // BATCH LOADING STATE
+      // BATCH LOADING STATE (THREADS)
       // ═══════════════════════════════════════════════════════════════
       pendingIds: new Set(),
       loadingIds: new Set(),
       notFoundIds: new Set(),
       batchTimer: null,
+
+      // ═══════════════════════════════════════════════════════════════
+      // STANDALONE DRAFT STATE
+      // ═══════════════════════════════════════════════════════════════
+      standaloneDrafts: new Map(),
+      pendingDraftIds: new Set(),
+      loadingDraftIds: new Set(),
+      notFoundDraftIds: new Set(),
+      draftBatchTimer: null,
 
       // ═══════════════════════════════════════════════════════════════
       // THREAD CRUD ACTIONS
@@ -391,12 +435,104 @@ export const useThreadStore = create<ThreadStoreState>()(
         }),
 
       // ═══════════════════════════════════════════════════════════════
+      // STANDALONE DRAFT CRUD ACTIONS
+      // ═══════════════════════════════════════════════════════════════
+
+      setDrafts: (drafts) =>
+        set((state) => {
+          for (const draft of drafts) {
+            state.standaloneDrafts.set(draft.id, draft)
+            state.pendingDraftIds.delete(draft.id)
+            state.loadingDraftIds.delete(draft.id)
+            state.notFoundDraftIds.delete(draft.id)
+          }
+        }),
+
+      updateDraft: (id, updates) =>
+        set((state) => {
+          const existing = state.standaloneDrafts.get(id)
+          if (existing) {
+            state.standaloneDrafts.set(id, { ...existing, ...updates })
+          }
+        }),
+
+      removeDraft: (id) =>
+        set((state) => {
+          state.standaloneDrafts.delete(id)
+          state.pendingDraftIds.delete(id)
+          state.loadingDraftIds.delete(id)
+          state.notFoundDraftIds.delete(id)
+        }),
+
+      // ═══════════════════════════════════════════════════════════════
+      // DRAFT BATCH LOADING ACTIONS
+      // ═══════════════════════════════════════════════════════════════
+
+      requestDraft: (id) => {
+        const state = get()
+        if (
+          state.standaloneDrafts.has(id) ||
+          state.loadingDraftIds.has(id) ||
+          state.pendingDraftIds.has(id) ||
+          state.notFoundDraftIds.has(id)
+        ) {
+          return
+        }
+
+        set((s) => {
+          s.pendingDraftIds.add(id)
+        })
+
+        // Timer triggers provider to fetch
+        if (!state.draftBatchTimer) {
+          const timer = setTimeout(() => {
+            set((s) => {
+              s.draftBatchTimer = null
+            })
+          }, BATCH_DELAY)
+          set((s) => {
+            s.draftBatchTimer = timer
+          })
+        }
+      },
+
+      startDraftBatch: () => {
+        const state = get()
+        const batch = Array.from(state.pendingDraftIds).slice(0, MAX_BATCH_SIZE)
+
+        set((s) => {
+          for (const id of batch) {
+            s.pendingDraftIds.delete(id)
+            s.loadingDraftIds.add(id)
+          }
+        })
+
+        return batch
+      },
+
+      completeDraftBatch: (drafts, notFoundIds) =>
+        set((state) => {
+          for (const draft of drafts) {
+            state.standaloneDrafts.set(draft.id, draft)
+            state.loadingDraftIds.delete(draft.id)
+          }
+          for (const id of notFoundIds) {
+            state.loadingDraftIds.delete(id)
+            state.notFoundDraftIds.add(id)
+          }
+        }),
+
+      // ═══════════════════════════════════════════════════════════════
       // SELECTORS
       // ═══════════════════════════════════════════════════════════════
 
       getThread: (id) => get().threads.get(id),
 
+      getDraft: (id) => get().standaloneDrafts.get(id),
+
       isThreadLoading: (id) => get().loadingIds.has(id) || get().pendingIds.has(id),
+
+      isDraftLoading: (id) => get().loadingDraftIds.has(id) || get().pendingDraftIds.has(id),
 
       // ═══════════════════════════════════════════════════════════════
       // RESET
@@ -405,6 +541,9 @@ export const useThreadStore = create<ThreadStoreState>()(
       reset: () => {
         const timer = get().batchTimer
         if (timer) clearTimeout(timer)
+
+        const draftTimer = get().draftBatchTimer
+        if (draftTimer) clearTimeout(draftTimer)
 
         set((state) => {
           state.threads.clear()
@@ -415,6 +554,13 @@ export const useThreadStore = create<ThreadStoreState>()(
           state.loadingIds.clear()
           state.notFoundIds.clear()
           state.batchTimer = null
+
+          // Clear draft state
+          state.standaloneDrafts.clear()
+          state.pendingDraftIds.clear()
+          state.loadingDraftIds.clear()
+          state.notFoundDraftIds.clear()
+          state.draftBatchTimer = null
         })
       },
     }))

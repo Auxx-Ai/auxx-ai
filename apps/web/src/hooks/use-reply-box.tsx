@@ -1,85 +1,99 @@
 'use client'
 // src/hooks/use-reply-box.tsx
-import { useState, useRef, useCallback, useEffect } from 'react'
-import type {
-  EditorMode,
-  ThreadWithDetails,
-  MessageType,
-  DraftMessageType,
-} from '~/components/mail/email-editor/types'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
+import type { EditorMode, MessageType } from '~/components/mail/email-editor/types'
+import { useDraft } from '~/components/mail/email-editor/hooks'
+import type { ThreadMeta } from '~/components/threads/store'
+import { useThreadStore } from '~/components/threads/store/thread-store'
 
 /**
  * Custom hook for managing the state of the Reply/Compose editor.
- * @param thread - The detailed thread data, including potential draft message.
- * @returns Reply box state and handlers.
+ * Fetches draft content if thread has draftIds.
+ * @param thread - The thread metadata, including draftIds.
+ * @returns Reply box state, handlers, and draft data.
  */
-export function useReplyBox(thread: ThreadWithDetails | null | undefined) {
+export function useReplyBox(thread: ThreadMeta | null | undefined) {
   const [isShowReplyBox, setIsShowReplyBox] = useState(false)
-  // Use the EditorMode type from the editor component
   const [editorMode, setEditorMode] = useState<EditorMode>('reply')
-  // Store the source message (the one being replied/forwarded to)
-  const [sourceMessage, setSourceMessage] = useState<MessageType | DraftMessageType | null>(null)
+  const [sourceMessage, setSourceMessage] = useState<MessageType | null>(null)
   const replyBoxRef = useRef<HTMLDivElement>(null)
   const suppressAutoOpenOnce = useRef(false)
 
-  // Effect to automatically open the editor if a draft exists when the thread loads/changes
+  // Extract first draft ID from draftIds (format: "draft:abc123")
+  const firstDraftId = useMemo(() => {
+    const draftRecordId = thread?.draftIds?.[0]
+    if (!draftRecordId) return null
+    // Extract ID after "draft:" prefix
+    const parts = draftRecordId.split(':')
+    return parts.length > 1 ? parts[1] : null
+  }, [thread?.draftIds])
+
+  // Check if draft is already known to be not found (deleted)
+  const isNotFound = useThreadStore((s) =>
+    firstDraftId ? s.notFoundDraftIds.has(firstDraftId) : false
+  )
+
+  // Fetch draft content using useDraft hook
+  // Skip fetching if draft is known to be deleted
+  const { draft, isLoading: isLoadingDraft } = useDraft({
+    draftId: firstDraftId,
+    enabled: !!firstDraftId && !isNotFound,
+  })
+
+  // Use effective draft - treat not-found drafts as no draft
+  const effectiveDraft = isNotFound ? undefined : draft
+
+  // Effect to automatically open the editor if a draft exists when loaded
   useEffect(() => {
-    if (thread?.draftMessage) {
+    if (effectiveDraft) {
       if (suppressAutoOpenOnce.current) {
-        // Skip auto-open once, typically after an explicit close
         suppressAutoOpenOnce.current = false
       } else {
-        console.log('Draft message found, showing editor.', {
-        threadId: thread.id,
-        draftId: thread.draftMessage.id,
+        console.log('Draft found, showing editor.', {
+          threadId: thread?.id,
+          draftId: effectiveDraft.id,
         })
         setIsShowReplyBox(true)
-        setEditorMode('draft') // Set mode to 'draft' to indicate loading existing draft
-        setSourceMessage(null) // No specific source message when editing a draft
+        setEditorMode('draft')
+        setSourceMessage(null)
       }
     }
-    // Reset source message when thread context changes fundamentally (e.g., different thread loaded)
-    // This dependency array means it runs when the thread object reference changes.
-  }, [thread]) // Depend only on the thread object reference
+  }, [effectiveDraft, thread?.id])
 
   // Reset internal state ONLY when the thread ID actually changes
-  // This prevents closing the box just because the thread data refreshed after sending
   const previousThreadId = useRef<string | null | undefined>(null)
   useEffect(() => {
     const currentThreadId = thread?.id
-    const hasDraft = !!thread?.draftMessage
+    const hasDraft = !!effectiveDraft
 
     if (currentThreadId !== previousThreadId.current) {
       console.log('Thread ID changed, resetting reply box state.', {
         oldId: previousThreadId.current,
         newId: currentThreadId,
       })
-      // Reset source message when thread changes, unless loading a draft initially
       if (!hasDraft) {
         setIsShowReplyBox(false)
-        setSourceMessage(null) // Reset source on thread change
+        setSourceMessage(null)
         setEditorMode('reply')
       }
       previousThreadId.current = currentThreadId
     }
 
-    // Handle initial draft loading separately
+    // Handle draft loading after thread ID is set
     if (hasDraft && !isShowReplyBox && previousThreadId.current === currentThreadId) {
-      // Only set if not already shown
       if (suppressAutoOpenOnce.current) {
-        // Skip one automatic open after an explicit close
         suppressAutoOpenOnce.current = false
       } else {
-        console.log(
-          'useReplyBox: Draft message found on thread update (not ID change), showing editor.',
-          { threadId: currentThreadId, draftId: thread.draftMessage!.id }
-        )
+        console.log('useReplyBox: Draft found on thread update, showing editor.', {
+          threadId: currentThreadId,
+          draftId: effectiveDraft.id,
+        })
         setIsShowReplyBox(true)
         setEditorMode('draft')
-        setSourceMessage(null) // Clear source message when loading a draft
+        setSourceMessage(null)
       }
     }
-  }, [thread?.id, thread?.draftMessage, isShowReplyBox]) // Simplified dependency
+  }, [thread?.id, effectiveDraft, isShowReplyBox])
 
   /** Scrolls the reply box into view */
   const scrollIntoView = useCallback(() => {
@@ -115,29 +129,30 @@ export function useReplyBox(thread: ThreadWithDetails | null | undefined) {
   )
 
   /**
-   * Handles the generic "Reply" button click (usually replies to the last message).
+   * Opens the generic reply editor.
+   * Requires a message to be passed since ThreadMeta doesn't contain messages.
    */
-  const handleShowGenericReply = useCallback(() => {
-    if (!thread?.messages || thread.messages.length === 0) {
-      console.log('Cannot reply, thread has no messages.')
-      return
-    }
-    // Reply to the last *sent* message in the thread
-    const lastMessage = thread.messages[thread.messages.length - 1]
-    if (lastMessage) {
+  const handleShowGenericReply = useCallback(
+    (lastMessage?: MessageType) => {
+      if (!lastMessage) {
+        console.log('Cannot reply, no message provided.')
+        return
+      }
       openEditorForAction('reply', lastMessage)
-    }
-  }, [thread?.messages, openEditorForAction])
+    },
+    [openEditorForAction]
+  )
 
   return {
     isShowReplyBox,
-    setIsShowReplyBox, // Expose setter for manual closing
-    editorMode, // The current mode ('reply', 'draft', etc.)
-    sourceMessage, // The message being replied/forwarded to (null for draft/new)
-    replyBoxRef, // Ref for scrolling
-    openEditorForAction, // Function to open for reply/replyAll/forward
-    handleShowGenericReply, // Function for the generic reply button
-    // Helper to close and suppress one auto-open
+    setIsShowReplyBox,
+    editorMode,
+    sourceMessage,
+    replyBoxRef,
+    openEditorForAction,
+    handleShowGenericReply,
+    draft: effectiveDraft,
+    isLoadingDraft,
     closeWithSuppress: () => {
       suppressAutoOpenOnce.current = true
       setIsShowReplyBox(false)

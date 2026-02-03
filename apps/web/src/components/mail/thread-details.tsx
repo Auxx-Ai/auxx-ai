@@ -43,7 +43,8 @@ export default function ThreadDetails() {
   }
 
   // Get specific data from context
-  const { isOpen: isShowReplyBox, mode: editorMode, sourceMessage, ref: replyBoxRef } = replyBox
+  const { isOpen: isShowReplyBox, mode: editorMode, sourceMessage, ref: replyBoxRef, draft } =
+    replyBox
 
   return (
     <div className="relative flex h-full flex-col overflow-y-auto overflow-x-hidden flex-1 w-full">
@@ -68,11 +69,11 @@ export default function ThreadDetails() {
         {isShowReplyBox && (
           <div className="px-4 py-4 pb-[90px]">
             <ReplyComposeEditor
-              key={`${thread.id}-${editorMode}-${sourceMessage?.id ?? 'new'}`}
+              key={`${thread.id}-${editorMode}-${sourceMessage?.id ?? 'new'}-${draft?.id ?? ''}`}
               mode={editorMode}
               sourceMessage={sourceMessage}
               thread={thread}
-              draftMessage={undefined}
+              draft={draft}
               onClose={() => handlers.closeReplyBox()}
               onSendSuccess={() => {
                 console.log('onSendSuccess callback triggered')

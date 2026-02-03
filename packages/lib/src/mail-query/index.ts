@@ -26,5 +26,5 @@ export {
   type ContextConditionParams,
 } from './context-to-conditions'
 
-// NOTE: condition-query-builder.ts is server-only (uses drizzle/database)
-// Import directly from '@auxx/lib/mail-query/condition-query-builder' in server code
+// NOTE: condition-query-builder.ts and draft-condition-builder.ts are server-only (uses drizzle/database)
+// Import directly from '@auxx/lib/mail-query/condition-query-builder' or '@auxx/lib/mail-query/draft-condition-builder' in server code

@@ -211,6 +211,30 @@ export const draftRouter = createTRPCRouter({
       const drafts = await draftService.listUserDrafts({ limit: input?.limit })
       return drafts.map(transformDraftForFrontend)
     }),
+
+  /**
+   * Batch fetch standalone draft metadata by IDs.
+   * Used for displaying standalone drafts in the thread list.
+   * Uses mutation to avoid caching issues with variable input.
+   */
+  getByIds: protectedProcedure
+    .input(z.object({ ids: z.array(z.string()).max(100) }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      const draftService = new DraftService(ctx.db, organizationId, userId)
+
+      logger.debug('Fetching standalone draft metas', { count: input.ids.length })
+
+      try {
+        return await draftService.getStandaloneDraftMetas(input.ids)
+      } catch (error) {
+        logger.error('Failed to fetch standalone draft metas', { error })
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to fetch draft metadata.',
+        })
+      }
+    }),
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
