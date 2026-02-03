@@ -10,7 +10,7 @@ import { SidebarItem } from '~/components/global/sidebar/sidebar-item'
 import { EditableSidebarItem } from '~/components/global/sidebar/editable-sidebar-item'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Inbox as InboxIcon, Send, FileEdit } from 'lucide-react'
-import { api } from '~/trpc/react'
+import { useMailCountsStore } from '~/components/mail/store'
 import { useSidebarStateContext } from './sidebar-state-context'
 
 // Import necessary DnD Kit components
@@ -94,8 +94,10 @@ export function PersonalMailGroup({
   // Use settings if available, otherwise use defaults
   const [items, setItems] = useState<PersonalMenuItem[]>(DEFAULT_PERSONAL_ITEMS)
 
-  // Use the enhanced getCounts endpoint - now includes personal counts
-  const { data: unreadCounts, isLoading: isLoadingCounts } = api.thread.getCounts.useQuery()
+  // Use the mail counts store for counts
+  const inboxCount = useMailCountsStore((s) => s.counts.inbox)
+  const draftsCount = useMailCountsStore((s) => s.counts.drafts)
+  const isInitialLoading = useMailCountsStore((s) => s.isInitialLoading)
 
   // Setup DnD sensors
   const sensors = useSensors(
@@ -108,29 +110,27 @@ export function PersonalMailGroup({
 
   // Update items when settings or counts change
   useEffect(() => {
-    if (settings && unreadCounts) {
-      // Merge default items with settings and apply correct counts
+    if (settings) {
+      // Merge default items with settings and apply correct counts from store
       const mergedItems = DEFAULT_PERSONAL_ITEMS.map((defaultItem) => {
         const settingItem = settings.find((s) => s.id === defaultItem.id)
         const baseItem = settingItem ? { ...defaultItem, ...settingItem } : defaultItem
 
-        // Apply correct counts from enhanced getCounts response
-        // Only inbox gets a count (assigned-to-me threads)
-        const count = defaultItem.id === 'inbox' ? (unreadCounts.inbox ?? 0) : 0
+        // Apply correct counts from store
+        let count: number | undefined = undefined
+        if (defaultItem.id === 'inbox') {
+          count = inboxCount
+        } else if (defaultItem.id === 'drafts') {
+          count = draftsCount > 0 ? draftsCount : undefined
+        }
+        // sent has no count
 
         return { ...baseItem, count }
       })
 
       setItems(mergedItems)
-    } else if (settings && !unreadCounts) {
-      // If we have settings but no counts yet, use settings without counts
-      const mergedItems = DEFAULT_PERSONAL_ITEMS.map((defaultItem) => {
-        const settingItem = settings.find((s) => s.id === defaultItem.id)
-        return settingItem ? { ...defaultItem, ...settingItem } : defaultItem
-      })
-      setItems(mergedItems)
     }
-  }, [settings, unreadCounts])
+  }, [settings, inboxCount, draftsCount])
 
   const getItemHref = (item: PersonalMenuItem): string => {
     // Drafts and Sent go directly to their base path
@@ -211,7 +211,7 @@ export function PersonalMailGroup({
     return null
   }
 
-  if (settingsLoading || isLoadingCounts) {
+  if (settingsLoading || isInitialLoading) {
     return (
       <SidebarGroup className="group">
         <SidebarGroupHeader

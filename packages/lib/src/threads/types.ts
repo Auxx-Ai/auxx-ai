@@ -21,6 +21,21 @@ export type UserUnreadCounts = {
   assigned?: number
 }
 
+/**
+ * Full counts response for mail sidebar.
+ * Includes personal inbox, drafts, shared inboxes, and view counts.
+ */
+export interface FullCountsResponse {
+  /** Unread threads assigned to user with OPEN status */
+  inbox: number
+  /** All drafts created by user (from Draft table) */
+  drafts: number
+  /** Per-inbox unread counts keyed by inbox ID */
+  sharedInboxes: Record<string, number>
+  /** Per-view unread counts keyed by view ID */
+  views: Record<string, number>
+}
+
 // ============================================================================
 // New ID-first batch-fetch types (Phase 1 refactor)
 // ============================================================================

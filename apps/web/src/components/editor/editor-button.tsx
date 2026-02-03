@@ -564,7 +564,14 @@ export const EditorToolbar = ({
     setActiveGroup(activeGroup === groupId ? null : groupId)
   }
 
-  if (!editor) return null
+  // Return placeholder with same height to prevent layout jump
+  if (!editor) {
+    return (
+      <div className="flex flex-1 items-center justify-between">
+        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar p-0.5 h-10" />
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-1 items-center justify-between">

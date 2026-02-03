@@ -14,6 +14,8 @@ export type {
   ThreadStatus,
   IntegrationProvider,
   ThreadFilter,
+  FullCountsResponse,
+  UserUnreadCounts,
 } from './types'
 
 // Re-export ActorId from canonical location for convenience

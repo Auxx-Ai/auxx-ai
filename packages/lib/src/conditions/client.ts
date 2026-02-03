@@ -6,6 +6,9 @@
 export type { Condition, ConditionGroup, ConditionValidationResult } from './types'
 export { conditionSchema, conditionGroupSchema, conditionGroupsSchema } from './schema'
 
+// Condition evaluation (pure TypeScript, safe for client)
+export { evaluateConditions, type FieldResolver } from './evaluate'
+
 // Operator definitions - SINGLE SOURCE OF TRUTH for operators
 export {
   OPERATOR_DEFINITIONS,

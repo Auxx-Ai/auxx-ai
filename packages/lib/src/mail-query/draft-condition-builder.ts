@@ -15,16 +15,18 @@ const SUPPORTED_DRAFT_FIELDS = ['subject', 'body', 'hasAttachments', 'to', 'date
 /**
  * Fields that cannot be applied to drafts (they don't have these attributes).
  * When any of these are present, standalone drafts should be excluded from results.
+ *
+ * Note: 'hasDraft' and 'status' are NOT in this list because:
+ * - hasDraft: Is the DRAFTS context trigger, should include drafts
+ * - status: Filters threads only; drafts are implicitly not TRASH/SPAM
  */
 const UNSUPPORTED_DRAFT_FIELDS = [
   'tag',
   'assignee',
-  'status',
   'inbox',
   'sender',
   'from',
   'sent',
-  'hasDraft',
 ]
 
 /**

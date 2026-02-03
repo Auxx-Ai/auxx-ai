@@ -5,6 +5,7 @@ import React, { useEffect } from 'react'
 import { api } from '~/trpc/react'
 import { useThreadStore, useMessageStore, useParticipantStore } from '../store'
 import { useThreadRealtime } from '../realtime'
+import { useMailCountsStore } from '~/components/mail/store'
 
 interface ThreadDataProviderProps {
   children: React.ReactNode
@@ -145,6 +146,22 @@ export function ThreadDataProvider({ children }: ThreadDataProviderProps) {
 
     return () => clearTimeout(timer)
   }, [pendingDraftCount, startDraftBatch, completeDraftBatch, fetchDrafts])
+
+  // ============================================================
+  // Mail counts fetching
+  // ============================================================
+  const setCounts = useMailCountsStore((s) => s.setCounts)
+
+  const { data: countsData } = api.thread.getCounts.useQuery(undefined, {
+    refetchInterval: 5 * 60 * 1000, // 5 minutes
+    refetchOnWindowFocus: true,
+  })
+
+  useEffect(() => {
+    if (countsData) {
+      setCounts(countsData)
+    }
+  }, [countsData, setCounts])
 
   return <>{children}</>
 }

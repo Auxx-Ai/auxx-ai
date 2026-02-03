@@ -22,8 +22,6 @@ import { toastSuccess } from '@auxx/ui/components/toast'
 import MailThreadItemDragOverlay from '~/components/mail/mail-thread-item-drag-overlay'
 import { DndStateProvider } from '~/app/context/dnd-state-context'
 import { snapCenterToCursor } from '@dnd-kit/modifiers'
-import { PusherProvider } from '~/providers/pusher-provider'
-import { ThreadDataProvider } from '~/components/threads'
 import { useThreadMutation } from '~/components/threads/hooks'
 import { SidebarInset, SidebarProvider } from '@auxx/ui/components/sidebar'
 import {
@@ -115,39 +113,35 @@ export const Dashboard = ({
 
   return (
     <SidebarProvider>
-      <PusherProvider>
-        <ThreadDataProvider>
-          <DndContext
-            sensors={sensors}
-            collisionDetection={pointerWithin}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}>
-            <DndStateProvider activeDndItem={activeDndItem}>
-              <div className="flex h-screen overflow-hidden w-full">
-                <AppSidebar className="min-w-0" user={user} />
-                <SidebarInset>{children}</SidebarInset>
-              </div>
-            </DndStateProvider>
-            {portalContainer &&
-              createPortal(
-                <DragOverlay
-                  dropAnimation={null}
-                  adjustScale={false}
-                  modifiers={[snapCenterToCursor]}
-                  style={{ width: 'auto' }}
-                  className="w-auto">
-                  {activeDndItem?.data.current?.type === 'thread' ? (
-                    <MailThreadItemDragOverlay
-                      items={activeDragData?.draggedThreadIds ?? []}
-                      isDragging
-                    />
-                  ) : null}
-                </DragOverlay>,
-                portalContainer
-              )}
-          </DndContext>
-        </ThreadDataProvider>
-      </PusherProvider>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={pointerWithin}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}>
+        <DndStateProvider activeDndItem={activeDndItem}>
+          <div className="flex h-screen overflow-hidden w-full">
+            <AppSidebar className="min-w-0" user={user} />
+            <SidebarInset>{children}</SidebarInset>
+          </div>
+        </DndStateProvider>
+        {portalContainer &&
+          createPortal(
+            <DragOverlay
+              dropAnimation={null}
+              adjustScale={false}
+              modifiers={[snapCenterToCursor]}
+              style={{ width: 'auto' }}
+              className="w-auto">
+              {activeDndItem?.data.current?.type === 'thread' ? (
+                <MailThreadItemDragOverlay
+                  items={activeDragData?.draggedThreadIds ?? []}
+                  isDragging
+                />
+              ) : null}
+            </DragOverlay>,
+            portalContainer
+          )}
+      </DndContext>
     </SidebarProvider>
   )
 }

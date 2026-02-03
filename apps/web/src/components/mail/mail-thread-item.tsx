@@ -31,6 +31,7 @@ import {
   useMessage,
   useThreadReadStatus,
   useThreadMutation,
+  useMessageParticipants,
 } from '~/components/threads/hooks'
 import { useThreadSelectionStore } from '~/components/threads/store'
 import { TagBadge } from '~/components/tags/ui/tag-badge'
@@ -121,6 +122,7 @@ export const MailThreadItem = memo(function MailThreadItem({
     messageId: thread?.latestMessageId,
     enabled: !!thread?.latestMessageId,
   })
+  const { from: senderParticipant } = useMessageParticipants(latestMessage?.participants ?? [])
   const { isUnread, markAsRead } = useThreadReadStatus(threadId)
 
   // --- Selection store actions ---
@@ -188,8 +190,8 @@ export const MailThreadItem = memo(function MailThreadItem({
   }, [thread?.lastMessageAt])
 
   const senderName = useMemo(
-    () => latestMessage?.from?.name || latestMessage?.from?.identifier || 'Unknown',
-    [latestMessage?.from]
+    () => senderParticipant?.name || senderParticipant?.identifier || 'Unknown',
+    [senderParticipant]
   )
 
   const snippet = useMemo(() => {

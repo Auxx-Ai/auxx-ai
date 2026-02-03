@@ -502,7 +502,7 @@ export const threadRouter = createTRPCRouter({
   getCounts: protectedProcedure.query(async ({ ctx }) => {
     const { userId, organizationId } = ctx.session
     const unreadService = new UnreadService(organizationId, userId)
-    return await unreadService.getUnreadCountsForUser()
+    return await unreadService.getFullCounts()
   }),
   readStatus: protectedProcedure
     .input(

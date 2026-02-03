@@ -1,10 +1,11 @@
 // apps/web/src/components/mail/email-editor/hooks/use-draft-mutations.ts
 'use client'
 
-import { useCallback } from 'react'
+import { useCallback, useRef } from 'react'
 import { toastError } from '@auxx/ui/components/toast'
 import { api } from '~/trpc/react'
 import { useThreadStore, getThreadStoreState } from '~/components/threads/store/thread-store'
+import { useCountUpdates } from '~/components/mail/hooks'
 import type { DraftPayload, DraftMessage } from '../types'
 import type { StandaloneDraftMeta } from '@auxx/types/draft'
 
@@ -62,12 +63,19 @@ function buildRecipientSummary(
 /**
  * Hook that encapsulates all draft mutation operations.
  * Handles upsert and delete with optimistic updates to ThreadStore.
+ * Integrates with mail counts store for draft count updates.
  */
 export function useDraftMutations(options?: UseDraftMutationsOptions): UseDraftMutationsReturn {
   // ThreadStore actions for standalone draft updates
   const setDrafts = useThreadStore((s) => s.setDrafts)
   const removeDraft = useThreadStore((s) => s.removeDraft)
   const updateThread = useThreadStore((s) => s.updateThread)
+
+  // Count update helpers
+  const { onCreateDraft, onDeleteDraft, rollback } = useCountUpdates()
+
+  // Track if last upsert was a new draft (to know whether to update count)
+  const wasNewDraftRef = useRef(false)
 
   // tRPC utils for cache invalidation
   const utils = api.useUtils()
@@ -136,6 +144,9 @@ export function useDraftMutations(options?: UseDraftMutationsOptions): UseDraftM
         }
       }
 
+      // Update draft count (optimistic)
+      onDeleteDraft()
+
       // Call component's optimistic update callback
       options?.onDeleteMutate?.(draftId)
     },
@@ -149,6 +160,8 @@ export function useDraftMutations(options?: UseDraftMutationsOptions): UseDraftM
 
       if (!isNotFound) {
         toastError({ title: 'Failed to delete draft', description: error.message })
+        // Rollback count on error (unless draft wasn't found)
+        rollback()
       }
       options?.onDeleteError?.(error, draftId)
     },
@@ -157,9 +170,26 @@ export function useDraftMutations(options?: UseDraftMutationsOptions): UseDraftM
   // Wrapped upsert function
   const upsert = useCallback(
     async (payload: DraftPayload): Promise<DraftMessage> => {
-      return upsertMutation.mutateAsync(payload)
+      // Track if this is a new draft (no existing draftId)
+      const isNewDraft = !payload.draftId
+      wasNewDraftRef.current = isNewDraft
+
+      // Optimistically increment count for new drafts
+      if (isNewDraft) {
+        onCreateDraft()
+      }
+
+      try {
+        return await upsertMutation.mutateAsync(payload)
+      } catch (error) {
+        // Rollback count on error for new drafts
+        if (isNewDraft) {
+          rollback()
+        }
+        throw error
+      }
     },
-    [upsertMutation]
+    [upsertMutation, onCreateDraft, rollback]
   )
 
   // Wrapped delete function

@@ -8,7 +8,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@auxx/ui/components/dialog'
+import { Loader2 } from 'lucide-react'
 import ReplyComposeEditor from '~/components/mail/email-editor'
+import { useDraft } from './hooks/use-draft'
 import type { EditorPresetValues } from '~/components/mail/email-editor/types'
 
 interface NewMessageDialogProps {
@@ -43,11 +45,30 @@ const NewMessageDialog: React.FC<NewMessageDialogProps> = ({
 }) => {
   // Uncontrolled internal state (used when trigger is provided)
   const [internalOpen, setInternalOpen] = React.useState(false)
+  // Defer mounting heavy editor content until after dialog animation
+  const [editorMounted, setEditorMounted] = React.useState(false)
 
   // Use controlled or uncontrolled state
   const isControlled = controlledOpen !== undefined
   const open = isControlled ? controlledOpen : internalOpen
   const setOpen = isControlled ? (onOpenChange ?? (() => {})) : setInternalOpen
+
+  // Defer editor mount to prevent blocking dialog animation
+  React.useEffect(() => {
+    if (open && !editorMounted) {
+      const timer = setTimeout(() => setEditorMounted(true), 200)
+      return () => clearTimeout(timer)
+    }
+    if (!open) {
+      setEditorMounted(false)
+    }
+  }, [open, editorMounted])
+
+  // Fetch full draft content when editing a draft
+  const { draft, isLoading: isDraftLoading } = useDraft({
+    draftId,
+    enabled: mode === 'draft' && !!draftId && open,
+  })
 
   const handleClose = () => {
     setOpen(false)
@@ -57,6 +78,9 @@ const NewMessageDialog: React.FC<NewMessageDialogProps> = ({
     setOpen(false)
     onSendSuccess?.()
   }
+
+  // Show loading while editor is mounting or fetching draft
+  const showLoading = !editorMounted || (mode === 'draft' && draftId && isDraftLoading)
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -72,13 +96,19 @@ const NewMessageDialog: React.FC<NewMessageDialogProps> = ({
             {mode === 'draft' ? 'Edit Draft' : 'Compose'}
           </DialogTitle>
         </DialogHeader>
-        <ReplyComposeEditor
-          mode={mode === 'draft' ? 'draft' : 'new'}
-          draftId={draftId}
-          onClose={handleClose}
-          onSendSuccess={handleSendSuccess}
-          presetValues={presetValues}
-        />
+        {showLoading ? (
+          <div className="flex items-center justify-center p-8 bg-background rounded-[20px]">
+            <Loader2 className="size-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <ReplyComposeEditor
+            mode={mode === 'draft' ? 'draft' : 'new'}
+            draft={draft}
+            onClose={handleClose}
+            onSendSuccess={handleSendSuccess}
+            presetValues={presetValues}
+          />
+        )}
       </DialogContent>
     </Dialog>
   )

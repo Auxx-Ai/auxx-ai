@@ -562,13 +562,13 @@ export class ThreadQueryService {
       }>(sql`
         SELECT
           'thread' as "entityType",
-          t.id as "entityId",
-          t."lastMessageAt"::text as "sortDate"
-        FROM "Thread" t
+          "Thread".id as "entityId",
+          "Thread"."lastMessageAt"::text as "sortDate"
+        FROM "Thread"
         WHERE ${threadWhereCondition}
           ${cursorCondition}
-        ORDER BY t."lastMessageAt" ${sort.direction === 'desc' ? sql`DESC` : sql`ASC`},
-                 t.id ${sort.direction === 'desc' ? sql`DESC` : sql`ASC`}
+        ORDER BY "Thread"."lastMessageAt" ${sort.direction === 'desc' ? sql`DESC` : sql`ASC`},
+                 "Thread".id ${sort.direction === 'desc' ? sql`DESC` : sql`ASC`}
         LIMIT ${limit + 1}
       `)
       return rows.rows
@@ -584,9 +584,9 @@ export class ThreadQueryService {
         -- Threads with drafts
         SELECT
           'thread' as "entityType",
-          t.id as "entityId",
-          t."lastMessageAt"::text as "sortDate"
-        FROM "Thread" t
+          "Thread".id as "entityId",
+          "Thread"."lastMessageAt"::text as "sortDate"
+        FROM "Thread"
         WHERE ${threadWhereCondition}
 
         UNION ALL
@@ -594,9 +594,9 @@ export class ThreadQueryService {
         -- Standalone drafts
         SELECT
           'draft' as "entityType",
-          d.id as "entityId",
-          d."updatedAt"::text as "sortDate"
-        FROM "Draft" d
+          "Draft".id as "entityId",
+          "Draft"."updatedAt"::text as "sortDate"
+        FROM "Draft"
         WHERE ${draftConditions}
       )
       SELECT "entityType", "entityId", "sortDate"

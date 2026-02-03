@@ -12,6 +12,8 @@ import { SubscriptionEnded } from '~/components/subscriptions/subscription-ended
 import { SimpleLayout } from '~/components/layouts/simple-layout'
 import { ResourceProvider } from '~/components/resources'
 import { FilesystemProvider } from '~/components/files/provider/filesystem-provider'
+import { ThreadDataProvider } from '~/components/threads'
+import { PusherProvider } from '~/providers/pusher-provider'
 
 interface AppLayoutWrapperProps {
   children: ReactNode
@@ -61,11 +63,15 @@ export function AppLayoutWrapper({ children, user }: AppLayoutWrapperProps) {
   return (
     <ResourceProvider>
       <FilesystemProvider>
-        <KBar>
-          <TooltipProvider>
-            <Dashboard user={user}>{children}</Dashboard>
-          </TooltipProvider>
-        </KBar>
+        <PusherProvider>
+          <ThreadDataProvider>
+            <KBar>
+              <TooltipProvider>
+                <Dashboard user={user}>{children}</Dashboard>
+              </TooltipProvider>
+            </KBar>
+          </ThreadDataProvider>
+        </PusherProvider>
       </FilesystemProvider>
     </ResourceProvider>
   )

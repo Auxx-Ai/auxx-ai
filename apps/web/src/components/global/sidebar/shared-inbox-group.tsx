@@ -31,7 +31,7 @@ import {
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { cn } from '@auxx/ui/lib/utils'
 import { useDndState } from '~/app/context/dnd-state-context'
-import { api } from '~/trpc/react'
+import { useMailCountsStore, selectSharedInboxesTotal } from '~/components/mail/store'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
 import Link from 'next/link'
 import { InboxDialog } from '~/components/inbox/inbox-dialog'
@@ -146,7 +146,9 @@ export function SharedInboxesGroup({
     return `/app/mail/inboxes/all/unassigned`
   }
 
-  const { data: unreadCounts, isLoading: isLoadingCounts, error } = api.thread.getCounts.useQuery()
+  // Use the mail counts store for counts
+  const sharedInboxCounts = useMailCountsStore((s) => s.counts.sharedInboxes)
+  const totalSharedCount = useMailCountsStore(selectSharedInboxesTotal)
 
   // Dnd-kit sensors setup
   const sensors = useSensors(
@@ -218,7 +220,7 @@ export function SharedInboxesGroup({
           // Check if the current path *starts with* the specific inbox base URL
           // This handles /inboxes/[id]/unassigned, /inboxes/[id]/assigned, /inboxes/[id]/assigned/[threadId] etc.
           const isActive = pathname?.startsWith(`/app/mail/inboxes/${inbox.id}`)
-          const count = unreadCounts?.[inbox.id] ?? 0
+          const count = sharedInboxCounts[inbox.id] ?? 0
 
           return (
             <SidebarMenuSubItem key={inbox.id}>

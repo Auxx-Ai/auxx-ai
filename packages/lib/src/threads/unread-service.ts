@@ -1,10 +1,10 @@
-// src/lib/threads/unread-service.ts
+// packages/lib/src/threads/unread-service.ts
 import { database as db, schema } from '@auxx/database'
-import { eq, and, or, inArray, sql, count, lt, exists } from 'drizzle-orm'
+import { eq, and, or, inArray, sql, count, lt, isNull } from 'drizzle-orm'
 import { createScopedLogger } from '@auxx/logger'
-import { UserUnreadCounts } from './types'
-// Import Redis client setup
-// import { getRedisClient } from '@auxx/redis';
+import { type UserUnreadCounts, type FullCountsResponse } from './types'
+import { buildConditionGroupsQuery } from '../mail-query/condition-query-builder'
+import type { ConditionGroup } from '../conditions/types'
 
 const logger = createScopedLogger('unread-service')
 
@@ -427,6 +427,248 @@ export class UnreadService {
       logger.info(
         `Marked thread ${threadId} as unread for ${userIds.length} users due to new message`
       )
+    }
+  }
+
+  // ============================================================================
+  // NEW METHODS: Full counts for mail sidebar
+  // ============================================================================
+
+  /**
+   * Counts all drafts for the current user.
+   * Includes both standalone drafts and thread-attached drafts.
+   */
+  async getDraftsCount(): Promise<number> {
+    const result = await db
+      .select({ count: count() })
+      .from(schema.Draft)
+      .where(
+        and(
+          eq(schema.Draft.createdById, this.userId),
+          eq(schema.Draft.organizationId, this.organizationId)
+        )
+      )
+
+    return result[0]?.count ?? 0
+  }
+
+  /**
+   * Counts unread threads assigned to the current user with OPEN status.
+   * This is the "Personal Inbox" count - threads I need to action.
+   */
+  async getPersonalInboxCount(): Promise<number> {
+    // Count threads without read status
+    const withoutStatus = await db
+      .select({ count: count() })
+      .from(schema.Thread)
+      .leftJoin(
+        schema.ThreadReadStatus,
+        and(
+          eq(schema.ThreadReadStatus.threadId, schema.Thread.id),
+          eq(schema.ThreadReadStatus.userId, this.userId)
+        )
+      )
+      .where(
+        and(
+          eq(schema.Thread.organizationId, this.organizationId),
+          eq(schema.Thread.assigneeId, this.userId),
+          eq(schema.Thread.status, 'OPEN' as any),
+          isNull(schema.ThreadReadStatus.userId) // No read status = unread
+        )
+      )
+
+    // Count threads with explicit unread status
+    const withUnreadStatus = await db
+      .select({ count: count() })
+      .from(schema.Thread)
+      .innerJoin(
+        schema.ThreadReadStatus,
+        eq(schema.ThreadReadStatus.threadId, schema.Thread.id)
+      )
+      .where(
+        and(
+          eq(schema.Thread.organizationId, this.organizationId),
+          eq(schema.Thread.assigneeId, this.userId),
+          eq(schema.Thread.status, 'OPEN' as any),
+          eq(schema.ThreadReadStatus.userId, this.userId),
+          eq(schema.ThreadReadStatus.isRead, false)
+        )
+      )
+
+    return (withoutStatus[0]?.count ?? 0) + (withUnreadStatus[0]?.count ?? 0)
+  }
+
+  /**
+   * Gets all shared inbox counts for the organization.
+   * Returns a map of inboxId -> unread count.
+   */
+  async getSharedInboxCounts(): Promise<Record<string, number>> {
+    // Get counts from pre-calculated table
+    const countsFromDb = await db
+      .select({
+        inboxId: schema.UserInboxUnreadCount.inboxId,
+        unreadCount: schema.UserInboxUnreadCount.unreadCount,
+      })
+      .from(schema.UserInboxUnreadCount)
+      .where(
+        and(
+          eq(schema.UserInboxUnreadCount.userId, this.userId),
+          eq(schema.UserInboxUnreadCount.organizationId, this.organizationId)
+        )
+      )
+
+    const countsMap: Record<string, number> = {}
+    for (const item of countsFromDb) {
+      countsMap[item.inboxId] = item.unreadCount
+    }
+
+    return countsMap
+  }
+
+  /**
+   * Gets all accessible mail view IDs for the current user.
+   * Includes both personal and shared views.
+   */
+  async getAccessibleViewIds(): Promise<string[]> {
+    const [userViews, sharedViews] = await Promise.all([
+      db
+        .select({ id: schema.MailView.id })
+        .from(schema.MailView)
+        .where(
+          and(
+            eq(schema.MailView.userId, this.userId),
+            eq(schema.MailView.organizationId, this.organizationId)
+          )
+        ),
+      db
+        .select({ id: schema.MailView.id })
+        .from(schema.MailView)
+        .where(
+          and(
+            eq(schema.MailView.isShared, true),
+            eq(schema.MailView.organizationId, this.organizationId)
+          )
+        ),
+    ])
+
+    // Combine and deduplicate
+    const allIds = new Set([
+      ...userViews.map((v) => v.id),
+      ...sharedViews.map((v) => v.id),
+    ])
+
+    return Array.from(allIds)
+  }
+
+  /**
+   * Counts unread OPEN threads matching each view's filter conditions.
+   * Returns a map of viewId -> unread count.
+   */
+  async getViewCounts(viewIds: string[]): Promise<Record<string, number>> {
+    if (viewIds.length === 0) return {}
+
+    // Fetch views with their filters
+    const views = await db
+      .select({
+        id: schema.MailView.id,
+        filters: schema.MailView.filters,
+      })
+      .from(schema.MailView)
+      .where(inArray(schema.MailView.id, viewIds))
+
+    // Calculate count for each view in parallel
+    const countPromises = views.map(async (view) => {
+      const filters = (view.filters as ConditionGroup[]) || []
+
+      // Build WHERE condition from view filters
+      const whereCondition = buildConditionGroupsQuery(filters, this.organizationId)
+
+      // Count unread OPEN threads matching the filters
+      // Use subquery approach to avoid complex join issues
+
+      // Step 1: Get thread IDs that match the view filters and are OPEN
+      // Step 2: Filter to only unread (no read status or isRead=false)
+
+      // Unread threads without read status
+      const withoutStatusResult = await db
+        .select({ count: count() })
+        .from(schema.Thread)
+        .leftJoin(
+          schema.ThreadReadStatus,
+          and(
+            eq(schema.ThreadReadStatus.threadId, schema.Thread.id),
+            eq(schema.ThreadReadStatus.userId, this.userId)
+          )
+        )
+        .where(
+          and(
+            whereCondition,
+            eq(schema.Thread.status, 'OPEN' as any),
+            isNull(schema.ThreadReadStatus.userId)
+          )
+        )
+
+      // Unread threads with explicit unread status
+      const withUnreadStatusResult = await db
+        .select({ count: count() })
+        .from(schema.Thread)
+        .innerJoin(
+          schema.ThreadReadStatus,
+          eq(schema.ThreadReadStatus.threadId, schema.Thread.id)
+        )
+        .where(
+          and(
+            whereCondition,
+            eq(schema.Thread.status, 'OPEN' as any),
+            eq(schema.ThreadReadStatus.userId, this.userId),
+            eq(schema.ThreadReadStatus.isRead, false)
+          )
+        )
+
+      const totalUnread =
+        (withoutStatusResult[0]?.count ?? 0) + (withUnreadStatusResult[0]?.count ?? 0)
+
+      return { viewId: view.id, count: totalUnread }
+    })
+
+    const results = await Promise.all(countPromises)
+
+    const countsMap: Record<string, number> = {}
+    for (const result of results) {
+      countsMap[result.viewId] = result.count
+    }
+
+    return countsMap
+  }
+
+  /**
+   * Get all counts needed for the mail sidebar in a single call.
+   * Fetches personal inbox, drafts, shared inboxes, and view counts.
+   */
+  async getFullCounts(): Promise<FullCountsResponse> {
+    // Get accessible view IDs first (needed for view counts)
+    const viewIds = await this.getAccessibleViewIds()
+
+    // Fetch all counts in parallel
+    const [inbox, drafts, sharedInboxes, views] = await Promise.all([
+      this.getPersonalInboxCount(),
+      this.getDraftsCount(),
+      this.getSharedInboxCounts(),
+      this.getViewCounts(viewIds),
+    ])
+
+    logger.debug(`Full counts for user ${this.userId}:`, {
+      inbox,
+      drafts,
+      sharedInboxesCount: Object.keys(sharedInboxes).length,
+      viewsCount: Object.keys(views).length,
+    })
+
+    return {
+      inbox,
+      drafts,
+      sharedInboxes,
+      views,
     }
   }
 }

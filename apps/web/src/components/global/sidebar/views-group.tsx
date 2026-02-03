@@ -37,7 +37,7 @@ import {
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { cn } from '@auxx/ui/lib/utils'
 import { useDndState } from '~/app/context/dnd-state-context'
-import { api } from '~/trpc/react'
+import { useMailCountsStore } from '~/components/mail/store'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
 import Link from 'next/link'
 import { MailViewDialog } from '~/components/mail-views/mail-view-dialog'
@@ -189,7 +189,8 @@ export function ViewsGroup({
     return `/app/mail/views/${inboxId}/unassigned`
   }
 
-  const { data: unreadCounts, isLoading: isLoadingCounts, error } = api.thread.getCounts.useQuery()
+  // Use the mail counts store for view counts
+  const viewCounts = useMailCountsStore((s) => s.counts.views)
 
   // Dnd-kit sensors setup
   const sensors = useSensors(
@@ -267,10 +268,10 @@ export function ViewsGroup({
 
       return visibleViews.map((view) => {
         const itemHref = getViewHref(view.id)
-        // Check if the current path *starts with* the specific inbox base URL
-        // This handles /inboxes/[id]/unassigned, /inboxes/[id]/assigned, /inboxes/[id]/assigned/[threadId] etc.
+        // Check if the current path *starts with* the specific view base URL
+        // This handles /views/[id]/unassigned, /views/[id]/assigned, etc.
         const isActive = pathname?.startsWith(`/app/mail/views/${view.id}`)
-        const count = unreadCounts?.[view.id] ?? 0
+        const count = viewCounts[view.id] ?? 0
 
         return (
           <SidebarMenuItem key={view.id}>

@@ -38,10 +38,10 @@ export function invalidateResource(recordId: RecordId) {
       // With optimistic store updates, thread lists don't need invalidation.
       // The store is the source of truth and updates are already applied.
       // Only invalidate getCounts (workflow may have changed status).
-      queryClient.invalidateQueries({
-        queryKey: getQueryKey(api.thread.getCounts),
-        exact: false,
-      })
+      // queryClient.invalidateQueries({
+      //   queryKey: getQueryKey(api.thread.getCounts),
+      //   exact: false,
+      // })
       break
 
     case 'contact':

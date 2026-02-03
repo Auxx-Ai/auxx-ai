@@ -7,6 +7,7 @@ import {
   ChatMessage,
   ChatSession,
   ChatWidget,
+  Draft,
   EmailAttachment,
   EmailEmbedding,
   EntityInstance,
@@ -236,8 +237,32 @@ export const chatAttachmentRelations = relations(ChatAttachment, ({ one }) => ({
   }),
 }))
 
-
-
+/**
+ * Draft relations
+ * Links to Organization, User (creator), Thread, Message, and Integration
+ */
+export const draftRelations = relations(Draft, ({ one }) => ({
+  organization: one(Organization, {
+    fields: [Draft.organizationId],
+    references: [Organization.id],
+  }),
+  createdBy: one(User, {
+    fields: [Draft.createdById],
+    references: [User.id],
+  }),
+  thread: one(Thread, {
+    fields: [Draft.threadId],
+    references: [Thread.id],
+  }),
+  inReplyToMessage: one(Message, {
+    fields: [Draft.inReplyToMessageId],
+    references: [Message.id],
+  }),
+  integration: one(Integration, {
+    fields: [Draft.integrationId],
+    references: [Integration.id],
+  }),
+}))
 
 
 
