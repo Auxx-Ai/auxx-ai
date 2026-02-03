@@ -69,15 +69,29 @@ export function useDraftMutations(options?: UseDraftMutationsOptions): UseDraftM
   const removeDraft = useThreadStore((s) => s.removeDraft)
   const updateThread = useThreadStore((s) => s.updateThread)
 
+  // tRPC utils for cache invalidation
+  const utils = api.useUtils()
+
   // Upsert mutation
   const upsertMutation = api.draft.upsert.useMutation({
     onSuccess: (result) => {
+      console.log('[useDraftMutations] upsert success:', {
+        draftId: result.id,
+        threadId: result.threadId,
+        textHtmlLength: result.textHtml?.length,
+      })
+
+      // Update draft query cache directly with mutation result (no refetch needed)
+      utils.draft.getById.setData({ draftId: result.id }, result)
+
       if (result.threadId) {
         // Thread-attached draft: add draftId to thread's draftIds if not already present
         const thread = getThreadStoreState().getThread(result.threadId)
+        console.log('[useDraftMutations] thread.draftIds before:', thread?.draftIds)
         if (thread) {
           const recordId = `draft:${result.id}`
           if (!thread.draftIds.includes(recordId)) {
+            console.log('[useDraftMutations] adding draftId to thread:', recordId)
             updateThread(result.threadId, {
               draftIds: [...thread.draftIds, recordId],
             })

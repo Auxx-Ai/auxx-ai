@@ -39,16 +39,16 @@ export function TagBadge({ recordId, size = 'md', onRemove, className, ...props 
   const isLoading = !recordId || recordLoading || valuesLoading
 
   const displayName = record?.displayName ?? 'Unknown'
-  const sizeClasses = size === 'sm' ? 'text-xs px-1.5 py-0.5' : 'text-sm px-2 py-1'
+  const sizeClasses = size === 'sm' ? 'text-xs px-1.5 py-0.5 h-5' : 'text-sm px-2 py-1 h-6'
 
   if (isLoading) {
-    return <Skeleton className={cn('h-5 w-16 rounded-md', className)} />
+    return <Skeleton className={cn('h-5 w-16 rounded-[5px]', className)} />
   }
 
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 rounded-md border shrink-0',
+        'inline-flex items-center gap-1 rounded-[5px] border shrink-0',
         sizeClasses,
         className
       )}
@@ -59,9 +59,11 @@ export function TagBadge({ recordId, size = 'md', onRemove, className, ...props 
       {...props}>
       {emoji && <span>{emoji}</span>}
       {color && !emoji && (
-        <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+        <span className="size-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
       )}
-      <span data-slot="text" className="font-medium shrink-0">{displayName}</span>
+      <span data-slot="text" className="font-medium shrink-0">
+        {displayName}
+      </span>
       {onRemove && (
         <button
           type="button"
@@ -70,7 +72,7 @@ export function TagBadge({ recordId, size = 'md', onRemove, className, ...props 
             onRemove()
           }}
           className="ml-0.5 rounded hover:bg-muted shrink-0">
-          <X className="h-3 w-3 shrink-0" />
+          <X className="size-3 shrink-0" />
         </button>
       )}
     </span>

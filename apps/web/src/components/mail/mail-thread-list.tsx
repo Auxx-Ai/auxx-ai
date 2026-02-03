@@ -1,8 +1,8 @@
 // apps/web/src/components/mail/mail-thread-list.tsx
 'use client'
 
-import React, { useEffect, useRef } from 'react'
-import { useAutoAnimate } from '@formkit/auto-animate/react'
+import React, { useEffect, useRef, memo } from 'react'
+// import { useAutoAnimate } from '@formkit/auto-animate/react'
 import { useInView } from 'react-intersection-observer'
 
 import { MailThreadItem } from './mail-thread-item'
@@ -51,8 +51,9 @@ interface ThreadListProps {
 /**
  * Displays a list of thread items with infinite scroll pagination.
  * Uses the new ID-based architecture for improved performance.
+ * Memoized to prevent unnecessary re-renders from parent components.
  */
-export function ThreadList({
+export const ThreadList = memo(function ThreadList({
   filter,
   basePath,
   selectedThreadId,
@@ -72,7 +73,6 @@ export function ThreadList({
     filter: filter.filter,
     sort: filter.sort,
   })
-
   // Selection hooks - use new thread selection system (for threads only)
   const { handleThreadClick } = useThreadSelection({ threadIds })
 
@@ -90,8 +90,9 @@ export function ThreadList({
   // Reset selection when filter changes
   useSelectionReset(filter.filter)
 
-  // Auto-animation for list changes
-  const [parent] = useAutoAnimate<HTMLDivElement>()
+  // Auto-animation disabled for performance during resize
+  // TODO: Re-enable with resize-aware toggle if needed
+  const parent = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (onLoadingChange) {
@@ -127,7 +128,9 @@ export function ThreadList({
       <div className={cn('overflow-y-auto', isEmpty && 'flex-1 flex flex-col')} ref={container}>
         <ThreadListMenu threadIds={threadIds} />
 
-        <div className={cn('relative flex flex-col gap-2 p-4 pt-0', isEmpty && 'flex-1')} ref={parent}>
+        <div
+          className={cn('relative flex flex-col gap-2 p-4 pt-0', isEmpty && 'flex-1')}
+          ref={parent}>
           {isEmpty && (
             <div className="p-8 text-center text-muted-foreground h-full flex items-center justify-center border rounded-2xl ring-inset ring-1 ring-muted/10">
               No threads found in this view.
@@ -168,7 +171,7 @@ export function ThreadList({
       </div>
     </div>
   )
-}
+})
 
 /** Skeleton for loading thread items */
 function ThreadItemSkeleton() {

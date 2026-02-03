@@ -21,11 +21,14 @@ export function useReplyBox(thread: ThreadMeta | null | undefined) {
 
   // Extract first draft ID from draftIds (format: "draft:abc123")
   const firstDraftId = useMemo(() => {
+    console.log('[useReplyBox] thread.draftIds:', thread?.draftIds)
     const draftRecordId = thread?.draftIds?.[0]
     if (!draftRecordId) return null
     // Extract ID after "draft:" prefix
     const parts = draftRecordId.split(':')
-    return parts.length > 1 ? parts[1] : null
+    const extractedId = parts.length > 1 ? parts[1] : null
+    console.log('[useReplyBox] extractedId:', extractedId)
+    return extractedId
   }, [thread?.draftIds])
 
   // Check if draft is already known to be not found (deleted)

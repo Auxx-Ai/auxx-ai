@@ -32,12 +32,18 @@ export interface UseDraftReturn {
  * Hook for fetching a single draft by ID.
  */
 export function useDraft({ draftId, enabled = true }: UseDraftOptions): UseDraftReturn {
+  console.log('[useDraft] fetching draftId:', draftId, 'enabled:', enabled && !!draftId)
+
   const query = api.draft.getById.useQuery(
     { draftId: draftId! },
     {
       enabled: enabled && !!draftId,
+      // Always fetch fresh data - drafts change frequently via autosave
+      staleTime: 0,
     }
   )
+
+  console.log('[useDraft] query.data:', query.data?.id, 'textHtml length:', query.data?.textHtml?.length)
 
   return {
     draft: query.data,

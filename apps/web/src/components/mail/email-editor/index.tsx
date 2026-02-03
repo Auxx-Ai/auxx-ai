@@ -148,7 +148,7 @@ function ReplyComposeEditorComponent({
   })
   // Initialize state with pure function + lazy evaluation
   const [state, setState] = useState<InitState>(() => {
-    return deriveInitialState({
+    const derived = deriveInitialState({
       mode,
       thread,
       sourceMessage,
@@ -156,6 +156,13 @@ function ReplyComposeEditorComponent({
       defaultIntegrationId: integrations?.integrations?.[0]?.id,
       presetValues,
     })
+    console.log('[EmailEditor] useState init:', {
+      draftId: initialDraft?.id,
+      draftTextHtmlLength: initialDraft?.textHtml?.length,
+      derivedContentHtmlLength: derived.contentHtml?.length,
+      derivedDraftId: derived.draftId,
+    })
+    return derived
   })
   // Unified recipients state
   const [recipients, setRecipients] = useState<Recipients>(() => ({
@@ -170,6 +177,36 @@ function ReplyComposeEditorComponent({
   const [showSubject, setShowSubject] = useState(true)
   const [isSending, setIsSending] = useState(false)
   const [isDraftSaved, setIsDraftSaved] = useState(false)
+
+  // Sync state when draft prop changes (e.g., navigating back to thread with existing draft)
+  const initializedDraftIdRef = useRef<string | null>(initialDraft?.id ?? null)
+  useEffect(() => {
+    // Only sync if draft ID changed and we have a new draft
+    if (initialDraft && initialDraft.id !== initializedDraftIdRef.current) {
+      console.log('[EmailEditor] syncing draft content:', initialDraft.id)
+      initializedDraftIdRef.current = initialDraft.id
+
+      const newState = deriveInitialState({
+        mode,
+        thread,
+        sourceMessage,
+        draft: initialDraft,
+        defaultIntegrationId: integrations?.integrations?.[0]?.id,
+        presetValues,
+      })
+
+      setState(newState)
+      setContent(newState.contentHtml)
+      setRecipients({
+        TO: newState.to,
+        CC: newState.cc,
+        BCC: newState.bcc,
+      })
+      setShowCc(newState.cc.length > 0)
+      setShowBcc(newState.bcc.length > 0)
+      setIsDraftSaved(true) // Draft was loaded from server
+    }
+  }, [initialDraft, mode, thread, sourceMessage, integrations, presetValues])
   // Generate temp ID for file uploads before draft exists
   const tempEntityId = useMemo(
     () => state.draftId || `temp-message-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,

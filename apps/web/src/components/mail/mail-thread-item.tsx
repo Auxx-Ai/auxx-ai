@@ -1,7 +1,7 @@
 // apps/web/src/components/mail/mail-thread-item.tsx
 'use client'
 
-import React, { useMemo, useCallback } from 'react'
+import React, { useMemo, useCallback, memo } from 'react'
 import { formatDistanceToNowStrict } from 'date-fns'
 import DOMPurify from 'dompurify'
 import { useDraggable } from '@dnd-kit/core'
@@ -35,6 +35,7 @@ import {
 import { useThreadSelectionStore } from '~/components/threads/store'
 import { TagBadge } from '~/components/tags/ui/tag-badge'
 import { OverflowRow } from '@auxx/ui/components/overflow-row'
+import { Badge } from '@auxx/ui/components/badge'
 
 /**
  * Processing menu component for triggering manual message processing
@@ -103,8 +104,9 @@ export interface MailThreadItemProps {
 /**
  * Displays a single draggable mail thread item in the list.
  * Uses new hooks architecture to fetch thread and message data.
+ * Memoized to prevent unnecessary re-renders during parent updates.
  */
-export function MailThreadItem({
+export const MailThreadItem = memo(function MailThreadItem({
   threadId,
   basePath: _basePath,
   isSelected: _isSelected,
@@ -211,7 +213,7 @@ export function MailThreadItem({
   }
 
   return (
-    <div className="flex flex-row items-stretch relative">
+    <div className="flex flex-row items-stretch relative" style={{ contain: 'layout style' }}>
       <div
         ref={setNodeRef}
         {...listeners}
@@ -278,13 +280,9 @@ export function MailThreadItem({
             <div className="min-w-0 flex-1">
               <OverflowRow collapseSlot="text" className="justify-end" gap={4}>
                 {hasDraft && (
-                  <div
-                    className={cn(
-                      'flex items-center gap-1 whitespace-nowrap rounded-[5px] border px-[3px] py-[1px] text-xs text-red-600 border-red-300 bg-red-50',
-                      isMultiSelected && 'text-red-200 border-red-200/50 bg-transparent'
-                    )}>
+                  <Badge size="sm" variant="red" shape="tag" className={cn('ms-[2px]')}>
                     Draft
-                  </div>
+                  </Badge>
                 )}
                 {thread.tagIds?.map((tagId) => (
                   <TagBadge
@@ -317,7 +315,7 @@ export function MailThreadItem({
       </div>
     </div>
   )
-}
+})
 
 /** Skeleton for loading thread item */
 function ThreadItemSkeleton() {

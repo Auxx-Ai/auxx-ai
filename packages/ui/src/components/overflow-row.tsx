@@ -7,13 +7,11 @@ import {
   useMemo,
   useLayoutEffect,
   useEffect,
-  useCallback,
   Children,
   isValidElement,
   type ReactNode,
   type ReactElement,
 } from 'react'
-import { useContainerWidth } from '@auxx/ui/hooks/use-container-width'
 import { cn } from '@auxx/ui/lib/utils'
 
 /** Props for the OverflowRow component */
@@ -105,9 +103,11 @@ export function OverflowRow({
   gap = 4,
   className,
 }: OverflowRowProps) {
-  const [containerRef, containerWidth] = useContainerWidth<HTMLDivElement>()
+  const containerRef = useRef<HTMLDivElement>(null)
   const fullMeasureRef = useRef<HTMLDivElement>(null)
   const collapsedMeasureRef = useRef<HTMLDivElement>(null)
+
+  const [containerWidth, setContainerWidth] = useState(0)
   const [fullWidths, setFullWidths] = useState<number[]>([])
   const [collapsedWidths, setCollapsedWidths] = useState<number[]>([])
 
@@ -116,20 +116,48 @@ export function OverflowRow({
     [children]
   )
 
-  /** Measure widths from the measurement containers */
-  const measureWidths = useCallback(() => {
+  // Measure container width with heavy debounce (only update when resize stops)
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+
+    let currentWidth = 0
+    let timeoutId: NodeJS.Timeout | null = null
+
+    const observer = new ResizeObserver((entries) => {
+      const newWidth = Math.floor(entries[0]?.contentRect.width ?? 0)
+      if (newWidth === currentWidth) return
+      currentWidth = newWidth
+
+      // Debounce: only commit after 200ms of no changes
+      if (timeoutId) clearTimeout(timeoutId)
+      timeoutId = setTimeout(() => {
+        setContainerWidth(newWidth)
+      }, 200)
+    })
+
+    observer.observe(el)
+
+    // Initial measurement (immediate)
+    const initial = Math.floor(el.getBoundingClientRect().width)
+    currentWidth = initial
+    setContainerWidth(initial)
+
+    return () => {
+      observer.disconnect()
+      if (timeoutId) clearTimeout(timeoutId)
+    }
+  }, [])
+
+  // Measure child widths once on mount and when children change
+  useLayoutEffect(() => {
     const fullContainer = fullMeasureRef.current
     const collapsedContainer = collapsedMeasureRef.current
 
     if (fullContainer) {
-      const widths = Array.from(fullContainer.children).map(
-        (el) => (el as HTMLElement).offsetWidth
-      )
-      console.log('[OverflowRow] measureWidths - fullWidths:', widths)
+      const widths = Array.from(fullContainer.children).map((el) => (el as HTMLElement).offsetWidth)
       setFullWidths((prev) => {
-        // Only update if widths actually changed
         if (prev.length !== widths.length || prev.some((w, i) => w !== widths[i])) {
-          console.log('[OverflowRow] fullWidths changed:', prev, '->', widths)
           return widths
         }
         return prev
@@ -142,38 +170,12 @@ export function OverflowRow({
       )
       setCollapsedWidths((prev) => {
         if (prev.length !== widths.length || prev.some((w, i) => w !== widths[i])) {
-          console.log('[OverflowRow] collapsedWidths changed:', prev, '->', widths)
           return widths
         }
         return prev
       })
     }
-  }, [])
-
-  // Initial measurement and re-measure when children change
-  useLayoutEffect(() => {
-    measureWidths()
-  }, [measureWidths, childArray.length])
-
-  // Watch for child content resizing (e.g., async content loading)
-  useEffect(() => {
-    const fullContainer = fullMeasureRef.current
-    if (!fullContainer) return
-
-    console.log('[OverflowRow] Setting up ResizeObserver for', fullContainer.children.length, 'children')
-
-    const observer = new ResizeObserver((entries) => {
-      console.log('[OverflowRow] ResizeObserver triggered, entries:', entries.length)
-      measureWidths()
-    })
-
-    // Observe all child wrapper elements
-    Array.from(fullContainer.children).forEach((child) => {
-      observer.observe(child)
-    })
-
-    return () => observer.disconnect()
-  }, [measureWidths, childArray.length])
+  }, [childArray.length])
 
   const { collapsedIndices, hiddenStartIndex } = useOverflowLayout(
     containerWidth,
@@ -181,15 +183,6 @@ export function OverflowRow({
     collapsedWidths,
     gap
   )
-
-  // Debug logging
-  console.log('[OverflowRow] render:', {
-    containerWidth,
-    childCount: childArray.length,
-    fullWidths,
-    hiddenStartIndex,
-    overflowCount: childArray.length - hiddenStartIndex,
-  })
 
   // Early return if no children - render nothing
   if (childArray.length === 0) {
@@ -247,7 +240,7 @@ export function OverflowRow({
 
       {/* Wrapper with relative positioning for width measurement */}
       <div className={cn('relative min-w-0 flex-1', className)}>
-        {/* Width measurement target - spans full parent width via absolute positioning */}
+        {/* Width measurement target */}
         <div ref={containerRef} className="absolute inset-0 pointer-events-none" aria-hidden />
 
         {/* Visible container */}
