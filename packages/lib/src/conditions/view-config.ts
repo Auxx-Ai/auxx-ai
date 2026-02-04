@@ -113,3 +113,13 @@ export type KanbanColumnSettings = z.infer<typeof kanbanColumnSettingsSchema>
 export type KanbanViewConfig = z.infer<typeof kanbanConfigSchema>
 export type ViewConfig = z.infer<typeof viewConfigSchema>
 export type ViewType = ViewConfig['viewType']
+
+// Re-export field view config types
+export {
+  fieldViewConfigSchema,
+  viewContextTypeSchema,
+  viewContextTypes,
+  createDefaultFieldViewConfig,
+  type FieldViewConfig,
+  type ViewContextType,
+} from './field-view-config'

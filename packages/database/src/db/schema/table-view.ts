@@ -28,6 +28,8 @@ export const TableView = pgTable(
     tableId: text().notNull(),
     name: text().notNull(),
     config: jsonb().notNull(),
+    /** Context type: 'table' | 'kanban' | 'panel' | 'dialog_create' | 'dialog_edit' */
+    contextType: text().default('table').notNull(),
     isDefault: boolean().default(false).notNull(),
     isShared: boolean().default(false).notNull(),
     userId: text()
@@ -45,21 +47,22 @@ export const TableView = pgTable(
       table.tableId.asc().nullsLast(),
       table.organizationId.asc().nullsLast()
     ),
-    // Partial unique index: only one default view per table per organization
+    // Partial unique index: only one default view per table per organization per context type
     // Uses SQL expression to only enforce uniqueness WHERE isDefault = true
-    uniqueIndex('TableView_tableId_organizationId_isDefault_key')
-      .on(table.tableId, table.organizationId)
+    uniqueIndex('TableView_tableId_organizationId_contextType_isDefault_key')
+      .on(table.tableId, table.organizationId, table.contextType)
       .where(sql`${table.isDefault} = true`),
     index('TableView_tableId_userId_idx').using(
       'btree',
       table.tableId.asc().nullsLast(),
       table.userId.asc().nullsLast()
     ),
-    uniqueIndex('TableView_tableId_userId_name_key').using(
+    uniqueIndex('TableView_tableId_userId_name_contextType_key').using(
       'btree',
       table.tableId.asc().nullsLast(),
       table.userId.asc().nullsLast(),
-      table.name.asc().nullsLast()
+      table.name.asc().nullsLast(),
+      table.contextType.asc().nullsLast()
     ),
   ]
 )

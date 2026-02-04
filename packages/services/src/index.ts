@@ -54,6 +54,10 @@ export type {
   CannotDeleteDefaultViewError,
 } from './table-view'
 
+// Field View
+export { getOrgFieldView } from './field-view'
+export type { GetOrgFieldViewInput } from './field-view'
+
 // Shared
 export { fromDatabase, fromS3, formatVersion } from './shared'
 export type { ServiceError, DatabaseError, S3Error } from './shared'

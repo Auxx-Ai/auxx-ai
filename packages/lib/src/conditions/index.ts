@@ -54,4 +54,14 @@ export type {
   NumberColumnFormatting,
   PhoneColumnFormatting,
   CheckboxColumnFormatting,
+  FieldViewConfig,
+  ViewContextType,
+} from './view-config'
+
+// Field view config exports
+export {
+  fieldViewConfigSchema,
+  viewContextTypeSchema,
+  viewContextTypes,
+  createDefaultFieldViewConfig,
 } from './view-config'

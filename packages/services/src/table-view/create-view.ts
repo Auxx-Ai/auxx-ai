@@ -6,6 +6,7 @@ import { ok, err } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import type { TableViewEntity } from '@auxx/database/models'
 import type { ViewAlreadyExistsError } from './errors'
+import type { ViewContextType } from '@auxx/lib/conditions'
 
 /**
  * Input for creating a view
@@ -17,20 +18,31 @@ export interface CreateViewInput {
   isShared: boolean
   userId: string
   organizationId: string
+  /** Context type for the view. Defaults to 'table'. */
+  contextType?: ViewContextType
+  /** Whether this is the default view for this context. Defaults to false. */
+  isDefault?: boolean
 }
 
 /**
  * Create a new view
  */
 export async function createView(input: CreateViewInput) {
-  const { tableId, name, config, isShared, userId, organizationId } = input
+  const { tableId, name, config, isShared, userId, organizationId, contextType = 'table', isDefault = false } = input
 
-  // Check for duplicate name
+  // Check for duplicate name within same context type
   const existingResult = await fromDatabase(
     database
       .select({ id: schema.TableView.id })
       .from(schema.TableView)
-      .where(and(eq(schema.TableView.tableId, tableId), eq(schema.TableView.userId, userId), eq(schema.TableView.name, name)))
+      .where(
+        and(
+          eq(schema.TableView.tableId, tableId),
+          eq(schema.TableView.userId, userId),
+          eq(schema.TableView.name, name),
+          eq(schema.TableView.contextType, contextType)
+        )
+      )
       .limit(1),
     'check-view-exists'
   )
@@ -41,7 +53,10 @@ export async function createView(input: CreateViewInput) {
   }
 
   const dbResult = await fromDatabase(
-    database.insert(schema.TableView).values({ tableId, name, config, isShared, userId, organizationId, updatedAt: new Date() }).returning(),
+    database
+      .insert(schema.TableView)
+      .values({ tableId, name, config, isShared, isDefault, userId, organizationId, contextType, updatedAt: new Date() })
+      .returning(),
     'create-view'
   )
 

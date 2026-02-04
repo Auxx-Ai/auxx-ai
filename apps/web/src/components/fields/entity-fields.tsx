@@ -17,11 +17,12 @@ import { EntityFieldsContent } from './entity-fields-content'
 import { useResourceFields } from '~/components/resources'
 import {
   parseRecordId,
-  sortFieldsForDisplay,
   type ResourceField,
   type RecordId,
 } from '@auxx/lib/resources/client'
 import { useDynamicFieldOptions } from './hooks/use-dynamic-field-options'
+import { useFieldView } from './hooks/use-field-view'
+import { useToggleFieldVisibility } from './hooks/use-toggle-field-visibility'
 import { toResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 
 /**
@@ -95,14 +96,40 @@ function EntityFields({
     useResourceFields(entityDefinitionId)
 
   // ─────────────────────────────────────────────────────────────────
+  // FIELD VIEW (org-wide configuration for panel context)
+  // ─────────────────────────────────────────────────────────────────
+
+  // Get field IDs for view config (needed for lazy view creation)
+  const fieldIds = useMemo(
+    () => effectiveFields.map((f) => f.resourceFieldId ?? f.id ?? f.key),
+    [effectiveFields]
+  )
+
+  // Use field view hook for visibility and ordering
+  const { getVisibleFields, getAllFields, isFieldVisible, isLoading: fieldViewLoading } = useFieldView({
+    entityDefinitionId,
+    contextType: 'panel',
+    fields: effectiveFields,
+    enabled: effectiveFields.length > 0,
+  })
+
+  // Use toggle field visibility hook
+  const { toggle: toggleFieldVisibility } = useToggleFieldVisibility({
+    entityDefinitionId,
+    contextType: 'panel',
+    fieldIds,
+  })
+
+  // ─────────────────────────────────────────────────────────────────
   // FIELD PROCESSING (unified system + custom)
   // ─────────────────────────────────────────────────────────────────
 
-  // Get unified field list sorted for display
+  // Get fields filtered and ordered by field view config
+  // In edit mode, show all fields (so user can toggle hidden ones back on)
   const displayFields = useMemo(() => {
     if (!effectiveFields.length) return []
-    return sortFieldsForDisplay(effectiveFields)
-  }, [effectiveFields])
+    return isEditMode ? getAllFields() : getVisibleFields()
+  }, [effectiveFields, isEditMode, getAllFields, getVisibleFields])
 
   // Enrich fields with dynamic options
   const { fields: enrichedFields, isLoading: optionsLoading } =
@@ -204,7 +231,7 @@ function EntityFields({
     return !field.isSystem // && field.capabilities.updatable !== false
   }
 
-  const isLoading = fieldsLoading || optionsLoading
+  const isLoading = fieldsLoading || optionsLoading || fieldViewLoading
 
   return (
     <FieldNavigationProvider>
@@ -232,6 +259,8 @@ function EntityFields({
         readOnly={readOnly}
         showTitle={showTitle}
         onMutationSuccess={onMutationSuccess}
+        onToggleVisibility={toggleFieldVisibility}
+        isFieldVisible={isFieldVisible}
       />
     </FieldNavigationProvider>
   )

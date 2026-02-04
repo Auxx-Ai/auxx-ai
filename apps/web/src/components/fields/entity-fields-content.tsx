@@ -51,6 +51,10 @@ export interface EntityFieldsContentProps {
   showTitle?: boolean
   /** Callback after successful mutation */
   onMutationSuccess?: () => void
+  /** Handler for toggling field visibility (only in edit mode) */
+  onToggleVisibility?: (resourceFieldId: string, visible: boolean) => void
+  /** Check if a field is visible */
+  isFieldVisible?: (fieldId: string) => boolean
 }
 
 /**
@@ -81,6 +85,8 @@ export function EntityFieldsContent({
   canEdit = true,
   readOnly = false,
   showTitle = true,
+  onToggleVisibility,
+  isFieldVisible,
 }: EntityFieldsContentProps) {
   // Parse recordId to get entityDefinitionId
   const { entityDefinitionId } = parseRecordId(recordId)
@@ -235,6 +241,8 @@ export function EntityFieldsContent({
                     recordId={recordId}
                     readOnly={readOnly}
                     showTitle={showTitle}
+                    onToggleVisibility={isEditMode ? onToggleVisibility : undefined}
+                    isVisible={isFieldVisible?.(field.resourceFieldId ?? field.id ?? field.key) ?? true}
                   />
                 )
               })}

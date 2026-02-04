@@ -526,6 +526,13 @@
       "when": 1769801938551,
       "tag": "0074_create_draft",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1770228553893,
+      "tag": "0075_add_table_view",
+      "breakpoints": true
     }
   ]
 }

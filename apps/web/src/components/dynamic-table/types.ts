@@ -111,6 +111,8 @@ export interface TableView {
   id: string
   name: string
   tableId: string
+  /** Context type: 'table' | 'kanban' | 'panel' | 'dialog_create' | 'dialog_edit' */
+  contextType?: string
   isDefault?: boolean
   isShared?: boolean
   config: ViewConfig

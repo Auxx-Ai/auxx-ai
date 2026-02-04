@@ -10,6 +10,7 @@ import { linkRelationships } from './link-relationships'
 import { linkNameFields } from './link-name-fields'
 import { linkDisplayFields } from './link-display-fields'
 import { createDefaultViews } from './create-default-views'
+import { createFieldViews } from './create-field-views'
 
 const logger = createScopedLogger('entity-seeder')
 
@@ -23,13 +24,14 @@ const logger = createScopedLogger('entity-seeder')
  * - Handles `user` as a special entity type
  * - Applies proper default options per field type
  *
- * 6-Pass Architecture:
+ * 7-Pass Architecture:
  * 1. Create EntityDefinitions
  * 2. Create ALL CustomFields (including relationships with inverseResourceFieldId=null)
  * 3. Link Relationship Fields (update inverseResourceFieldId)
  * 4. Link NAME Fields (update name.firstNameFieldId, name.lastNameFieldId)
  * 5. Link Display Fields to EntityDefinitions
  * 6. Create Default TableViews
+ * 7. Create Default Field Views (panel/dialog contexts)
  */
 export class EntitySeeder {
   constructor(
@@ -82,6 +84,11 @@ export class EntitySeeder {
     const systemUserId = await SystemUserService.getSystemUserForActions(this.organizationId)
     await createDefaultViews(this.db, this.organizationId, systemUserId, entityDefMap, fieldMap)
     logger.info('Pass 6 complete')
+
+    // Pass 7: Create default field views (panel/dialog contexts)
+    logger.info('Pass 7: Creating default field views')
+    await createFieldViews(this.db, this.organizationId, systemUserId, entityDefMap, fieldMap)
+    logger.info('Pass 7 complete')
 
     logger.info('EntitySeeder complete', { organizationId: this.organizationId })
   }

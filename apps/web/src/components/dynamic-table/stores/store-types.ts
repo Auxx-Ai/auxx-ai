@@ -8,7 +8,7 @@ import type {
   ColumnSizingState,
   ColumnPinningState,
 } from '@tanstack/react-table'
-import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import type { ConditionGroup, ViewContextType } from '@auxx/lib/conditions/client'
 import type { TableView, ViewConfig, KanbanViewConfig, ColumnFormatting } from '../types'
 
 // ============================================================================
@@ -60,6 +60,13 @@ export interface ViewSlice {
   updateViewMeta: (viewId: string, meta: Partial<Pick<TableView, 'name' | 'isDefault' | 'isShared'>>) => void
   startSaving: (viewId: string) => void
   finishSaving: (viewId: string) => void
+  /** Toggle field visibility in a field view (optimistic update) */
+  toggleFieldVisibility: (
+    tableId: string,
+    contextType: ViewContextType,
+    resourceFieldId: string,
+    visible: boolean
+  ) => void
 }
 
 /** UI slice - manages visual/layout config */

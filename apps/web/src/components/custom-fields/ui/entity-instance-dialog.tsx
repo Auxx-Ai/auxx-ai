@@ -25,6 +25,7 @@ import { useResource } from '~/components/resources'
 import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
 import { toRecordId, parseRecordId, type RecordId } from '@auxx/lib/resources/client'
+import { useFieldView } from '~/components/fields/hooks/use-field-view'
 
 interface EntityInstanceDialogProps {
   open: boolean
@@ -58,13 +59,29 @@ export function EntityInstanceDialog({
   // Get resource definition with fields
   const { resource } = useResource(entityDefinitionId)
 
-  // Get editable fields (exclude system fields like id, createdAt, updatedAt)
-  const editableFields = useMemo(() => {
+  // Determine context type based on mode
+  const contextType = isEditing ? 'dialog_edit' : 'dialog_create'
+
+  // Get all potentially editable fields first
+  const allEditableFields = useMemo(() => {
     if (!resource) return []
     return resource.fields
       .filter((f): f is typeof f & { id: string } => f.capabilities?.creatable !== false && !!f.id)
       .sort((a, b) => (a.sortOrder ?? '').localeCompare(b.sortOrder ?? ''))
   }, [resource])
+
+  // Use field view for visibility/ordering
+  const { getVisibleFields, isLoading: fieldViewLoading } = useFieldView({
+    entityDefinitionId,
+    contextType,
+    fields: allEditableFields,
+    enabled: allEditableFields.length > 0,
+  })
+
+  // Get editable fields filtered and ordered by field view config
+  const editableFields = useMemo(() => {
+    return getVisibleFields()
+  }, [getVisibleFields])
 
   // RecordIds for syncer
   const recordIds = useMemo(() => (recordId ? [recordId] : []), [recordId])

@@ -2,6 +2,7 @@
 
 import type { SliceCreator, ViewSlice, TableUIConfig } from './store-types'
 import type { ViewConfig } from '../types'
+import type { ViewContextType, FieldViewConfig } from '@auxx/lib/conditions'
 import { EMPTY_FILTERS } from '../utils/constants'
 
 /** Extract UI config from ViewConfig (strips filters) */
@@ -97,6 +98,29 @@ export const createViewSlice: SliceCreator<ViewSlice> = (set, get) => ({
       const next = new Set(state.savingViewIds)
       next.delete(viewId)
       state.savingViewIds = next
+    })
+  },
+
+  toggleFieldVisibility: (tableId, contextType, resourceFieldId, visible) => {
+    set((state) => {
+      const views = state.viewsByTableId[tableId] ?? []
+      const viewIndex = views.findIndex(
+        (v) => v.contextType === contextType && v.isDefault && v.isShared
+      )
+      if (viewIndex === -1) return
+
+      const view = views[viewIndex]
+      const config = view.config as FieldViewConfig
+
+      const updatedConfig: FieldViewConfig = {
+        ...config,
+        fieldVisibility: {
+          ...config.fieldVisibility,
+          [resourceFieldId]: visible,
+        },
+      }
+
+      state.viewsByTableId[tableId][viewIndex] = { ...view, config: updatedConfig }
     })
   },
 })

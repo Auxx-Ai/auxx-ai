@@ -8,6 +8,7 @@ import PropertyRow from './property-row'
 import { PropertyProvider, usePropertyContext } from './property-provider'
 import { useFieldNavigationOptional } from './field-navigation-context'
 import { Button } from '@auxx/ui/components/button'
+import { Switch } from '@auxx/ui/components/switch'
 import { useEffect, useRef, useCallback, useMemo, memo } from 'react'
 import { cn } from '@auxx/ui/lib/utils'
 import type { RecordId } from '@auxx/lib/resources/client'
@@ -42,6 +43,10 @@ interface SortablePropertyRowProps {
   readOnly?: boolean
   /** Whether to show field titles/labels (default: true) */
   showTitle?: boolean
+  /** Handler for toggling field visibility (only in edit mode) */
+  onToggleVisibility?: (resourceFieldId: string, visible: boolean) => void
+  /** Whether field is currently visible */
+  isVisible?: boolean
 }
 
 /**
@@ -68,6 +73,8 @@ export const SortablePropertyRow = memo(function SortablePropertyRow({
   recordId,
   readOnly = false,
   showTitle = true,
+  onToggleVisibility,
+  isVisible = true,
 }: SortablePropertyRowProps) {
   const nav = useFieldNavigationOptional()
   const openFnRef = useRef<(() => void) | null>(null)
@@ -128,49 +135,94 @@ export const SortablePropertyRow = memo(function SortablePropertyRow({
   //   OriginalIcon = fieldTypeOptions.find((opt) => opt.value === field.fieldType)?.icon
   // }
 
-  // Value should be TypedFieldValue directly (no legacy { data: x } wrapping)
-  // In edit mode with sortable fields: show simplified row with drag handle, name, and delete button
-  if (isEditMode && isSortable) {
+  // Derive resourceFieldId for visibility toggle
+  // recordId format: "entityDefinitionId:instanceId"
+  const entityDefinitionId = recordId.split(':')[0]
+  const resourceFieldId = field.resourceFieldId ?? `${entityDefinitionId}:${field.id}`
+
+  // In edit mode: show simplified row with field name and visibility toggle
+  if (isEditMode) {
+    // Sortable (custom) fields: show drag handle, name, edit/delete buttons, and switch
+    if (isSortable) {
+      return (
+        <div
+          ref={setNodeRef}
+          style={style}
+          className={cn(
+            'flex w-full h-fit gap-1 min-h-[30px] items-center',
+            isDragging && 'bg-accent rounded',
+            !isVisible && 'opacity-50'
+          )}>
+          <div
+            {...attributes}
+            {...listeners}
+            className="items-center self-start flex gap-[4px] h-[24px] shrink-0 cursor-grab active:cursor-grabbing">
+            <div className="shrink-0 size-6 flex items-center justify-center">
+              <GripVertical className="size-4 text-neutral-400 shrink-0" />
+            </div>
+            <div className="w-[120px] text-sm text-neutral-400 shrink-0">
+              <div className="truncate">{field.name}</div>
+            </div>
+          </div>
+          {/* Spacer to push action buttons to the right */}
+          <div className="flex-1" />
+          <div className="flex items-center gap-1">
+            {/* Edit button for custom fields */}
+            {onEdit && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => onEdit(field.id, field)}>
+                <Pencil />
+              </Button>
+            )}
+            {/* Delete button for custom fields */}
+            {onDelete && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                onClick={() => onDelete(field.id, field.name)}>
+                <Trash2 />
+              </Button>
+            )}
+            {/* Visibility toggle */}
+            {onToggleVisibility && (
+              <Switch
+                checked={isVisible}
+                size="sm"
+                onCheckedChange={(checked) => onToggleVisibility(resourceFieldId, checked)}
+              />
+            )}
+          </div>
+        </div>
+      )
+    }
+
+    // Non-sortable (system) fields: show name and switch only
     return (
       <div
         ref={setNodeRef}
         style={style}
-        className={`flex w-full h-fit gap-1 min-h-[30px] items-center ${isDragging ? 'bg-accent rounded' : ''}`}>
-        <div
-          {...attributes}
-          {...listeners}
-          className="items-center self-start flex gap-[4px] h-[24px] shrink-0 cursor-grab active:cursor-grabbing">
-          <div className="shrink-0 size-6 flex items-center justify-center">
-            <GripVertical className="size-4 text-neutral-400 shrink-0" />
-          </div>
-          <div className="w-[120px] text-sm text-neutral-400 shrink-0">
-            <div className="truncate">{field.name}</div>
-          </div>
+        className={cn(
+          'flex w-full h-fit gap-1 min-h-[30px] items-center',
+          !isVisible && 'opacity-50'
+        )}>
+        {/* Field name - aligned with sortable fields (padded to match grip width) */}
+        <div className="w-[146px] pl-6 text-sm text-neutral-400 shrink-0">
+          <div className="truncate">{field.name}</div>
         </div>
-        {/* Spacer to push action buttons to the right */}
+        {/* Spacer */}
         <div className="flex-1" />
-        <div className="flex items-center gap-0.5">
-          {/* Edit button for custom fields */}
-          {onEdit && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="text-muted-foreground hover:text-foreground"
-              onClick={() => onEdit(field.id, field)}>
-              <Pencil />
-            </Button>
-          )}
-          {/* Delete button for custom fields */}
-          {onDelete && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-              onClick={() => onDelete(field.id, field.name)}>
-              <Trash2 />
-            </Button>
-          )}
-        </div>
+        {/* Visibility toggle */}
+        {onToggleVisibility && (
+          <Switch
+            checked={isVisible}
+            size="sm"
+            onCheckedChange={(checked) => onToggleVisibility(resourceFieldId, checked)}
+          />
+        )}
       </div>
     )
   }

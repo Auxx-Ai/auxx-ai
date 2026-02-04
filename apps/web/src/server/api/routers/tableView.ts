@@ -3,7 +3,14 @@
 import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure, adminProcedure } from '~/server/api/trpc'
-import { viewConfigSchema, type ViewConfig } from '@auxx/lib/conditions'
+import {
+  viewConfigSchema,
+  fieldViewConfigSchema,
+  viewContextTypeSchema,
+  viewContextTypes,
+  type ViewConfig,
+  type FieldViewConfig,
+} from '@auxx/lib/conditions'
 import { CustomFieldService } from '@auxx/lib/custom-fields'
 import {
   listViews,
@@ -40,12 +47,18 @@ export const tableViewRouter = createTRPCRouter({
    * Get all views for a specific table
    */
   list: protectedProcedure
-    .input(z.object({ tableId: z.string() }))
+    .input(
+      z.object({
+        tableId: z.string(),
+        contextType: viewContextTypeSchema.optional(),
+      })
+    )
     .query(async ({ ctx, input }) => {
       const result = await listViews({
         tableId: input.tableId,
         userId: ctx.session.userId,
         organizationId: ctx.session.organizationId,
+        contextType: input.contextType,
       })
 
       if (result.isErr()) mapErrorToTRPC(result.error)
@@ -54,16 +67,18 @@ export const tableViewRouter = createTRPCRouter({
 
   /**
    * Get all views across all tables for the user's organization
-   * Used to populate the app-wide view store on initialization
+   * Used to populate the app-wide view store on initialization.
+   * Includes all context types: table, kanban, panel, dialog_create, dialog_edit
    */
   listAll: protectedProcedure.query(async ({ ctx }) => {
     const result = await listAllViews({
       userId: ctx.session.userId,
       organizationId: ctx.session.organizationId,
+      contextType: [...viewContextTypes],
     })
 
     if (result.isErr()) mapErrorToTRPC(result.error)
-    return result.value.map((v) => ({ ...v, config: v.config as ViewConfig }))
+    return result.value.map((v) => ({ ...v, config: v.config as ViewConfig | FieldViewConfig }))
   }),
 
   /**
@@ -89,8 +104,10 @@ export const tableViewRouter = createTRPCRouter({
       z.object({
         tableId: z.string(),
         name: z.string().min(1).max(50),
-        config: viewConfigSchema,
+        config: z.union([viewConfigSchema, fieldViewConfigSchema]),
+        contextType: viewContextTypeSchema.optional().default('table'),
         isShared: z.boolean().optional().default(false),
+        isDefault: z.boolean().optional().default(false),
         /** Optional: Create a new SINGLE_SELECT field for kanban grouping */
         newField: z
           .object({
@@ -106,7 +123,7 @@ export const tableViewRouter = createTRPCRouter({
       let finalConfig = input.config
 
       // Handle new kanban field creation (stays in router - uses CustomFieldService)
-      if (input.newField && input.config.viewType === 'kanban') {
+      if (input.newField && 'viewType' in input.config && input.config.viewType === 'kanban') {
         const fieldService = new CustomFieldService(organizationId, userId, ctx.db)
         const createdField = await fieldService.createField({
           name: input.newField.name,
@@ -127,6 +144,8 @@ export const tableViewRouter = createTRPCRouter({
         name: input.name,
         config: finalConfig,
         isShared: input.isShared,
+        isDefault: input.isDefault,
+        contextType: input.contextType,
         userId,
         organizationId,
       })
@@ -137,15 +156,19 @@ export const tableViewRouter = createTRPCRouter({
 
   /**
    * Update an existing view
+   * Note: .passthrough() allows extra fields (resourceFieldId, visible) used by client-side
+   * onMutate callbacks for optimistic update context - these are ignored server-side.
    */
   update: protectedProcedure
     .input(
-      z.object({
-        id: z.string(),
-        name: z.string().min(1).max(50).optional(),
-        config: viewConfigSchema.optional(),
-        isShared: z.boolean().optional(),
-      })
+      z
+        .object({
+          id: z.string(),
+          name: z.string().min(1).max(50).optional(),
+          config: z.union([viewConfigSchema, fieldViewConfigSchema]).optional(),
+          isShared: z.boolean().optional(),
+        })
+        .passthrough()
     )
     .mutation(async ({ ctx, input }) => {
       const result = await updateView({
@@ -158,7 +181,7 @@ export const tableViewRouter = createTRPCRouter({
       })
 
       if (result.isErr()) mapErrorToTRPC(result.error)
-      return { ...result.value, config: result.value.config as ViewConfig }
+      return { ...result.value, config: result.value.config as ViewConfig | FieldViewConfig }
     }),
 
   /**

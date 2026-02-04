@@ -44,6 +44,17 @@ export function useViewStoreInitialized(): boolean {
   return useDynamicTableStore((s) => s.initialized)
 }
 
+/** Get the org's default field view for an entity and context type */
+export function useOrgFieldView(
+  entityDefinitionId: string,
+  contextType: string
+): TableView | null {
+  return useDynamicTableStore((s) => {
+    const views = s.viewsByTableId[entityDefinitionId] ?? EMPTY_VIEWS
+    return views.find((v) => v.contextType === contextType && v.isDefault && v.isShared) ?? null
+  })
+}
+
 // ─── Config Selectors ─────────────────────────────────────────────────────────
 
 /**
