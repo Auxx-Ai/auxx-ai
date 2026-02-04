@@ -67,6 +67,13 @@ export interface ViewSlice {
     resourceFieldId: string,
     visible: boolean
   ) => void
+  /** Reorder a field in a field view (optimistic update) */
+  reorderFieldInView: (
+    tableId: string,
+    contextType: ViewContextType,
+    fromIndex: number,
+    toIndex: number
+  ) => void
 }
 
 /** UI slice - manages visual/layout config */

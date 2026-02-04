@@ -16,6 +16,7 @@ import { Switch } from '@auxx/ui/components/switch'
 import { cn } from '@auxx/ui/lib/utils'
 import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
 import { FieldInputRow } from './field-input-row'
+import { DialogFieldConfigRow } from './dialog-field-config-row'
 import { toastError } from '@auxx/ui/components/toast'
 import { api } from '~/trpc/react'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
@@ -25,7 +26,22 @@ import { useResource } from '~/components/resources'
 import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
 import { toRecordId, parseRecordId, type RecordId } from '@auxx/lib/resources/client'
+import { createDefaultFieldViewConfig, type FieldViewConfig, type ViewContextType } from '@auxx/lib/conditions'
 import { useFieldView } from '~/components/fields/hooks/use-field-view'
+import { useOrgFieldView } from '~/components/dynamic-table/stores/store-selectors'
+import { useDynamicTableStore } from '~/components/dynamic-table/stores/dynamic-table-store'
+import { Pencil, X } from 'lucide-react'
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import { SortableContext, verticalListSortingStrategy, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 
 interface EntityInstanceDialogProps {
   open: boolean
@@ -59,7 +75,7 @@ export function EntityInstanceDialog({
   // Get resource definition with fields
   const { resource } = useResource(entityDefinitionId)
 
-  // Determine context type based on mode
+  // Determine context type based on mode (for normal form rendering)
   const contextType = isEditing ? 'dialog_edit' : 'dialog_create'
 
   // Get all potentially editable fields first
@@ -70,18 +86,211 @@ export function EntityInstanceDialog({
       .sort((a, b) => (a.sortOrder ?? '').localeCompare(b.sortOrder ?? ''))
   }, [resource])
 
-  // Use field view for visibility/ordering
-  const { getVisibleFields, isLoading: fieldViewLoading } = useFieldView({
+  // ─── Config Mode State ──────────────────────────────────────────────────────
+
+  /** Whether config mode is active */
+  const [isConfigMode, setIsConfigMode] = useState(false)
+
+  /** Which context is being configured (independent of isEditing in config mode) */
+  const [configContextType, setConfigContextType] = useState<ViewContextType>('dialog_create')
+
+  /** Draft config: local buffer for batch save (null when not in config mode) */
+  const [draftConfig, setDraftConfig] = useState<FieldViewConfig | null>(null)
+
+  // Use field view for visibility/ordering (normal mode only)
+  const { getVisibleFields } = useFieldView({
     entityDefinitionId,
     contextType,
     fields: allEditableFields,
     enabled: allEditableFields.length > 0,
   })
 
-  // Get editable fields filtered and ordered by field view config
+  // Field IDs for creating default configs
+  const fieldIds = useMemo(
+    () => allEditableFields.map((f) => f.resourceFieldId ?? f.id ?? f.key),
+    [allEditableFields]
+  )
+
+  // Org field view for the config context type (used for save-vs-create logic)
+  const configOrgFieldView = useOrgFieldView(entityDefinitionId, configContextType)
+
+  // Store action for adding newly created views
+  const addView = useDynamicTableStore((s) => s.addView)
+
+  // Mutations for persisting view config on "Save View"
+  const updateViewMutation = api.tableView.update.useMutation({
+    onError: (error) => {
+      toastError({ title: 'Failed to save view', description: error.message })
+    },
+  })
+  const createViewMutation = api.tableView.create.useMutation({
+    onSuccess: (newView) => {
+      addView(newView)
+    },
+    onError: (error) => {
+      toastError({ title: 'Failed to create view', description: error.message })
+    },
+  })
+
+  // DnD sensors for config mode
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 3 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
+
+  // ─── Config Mode Handlers ──────────────────────────────────────────────────
+
+  /** Snapshot a FieldViewConfig for the given context type from the store */
+  const snapshotConfigForContext = useCallback(
+    (ct: ViewContextType): FieldViewConfig => {
+      const state = useDynamicTableStore.getState()
+      const views = state.viewsByTableId[entityDefinitionId] ?? []
+      const view = views.find((v) => v.contextType === ct && v.isDefault && v.isShared)
+      const storedConfig = view?.config as FieldViewConfig | undefined
+      const baseConfig = storedConfig ?? createDefaultFieldViewConfig(fieldIds)
+
+      // Ensure all current field IDs are represented (handles newly added fields)
+      const existingOrderSet = new Set(baseConfig.fieldOrder)
+      const missingFields = fieldIds.filter((id) => !existingOrderSet.has(id))
+
+      return {
+        ...baseConfig,
+        fieldOrder: [...baseConfig.fieldOrder, ...missingFields],
+        fieldVisibility: {
+          ...baseConfig.fieldVisibility,
+          ...Object.fromEntries(missingFields.map((id) => [id, true])),
+        },
+      }
+    },
+    [entityDefinitionId, fieldIds]
+  )
+
+  /** Enter config mode: snapshot current config into draft */
+  const enterConfigMode = useCallback(() => {
+    setConfigContextType(contextType)
+    setDraftConfig(snapshotConfigForContext(contextType))
+    setIsConfigMode(true)
+  }, [contextType, snapshotConfigForContext])
+
+  /** Cancel config mode: discard draft, exit */
+  const handleCancelConfig = useCallback(() => {
+    setDraftConfig(null)
+    setIsConfigMode(false)
+  }, [])
+
+  /** Switch which context type is being configured */
+  const switchConfigContext = useCallback(
+    (newContextType: ViewContextType) => {
+      setConfigContextType(newContextType)
+      setDraftConfig(snapshotConfigForContext(newContextType))
+    },
+    [snapshotConfigForContext]
+  )
+
+  /** Toggle field visibility in draft (no server call) */
+  const handleDraftToggle = useCallback((fieldKey: string, visible: boolean) => {
+    setDraftConfig((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        fieldVisibility: { ...prev.fieldVisibility, [fieldKey]: visible },
+      }
+    })
+  }, [])
+
+  /** Reorder field in draft via drag-and-drop (no server call) */
+  const handleDraftDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+
+    setDraftConfig((prev) => {
+      if (!prev) return prev
+      const fromIndex = prev.fieldOrder.indexOf(String(active.id))
+      const toIndex = prev.fieldOrder.indexOf(String(over.id))
+      if (fromIndex === -1 || toIndex === -1) return prev
+
+      const newOrder = [...prev.fieldOrder]
+      const [moved] = newOrder.splice(fromIndex, 1)
+      if (!moved) return prev
+      newOrder.splice(toIndex, 0, moved)
+
+      return { ...prev, fieldOrder: newOrder }
+    })
+  }, [])
+
+  /** Save View: persist draft to server, update store, exit config mode */
+  const handleSaveView = useCallback(async () => {
+    if (!draftConfig) return
+
+    try {
+      if (configOrgFieldView) {
+        // Update existing view
+        await updateViewMutation.mutateAsync({
+          id: configOrgFieldView.id,
+          config: draftConfig,
+        })
+        // Update the view config in the store (immer allows direct mutation)
+        useDynamicTableStore.setState((state) => {
+          const views = state.viewsByTableId[entityDefinitionId]
+          if (!views) return
+          const view = views.find((v) => v.id === configOrgFieldView.id)
+          if (view) view.config = draftConfig
+        })
+      } else {
+        // Create new view (addView called via onSuccess)
+        await createViewMutation.mutateAsync({
+          tableId: entityDefinitionId,
+          name: 'Default Dialog View',
+          contextType: configContextType,
+          isShared: true,
+          isDefault: true,
+          config: draftConfig,
+        })
+      }
+
+      // Exit config mode
+      setDraftConfig(null)
+      setIsConfigMode(false)
+    } catch {
+      // Errors handled by mutation onError
+    }
+  }, [draftConfig, configOrgFieldView, configContextType, entityDefinitionId, updateViewMutation, createViewMutation])
+
+  // ─── Config Mode Derived State ────────────────────────────────────────────
+
+  /** Fields ordered by draft config (for config mode rendering) */
+  const configModeFields = useMemo(() => {
+    if (!draftConfig) return []
+    const { fieldOrder } = draftConfig
+    const fieldMap = new Map(
+      allEditableFields.map((f) => [String(f.resourceFieldId ?? f.id ?? f.key), f])
+    )
+
+    const ordered: typeof allEditableFields = []
+    for (const fieldId of fieldOrder) {
+      const field = fieldMap.get(fieldId)
+      if (field) {
+        ordered.push(field)
+        fieldMap.delete(fieldId)
+      }
+    }
+    // Append any fields not in the order
+    for (const [, field] of fieldMap) {
+      ordered.push(field)
+    }
+    return ordered
+  }, [draftConfig, allEditableFields])
+
+  // Get editable fields: config mode shows all from draft, normal mode shows visible
   const editableFields = useMemo(() => {
-    return getVisibleFields()
-  }, [getVisibleFields])
+    return isConfigMode ? configModeFields : getVisibleFields()
+  }, [isConfigMode, configModeFields, getVisibleFields])
+
+  // Sortable IDs for DnD (all fields in config mode)
+  const sortableFieldIds = useMemo(
+    () => editableFields.map((f) => f.resourceFieldId ?? f.id ?? f.key),
+    [editableFields]
+  )
 
   // RecordIds for syncer
   const recordIds = useMemo(() => (recordId ? [recordId] : []), [recordId])
@@ -185,8 +394,10 @@ export function EntityInstanceDialog({
       setTouched(new Set())
       focusFirstField()
     } else {
-      // Reset initialization flag when dialog closes
+      // Reset initialization flag and config mode when dialog closes
       isInitialized.current = false
+      setIsConfigMode(false)
+      setDraftConfig(null)
     }
   }, [open, recordId, editableFields, presetValues, setInitial, getValue, focusFirstField])
 
@@ -346,6 +557,7 @@ export function EntityInstanceDialog({
   }
 
   const resourceLabel = resource?.label ?? 'Record'
+  const isSavingView = updateViewMutation.isPending || createViewMutation.isPending
 
   return (
     <>
@@ -353,86 +565,185 @@ export function EntityInstanceDialog({
         <DialogContent size="md" position="tc" {...guardProps}>
           <DialogHeader>
             <DialogTitle>
-              {isEditing ? `Edit ${resourceLabel}` : `New ${resourceLabel}`}
+              {isConfigMode
+                ? `Customize ${resourceLabel} Fields`
+                : isEditing
+                  ? `Edit ${resourceLabel}`
+                  : `New ${resourceLabel}`}
             </DialogTitle>
             <DialogDescription>
-              {isEditing
-                ? `Update the ${resourceLabel.toLowerCase()} details below.`
-                : `Enter the details for the new ${resourceLabel.toLowerCase()}.`}
+              {isConfigMode
+                ? 'Drag to reorder and toggle field visibility.'
+                : isEditing
+                  ? `Update the ${resourceLabel.toLowerCase()} details below.`
+                  : `Enter the details for the new ${resourceLabel.toLowerCase()}.`}
             </DialogDescription>
           </DialogHeader>
 
-          <div ref={formRef}>
-            <VarEditorField className="p-0">
-              {editableFields.map((field) => (
-                <FieldInputRow
-                  key={field.id}
-                  field={field}
-                  value={values[field.id] ?? ''}
-                  onChange={handleFieldChange}
-                  validationError={
-                    touched.has(field.id) || Object.keys(errors).length > 0
-                      ? errors[field.id]
-                      : undefined
-                  }
-                  validationType="error"
-                  disabled={isPending}
-                />
-              ))}
-            </VarEditorField>
+          {/* Field card area — floating edit button anchored to its top-right corner */}
+          <div className="relative group/field-card">
+            {/* Floating edit button — matches entity-fields panel placement */}
+            <div
+              className={cn(
+                'absolute -top-4 -right-3 z-80 rounded-full transition-opacity duration-200 ring ring-border bg-background flex items-center justify-center size-7 shadow-md backdrop-blur-sm',
+                isConfigMode ? 'opacity-100' : 'opacity-0 group-hover/field-card:opacity-100'
+              )}>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={() => (isConfigMode ? handleCancelConfig() : enterConfigMode())}
+                className={cn(
+                  'cursor-pointer',
+                  isConfigMode
+                    ? 'bg-bad-200 hover:bg-bad-200 text-bad-700 hover:text-bad-800'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}>
+                {isConfigMode ? <X /> : <Pencil />}
+              </Button>
+            </div>
+
+            {isConfigMode ? (
+              /* Config mode: sortable field list with visibility switches */
+              <VarEditorField className="p-0">
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDraftDragEnd}
+                  modifiers={[restrictToVerticalAxis]}>
+                  <SortableContext items={sortableFieldIds} strategy={verticalListSortingStrategy}>
+                    {editableFields.map((field) => {
+                      const fieldKey = field.resourceFieldId ?? field.id ?? field.key
+                      return (
+                        <DialogFieldConfigRow
+                          key={fieldKey}
+                          id={fieldKey}
+                          label={field.label ?? field.name ?? field.key}
+                          isVisible={draftConfig?.fieldVisibility[fieldKey] !== false}
+                          onToggleVisibility={(visible) => handleDraftToggle(fieldKey, visible)}
+                        />
+                      )
+                    })}
+                  </SortableContext>
+                </DndContext>
+              </VarEditorField>
+            ) : (
+              /* Normal mode: form inputs */
+              <>
+                <div ref={formRef}>
+                  <VarEditorField className="p-0">
+                    {editableFields.map((field) => (
+                      <FieldInputRow
+                        key={field.id}
+                        field={field}
+                        value={values[field.id] ?? ''}
+                        onChange={handleFieldChange}
+                        validationError={
+                          touched.has(field.id) || Object.keys(errors).length > 0
+                            ? errors[field.id]
+                            : undefined
+                        }
+                        validationType="error"
+                        disabled={isPending}
+                      />
+                    ))}
+                  </VarEditorField>
+                </div>
+
+                {editableFields.length === 0 && (
+                  <div className="text-sm text-muted-foreground text-center py-8">
+                    No fields defined for this entity type.
+                    <br />
+                    Add custom fields in the entity definition settings.
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
-          {editableFields.length === 0 && (
-            <div className="text-sm text-muted-foreground text-center py-8">
-              No fields defined for this entity type.
-              <br />
-              Add custom fields in the entity definition settings.
-            </div>
+          {isConfigMode ? (
+            <DialogFooter className="sm:justify-between">
+              {/* Left side: Context type toggle (Create / Edit) */}
+              <div className="flex items-center gap-1">
+                <Button
+                  size="sm"
+                  variant={configContextType === 'dialog_create' ? 'secondary' : 'ghost'}
+                  onClick={() => switchConfigContext('dialog_create')}
+                  disabled={isSavingView}>
+                  Create
+                </Button>
+                <Button
+                  size="sm"
+                  variant={configContextType === 'dialog_edit' ? 'secondary' : 'ghost'}
+                  onClick={() => switchConfigContext('dialog_edit')}
+                  disabled={isSavingView}>
+                  Edit
+                </Button>
+              </div>
+
+              {/* Right side: Cancel + Save View */}
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleCancelConfig}
+                  disabled={isSavingView}>
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleSaveView}
+                  loading={isSavingView}
+                  loadingText="Saving...">
+                  Save View
+                </Button>
+              </div>
+            </DialogFooter>
+          ) : (
+            <DialogFooter className="sm:justify-between">
+              {/* Left side: Create more toggle (only in create mode) */}
+              <div>
+                {!isEditing && (
+                  <label
+                    className={cn(
+                      buttonVariants({ variant: 'ghost', size: 'sm' }),
+                      'gap-2 cursor-pointer'
+                    )}>
+                    <span className="text-muted-foreground text-xs">Create more</span>
+                    <Switch
+                      size="sm"
+                      checked={createMore}
+                      onCheckedChange={setCreateMore}
+                      disabled={isPending}
+                    />
+                  </label>
+                )}
+              </div>
+
+              {/* Right side: Action buttons */}
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={guardedClose}
+                  disabled={isPending}>
+                  Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleSubmit}
+                  loading={isPending}
+                  loadingText={isEditing ? 'Saving...' : 'Creating...'}
+                  disabled={editableFields.length === 0}
+                  data-dialog-submit>
+                  {isEditing ? 'Save Changes' : `Create ${resourceLabel}`}{' '}
+                  <KbdSubmit variant="outline" size="sm" />
+                </Button>
+              </div>
+            </DialogFooter>
           )}
-
-          <DialogFooter className="sm:justify-between">
-            {/* Left side: Create more toggle (only in create mode) */}
-            <div>
-              {!isEditing && (
-                <label
-                  className={cn(
-                    buttonVariants({ variant: 'ghost', size: 'sm' }),
-                    'gap-2 cursor-pointer'
-                  )}>
-                  <span className="text-muted-foreground text-xs">Create more</span>
-                  <Switch
-                    size="sm"
-                    checked={createMore}
-                    onCheckedChange={setCreateMore}
-                    disabled={isPending}
-                  />
-                </label>
-              )}
-            </div>
-
-            {/* Right side: Action buttons */}
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={guardedClose}
-                disabled={isPending}>
-                Cancel <Kbd shortcut="esc" variant="ghost" size="sm" />
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleSubmit}
-                loading={isPending}
-                loadingText={isEditing ? 'Saving...' : 'Creating...'}
-                disabled={editableFields.length === 0}
-                data-dialog-submit>
-                {isEditing ? 'Save Changes' : `Create ${resourceLabel}`}{' '}
-                <KbdSubmit variant="outline" size="sm" />
-              </Button>
-            </div>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
       <ConfirmDialog />

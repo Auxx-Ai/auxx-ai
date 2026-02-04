@@ -123,4 +123,26 @@ export const createViewSlice: SliceCreator<ViewSlice> = (set, get) => ({
       state.viewsByTableId[tableId][viewIndex] = { ...view, config: updatedConfig }
     })
   },
+
+  reorderFieldInView: (tableId, contextType, fromIndex, toIndex) => {
+    set((state) => {
+      const views = state.viewsByTableId[tableId] ?? []
+      const viewIndex = views.findIndex(
+        (v) => v.contextType === contextType && v.isDefault && v.isShared
+      )
+      if (viewIndex === -1) return
+
+      const view = views[viewIndex]
+      const config = view.config as FieldViewConfig
+      const newOrder = [...config.fieldOrder]
+      const [moved] = newOrder.splice(fromIndex, 1)
+      if (!moved) return
+      newOrder.splice(toIndex, 0, moved)
+
+      state.viewsByTableId[tableId][viewIndex] = {
+        ...view,
+        config: { ...config, fieldOrder: newOrder },
+      }
+    })
+  },
 })
