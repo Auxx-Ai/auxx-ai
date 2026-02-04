@@ -91,14 +91,32 @@ async function syncStripeSubscription(
     })
 
     if (subs.length > 1) {
-      const preferred = subs.find((s) => s.status === 'active' || s.status === 'trialing')
-      localSubscription = preferred ?? subs[0] ?? null
+      // If we have organizationId from metadata, use it to find the correct subscription
+      // This prevents updating the wrong org's subscription when customer ID is shared
+      if (organizationId) {
+        const orgMatch = subs.find((s) => s.organizationId === organizationId)
+        if (orgMatch) {
+          localSubscription = orgMatch
+        } else {
+          logger.warn('No subscription found matching organizationId from metadata', {
+            eventType,
+            customerId,
+            organizationId,
+            foundOrgIds: subs.map((s) => s.organizationId),
+          })
+          // Don't fall back to wrong org - return early
+          return
+        }
+      } else {
+        const preferred = subs.find((s) => s.status === 'active' || s.status === 'trialing')
+        localSubscription = preferred ?? subs[0] ?? null
 
-      if (!preferred) {
-        logger.warn('Multiple subscriptions found for customer, using first result', {
-          eventType,
-          customerId,
-        })
+        if (!preferred) {
+          logger.warn('Multiple subscriptions found for customer, using first result', {
+            eventType,
+            customerId,
+          })
+        }
       }
     } else {
       localSubscription = subs[0] ?? null

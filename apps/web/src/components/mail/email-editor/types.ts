@@ -219,4 +219,6 @@ export interface ReplyComposeEditorProps {
   onSendSuccess: () => void
   /** Optional preset values to initialize the editor with */
   presetValues?: EditorPresetValues
+  /** When true, X button closes dialog (preserving draft) and separate delete button is shown */
+  isDialogMode?: boolean
 }

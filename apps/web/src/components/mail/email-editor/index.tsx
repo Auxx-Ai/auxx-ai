@@ -4,7 +4,7 @@ import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { Button } from '@auxx/ui/components/button'
 import { Separator } from '@auxx/ui/components/separator'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { Mail, Loader2, X, Ellipsis, Plus, Upload } from 'lucide-react'
+import { Mail, Loader2, X, Ellipsis, Plus, Upload, Trash2 } from 'lucide-react'
 import { Badge } from '@auxx/ui/components/badge'
 import { useDropzone } from 'react-dropzone'
 import { cn } from '@auxx/ui/lib/utils'
@@ -81,11 +81,13 @@ function ReplyComposeEditorComponent({
   onClose,
   onSendSuccess,
   presetValues,
+  isDialogMode = false,
 }: ReplyComposeEditorProps) {
   const utils = api.useUtils()
   const { editor } = useEditorContext()
   const activeState = useEditorActiveStateContext()
   const [confirm, ConfirmDialog] = useConfirm()
+
   // Query integrations when needed
   const { data: integrations } = api.integration.getIntegrations.useQuery(undefined, {
     enabled: mode === 'new',
@@ -114,7 +116,7 @@ function ReplyComposeEditorComponent({
   const [showBcc, setShowBcc] = useState(state.bcc.length > 0)
   const [showSubject, setShowSubject] = useState(true)
   const [isSending, setIsSending] = useState(false)
-  const [isDraftSaved, setIsDraftSaved] = useState(false)
+  const [isDraftSaved, setIsDraftSaved] = useState(!!initialDraft)
 
   // Attachments state - persisted attachments from draft
   const [attachments, setAttachments] = useState<FileAttachment[]>(
@@ -210,7 +212,8 @@ function ReplyComposeEditorComponent({
       // If user already clicked discard and we got a late save, delete the new draft
       if (discardAfterSave.current) {
         if (data?.id) {
-          deleteDraftRef.current?.(data.id)
+          deleteDraftRef
+            .current?.(data.id)
             .then(() => onClose())
             .finally(() => {
               discardAfterSave.current = false
@@ -599,6 +602,11 @@ function ReplyComposeEditorComponent({
     editor,
     confirm,
   ])
+
+  /** Close without deleting draft (used in dialog mode) */
+  const handleCloseClick = useCallback(() => {
+    onClose()
+  }, [onClose])
   const handleWrapperClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
       if (!editor || editor.isDestroyed || editor.isFocused || isSending) return
@@ -636,322 +644,337 @@ function ReplyComposeEditorComponent({
       <ConfirmDialog />
       <div className="transition-background flex flex-col duration-200 ease-in-out relative">
         {/* Header */}
-      <div className="absolute top-[-32px] h-full w-full rounded-t-[15px] bg-gray-300  dark:bg-gray-800 ">
-        <div className="flex justify-between h-[36px]">
-          <div className="ps-4 flex flex-row items-center gap-2">
-            <Mail size="16" className="my-1.5 text-foreground" />
-            <span className="text-sm">Compose Email</span>
-            {isUpserting && (
-              <Loader2 className="ml-auto size-4 animate-spin text-muted-foreground" />
-            )}
-          </div>
-          <div className="flex flex-row gap-2 items-center me-1">
-            {/* AI Status (undo/redo and processing) */}
-            <AIStatus
-              state={aiToolsState}
-              canUndo={canUndo}
-              canRedo={canRedo}
-              onUndo={undo}
-              onRedo={redo}
-            />
-            {isDraftSaved && <span className="text-muted-foreground text-sm">Draft</span>}
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              className="rounded-full text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700"
-              onClick={handleDiscardClick}
-              disabled={isSending || isUpserting || isDeleting}>
-              {isDeleting ? <Loader2 className="size-4 animate-spin" /> : <X />}
-            </Button>
-          </div>
-        </div>
-      </div>
+        <div className="absolute top-[-32px] h-full w-full rounded-t-[15px] bg-gray-300  dark:bg-gray-800 ">
+          <div className="flex justify-between h-[36px]">
+            <div className="ps-4 flex flex-row items-center gap-2">
+              <Mail size="16" className="my-1.5 text-foreground" />
+              <span className="text-sm">Compose Email</span>
+              {isUpserting && (
+                <Loader2 className="ml-auto size-4 animate-spin text-muted-foreground" />
+              )}
+            </div>
+            <div className="flex flex-row gap-0 items-center me-1">
+              {/* AI Status (undo/redo and processing) */}
+              <AIStatus
+                state={aiToolsState}
+                canUndo={canUndo}
+                canRedo={canRedo}
+                onUndo={undo}
+                onRedo={redo}
+              />
+              {state.draftId && <span className="text-muted-foreground text-sm me-2">Draft</span>}
 
-      {/* Main Editor Body with Dropzone */}
-      <div
-        {...getRootProps()}
-        className={cn(
-          'relative flex flex-col rounded-[20px] border border-transparent hover:border-gray-400 dark:hover:border-black/20 hover:bg-gray-50 dark:hover:bg-background ring-2 ring-transparent bg-white shadow-lg dark:bg-background',
-          'focus-within:ring-blue-500 focus-within:hover:bg-white focus-within:hover:border-transparent',
-          activeState.isActive && 'ring-blue-500 hover:bg-white hover:border-transparent',
-          isDragActive && 'border-transparent bg-white hover:bg-white hover:border-transparent '
-        )}
-        onClick={handleWrapperClick}
-        onKeyDown={handleKeyDown}
-        onFocus={(e) => {
-          // Check if focus is within editor content areas
-          if (!e.currentTarget.contains(e.relatedTarget)) {
-            activeState.setHasFocus(true)
-          }
-        }}
-        onBlur={(e) => {
-          // Only blur if focus moves outside editor AND no UI elements are open
-          if (!e.currentTarget.contains(e.relatedTarget)) {
-            // Small delay to allow popovers/selects to register as open
-            setTimeout(() => {
-              activeState.setHasFocus(false)
-            }, 0)
-          }
-        }}>
-        <input {...getInputProps()} />
+              {/* Delete button - only show in dialog mode when draft exists */}
+              {isDialogMode && state.draftId && (
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  className="rounded-full text-muted-foreground hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/30"
+                  onClick={handleDiscardClick}
+                  disabled={isSending || isUpserting || isDeleting}
+                  title="Delete draft">
+                  {isDeleting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 />}
+                </Button>
+              )}
 
-        {/* Drag overlay */}
-        {isDragActive && (
-          <div className="absolute inset-[-1px] z-50 flex items-center justify-center rounded-[20px] bg-blue-500/10 border-1 border-dashed border-info">
-            <div className="text-center">
-              <Upload className="mx-auto size-8 text-blue-500" />
-              <Badge variant="blue" className="cursor-default">
-                Drop here
-              </Badge>
+              {/* Close/Discard button */}
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                className="rounded-full text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700"
+                onClick={isDialogMode ? handleCloseClick : handleDiscardClick}
+                disabled={isSending || isUpserting || (isDeleting && !isDialogMode)}>
+                {isDeleting && !isDialogMode ? <Loader2 className="size-4 animate-spin" /> : <X />}
+              </Button>
             </div>
           </div>
-        )}
-        {/* Header Fields */}
-        <div className="flex flex-col border-b border-border">
-          {/* From Field */}
-          <div className="flex items-center gap-2 px-4 py-2">
-            <span className="w-10 shrink-0 text-sm text-muted-foreground">From:</span>
-            <div className="flex-1">
-              <IntegrationSelector
-                value={state.integrationId}
-                onChange={handleIntegrationChange}
+        </div>
+
+        {/* Main Editor Body with Dropzone */}
+        <div
+          {...getRootProps()}
+          className={cn(
+            'relative flex flex-col rounded-[20px] border border-transparent hover:border-gray-400 dark:hover:border-black/20 hover:bg-gray-50 dark:hover:bg-background ring-2 ring-transparent bg-white shadow-lg dark:bg-background',
+            'focus-within:ring-blue-500 focus-within:hover:bg-white focus-within:hover:border-transparent',
+            activeState.isActive && 'ring-blue-500 hover:bg-white hover:border-transparent',
+            isDragActive && 'border-transparent bg-white hover:bg-white hover:border-transparent '
+          )}
+          onClick={handleWrapperClick}
+          onKeyDown={handleKeyDown}
+          onFocus={(e) => {
+            // Check if focus is within editor content areas
+            if (!e.currentTarget.contains(e.relatedTarget)) {
+              activeState.setHasFocus(true)
+            }
+          }}
+          onBlur={(e) => {
+            // Only blur if focus moves outside editor AND no UI elements are open
+            if (!e.currentTarget.contains(e.relatedTarget)) {
+              // Small delay to allow popovers/selects to register as open
+              setTimeout(() => {
+                activeState.setHasFocus(false)
+              }, 0)
+            }
+          }}>
+          <input {...getInputProps()} />
+
+          {/* Drag overlay */}
+          {isDragActive && (
+            <div className="absolute inset-[-1px] z-50 flex items-center justify-center rounded-[20px] bg-blue-500/10 border-1 border-dashed border-info">
+              <div className="text-center">
+                <Upload className="mx-auto size-8 text-blue-500" />
+                <Badge variant="blue" className="cursor-default">
+                  Drop here
+                </Badge>
+              </div>
+            </div>
+          )}
+          {/* Header Fields */}
+          <div className="flex flex-col border-b border-border">
+            {/* From Field */}
+            <div className="flex items-center gap-2 px-4 py-2">
+              <span className="w-10 shrink-0 text-sm text-muted-foreground">From:</span>
+              <div className="flex-1">
+                <IntegrationSelector
+                  value={state.integrationId}
+                  onChange={handleIntegrationChange}
+                  disabled={isSending}
+                />
+              </div>
+            </div>
+            <Separator className="mx-4 w-auto" />
+
+            {/* To Field & Toggles */}
+            <div className="flex items-center gap-2 px-4 py-2">
+              <span className="w-10 shrink-0 text-sm text-muted-foreground">To:</span>
+              <RecipientInput
+                recipients={recipients.TO}
+                onAdd={(r) => upsertRecipient('TO', r)}
+                onRemove={(id) => removeRecipient('TO', id)}
+                onContactSelect={(c) => handleContactSelect('TO', c)}
+                placeholder="Add recipients..."
                 disabled={isSending}
+              />
+              <div className="ml-auto flex shrink-0 items-center gap-1">
+                {!showSubject && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-1 text-xs text-info"
+                    onClick={() => setShowSubject(true)}
+                    disabled={isSending}>
+                    Subject
+                  </Button>
+                )}
+                {!showCc && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-1 text-xs text-info"
+                    onClick={() => setShowCc(true)}
+                    disabled={isSending}>
+                    Cc
+                  </Button>
+                )}
+                {!showBcc && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-1 text-xs text-info"
+                    onClick={() => setShowBcc(true)}
+                    disabled={isSending}>
+                    Bcc
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Cc Field */}
+            {showCc && (
+              <>
+                <Separator className="mx-4 w-auto" />
+                <div className="flex items-center gap-2 px-4 py-2">
+                  <span className="w-10 shrink-0 text-sm text-muted-foreground">Cc:</span>
+                  <RecipientInput
+                    recipients={recipients.CC}
+                    onAdd={(r) => upsertRecipient('CC', r)}
+                    onRemove={(id) => removeRecipient('CC', id)}
+                    onContactSelect={(c) => handleContactSelect('CC', c)}
+                    placeholder="Add Cc recipients..."
+                    disabled={isSending}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="ml-auto h-6 px-1 text-xs text-muted-foreground"
+                    onClick={() => {
+                      setShowCc(false)
+                      setRecipients((prev) => ({ ...prev, CC: [] }))
+                    }}
+                    disabled={isSending}>
+                    Remove
+                  </Button>
+                </div>
+              </>
+            )}
+
+            {/* Bcc Field */}
+            {showBcc && (
+              <>
+                <Separator className="mx-4 w-auto" />
+                <div className="flex items-center gap-2 px-4 py-2">
+                  <span className="w-10 shrink-0 text-sm text-muted-foreground">Bcc:</span>
+                  <RecipientInput
+                    recipients={recipients.BCC}
+                    onAdd={(r) => upsertRecipient('BCC', r)}
+                    onRemove={(id) => removeRecipient('BCC', id)}
+                    onContactSelect={(c) => handleContactSelect('BCC', c)}
+                    placeholder="Add Bcc recipients..."
+                    disabled={isSending}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="ml-auto h-6 px-1 text-xs text-muted-foreground"
+                    onClick={() => {
+                      setShowBcc(false)
+                      setRecipients((prev) => ({ ...prev, BCC: [] }))
+                    }}
+                    disabled={isSending}>
+                    Remove
+                  </Button>
+                </div>
+              </>
+            )}
+
+            {/* Subject Field */}
+            {showSubject && (
+              <>
+                <Separator className="mx-4 w-auto" />
+                <div className="flex items-center gap-2 px-4 py-2">
+                  <span className="shrink-0 text-sm text-muted-foreground">Subject:</span>
+                  <input
+                    type="text"
+                    className="w-full flex-1 bg-transparent text-sm outline-hidden placeholder:text-muted-foreground/50"
+                    value={state.subject}
+                    onChange={(e) => handleSubjectChange(e.target.value)}
+                    placeholder="Enter subject"
+                    disabled={isSending}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="ml-auto h-6 px-1 text-xs text-muted-foreground"
+                    onClick={() => setShowSubject(false)}
+                    disabled={isSending}>
+                    Remove
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Editor Section */}
+          <div className="flex flex-col flex-1 min-h-[150px]">
+            <LazyTiptapEditor
+              content={content}
+              onChange={handleContentChange}
+              placeholder="Type / to insert a snippet."
+              editable={!aiToolsState.isProcessing}
+            />
+            <SignatureEditor
+              integrationId={state.integrationId}
+              selectedSignatureId={state.signatureId}
+              onSignatureChange={handleSignatureChange}
+              disabled={isSending}
+            />
+
+            {/* File Attachments Display - Persisted + In-Progress Uploads */}
+            {(attachments.length > 0 || fileSelect.selectedItems.length > 0) && (
+              <div className="mx-4 mb-3 mt-2">
+                <div className="text-xs text-muted-foreground mb-2">
+                  Attachments ({attachments.length + fileSelect.selectedItems.length})
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {/* Persisted attachments */}
+                  {attachments.map((attachment) => (
+                    <MessageFile
+                      key={attachment.id}
+                      file={{
+                        id: attachment.id,
+                        name: attachment.name,
+                        mimeType: attachment.mimeType,
+                        size: BigInt(attachment.size || 0),
+                        source: 'existing' as const,
+                      }}
+                      showRemoveButton={true}
+                      onRemove={() => removeAttachment(attachment.id)}
+                      className="group"
+                    />
+                  ))}
+                  {/* In-progress uploads */}
+                  {fileSelect.selectedItems.map((file) => (
+                    <MessageFile
+                      key={file.id}
+                      file={{
+                        id: file.id,
+                        name: file.name,
+                        mimeType: file.mimeType ?? undefined,
+                        size: file.size ?? undefined,
+                        source: 'upload' as const,
+                      }}
+                      showRemoveButton={true}
+                      onRemove={() => fileSelect.removeItem(file.id)}
+                      className="group"
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {state.includePrev && messageForPrevComponent && (
+              <PrevMessage
+                message={messageForPrevComponent}
+                onRemove={() => setState((prev) => ({ ...prev, includePrev: false }))}
+              />
+            )}
+            {!state.includePrev && messageForPrevComponent && (
+              <div className="px-2">
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => setState((prev) => ({ ...prev, includePrev: true }))}
+                  title="Add previous message"
+                  className="text-muted-foreground/50"
+                  disabled={isSending}>
+                  <Plus />
+                  Add previous message
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {/* Toolbar with integrated AI Tools */}
+          <div className="editor-toolbar-wrapper px-2 py-1 ">
+            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar md:gap-2">
+              <EditorToolbar
+                editor={editor}
+                onSend={handleSendClick}
+                isSending={isSending}
+                disabled={isSending || !editor?.isEditable || aiToolsState.isProcessing}
+                fileSelect={fileSelect}
+                aiToolsProps={{
+                  threadId: thread?.id || state.threadId || undefined,
+                  hasContent,
+                  hasPreviousMessages,
+                  state: aiToolsState,
+                  onOperation: handleAIOperation,
+                }}
               />
             </div>
           </div>
-          <Separator className="mx-4 w-auto" />
-
-          {/* To Field & Toggles */}
-          <div className="flex items-center gap-2 px-4 py-2">
-            <span className="w-10 shrink-0 text-sm text-muted-foreground">To:</span>
-            <RecipientInput
-              recipients={recipients.TO}
-              onAdd={(r) => upsertRecipient('TO', r)}
-              onRemove={(id) => removeRecipient('TO', id)}
-              onContactSelect={(c) => handleContactSelect('TO', c)}
-              placeholder="Add recipients..."
-              disabled={isSending}
-            />
-            <div className="ml-auto flex shrink-0 items-center gap-1">
-              {!showSubject && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-1 text-xs text-info"
-                  onClick={() => setShowSubject(true)}
-                  disabled={isSending}>
-                  Subject
-                </Button>
-              )}
-              {!showCc && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-1 text-xs text-info"
-                  onClick={() => setShowCc(true)}
-                  disabled={isSending}>
-                  Cc
-                </Button>
-              )}
-              {!showBcc && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-1 text-xs text-info"
-                  onClick={() => setShowBcc(true)}
-                  disabled={isSending}>
-                  Bcc
-                </Button>
-              )}
-            </div>
-          </div>
-
-          {/* Cc Field */}
-          {showCc && (
-            <>
-              <Separator className="mx-4 w-auto" />
-              <div className="flex items-center gap-2 px-4 py-2">
-                <span className="w-10 shrink-0 text-sm text-muted-foreground">Cc:</span>
-                <RecipientInput
-                  recipients={recipients.CC}
-                  onAdd={(r) => upsertRecipient('CC', r)}
-                  onRemove={(id) => removeRecipient('CC', id)}
-                  onContactSelect={(c) => handleContactSelect('CC', c)}
-                  placeholder="Add Cc recipients..."
-                  disabled={isSending}
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="ml-auto h-6 px-1 text-xs text-muted-foreground"
-                  onClick={() => {
-                    setShowCc(false)
-                    setRecipients((prev) => ({ ...prev, CC: [] }))
-                  }}
-                  disabled={isSending}>
-                  Remove
-                </Button>
-              </div>
-            </>
-          )}
-
-          {/* Bcc Field */}
-          {showBcc && (
-            <>
-              <Separator className="mx-4 w-auto" />
-              <div className="flex items-center gap-2 px-4 py-2">
-                <span className="w-10 shrink-0 text-sm text-muted-foreground">Bcc:</span>
-                <RecipientInput
-                  recipients={recipients.BCC}
-                  onAdd={(r) => upsertRecipient('BCC', r)}
-                  onRemove={(id) => removeRecipient('BCC', id)}
-                  onContactSelect={(c) => handleContactSelect('BCC', c)}
-                  placeholder="Add Bcc recipients..."
-                  disabled={isSending}
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="ml-auto h-6 px-1 text-xs text-muted-foreground"
-                  onClick={() => {
-                    setShowBcc(false)
-                    setRecipients((prev) => ({ ...prev, BCC: [] }))
-                  }}
-                  disabled={isSending}>
-                  Remove
-                </Button>
-              </div>
-            </>
-          )}
-
-          {/* Subject Field */}
-          {showSubject && (
-            <>
-              <Separator className="mx-4 w-auto" />
-              <div className="flex items-center gap-2 px-4 py-2">
-                <span className="shrink-0 text-sm text-muted-foreground">Subject:</span>
-                <input
-                  type="text"
-                  className="w-full flex-1 bg-transparent text-sm outline-hidden placeholder:text-muted-foreground/50"
-                  value={state.subject}
-                  onChange={(e) => handleSubjectChange(e.target.value)}
-                  placeholder="Enter subject"
-                  disabled={isSending}
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="ml-auto h-6 px-1 text-xs text-muted-foreground"
-                  onClick={() => setShowSubject(false)}
-                  disabled={isSending}>
-                  Remove
-                </Button>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Editor Section */}
-        <div className="flex flex-col flex-1 min-h-[150px]">
-          <LazyTiptapEditor
-            content={content}
-            onChange={handleContentChange}
-            placeholder="Type / to insert a snippet."
-            editable={!aiToolsState.isProcessing}
-          />
-          <SignatureEditor
-            integrationId={state.integrationId}
-            selectedSignatureId={state.signatureId}
-            onSignatureChange={handleSignatureChange}
-            disabled={isSending}
-          />
-
-          {/* File Attachments Display - Persisted + In-Progress Uploads */}
-          {(attachments.length > 0 || fileSelect.selectedItems.length > 0) && (
-            <div className="mx-4 mb-3 mt-2">
-              <div className="text-xs text-muted-foreground mb-2">
-                Attachments ({attachments.length + fileSelect.selectedItems.length})
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {/* Persisted attachments */}
-                {attachments.map((attachment) => (
-                  <MessageFile
-                    key={attachment.id}
-                    file={{
-                      id: attachment.id,
-                      name: attachment.name,
-                      mimeType: attachment.mimeType,
-                      size: BigInt(attachment.size || 0),
-                      source: 'existing' as const,
-                    }}
-                    showRemoveButton={true}
-                    onRemove={() => removeAttachment(attachment.id)}
-                    className="group"
-                  />
-                ))}
-                {/* In-progress uploads */}
-                {fileSelect.selectedItems.map((file) => (
-                  <MessageFile
-                    key={file.id}
-                    file={{
-                      id: file.id,
-                      name: file.name,
-                      mimeType: file.mimeType ?? undefined,
-                      size: file.size ?? undefined,
-                      source: 'upload' as const,
-                    }}
-                    showRemoveButton={true}
-                    onRemove={() => fileSelect.removeItem(file.id)}
-                    className="group"
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {state.includePrev && messageForPrevComponent && (
-            <PrevMessage
-              message={messageForPrevComponent}
-              onRemove={() => setState((prev) => ({ ...prev, includePrev: false }))}
-            />
-          )}
-          {!state.includePrev && messageForPrevComponent && (
-            <div className="px-2">
-              <Button
-                variant="ghost"
-                size="xs"
-                onClick={() => setState((prev) => ({ ...prev, includePrev: true }))}
-                title="Add previous message"
-                className="text-muted-foreground/50"
-                disabled={isSending}>
-                <Plus />
-                Add previous message
-              </Button>
-            </div>
-          )}
-        </div>
-
-        {/* Toolbar with integrated AI Tools */}
-        <div className="editor-toolbar-wrapper px-2 py-1 ">
-          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar md:gap-2">
-            <EditorToolbar
-              editor={editor}
-              onSend={handleSendClick}
-              isSending={isSending}
-              disabled={isSending || !editor?.isEditable || aiToolsState.isProcessing}
-              fileSelect={fileSelect}
-              aiToolsProps={{
-                threadId: thread?.id || state.threadId || undefined,
-                hasContent,
-                hasPreviousMessages,
-                state: aiToolsState,
-                onOperation: handleAIOperation,
-              }}
-            />
-          </div>
         </div>
       </div>
-    </div>
     </>
   )
 }

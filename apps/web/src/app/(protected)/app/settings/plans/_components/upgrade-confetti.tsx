@@ -2,20 +2,21 @@
 'use client'
 
 import { useEffect } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { showCelebrationConfetti } from '~/components/subscriptions/show-confetti'
 
 /** Triggers celebratory confetti when the settings page is visited with ?upgrade=true. */
 export function UpgradeConfetti() {
   const searchParams = useSearchParams()
-  const router = useRouter()
 
   useEffect(() => {
     if (searchParams?.get('upgrade') === 'true') {
       showCelebrationConfetti()
-      router.replace('/app/settings/plans')
+      // Use history.replaceState to update URL without triggering Next.js navigation
+      // This prevents aborting in-flight requests from other components
+      window.history.replaceState(null, '', '/app/settings/plans')
     }
-  }, [router, searchParams])
+  }, [searchParams])
 
   return null
 }

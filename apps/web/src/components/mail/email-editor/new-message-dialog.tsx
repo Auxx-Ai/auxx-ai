@@ -107,6 +107,7 @@ const NewMessageDialog: React.FC<NewMessageDialogProps> = ({
             onClose={handleClose}
             onSendSuccess={handleSendSuccess}
             presetValues={presetValues}
+            isDialogMode
           />
         )}
       </DialogContent>

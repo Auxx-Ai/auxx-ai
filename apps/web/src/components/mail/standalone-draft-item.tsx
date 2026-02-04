@@ -85,12 +85,6 @@ export function StandaloneDraftItem({ draftId }: StandaloneDraftItemProps) {
               <div className="min-w-0 truncate text-xs font-medium max-w-[60%] shrink-0">
                 {draft.subject || '(no subject)'}
               </div>
-              <div className="min-w-0 flex-1 flex justify-end">
-                <div className="flex items-center gap-1 whitespace-nowrap rounded-[5px] border px-[3px] py-[1px] text-xs text-red-600 border-red-300 bg-red-50">
-                  <FileEdit className="size-3" />
-                  Draft
-                </div>
-              </div>
             </div>
           </div>
 

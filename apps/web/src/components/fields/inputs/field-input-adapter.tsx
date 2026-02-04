@@ -29,6 +29,7 @@ import {
   AddressInput,
   PhoneInput,
 } from '~/components/workflow/nodes/shared/node-inputs'
+import { NameFieldInput, type NameValue } from './name-field-input'
 
 /**
  * Wrapper for inline inputs that focuses the input when `open` becomes true.
@@ -296,10 +297,28 @@ export function FieldInputAdapter({
     }
 
     // ─────────────────────────────────────────────────────────────────
-    // TEXT TYPES - uses StringInput with focus wrapper
+    // NAME - uses NameFieldInput (popover with firstName + lastName)
+    // Value: { firstName: string, lastName: string }
+    // ─────────────────────────────────────────────────────────────────
+    case FieldType.NAME: {
+      const nameValue = (value as NameValue | null) ?? { firstName: '', lastName: '' }
+      return (
+        <NameFieldInput
+          value={nameValue}
+          onChange={onChange as (value: NameValue) => void}
+          placeholder={placeholder}
+          disabled={disabled}
+          triggerProps={triggerProps}
+          open={open}
+          onOpenChange={onOpenChange}
+        />
+      )
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // TEXT - uses StringInput with focus wrapper
     // ─────────────────────────────────────────────────────────────────
     case FieldType.TEXT:
-    case FieldType.NAME:
       return (
         <FocusableInputWrapper open={open} onOpenChange={onOpenChange}>
           <StringInput {...nodeInputProps} className={inputClassName} autoGrow={autoGrow} />

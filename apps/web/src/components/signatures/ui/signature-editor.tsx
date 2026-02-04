@@ -77,8 +77,8 @@ function SignatureEditor({
 
   if (isLoading) {
     return (
-      <div className="group relative m-2 mb-0 rounded-md p-2">
-        <Skeleton className="h-8 w-3/4" />
+      <div className="group relative mx-2 mb-0 rounded-md">
+        <Skeleton className="h-4 w-26" />
       </div>
     )
   }

@@ -51,6 +51,20 @@ function extractSingleActorId(val: unknown): ActorId | null {
 }
 
 /**
+ * Normalize NAME value to { firstName, lastName } structure
+ */
+function normalizeNameValue(value: unknown): { firstName: string; lastName: string } {
+  if (!value || typeof value !== 'object') {
+    return { firstName: '', lastName: '' }
+  }
+  const v = value as { firstName?: string; lastName?: string }
+  return {
+    firstName: v.firstName ?? '',
+    lastName: v.lastName ?? '',
+  }
+}
+
+/**
  * Props for FieldInputRow
  */
 interface FieldInputRowProps {
@@ -94,7 +108,9 @@ export function FieldInputRow({
       ? extractRelationshipRecordIds(value)
       : fieldType === 'ACTOR'
         ? extractActorIds(value)
-        : value
+        : fieldType === 'NAME'
+          ? normalizeNameValue(value)
+          : value
 
   // Determine if relationship is multi-select using helper
   const isMulti = isMultiRelationship(relationshipConfig?.relationshipType)
