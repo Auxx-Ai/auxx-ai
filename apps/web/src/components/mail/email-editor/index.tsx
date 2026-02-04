@@ -234,18 +234,29 @@ function ReplyComposeEditorComponent({
   const attachmentsInitializedRef = useRef(false)
   // Populate fileSelect with initial attachments from draft
   useEffect(() => {
+    console.log('[EmailEditor] Attachment init effect:', {
+      draftId: initialDraft?.id,
+      attachmentCount: initialDraft?.attachments?.length,
+      alreadyInitialized: attachmentsInitializedRef.current,
+      currentSelectedItems: fileSelect.selectedItems.length,
+    })
     if (
       initialDraft?.attachments &&
       initialDraft.attachments.length > 0 &&
       !attachmentsInitializedRef.current
     ) {
       const fileSelectItems = transformDraftAttachmentsToFileSelectItems(initialDraft.attachments)
+      console.log('[EmailEditor] Adding draft attachments:', fileSelectItems)
       fileSelect.addItems(fileSelectItems)
       attachmentsInitializedRef.current = true
     }
   }, [initialDraft?.attachments, initialDraft?.id]) // Re-run when draft changes
   // Reset initialization when draft changes
   useEffect(() => {
+    console.log('[EmailEditor] Reset effect - clearing items:', {
+      draftId: initialDraft?.id,
+      currentSelectedItems: fileSelect.selectedItems.length,
+    })
     attachmentsInitializedRef.current = false
     // Clear existing items when switching drafts
     fileSelect.clearItems()
@@ -367,25 +378,29 @@ function ReplyComposeEditorComponent({
     { leading: true, trailing: false } // fire immediately; ignore rapid subsequent clicks
   )
   // Prepare payload for autosave
-  const draftPayload = useMemo(
-    () => ({
+  const draftPayload = useMemo(() => {
+    const attachments = transformToFileAttachments(fileSelect.selectedItems)
+    console.log('[EmailEditor] draftPayload computed:', {
+      draftId: state.draftId,
+      selectedItemsCount: fileSelect.selectedItems.length,
+      attachmentsCount: attachments.length,
+      attachments,
+    })
+    return {
       threadId: state.threadId,
       integrationId: state.integrationId,
+      inReplyToMessageId: state.sourceMessageId,
+      includePreviousMessage: state.includePrev,
       subject: state.subject,
       textHtml: content,
       signatureId: state.signatureId,
       to: toPayload(recipients.TO),
       cc: toPayload(recipients.CC),
       bcc: toPayload(recipients.BCC),
-      attachments: transformToFileAttachments(fileSelect.selectedItems),
-      metadata: {
-        includePreviousMessage: state.includePrev,
-        sourceMessageId: state.sourceMessageId,
-      },
+      attachments,
       draftId: state.draftId,
-    }),
-    [state, content, recipients, fileSelect.selectedItems]
-  )
+    }
+  }, [state, content, recipients, fileSelect.selectedItems])
   // Auto-save hook
   const draftAutosave = useDraftAutosave({
     enabled: !isSending && !!state.integrationId,

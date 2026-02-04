@@ -1,238 +1,99 @@
 // apps/web/src/components/signatures/ui/signature-picker.tsx
 'use client'
 
-import React, { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback, type ComponentProps } from 'react'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@auxx/ui/components/command'
 import { Button } from '@auxx/ui/components/button'
-import { Check, ChevronsUpDown, Signature } from 'lucide-react'
-import { cn } from '@auxx/ui/lib/utils'
-import { useFormContext, FieldPath, FieldValues } from 'react-hook-form'
-import {
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@auxx/ui/components/form'
 import { useRouter } from 'next/navigation'
+import { cn } from '@auxx/ui/lib/utils'
+import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
+import type { SelectOption } from '@auxx/types/custom-field'
 import { useSignatures, type SignatureItem } from '../hooks'
 
-interface SignaturePickerProps {
+/** Props for SignaturePicker component */
+interface SignaturePickerProps extends Pick<ComponentProps<typeof PopoverContent>, 'align' | 'side' | 'sideOffset'> {
   open?: boolean
   onOpenChange?: (open: boolean) => void
-  /** The selected signature ID or object */
-  value?: string | SignatureItem | null
-  /** Callback when a signature is selected. Passes the signature object. */
-  onChange?: (selectedSignature: SignatureItem | null) => void
+  selected?: string | null
+  onChange?: (signatureId: string | null) => void
   className?: string
-  /** Optional pre-fetched signatures (if not provided, uses useSignatures hook) */
-  initialSignatures?: SignatureItem[]
-  /** Custom trigger element */
+  signatures?: SignatureItem[]
   children?: React.ReactNode
-  /** Placeholder for the search input */
-  searchPlaceholder?: string
-  /** Text for the empty state */
-  emptyText?: string
-  /** Heading for the command group */
-  groupHeading?: string
-  /** Optional explicit popover open state management */
-  popoverOpen?: boolean
-  /** Optional explicit popover open state change handler */
-  onPopoverOpenChange?: (open: boolean) => void
-  /** Disabled state */
   disabled?: boolean
 }
 
 /**
- * Signature picker dropdown component.
- * Allows selecting a signature from available signatures.
- * Uses the entity system via useSignatures hook.
+ * SignaturePicker - Popover-based picker for selecting a signature.
+ * Uses MultiSelectPicker in single-select mode.
  */
 export function SignaturePicker({
-  value,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+  selected,
   onChange,
   className,
-  initialSignatures,
+  signatures: externalSignatures,
   children,
-  searchPlaceholder = 'Search signatures...',
-  emptyText = 'No signatures found.',
-  groupHeading = 'Available Signatures',
-  popoverOpen: externalOpen,
-  onPopoverOpenChange: externalOnOpenChange,
   disabled = false,
+  ...popoverContentProps
 }: SignaturePickerProps) {
-  const [internalOpen, setInternalOpen] = useState(false)
-  const [searchValue, setSearchValue] = useState('')
   const router = useRouter()
 
-  // Use external state if provided, otherwise use internal state
-  const isOpen = externalOpen ?? internalOpen
-  const setIsOpen = externalOnOpenChange ?? setInternalOpen
+  // Internal state for uncontrolled mode
+  const [internalOpen, setInternalOpen] = useState(false)
+  const isOpen = controlledOpen ?? internalOpen
+  const setIsOpen = controlledOnOpenChange ?? setInternalOpen
 
-  // Fetch signatures using the hook if not provided
-  const { signatures: hookSignatures, isLoading } = useSignatures()
-  const signatures = initialSignatures || hookSignatures
+  // Fetch signatures if not provided
+  const { signatures: fetchedSignatures } = useSignatures()
+  const signatures = externalSignatures ?? fetchedSignatures
 
-  // Memoize the selected signature ID extraction
-  const selectedSignatureId = useMemo(() => {
-    if (!value) return null
-    return typeof value === 'string' ? value : value.id
-  }, [value])
+  // Convert signatures to SelectOption format
+  const options: SelectOption[] = useMemo(() => {
+    return signatures.map((sig) => ({
+      value: sig.id,
+      label: sig.name,
+    }))
+  }, [signatures])
 
-  // Memoize the selected signature object
-  const selectedSignature = useMemo(() => {
-    if (!selectedSignatureId) return null
-    return signatures.find((sig) => sig.id === selectedSignatureId) || null
-  }, [selectedSignatureId, signatures])
+  // Handle selection
+  const handleChange = useCallback(
+    (newSelected: string[]) => {
+      onChange?.(newSelected[0] ?? null)
+    },
+    [onChange]
+  )
 
-  const handleSelect = (signature: SignatureItem) => {
-    onChange?.(signature)
+  // Close popover on single select
+  const handleSelectSingle = useCallback(() => {
     setIsOpen(false)
-    setSearchValue('')
-  }
+  }, [setIsOpen])
 
-  // Filter signatures based on search
-  const filteredSignatures = useMemo(() => {
-    if (!searchValue) return signatures
-    return signatures.filter((signature) =>
-      signature.name.toLowerCase().includes(searchValue.toLowerCase())
-    )
-  }, [signatures, searchValue])
-
-  const triggerLabel = selectedSignature ? selectedSignature.name : 'Pick a signature'
+  // Navigate to create new signature
+  const handleCreate = useCallback(() => {
+    router.push('/app/settings/signatures/new')
+  }, [router])
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
-      <PopoverTrigger asChild>
-        {children || (
-          <Button
-            variant="outline"
-            role="combobox"
-            aria-expanded={isOpen}
-            className={cn(
-              'w-[200px] justify-between',
-              !selectedSignature && 'text-muted-foreground'
-            )}>
-            {triggerLabel}
-            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-          </Button>
-        )}
+      <PopoverTrigger asChild disabled={disabled}>
+        {children ?? <Button variant="outline">Select Signature</Button>}
       </PopoverTrigger>
-      <PopoverContent className={cn('p-0', className)}>
-        <Command shouldFilter={false}>
-          <CommandInput
-            placeholder={searchPlaceholder}
-            value={searchValue}
-            onValueChange={setSearchValue}
-            disabled={isLoading && !initialSignatures}
-          />
-          <CommandList>
-            {isLoading && !initialSignatures && <CommandEmpty>Loading signatures...</CommandEmpty>}
-            {!isLoading && filteredSignatures.length === 0 && (
-              <CommandEmpty>{emptyText}</CommandEmpty>
-            )}
-            {!isLoading && filteredSignatures.length > 0 && (
-              <CommandGroup heading={groupHeading}>
-                {filteredSignatures.map((signature) => (
-                  <CommandItem
-                    key={signature.id}
-                    value={signature.id}
-                    onSelect={() => handleSelect(signature)}
-                    className="cursor-pointer">
-                    <Check
-                      className={cn(
-                        'mr-2 h-4 w-4',
-                        selectedSignatureId === signature.id ? 'opacity-100' : 'opacity-0'
-                      )}
-                    />
-                    {signature.name}
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            )}
-            <CommandGroup>
-              <CommandItem
-                className="cursor-pointer"
-                onSelect={() => {
-                  router.push('/app/settings/signatures/new')
-                }}>
-                <Signature className="mr-2 h-4 w-4" />
-                Add New Signature
-              </CommandItem>
-            </CommandGroup>
-          </CommandList>
-        </Command>
+      <PopoverContent className={cn('w-[250px] p-0', className)} {...popoverContentProps}>
+        <MultiSelectPicker
+          options={options}
+          value={selected ? [selected] : []}
+          onChange={handleChange}
+          onSelectSingle={handleSelectSingle}
+          placeholder="Search signatures..."
+          canManage={false}
+          canAdd={false}
+          multi={false}
+          onCreate={handleCreate}
+          createLabel="Add New Signature"
+          disabled={disabled}
+        />
       </PopoverContent>
     </Popover>
-  )
-}
-
-// --- Form Component ---
-
-interface FormSignaturePickerProps<TFieldValues extends FieldValues = FieldValues>
-  extends Omit<SignaturePickerProps, 'value' | 'onChange' | 'open' | 'onOpenChange'> {
-  name: FieldPath<TFieldValues>
-  label?: string
-  description?: string
-}
-
-/**
- * Signature Picker component integrated with react-hook-form.
- * It expects to be used within a FormProvider context.
- * The field value will be the selected Signature object (or null).
- */
-export function FormSignaturePicker<TFieldValues extends FieldValues = FieldValues>({
-  name,
-  label,
-  description,
-  ...pickerProps
-}: FormSignaturePickerProps<TFieldValues>) {
-  const { control } = useFormContext<TFieldValues>()
-
-  return (
-    <FormField
-      control={control}
-      name={name}
-      render={({ field, fieldState }) => (
-        <FormItem className="flex flex-col">
-          {label && <FormLabel>{label}</FormLabel>}
-          <SignaturePicker
-            value={field.value as SignatureItem | null}
-            onChange={field.onChange}
-            popoverOpen={field.value !== undefined && field.value !== null ? undefined : false}
-            {...pickerProps}
-            children={
-              pickerProps.children ?? (
-                <FormControl>
-                  <Button
-                    variant="outline"
-                    role="combobox"
-                    className={cn(
-                      'w-full justify-between',
-                      !field.value && 'text-muted-foreground'
-                    )}>
-                    {(field.value as SignatureItem | null)?.name ??
-                      pickerProps.searchPlaceholder ??
-                      'Select signature...'}
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                  </Button>
-                </FormControl>
-              )
-            }
-          />
-          {description && <FormDescription>{description}</FormDescription>}
-          <FormMessage />
-        </FormItem>
-      )}
-    />
   )
 }

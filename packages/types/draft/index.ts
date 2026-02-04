@@ -69,15 +69,11 @@ export interface DraftContent {
   /** Signature ID to include when sending */
   signatureId?: string | null
 
-  /** Additional metadata */
-  metadata?: {
-    /** Whether to include previous message in reply */
-    includePreviousMessage?: boolean
-    /** Source message ID for reply context */
-    sourceMessageId?: string | null
-    /** Any other client-specific metadata */
-    [key: string]: unknown
-  }
+  /** Whether to include previous message in reply (user preference, toggleable) */
+  includePreviousMessage?: boolean
+
+  /** Additional metadata (for truly arbitrary client-specific data) */
+  metadata?: Record<string, unknown>
 }
 
 /**
@@ -97,7 +93,7 @@ export const DEFAULT_DRAFT_CONTENT: DraftContent = {
   },
   attachments: [],
   signatureId: null,
-  metadata: {},
+  includePreviousMessage: false,
 }
 
 /**
@@ -134,6 +130,8 @@ export interface CreateDraftInput {
 export interface UpdateDraftInput {
   draftId: string
   content: Partial<DraftContent>
+  /** Optional - only set if provided (for lazy migration from metadata.sourceMessageId) */
+  inReplyToMessageId?: string | null
 }
 
 /**

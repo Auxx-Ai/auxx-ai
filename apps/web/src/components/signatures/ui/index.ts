@@ -2,5 +2,5 @@
 
 export { SignatureList } from './signature-list'
 export { SignatureForm } from './signature-form'
-export { SignaturePicker, FormSignaturePicker } from './signature-picker'
+export { SignaturePicker } from './signature-picker'
 export { default as SignatureEditor } from './signature-editor'

@@ -118,7 +118,8 @@ export function deriveInitialState({
       else if (p.role === ParticipantRole.CC) cc.push(recipient)
       else if (p.role === ParticipantRole.BCC) bcc.push(recipient)
     })
-    const metadata = (draft.metadata ?? {}) as DraftMetadata
+    // Use top-level fields with fallback to legacy metadata for backward compatibility
+    const legacyMetadata = (draft.metadata ?? {}) as DraftMetadata
     return {
       to,
       cc,
@@ -126,10 +127,12 @@ export function deriveInitialState({
       subject: draft.subject ?? '',
       contentHtml: draft.textHtml ?? `<p>${draft.textPlain?.replace(/\n/g, '<br>') ?? ''}</p>`,
       signatureId: draft.signatureId ?? null,
-      includePrev: !!metadata.includePreviousMessage,
+      // Use top-level includePreviousMessage, fallback to legacy metadata
+      includePrev: draft.includePreviousMessage ?? !!legacyMetadata.includePreviousMessage,
       draftId: draft.id,
       threadId: draft.threadId ?? thread?.id ?? null,
-      sourceMessageId: metadata.sourceMessageId ?? null,
+      // Use top-level inReplyToMessageId, fallback to legacy metadata.sourceMessageId
+      sourceMessageId: draft.inReplyToMessageId ?? legacyMetadata.sourceMessageId ?? null,
       integrationId: thread?.integrationId ?? defaultIntegrationId ?? '',
     }
   }

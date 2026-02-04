@@ -1,10 +1,12 @@
 'use client'
 // src/hooks/use-reply-box.tsx
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
-import type { EditorMode, MessageType } from '~/components/mail/email-editor/types'
+import type { EditorMode, MessageType as EditorMessageType } from '~/components/mail/email-editor/types'
 import { useDraft } from '~/components/mail/email-editor/hooks'
 import type { ThreadMeta } from '~/components/threads/store'
 import { useThreadStore } from '~/components/threads/store/thread-store'
+import { useMessage, useParticipant } from '~/components/threads/hooks'
+import { groupParticipantsByRole, type ParticipantId } from '@auxx/types'
 
 /**
  * Custom hook for managing the state of the Reply/Compose editor.
@@ -15,19 +17,17 @@ import { useThreadStore } from '~/components/threads/store/thread-store'
 export function useReplyBox(thread: ThreadMeta | null | undefined) {
   const [isShowReplyBox, setIsShowReplyBox] = useState(false)
   const [editorMode, setEditorMode] = useState<EditorMode>('reply')
-  const [sourceMessage, setSourceMessage] = useState<MessageType | null>(null)
+  const [sourceMessage, setSourceMessage] = useState<EditorMessageType | null>(null)
   const replyBoxRef = useRef<HTMLDivElement>(null)
   const suppressAutoOpenOnce = useRef(false)
 
   // Extract first draft ID from draftIds (format: "draft:abc123")
   const firstDraftId = useMemo(() => {
-    console.log('[useReplyBox] thread.draftIds:', thread?.draftIds)
     const draftRecordId = thread?.draftIds?.[0]
     if (!draftRecordId) return null
     // Extract ID after "draft:" prefix
     const parts = draftRecordId.split(':')
     const extractedId = parts.length > 1 ? parts[1] : null
-    console.log('[useReplyBox] extractedId:', extractedId)
     return extractedId
   }, [thread?.draftIds])
 
@@ -46,19 +46,61 @@ export function useReplyBox(thread: ThreadMeta | null | undefined) {
   // Use effective draft - treat not-found drafts as no draft
   const effectiveDraft = isNotFound ? undefined : draft
 
+  // Fetch source message from inReplyToMessageId for drafts
+  const inReplyToMessageId = effectiveDraft?.inReplyToMessageId ?? null
+  const { message: sourceMessageMeta } = useMessage({
+    messageId: inReplyToMessageId,
+    enabled: !!inReplyToMessageId,
+  })
+
+  // Extract from participant ID from the message's participants
+  const fromParticipantId = useMemo(() => {
+    if (!sourceMessageMeta?.participants) return null
+    const grouped = groupParticipantsByRole(sourceMessageMeta.participants as ParticipantId[])
+    return grouped.from
+  }, [sourceMessageMeta?.participants])
+
+  // Fetch the from participant details
+  const { participant: fromParticipant } = useParticipant({
+    participantId: fromParticipantId,
+    enabled: !!fromParticipantId,
+  })
+
+  // Build a compatible sourceMessage object from the fetched data
+  const sourceMessageFromDraft: EditorMessageType | null = useMemo(() => {
+    if (!sourceMessageMeta) return null
+    return {
+      id: sourceMessageMeta.id,
+      threadId: sourceMessageMeta.threadId,
+      subject: sourceMessageMeta.subject,
+      snippet: sourceMessageMeta.snippet,
+      textHtml: sourceMessageMeta.textHtml,
+      textPlain: sourceMessageMeta.textPlain,
+      isInbound: sourceMessageMeta.isInbound,
+      sentAt: sourceMessageMeta.sentAt ? new Date(sourceMessageMeta.sentAt) : null,
+      createdAt: new Date(sourceMessageMeta.createdAt),
+      // Cast messageType - store may have additional types (WHATSAPP, CALL) not in editor type
+      messageType: sourceMessageMeta.messageType as EditorMessageType['messageType'],
+      from: fromParticipant
+        ? {
+            id: fromParticipant.id,
+            identifier: fromParticipant.identifier,
+            name: fromParticipant.name,
+            displayName: fromParticipant.displayName,
+          }
+        : null,
+    }
+  }, [sourceMessageMeta, fromParticipant])
+
   // Effect to automatically open the editor if a draft exists when loaded
   useEffect(() => {
     if (effectiveDraft) {
       if (suppressAutoOpenOnce.current) {
         suppressAutoOpenOnce.current = false
       } else {
-        console.log('Draft found, showing editor.', {
-          threadId: thread?.id,
-          draftId: effectiveDraft.id,
-        })
         setIsShowReplyBox(true)
         setEditorMode('draft')
-        setSourceMessage(null)
+        // Don't override sourceMessage here - let it be populated from sourceMessageFromDraft
       }
     }
   }, [effectiveDraft, thread?.id])
@@ -70,10 +112,6 @@ export function useReplyBox(thread: ThreadMeta | null | undefined) {
     const hasDraft = !!effectiveDraft
 
     if (currentThreadId !== previousThreadId.current) {
-      console.log('Thread ID changed, resetting reply box state.', {
-        oldId: previousThreadId.current,
-        newId: currentThreadId,
-      })
       if (!hasDraft) {
         setIsShowReplyBox(false)
         setSourceMessage(null)
@@ -87,13 +125,9 @@ export function useReplyBox(thread: ThreadMeta | null | undefined) {
       if (suppressAutoOpenOnce.current) {
         suppressAutoOpenOnce.current = false
       } else {
-        console.log('useReplyBox: Draft found on thread update, showing editor.', {
-          threadId: currentThreadId,
-          draftId: effectiveDraft.id,
-        })
         setIsShowReplyBox(true)
         setEditorMode('draft')
-        setSourceMessage(null)
+        // Don't override sourceMessage - let it be populated from sourceMessageFromDraft
       }
     }
   }, [thread?.id, effectiveDraft, isShowReplyBox])
@@ -115,13 +149,11 @@ export function useReplyBox(thread: ThreadMeta | null | undefined) {
    * @param messageId - The ID of the message to reply/forward to.
    */
   const openEditorForAction = useCallback(
-    (mode: 'reply' | 'replyAll' | 'forward', message: MessageType) => {
+    (mode: 'reply' | 'replyAll' | 'forward', message: EditorMessageType) => {
       // const message = findSentMessageById(messageId)
       if (!message || typeof message !== 'object') {
-        console.log('Source message not found for action', { message, mode })
         return
       }
-      console.log('Opening editor for action', { mode, messageId: message.id })
 
       setEditorMode(mode)
       setSourceMessage(message) // Set the message being acted upon
@@ -136,9 +168,8 @@ export function useReplyBox(thread: ThreadMeta | null | undefined) {
    * Requires a message to be passed since ThreadMeta doesn't contain messages.
    */
   const handleShowGenericReply = useCallback(
-    (lastMessage?: MessageType) => {
+    (lastMessage?: EditorMessageType) => {
       if (!lastMessage) {
-        console.log('Cannot reply, no message provided.')
         return
       }
       openEditorForAction('reply', lastMessage)
@@ -146,11 +177,14 @@ export function useReplyBox(thread: ThreadMeta | null | undefined) {
     [openEditorForAction]
   )
 
+  // Return sourceMessage from state, or from draft's inReplyToMessageId if available
+  const effectiveSourceMessage = sourceMessage ?? sourceMessageFromDraft
+
   return {
     isShowReplyBox,
     setIsShowReplyBox,
     editorMode,
-    sourceMessage,
+    sourceMessage: effectiveSourceMessage,
     replyBoxRef,
     openEditorForAction,
     handleShowGenericReply,

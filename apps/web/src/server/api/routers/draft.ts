@@ -42,6 +42,8 @@ const UpsertDraftInputSchema = z.object({
   draftId: z.string().nullish(),
   threadId: z.string().nullish(),
   integrationId: z.string(),
+  inReplyToMessageId: z.string().nullish(),
+  includePreviousMessage: z.boolean().optional(),
   subject: z.string().nullish(),
   textHtml: z.string().nullish(),
   textPlain: z.string().nullish(),
@@ -98,6 +100,8 @@ export const draftRouter = createTRPCRouter({
       userId,
       draftId: input.draftId,
       threadId: input.threadId,
+      attachmentCount: input.attachments?.length ?? 0,
+      attachments: input.attachments,
     })
 
     try {
@@ -113,13 +117,21 @@ export const draftRouter = createTRPCRouter({
           bcc: (input.bcc || []).map(mapParticipant),
         },
         attachments: (input.attachments || []).map(mapAttachment),
+        includePreviousMessage: input.includePreviousMessage,
         metadata: input.metadata,
       }
+
+      // Extract inReplyToMessageId from input or fallback to legacy metadata.sourceMessageId
+      const inReplyToMessageId =
+        input.inReplyToMessageId ??
+        (input.metadata?.sourceMessageId as string | undefined) ??
+        null
 
       const draft = await draftService.upsert({
         draftId: input.draftId,
         integrationId: input.integrationId,
         threadId: input.threadId,
+        inReplyToMessageId,
         content,
       })
 
@@ -247,11 +259,17 @@ export const draftRouter = createTRPCRouter({
  */
 function transformDraftForFrontend(draft: import('@auxx/types/draft').Draft) {
   const content = draft.content
+  // Support legacy drafts that stored these in metadata
+  const legacyMetadata = (content.metadata ?? {}) as Record<string, unknown>
 
   return {
     id: draft.id,
     threadId: draft.threadId,
     integrationId: draft.integrationId,
+    // Include inReplyToMessageId at top level for frontend
+    inReplyToMessageId: draft.inReplyToMessageId ?? (legacyMetadata.sourceMessageId as string) ?? null,
+    // Include includePreviousMessage at top level (fallback to legacy metadata)
+    includePreviousMessage: content.includePreviousMessage ?? !!legacyMetadata.includePreviousMessage,
     subject: content.subject || '',
     textHtml: content.bodyHtml || '',
     textPlain: content.bodyText || '',

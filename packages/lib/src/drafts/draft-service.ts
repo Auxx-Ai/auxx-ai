@@ -75,7 +75,7 @@ export class DraftService {
    * Merges the provided content with existing content.
    */
   async update(input: UpdateDraftInput): Promise<Draft> {
-    const { draftId, content: contentUpdates } = input
+    const { draftId, content: contentUpdates, inReplyToMessageId } = input
 
     logger.info('Updating draft', { draftId, userId: this.userId })
 
@@ -103,15 +103,19 @@ export class DraftService {
         bcc: contentUpdates.recipients?.bcc ?? existingContent.recipients?.bcc ?? [],
       },
       attachments: contentUpdates.attachments ?? existingContent.attachments ?? [],
-      metadata: {
-        ...existingContent.metadata,
-        ...contentUpdates.metadata,
-      },
+    }
+
+    // Build update payload - conditionally include inReplyToMessageId for lazy migration
+    const updatePayload: { content: DraftContent; inReplyToMessageId?: string | null } = {
+      content: mergedContent,
+    }
+    if (inReplyToMessageId !== undefined) {
+      updatePayload.inReplyToMessageId = inReplyToMessageId
     }
 
     const [updated] = await this.db
       .update(schema.Draft)
-      .set({ content: mergedContent })
+      .set(updatePayload)
       .where(
         and(
           eq(schema.Draft.id, draftId),
@@ -140,14 +144,14 @@ export class DraftService {
 
     // If we have a draft ID, update it
     if (draftId) {
-      return this.update({ draftId, content })
+      return this.update({ draftId, content, inReplyToMessageId })
     }
 
     // If we have a thread ID, check for existing draft
     if (threadId) {
       const existing = await this.getByThreadId(threadId)
       if (existing) {
-        return this.update({ draftId: existing.id, content })
+        return this.update({ draftId: existing.id, content, inReplyToMessageId })
       }
     }
 

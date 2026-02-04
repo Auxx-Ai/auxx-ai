@@ -46,6 +46,10 @@ export interface MessageType {
 export interface DraftMessageType {
   id: string
   threadId: string | null
+  /** ID of the message this draft is replying to (permanent reference) */
+  inReplyToMessageId: string | null
+  /** Whether to include previous message in reply (user preference, toggleable) */
+  includePreviousMessage: boolean
   subject: string
   textHtml: string
   textPlain: string
@@ -106,6 +110,10 @@ export type DraftMessage = RouterOutputs['draft']['upsert']
 export type DraftPayload = {
   threadId: string | null
   integrationId: string
+  /** ID of the message this draft is replying to (permanent reference) */
+  inReplyToMessageId?: string | null
+  /** Whether to include previous message in reply (user preference, toggleable) */
+  includePreviousMessage?: boolean
   subject: string
   textHtml: string
   signatureId: string | null
@@ -125,10 +133,6 @@ export type DraftPayload = {
     name?: string
   }>
   attachments?: FileAttachment[]
-  metadata: {
-    includePreviousMessage: boolean
-    sourceMessageId?: string | null
-  }
   draftId?: string | null
 }
 // File attachment type for structured attachments
@@ -159,6 +163,7 @@ export type Recipients = {
   CC: RecipientState[]
   BCC: RecipientState[]
 }
+/** @deprecated Use top-level fields on DraftMessageType instead */
 export interface DraftMetadata {
   includePreviousMessage?: boolean
   sourceMessageId?: string
