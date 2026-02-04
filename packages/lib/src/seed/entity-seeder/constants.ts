@@ -66,6 +66,15 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     color: 'blue',
     isVisible: false,
   },
+  {
+    entityType: 'signature',
+    apiSlug: 'signatures',
+    singular: 'Signature',
+    plural: 'Signatures',
+    icon: 'pen-tool',
+    color: 'slate',
+    isVisible: false, // Settings-only entity
+  },
 ]
 
 /**
@@ -95,6 +104,10 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
   },
   thread: {
     primaryDisplayField: 'subject',
+    secondaryDisplayField: undefined,
+  },
+  signature: {
+    primaryDisplayField: 'name',
     secondaryDisplayField: undefined,
   },
 }

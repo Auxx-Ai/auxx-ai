@@ -1,4 +1,4 @@
-// packages/lib/src/resources/registry/resources/inbox-fields.ts
+// packages/lib/src/resources/registry/resources/signature-fields.ts
 
 import { FieldType } from '@auxx/database/enums'
 import { BaseType } from '../../types'
@@ -7,10 +7,10 @@ import type { ResourceField } from '../field-types'
 import { CREATED_BY_FIELD } from '../common-fields'
 
 /**
- * Field definitions for the Inbox resource
- * Defines all fields, their types, capabilities, and validation rules
+ * Field definitions for the Signature resource.
+ * These get seeded as CustomFields in the entity system.
  */
-export const INBOX_FIELDS: Record<string, ResourceField> = {
+export const SIGNATURE_FIELDS: Record<string, ResourceField> = {
   id: {
     id: toFieldId('id'),
     key: 'id',
@@ -21,7 +21,6 @@ export const INBOX_FIELDS: Record<string, ResourceField> = {
     systemAttribute: 'id',
     systemSortOrder: 'a0',
     showInPanel: false,
-    dbColumn: 'id',
     nullable: false,
     operatorOverrides: ['is', 'is not', 'in', 'not in', 'exists', 'not exists'],
     capabilities: {
@@ -31,7 +30,7 @@ export const INBOX_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description: 'Unique inbox identifier',
+    description: 'Unique signature identifier',
   },
 
   name: {
@@ -41,9 +40,8 @@ export const INBOX_FIELDS: Record<string, ResourceField> = {
     type: BaseType.STRING,
     fieldType: FieldType.TEXT,
     isSystem: true,
-    systemAttribute: 'inbox_name',
+    systemAttribute: 'name',
     systemSortOrder: 'a1',
-    dbColumn: 'name',
     nullable: false,
     capabilities: {
       filterable: true,
@@ -51,69 +49,43 @@ export const INBOX_FIELDS: Record<string, ResourceField> = {
       creatable: true,
       updatable: true,
       configurable: false,
+      required: true,
     },
-    description: 'Inbox name',
+    description: 'Signature name for identification',
   },
 
-  description: {
-    id: toFieldId('description'),
-    key: 'description',
-    label: 'Description',
+  body: {
+    id: toFieldId('body'),
+    key: 'body',
+    label: 'Body',
     type: BaseType.STRING,
     fieldType: FieldType.RICH_TEXT,
     isSystem: true,
-    systemAttribute: 'inbox_description',
+    systemAttribute: 'body',
     systemSortOrder: 'a2',
-    nullable: true,
-    capabilities: {
-      filterable: false,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    description: 'Inbox description',
-  },
-
-  color: {
-    id: toFieldId('color'),
-    key: 'color',
-    label: 'Color',
-    type: BaseType.STRING,
-    fieldType: FieldType.TEXT,
-    isSystem: true,
-    systemAttribute: 'inbox_color',
-    systemSortOrder: 'a3',
-    nullable: true,
-    defaultValue: '#4F46E5',
-    capabilities: {
-      filterable: false,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    description: 'Inbox color for UI display',
-  },
-
-  status: {
-    id: toFieldId('status'),
-    key: 'status',
-    label: 'Status',
-    type: BaseType.ENUM,
-    fieldType: FieldType.SINGLE_SELECT,
-    isSystem: true,
-    systemAttribute: 'inbox_status',
-    systemSortOrder: 'a4',
     nullable: false,
-    defaultValue: 'ACTIVE',
-    options: {
-      options: [
-        { value: 'ACTIVE', label: 'Active', color: 'green' },
-        { value: 'PAUSED', label: 'Paused', color: 'yellow' },
-        { value: 'ARCHIVED', label: 'Archived', color: 'gray' },
-      ],
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+      required: true,
     },
+    description: 'HTML content of the signature',
+  },
+
+  isDefault: {
+    id: toFieldId('isDefault'),
+    key: 'isDefault',
+    label: 'Default',
+    type: BaseType.BOOLEAN,
+    fieldType: FieldType.CHECKBOX,
+    isSystem: true,
+    systemAttribute: 'is_default',
+    systemSortOrder: 'a3',
+    nullable: false,
+    defaultValue: false,
     capabilities: {
       filterable: true,
       sortable: true,
@@ -121,7 +93,7 @@ export const INBOX_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    description: 'Inbox status',
+    description: 'Whether this is the default signature',
   },
 
   visibility: {
@@ -131,10 +103,10 @@ export const INBOX_FIELDS: Record<string, ResourceField> = {
     type: BaseType.ENUM,
     fieldType: FieldType.SINGLE_SELECT,
     isSystem: true,
-    systemAttribute: 'inbox_visibility',
-    systemSortOrder: 'a5',
+    systemAttribute: 'visibility',
+    systemSortOrder: 'a4',
     nullable: false,
-    defaultValue: 'org_members',
+    defaultValue: 'private',
     options: {
       options: [
         { value: 'org_members', label: 'All Members' },
@@ -149,7 +121,7 @@ export const INBOX_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    description: 'Inbox visibility setting',
+    description: 'Signature visibility setting',
   },
 
   createdAt: {
@@ -160,8 +132,7 @@ export const INBOX_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.DATETIME,
     isSystem: true,
     systemAttribute: 'created_at',
-    systemSortOrder: 'a6',
-    dbColumn: 'createdAt',
+    systemSortOrder: 'a5',
     nullable: false,
     capabilities: {
       filterable: true,
@@ -170,28 +141,7 @@ export const INBOX_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description: 'Automatically set when inbox is created',
-  },
-
-  settings: {
-    id: toFieldId('settings'),
-    key: 'settings',
-    label: 'Settings',
-    type: BaseType.JSON,
-    fieldType: FieldType.JSON,
-    isSystem: true,
-    systemAttribute: 'inbox_settings',
-    systemSortOrder: 'a7',
-    nullable: true,
-    showInPanel: false,
-    capabilities: {
-      filterable: false,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    description: 'Inbox configuration settings stored as JSON',
+    description: 'Automatically set when signature is created',
   },
 
   createdBy: CREATED_BY_FIELD,

@@ -9,14 +9,14 @@ import { Badge } from '@auxx/ui/components/badge'
 import { useDropzone } from 'react-dropzone'
 import { cn } from '@auxx/ui/lib/utils'
 // Editor Imports
-import TiptapEditor from '~/components/editor/tiptap-editor'
+import { LazyTiptapEditor } from './lazy-tiptap-editor'
 import { EditorToolbar } from '~/components/editor/editor-button'
 import { EditorProvider, useEditorContext } from '~/components/editor/editor-context'
 import {
   EditorActiveStateProvider,
   useEditorActiveStateContext,
 } from './editor-active-state-context'
-import SignatureEditor from './signature-editor'
+import { SignatureEditor } from '~/components/signatures/ui'
 import PrevMessage from './prev-message'
 import { RecipientInput } from './recipient-input'
 import IntegrationSelector from './integration-selector'
@@ -932,7 +932,7 @@ function ReplyComposeEditorComponent({
 
         {/* Editor Section */}
         <div className="flex flex-col flex-1 min-h-[150px]">
-          <TiptapEditor
+          <LazyTiptapEditor
             content={content}
             onChange={handleContentChange}
             placeholder="Type / to insert a snippet."

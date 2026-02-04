@@ -1,32 +1,17 @@
-// ~/app/(dashboard)/signatures/page.tsx
+// apps/web/src/app/(protected)/app/settings/signatures/page.tsx
+
 import React from 'react'
-import { api } from '~/trpc/server'
-// import { SignatureList } from '~/components/signatures/signature-list'
 import { Button } from '@auxx/ui/components/button'
 import { PlusIcon } from 'lucide-react'
 import Link from 'next/link'
-import { SignatureList } from './_components/signature-list'
+import { SignatureList } from '~/components/signatures/ui'
 import SettingsPage from '~/components/global/settings-page'
 
-export default async function SignaturesPage() {
-  const signatures = await api.signature.getAll()
-
-  // return (
-  //   <div className='container py-10'>
-  //     <div className='mb-6 flex items-center justify-between'>
-  //       <h1 className='text-2xl font-bold'>Email Signatures</h1>
-  //       <Link href='/app/settings/signatures/new'>
-  //         <Button>
-  //           <PlusIcon className='mr-2 h-4 w-4' />
-  //           Add Signature
-  //         </Button>
-  //       </Link>
-  //     </div>
-
-  //     <SignatureList signatures={signatures} />
-  //   </div>
-  // )
-
+/**
+ * Signatures settings page.
+ * Lists all signatures with options to create, edit, and delete.
+ */
+export default function SignaturesPage() {
   return (
     <SettingsPage
       title="Email Signatures"
@@ -40,9 +25,7 @@ export default async function SignaturesPage() {
         </Link>
       }
       breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Signatures' }]}>
-      {/* <div className="p-8"> */}
-      <SignatureList signatures={signatures} />
-      {/* </div> */}
+      <SignatureList />
     </SettingsPage>
   )
 }

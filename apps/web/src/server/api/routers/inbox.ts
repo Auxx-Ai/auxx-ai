@@ -111,7 +111,7 @@ export const inboxRouter = createTRPCRouter({
     }),
 
   /**
-   * Get inbox with integrations
+   * Get inbox with integrations (legacy - use getById + getIntegrations instead)
    */
   getByIdWithIntegrations: protectedProcedure
     .input(z.object({ inboxId: z.string() }))
@@ -127,6 +127,25 @@ export const inboxRouter = createTRPCRouter({
       }
 
       return inbox
+    }),
+
+  /**
+   * Get integrations for an inbox
+   */
+  getIntegrations: protectedProcedure
+    .input(z.object({ inboxId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const userId = ctx.session.user.id
+      const inboxService = new InboxService(ctx.db, organizationId, userId)
+
+      const inbox = await inboxService.getInboxWithIntegrationsById(input.inboxId)
+
+      if (!inbox) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Inbox not found' })
+      }
+
+      return inbox.integrations
     }),
 
   /**

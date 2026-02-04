@@ -1,18 +1,20 @@
-// apps/web/src/components/mail/email-editor/signature-editor.tsx
-import { Pencil, Plus, X, Loader2 } from 'lucide-react'
+// apps/web/src/components/signatures/ui/signature-editor.tsx
+'use client'
+
+import { Pencil, Plus, X } from 'lucide-react'
 import React, { useState, useEffect } from 'react'
-import { SignaturePicker } from '~/components/pickers/signature-picker'
+import { SignaturePicker } from './signature-picker'
 import { Button } from '@auxx/ui/components/button'
-import { Skeleton } from '@auxx/ui/components/skeleton' // For loading state
-import { api } from '~/trpc/react'
-import { useEditorActiveStateContext } from './editor-active-state-context'
-import type { Signature } from '@auxx/database/types'
+import { Skeleton } from '@auxx/ui/components/skeleton'
+import { useEditorActiveStateContext } from '~/components/mail/email-editor/editor-active-state-context'
 import { sanitizeHtml } from '~/lib/sanitize'
+import { useSignatures, useSignature, useDefaultSignature, type SignatureItem } from '../hooks'
+
 /**
  * Props for the SignatureEditor component.
  */
 interface SignatureEditorProps {
-  /** The ID of the integration context to fetch the default signature for. */
+  /** The ID of the integration context (for future use with integration-specific defaults) */
   integrationId: string
   /** The ID of the signature currently selected (e.g., from a draft), or null if none. */
   selectedSignatureId: string | null
@@ -21,9 +23,10 @@ interface SignatureEditorProps {
   /** Optional: Disable interactions. */
   disabled?: boolean
 }
+
 /**
  * Component for selecting and displaying an email signature within the editor.
- * Fetches default and available signatures based on context.
+ * Uses the entity system via useSignatures hook.
  */
 function SignatureEditor({
   integrationId,
@@ -32,56 +35,35 @@ function SignatureEditor({
   disabled = false,
 }: SignatureEditorProps) {
   // State to manage the currently displayed signature object
-  const [currentSignature, setCurrentSignature] = useState<Signature | null>(null)
+  const [currentSignature, setCurrentSignature] = useState<SignatureItem | null>(null)
   // State to control visibility of the signature display vs. the "Add" button
   const [showSignature, setShowSignature] = useState(false)
   // Track popover state for editor active state
   const [isPickerOpen, setIsPickerOpen] = useState(false)
   const { trackPopoverOpen, trackPopoverClose } = useEditorActiveStateContext()
-  // --- Data Fetching ---
-  const { data: defaultSignatureData, isLoading: isLoadingDefault } =
-    api.signature.getDefaultForContext.useQuery(
-      { integrationId }, // Pass inboxId, even if service logic doesn't use it yet
-      {
-        staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-      }
-    )
-  const { data: allSignaturesData, isLoading: isLoadingAll } = api.signature.getAll.useQuery(
-    undefined,
-    {
-      staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-    }
-  )
-  // Available signatures for the picker (filter out potential nulls if API could return them)
-  const availableSignatures = allSignaturesData?.filter(Boolean) ?? []
-  // Fetch the specific signature if selectedSignatureId is provided
-  const { data: selectedSignatureData, isLoading: isLoadingSelected } =
-    api.signature.getById.useQuery(
-      { id: selectedSignatureId! }, // Use non-null assertion, enabled dictates call
-      {
-        enabled: !!selectedSignatureId, // Only run query if selectedSignatureId has a value
-        staleTime: Infinity, // Cache forever once fetched for a specific ID unless invalidated
-      }
-    )
+
+  // --- Data Fetching using hooks ---
+  const { signatures, isLoading: isLoadingAll } = useSignatures()
+  const { signature: defaultSignature, isLoading: isLoadingDefault } = useDefaultSignature()
+  const { signature: selectedSignatureData, isLoading: isLoadingSelected } =
+    useSignature(selectedSignatureId)
+
   // Combined loading state
   const isLoading = isLoadingDefault || isLoadingAll || (!!selectedSignatureId && isLoadingSelected)
+
   // --- Effects ---
   // Effect to determine the initial signature to display based on props and fetched data
   useEffect(() => {
-    let initialSignature: Signature | null = null
     if (selectedSignatureId && selectedSignatureData) {
       // Use the explicitly selected signature from props/draft
-      initialSignature = selectedSignatureData
-      setCurrentSignature(initialSignature)
+      setCurrentSignature(selectedSignatureData)
       setShowSignature(true)
     } else if (selectedSignatureId === null) {
       // User explicitly removed signature or it's not set
-      // Don't auto-apply default, let user choose
       setCurrentSignature(null)
-      // Keep showSignature as is - don't hide if user is interacting
     }
-    // If selectedSignatureId is set but data is still loading, wait for data
   }, [selectedSignatureId, selectedSignatureData])
+
   // Track popover open/close state
   useEffect(() => {
     if (isPickerOpen) {
@@ -90,40 +72,39 @@ function SignatureEditor({
       trackPopoverClose('signature-picker')
     }
     return () => {
-      // Cleanup on unmount
       trackPopoverClose('signature-picker')
     }
   }, [isPickerOpen, trackPopoverOpen, trackPopoverClose])
+
   // --- Handlers ---
   const handleAddClick = () => {
     if (disabled) return
     // When clicking "Add", show the signature area.
     // If a default exists, pre-fill with it and notify parent.
-    // If no default, show empty area and let picker selection fill it.
-    if (defaultSignatureData) {
-      setCurrentSignature(defaultSignatureData)
-      onSignatureChange(defaultSignatureData.id) // Notify parent that default is now active
+    if (defaultSignature) {
+      setCurrentSignature(defaultSignature)
+      onSignatureChange(defaultSignature.id)
     } else {
-      setCurrentSignature(null) // Ensure no stale signature is shown
-      onSignatureChange(null) // Ensure parent knows no signature is active
+      setCurrentSignature(null)
+      onSignatureChange(null)
     }
     setShowSignature(true)
-    // Note: The picker should ideally open automatically here if no default exists.
-    // We rely on the user clicking the Pencil icon if they want to choose immediately.
   }
+
   const handleRemoveClick = (e: React.MouseEvent<HTMLButtonElement>) => {
-    e.stopPropagation() // Prevent click from propagating to parent divs
+    e.stopPropagation()
     setShowSignature(false)
     setCurrentSignature(null)
-    onSignatureChange(null) // Notify parent that signature is removed
+    onSignatureChange(null)
   }
-  const handleSelectFromPicker = (signature: Signature) => {
-    if (disabled) return
+
+  const handleSelectFromPicker = (signature: SignatureItem | null) => {
+    if (disabled || !signature) return
     setCurrentSignature(signature)
     setShowSignature(true)
-    onSignatureChange(signature.id) // Notify parent of the new selection
-    // Picker should close itself upon selection
+    onSignatureChange(signature.id)
   }
+
   // --- Render Logic ---
   if (isLoading) {
     return (
@@ -132,6 +113,7 @@ function SignatureEditor({
       </div>
     )
   }
+
   return (
     <div
       className={`group mx-2 relative rounded-md ${showSignature ? 'hover:bg-muted dark:hover:bg-muted' : ''} ${disabled ? 'pointer-events-none opacity-50' : ''}`}>
@@ -145,7 +127,7 @@ function SignatureEditor({
           {/* Edit/Remove Controls */}
           <div className="absolute right-2 top-2 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
             <SignaturePicker
-              initialSignatures={availableSignatures}
+              initialSignatures={signatures}
               onChange={handleSelectFromPicker}
               disabled={disabled}
               popoverOpen={isPickerOpen}
@@ -186,4 +168,5 @@ function SignatureEditor({
     </div>
   )
 }
+
 export default SignatureEditor

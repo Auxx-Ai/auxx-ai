@@ -10,6 +10,7 @@ import { THREAD_FIELDS } from './resources/thread-fields'
 import { MESSAGE_FIELDS } from './resources/message-fields'
 import { DATASET_FIELDS } from './resources/dataset-fields'
 import { PART_FIELDS } from './resources/part-fields'
+import { SIGNATURE_FIELDS } from './resources/signature-fields'
 import { ModelTypeValues, ModelTypeMeta, type ModelType } from '@auxx/database/enums'
 import type { FieldId } from '@auxx/types/field'
 
@@ -95,6 +96,7 @@ export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   message: MESSAGE_FIELDS,
   dataset: DATASET_FIELDS,
   part: PART_FIELDS,
+  signature: SIGNATURE_FIELDS,
 }
 
 /**

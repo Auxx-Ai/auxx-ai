@@ -16,11 +16,17 @@ import { CheckCircle, ChevronRight, MailIcon, X } from 'lucide-react'
 import { Badge } from '@auxx/ui/components/badge'
 import { toastSuccess, toastError } from '@auxx/ui/components/toast'
 import { useConfirm } from '~/hooks/use-confirm'
-import type { InboxWithIntegrations } from '@auxx/lib/inboxes'
+import type { InboxIntegration } from '@auxx/lib/inboxes'
 import { useRouter } from 'next/navigation'
 
+/** Props for InboxIntegrationsTab */
+interface InboxIntegrationsTabProps {
+  inboxId: string
+  integrations: InboxIntegration[]
+}
+
 /** Tab component for managing inbox integrations */
-export function InboxIntegrationsTab({ inbox }: { inbox: InboxWithIntegrations }) {
+export function InboxIntegrationsTab({ inboxId, integrations }: InboxIntegrationsTabProps) {
   const router = useRouter()
   const [isRemoving, setIsRemoving] = useState(false)
 
@@ -55,7 +61,7 @@ export function InboxIntegrationsTab({ inbox }: { inbox: InboxWithIntegrations }
 
     if (confirmed) {
       setIsRemoving(true)
-      removeIntegration.mutate({ inboxId: inbox.id, integrationId })
+      removeIntegration.mutate({ inboxId, integrationId })
     }
   }
 
@@ -88,8 +94,8 @@ export function InboxIntegrationsTab({ inbox }: { inbox: InboxWithIntegrations }
             </TableRow>
           </TableHeader>
           <TableBody>
-            {inbox.integrations.length > 0 ? (
-              inbox.integrations.map((integration) => (
+            {integrations.length > 0 ? (
+              integrations.map((integration) => (
                 <TableRow key={integration.integrationId}>
                   <TableCell>
                     <div className="flex items-center h-full">

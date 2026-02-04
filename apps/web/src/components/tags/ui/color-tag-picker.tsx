@@ -1,7 +1,7 @@
 // apps/web/src/components/tags/ui/color-tag-picker.tsx
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 /** Props for ColorTagPicker component */
 interface ColorPickerProps {
@@ -27,6 +27,13 @@ function ColorTagPicker({ onChange, value }: ColorPickerProps) {
 
   // State to track the selected color (use value or the first color as default)
   const [selectedColor, setSelectedColor] = useState(value || colors[0])
+
+  // Sync internal state when value prop changes (for controlled usage)
+  useEffect(() => {
+    if (value && value !== selectedColor) {
+      setSelectedColor(value)
+    }
+  }, [value])
 
   // Handle color selection
   const handleColorSelect = (color: string) => {

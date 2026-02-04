@@ -13,7 +13,8 @@
     "./pagination": "./pagination/index.ts",
     "./resource": "./resource/index.ts",
     "./task": "./task/index.ts",
-    "./draft": "./draft/index.ts"
+    "./draft": "./draft/index.ts",
+    "./signature": "./signature/index.ts"
   },
   "dependencies": {
     "@auxx/database": "workspace:*",

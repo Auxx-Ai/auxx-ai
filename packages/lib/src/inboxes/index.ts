@@ -3,6 +3,7 @@
 export { InboxService } from './inbox-service'
 export type {
   Inbox,
+  InboxIntegration,
   InboxWithIntegrations,
   InboxVisibility,
   InboxStatus,

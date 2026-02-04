@@ -46,20 +46,23 @@ export interface Inbox {
   createdById: string | null
 }
 
+/** Single inbox integration */
+export interface InboxIntegration {
+  id: string
+  integrationId: string
+  isDefault: boolean
+  settings: Record<string, unknown>
+  integration: {
+    id: string
+    name: string
+    email: string | null
+    provider: string
+  }
+}
+
 /** Inbox with integrations */
 export interface InboxWithIntegrations extends Inbox {
-  integrations: Array<{
-    id: string
-    integrationId: string
-    isDefault: boolean
-    settings: Record<string, unknown>
-    integration: {
-      id: string
-      name: string
-      email: string | null
-      provider: string
-    }
-  }>
+  integrations: InboxIntegration[]
 }
 
 /** Inbox access update input */

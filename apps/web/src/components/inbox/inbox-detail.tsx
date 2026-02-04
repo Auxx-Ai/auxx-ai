@@ -13,6 +13,7 @@ import SettingsPage from '~/components/global/settings-page'
 import { EmptyState } from '~/components/global/empty-state'
 import { Table, TableBody, TableCell, TableHeader, TableRow } from '@auxx/ui/components/table'
 import { toRecordId, useResource } from '../resources'
+import { useInbox } from '../threads/hooks'
 
 /** Component for displaying inbox details with integrations */
 export function InboxDetail({ inboxId }: { inboxId: string }) {
@@ -26,8 +27,14 @@ export function InboxDetail({ inboxId }: { inboxId: string }) {
   // Get tRPC utils for cache invalidation
   const utils = api.useUtils()
 
-  // Fetch inbox with integrations (need relations)
-  const { data: inbox, isLoading } = api.inbox.getByIdWithIntegrations.useQuery({ inboxId })
+  // Fetch inbox data from entity system
+  const { inbox, isLoading: isLoadingInbox } = useInbox(recordId)
+
+  // Fetch integrations separately (not part of entity system)
+  const { data: integrations, isLoading: isLoadingIntegrations } =
+    api.inbox.getIntegrations.useQuery({ inboxId }, { enabled: !!inbox })
+
+  const isLoading = isLoadingInbox || isLoadingIntegrations
 
   /** Navigate back to inbox list */
   const handleBack = () => {
@@ -41,8 +48,8 @@ export function InboxDetail({ inboxId }: { inboxId: string }) {
 
   /** Handle successful dialog save */
   const handleDialogSuccess = () => {
-    utils.inbox.getByIdWithIntegrations.invalidate({ inboxId })
-    utils.inbox.getAll.invalidate()
+    utils.inbox.getIntegrations.invalidate({ inboxId })
+    // utils.inbox.getAll.invalidate()
   }
 
   return (
@@ -67,23 +74,35 @@ export function InboxDetail({ inboxId }: { inboxId: string }) {
               {/* Loading skeleton */}
               <TableHeader>
                 <TableRow>
-                  <TableCell><Skeleton className="h-4 w-full max-w-md" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-full max-w-sm" /></TableCell>
-                  <TableCell className="w-[80px]"><Skeleton className="h-4 w-full max-w-xs" /></TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-full max-w-md" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-full max-w-sm" />
+                  </TableCell>
+                  <TableCell className="w-[80px]">
+                    <Skeleton className="h-4 w-full max-w-xs" />
+                  </TableCell>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {Array.from({ length: 3 }).map((_, index) => (
                   <TableRow key={`skeleton-row-${index}`} className="h-[53px]">
-                    <TableCell><Skeleton className="h-4 w-full max-w-md" /></TableCell>
-                    <TableCell><Skeleton className="h-4 w-full max-w-sm" /></TableCell>
-                    <TableCell className="w-[80px]"><Skeleton className="h-4 w-full max-w-xs" /></TableCell>
+                    <TableCell>
+                      <Skeleton className="h-4 w-full max-w-md" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-4 w-full max-w-sm" />
+                    </TableCell>
+                    <TableCell className="w-[80px]">
+                      <Skeleton className="h-4 w-full max-w-xs" />
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
-          ) : inbox ? (
-            <InboxIntegrationsTab inbox={inbox} />
+          ) : inbox && integrations ? (
+            <InboxIntegrationsTab inboxId={inboxId} integrations={integrations} />
           ) : (
             <EmptyState
               icon={X}

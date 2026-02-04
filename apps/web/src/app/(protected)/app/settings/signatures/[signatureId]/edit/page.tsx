@@ -1,26 +1,46 @@
-// ~/app/(dashboard)/signatures/[id]/edit/page.tsx
-import React from 'react'
+// apps/web/src/app/(protected)/app/settings/signatures/[signatureId]/edit/page.tsx
+'use client'
+
+import React, { use } from 'react'
 import { notFound } from 'next/navigation'
-import { api } from '~/trpc/server'
-import { auth } from '~/auth/server'
-import { SignatureForm } from '../../_components/signature-form'
+import { SignatureForm } from '~/components/signatures/ui'
 import SettingsPage from '~/components/global/settings-page'
-import { headers } from 'next/headers'
+import { useSignature } from '~/components/signatures/hooks'
+import { Skeleton } from '@auxx/ui/components/skeleton'
 
 interface EditSignaturePageProps {
   params: Promise<{ signatureId: string }>
 }
 
-export default async function EditSignaturePage({ params }: EditSignaturePageProps) {
-  const { signatureId } = await params
+/**
+ * Edit signature page.
+ * Uses the entity system via useSignature hook.
+ */
+export default function EditSignaturePage({ params }: EditSignaturePageProps) {
+  const { signatureId } = use(params)
+  const { signature, isLoading } = useSignature(signatureId)
 
-  // Fetch the signature
-  const signature = await api.signature.getById({ id: signatureId })
-  const session = await auth.api.getSession({ headers: await headers() })
+  // TODO: Get isAdmin from session/auth context
+  const isAdmin = true
 
-  // const session = await auth()
-  // Check if user is admin
-  const isAdmin = session?.user?.role === 'ADMIN'
+  if (isLoading) {
+    return (
+      <SettingsPage
+        title="Edit Signature"
+        description="Update the appearance of the signature"
+        breadcrumbs={[
+          { title: 'Settings', href: '/app/settings' },
+          { title: 'Signatures', href: '/app/settings/signatures' },
+          { title: 'Edit' },
+        ]}>
+        <div className="p-8 space-y-4">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-40 w-full" />
+          <Skeleton className="h-10 w-1/2" />
+        </div>
+      </SettingsPage>
+    )
+  }
 
   if (!signature) {
     notFound()
@@ -28,14 +48,25 @@ export default async function EditSignaturePage({ params }: EditSignaturePagePro
 
   return (
     <SettingsPage
-      title="Edit Signatures"
+      title="Edit Signature"
       description="Update the appearance of the signature"
       breadcrumbs={[
         { title: 'Settings', href: '/app/settings' },
         { title: 'Signatures', href: '/app/settings/signatures' },
+        { title: signature.name },
       ]}>
       <div className="p-8">
-        <SignatureForm signature={signature} isAdmin={isAdmin} />
+        <SignatureForm
+          signature={{
+            id: signature.id,
+            recordId: signature.recordId,
+            name: signature.name,
+            body: signature.body,
+            isDefault: signature.isDefault,
+            visibility: signature.visibility,
+          }}
+          isAdmin={isAdmin}
+        />
       </div>
     </SettingsPage>
   )

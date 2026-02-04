@@ -1,4 +1,4 @@
-// ~/components/pickers/signature-picker.tsx
+// apps/web/src/components/signatures/ui/signature-picker.tsx
 'use client'
 
 import React, { useState, useMemo } from 'react'
@@ -14,7 +14,6 @@ import {
 import { Button } from '@auxx/ui/components/button'
 import { Check, ChevronsUpDown, Signature } from 'lucide-react'
 import { cn } from '@auxx/ui/lib/utils'
-import { api } from '~/trpc/react'
 import { useFormContext, FieldPath, FieldValues } from 'react-hook-form'
 import {
   FormControl,
@@ -23,27 +22,20 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from '@auxx/ui/components/form' // Assuming you use shadcn's Form component
+} from '@auxx/ui/components/form'
 import { useRouter } from 'next/navigation'
-
-// Assuming Signature type exists (adjust path if necessary)
-// import { Signature } from '@auxx/database/types'; or from a types file
-type Signature = {
-  id: string
-  name: string
-  // other fields...
-}
+import { useSignatures, type SignatureItem } from '../hooks'
 
 interface SignaturePickerProps {
   open?: boolean
   onOpenChange?: (open: boolean) => void
   /** The selected signature ID or object */
-  value?: string | Signature | null
-  /** Callback when a signature is selected. Passes the full signature object. */
-  onChange?: (selectedSignature: Signature | null) => void
+  value?: string | SignatureItem | null
+  /** Callback when a signature is selected. Passes the signature object. */
+  onChange?: (selectedSignature: SignatureItem | null) => void
   className?: string
-  /** Optional pre-fetched signatures */
-  initialSignatures?: Signature[]
+  /** Optional pre-fetched signatures (if not provided, uses useSignatures hook) */
+  initialSignatures?: SignatureItem[]
   /** Custom trigger element */
   children?: React.ReactNode
   /** Placeholder for the search input */
@@ -60,6 +52,11 @@ interface SignaturePickerProps {
   disabled?: boolean
 }
 
+/**
+ * Signature picker dropdown component.
+ * Allows selecting a signature from available signatures.
+ * Uses the entity system via useSignatures hook.
+ */
 export function SignaturePicker({
   value,
   onChange,
@@ -81,16 +78,9 @@ export function SignaturePicker({
   const isOpen = externalOpen ?? internalOpen
   const setIsOpen = externalOnOpenChange ?? setInternalOpen
 
-  // Fetch signatures if not provided initially
-  const { data: fetchedSignatures, isLoading } = api.signature.getAll.useQuery(
-    undefined, // No input needed for getAll
-    {
-      enabled: !initialSignatures, // Only fetch if initialSignatures aren't provided
-      staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-    }
-  )
-
-  const signatures = initialSignatures || fetchedSignatures || []
+  // Fetch signatures using the hook if not provided
+  const { signatures: hookSignatures, isLoading } = useSignatures()
+  const signatures = initialSignatures || hookSignatures
 
   // Memoize the selected signature ID extraction
   const selectedSignatureId = useMemo(() => {
@@ -104,10 +94,10 @@ export function SignaturePicker({
     return signatures.find((sig) => sig.id === selectedSignatureId) || null
   }, [selectedSignatureId, signatures])
 
-  const handleSelect = (signature: Signature) => {
+  const handleSelect = (signature: SignatureItem) => {
     onChange?.(signature)
-    setIsOpen(false) // Close popover on selection
-    setSearchValue('') // Reset search
+    setIsOpen(false)
+    setSearchValue('')
   }
 
   // Filter signatures based on search
@@ -143,7 +133,7 @@ export function SignaturePicker({
             placeholder={searchPlaceholder}
             value={searchValue}
             onValueChange={setSearchValue}
-            disabled={isLoading && !initialSignatures} // Disable input while loading if needed
+            disabled={isLoading && !initialSignatures}
           />
           <CommandList>
             {isLoading && !initialSignatures && <CommandEmpty>Loading signatures...</CommandEmpty>}
@@ -155,7 +145,7 @@ export function SignaturePicker({
                 {filteredSignatures.map((signature) => (
                   <CommandItem
                     key={signature.id}
-                    value={signature.id} // Use ID for Command's internal value/search mechanism if needed
+                    value={signature.id}
                     onSelect={() => handleSelect(signature)}
                     className="cursor-pointer">
                     <Check
@@ -173,9 +163,7 @@ export function SignaturePicker({
               <CommandItem
                 className="cursor-pointer"
                 onSelect={() => {
-                  // Handle adding a new signature
-                  // This could be a modal or redirect to a form
-                  router.push('/app/settings/signatures/new') // Example: redirect to a new signature form
+                  router.push('/app/settings/signatures/new')
                 }}>
                 <Signature className="mr-2 h-4 w-4" />
                 Add New Signature
@@ -206,9 +194,9 @@ export function FormSignaturePicker<TFieldValues extends FieldValues = FieldValu
   name,
   label,
   description,
-  ...pickerProps // Pass remaining SignaturePicker props
+  ...pickerProps
 }: FormSignaturePickerProps<TFieldValues>) {
-  const { control } = useFormContext<TFieldValues>() // Get control from context
+  const { control } = useFormContext<TFieldValues>()
 
   return (
     <FormField
@@ -218,15 +206,10 @@ export function FormSignaturePicker<TFieldValues extends FieldValues = FieldValu
         <FormItem className="flex flex-col">
           {label && <FormLabel>{label}</FormLabel>}
           <SignaturePicker
-            // Pass the field's value and onChange handler
-            // The value stored in the form state will be the Signature object or null
-            value={field.value as Signature | null} // Cast might be needed depending on form schema
-            onChange={field.onChange} // RHF's onChange expects the value directly
-            // Handle popover state within the FormField instance
-            popoverOpen={field.value !== undefined && field.value !== null ? undefined : false} // Example: keep open state managed internally unless explicitly controlled elsewhere
-            // Pass down other props
+            value={field.value as SignatureItem | null}
+            onChange={field.onChange}
+            popoverOpen={field.value !== undefined && field.value !== null ? undefined : false}
             {...pickerProps}
-            // Default trigger using field state
             children={
               pickerProps.children ?? (
                 <FormControl>
@@ -234,12 +217,10 @@ export function FormSignaturePicker<TFieldValues extends FieldValues = FieldValu
                     variant="outline"
                     role="combobox"
                     className={cn(
-                      'w-full justify-between', // Adjust width as needed
+                      'w-full justify-between',
                       !field.value && 'text-muted-foreground'
-                    )}
-                    // No need for onClick handler here, PopoverTrigger handles it
-                  >
-                    {(field.value as Signature | null)?.name ??
+                    )}>
+                    {(field.value as SignatureItem | null)?.name ??
                       pickerProps.searchPlaceholder ??
                       'Select signature...'}
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />

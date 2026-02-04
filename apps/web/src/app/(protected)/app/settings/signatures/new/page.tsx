@@ -1,7 +1,7 @@
-// ~/app/(dashboard)/signatures/new/page.tsx
+// apps/web/src/app/(protected)/app/settings/signatures/new/page.tsx
+
 import React from 'react'
-import { api } from '~/trpc/server'
-import { SignatureForm } from '../_components/signature-form'
+import { SignatureForm } from '~/components/signatures/ui'
 import { auth } from '~/auth/server'
 import SettingsPage from '~/components/global/settings-page'
 import { headers } from 'next/headers'

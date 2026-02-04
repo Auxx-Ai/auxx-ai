@@ -13,6 +13,7 @@ export const NEW_SYSTEM_ENTITY_TYPES = [
   'inbox',
   'tag',
   'thread',
+  'signature',
 ] as const
 
 /** Type for new system entity types */

@@ -62,15 +62,15 @@ export function InboxDialog({ open, onOpenChange, recordId, onSuccess }: InboxDi
   const inboxId = recordId ? parseRecordId(recordId).entityInstanceId : null
 
   // Fetch inbox data directly for edit mode
-  const { data: inboxData } = api.inbox.getById.useQuery(
-    { inboxId: inboxId! },
-    { enabled: isEditing && !!inboxId }
-  )
+  // const { data: inboxData } = api.inbox.getById.useQuery(
+  //   { inboxId: inboxId! },
+  //   { enabled: isEditing && !!inboxId }
+  // )
 
   // Fetch system field values for edit mode
   const { values: fieldValues, isLoading: isLoadingValues } = useSystemValues(
     recordId,
-    ['name', 'inbox_description', 'inbox_color', 'visibility'],
+    ['inbox_name', 'inbox_description', 'inbox_color', 'inbox_visibility'],
     { autoFetch: true, enabled: isEditing && !!recordId }
   )
 
@@ -127,15 +127,15 @@ export function InboxDialog({ open, onOpenChange, recordId, onSuccess }: InboxDi
       if (isInitialized.current) return
 
       if (isEditing && recordId) {
-        // In edit mode, wait for values to load (name is required)
-        if (isLoadingValues || fieldValues.name === undefined) return
+        // In edit mode, wait for values to load (inbox_name is required)
+        if (isLoadingValues || fieldValues.inbox_name === undefined) return
 
         isInitialized.current = true
 
-        const name = (fieldValues.name as string) ?? ''
+        const name = (fieldValues.inbox_name as string) ?? ''
         const description = (fieldValues.inbox_description as string) ?? ''
         const color = (fieldValues.inbox_color as string) ?? '#4F46E5'
-        const visibility = fieldValues.visibility ?? 'org_members'
+        const visibility = fieldValues.inbox_visibility ?? 'org_members'
         const accessType = visibility === 'org_members' ? 'anyone' : 'restricted'
 
         form.reset({
@@ -236,10 +236,10 @@ export function InboxDialog({ open, onOpenChange, recordId, onSuccess }: InboxDi
     if (isEditing && recordId) {
       // Save field values with optimistic updates
       const success = await saveSystemValues({
-        name: data.name.trim(),
+        inbox_name: data.name.trim(),
         inbox_description: data.description,
         inbox_color: data.color,
-        visibility,
+        inbox_visibility: visibility,
       })
 
       if (success) {

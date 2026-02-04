@@ -11,6 +11,7 @@ import { FieldValueService } from '../../field-values'
 import { publisher } from '../../events/publisher'
 import { invalidateSnapshots, getOrCreateSnapshot, getSnapshotChunk } from '../../snapshot'
 import { toRecordId, parseRecordId, type RecordId } from '../resource-id'
+import { NEW_SYSTEM_ENTITY_TYPES } from '../registry/entity-types'
 import { getSystemHooks, getCommonHooks } from '../hooks'
 import { RecordPickerService } from '../picker'
 import type { MergeEntitiesResult } from '../merge'
@@ -686,7 +687,7 @@ export class UnifiedCrudHandler {
     let entityDef: EntityDefinitionEntity
 
     // System types map to entityType column - query by entityType
-    if (['contact', 'ticket', 'part', 'entity_group', 'inbox', 'tag', 'thread'].includes(entityDefinitionId)) {
+    if (NEW_SYSTEM_ENTITY_TYPES.includes(entityDefinitionId as (typeof NEW_SYSTEM_ENTITY_TYPES)[number])) {
       const rows = await this.db
         .select()
         .from(schema.EntityDefinition)

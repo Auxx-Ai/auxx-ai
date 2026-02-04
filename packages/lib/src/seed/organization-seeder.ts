@@ -12,6 +12,7 @@ import { env } from '@auxx/config/server'
 import { WEBAPP_URL } from '@auxx/config/server'
 import { DEFAULT_QUOTA_LIMITS, ProviderQuotaType } from '../ai/providers/types'
 import { EntitySeeder } from './entity-seeder'
+import { SYSTEM_ENTITIES } from './entity-seeder/constants'
 
 const logger = createScopedLogger('organization-seeder')
 
@@ -371,7 +372,7 @@ export class OrganizationSeeder {
     const entityTypes = existingEntities.map((e) => e.entityType)
 
     // If any system entities are missing, seed them all
-    const requiredEntities = ['contact', 'ticket', 'part', 'inbox', 'tag', 'thread']
+    const requiredEntities = SYSTEM_ENTITIES.map((e) => e.entityType)
     if (requiredEntities.some((et) => !entityTypes.includes(et))) {
       logger.info('System entities missing, seeding for existing organization', { organizationId })
       const entitySeeder = new EntitySeeder(this.db, organizationId)

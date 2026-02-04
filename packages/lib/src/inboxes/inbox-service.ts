@@ -61,12 +61,12 @@ export class InboxService {
     logger.info('Creating new inbox', { organizationId: this.organizationId, name: input.name })
 
     const values: Record<string, unknown> = {
-      name: input.name,
+      inbox_name: input.name,
       inbox_description: input.description ?? null,
       inbox_color: input.color ?? '#4F46E5',
       inbox_status: input.status ?? 'ACTIVE',
-      visibility: input.visibility ?? 'org_members',
-      settings: input.settings ?? {},
+      inbox_visibility: input.visibility ?? 'org_members',
+      inbox_settings: input.settings ?? {},
     }
 
     const result = await this.crudHandler.create('inbox', values)
@@ -106,13 +106,13 @@ export class InboxService {
 
     const values: Record<string, unknown> = {}
 
-    if (input.name !== undefined) values.name = input.name
+    if (input.name !== undefined) values.inbox_name = input.name
     if (input.description !== undefined) values.inbox_description = input.description
     if (input.color !== undefined) values.inbox_color = input.color
     if (input.status !== undefined) values.inbox_status = input.status
-    if (input.settings !== undefined) values.settings = input.settings
+    if (input.settings !== undefined) values.inbox_settings = input.settings
     if (input.visibility !== undefined) {
-      values.visibility = input.visibility
+      values.inbox_visibility = input.visibility
       await this.setVisibilityAccess(recordId, input.visibility)
     }
 
@@ -212,7 +212,7 @@ export class InboxService {
    */
   async updateInboxAccess(recordId: RecordId, accessData: InboxAccessInput): Promise<Inbox> {
     if (accessData.visibility !== undefined) {
-      await this.crudHandler.setFieldValue(recordId, 'visibility', accessData.visibility)
+      await this.crudHandler.setFieldValue(recordId, 'inbox_visibility', accessData.visibility)
       await this.setVisibilityAccess(recordId, accessData.visibility)
     }
     if (accessData.memberIds !== undefined) {
@@ -401,8 +401,8 @@ export class InboxService {
       description: (getValue('inbox_description') as string) ?? null,
       color: (getValue('inbox_color') as string) ?? '#4F46E5',
       status: ((getValue('inbox_status') as string) ?? 'ACTIVE') as Inbox['status'],
-      visibility: ((getValue('visibility') as string) ?? 'org_members') as Inbox['visibility'],
-      settings: (getValue('settings') as Record<string, unknown>) ?? {},
+      visibility: ((getValue('inbox_visibility') as string) ?? 'org_members') as Inbox['visibility'],
+      settings: (getValue('inbox_settings') as Record<string, unknown>) ?? {},
       organizationId: instance.organizationId,
       createdAt: instance.createdAt,
       updatedAt: instance.updatedAt,
