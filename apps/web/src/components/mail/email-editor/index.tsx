@@ -42,16 +42,9 @@ import type {
   RecipientState,
   ParticipantInputData,
   DraftPayload,
+  FileAttachment,
 } from './types'
 import { type IdentifierType } from '@auxx/database/types'
-// FileAttachment type for structured attachments
-type FileAttachment = {
-  id: string
-  name: string
-  size?: number
-  mimeType?: string
-  type: 'file' | 'asset' // 'file' = FolderFile, 'asset' = MediaAsset
-}
 const INTERACTIVE_ELEMENT_SELECTORS = `
   button, a, input, select, textarea,
   [role="button"], [role="option"], [role="combobox"], [role="menuitem"], [role="tab"],
@@ -80,55 +73,6 @@ const toPayload = (recipients: RecipientState[]): ParticipantInputData[] =>
     identifierType: r.identifierType,
     name: r.name || undefined,
   }))
-/**
- * Transform file select items to FileAttachment format for API
- */
-const transformToFileAttachments = (selectedItems: any[]): FileAttachment[] => {
-  return selectedItems.map((item) => {
-    // For existing attachments, use the original attachment data
-    if ((item as any).isExistingAttachment) {
-      return {
-        id: (item as any).originalAttachmentId, // Use original attachment ID
-        name: item.name,
-        size: item.displaySize,
-        mimeType: item.mimeType || undefined,
-        type: (item as any).attachmentType || 'file', // Use stored original type
-      }
-    }
-    // For new uploads, use the uploaded file data
-    return {
-      id: item.serverFileId || item.id,
-      name: item.name,
-      size: item.displaySize,
-      mimeType: item.mimeType || undefined,
-      type: item.source === 'filesystem' ? 'file' : 'asset',
-    }
-  })
-}
-/**
- * Transform draft attachments to FileSelectItem format for file picker
- */
-const transformDraftAttachmentsToFileSelectItems = (attachments: any[]) => {
-  return attachments.map((attachment) => ({
-    id: `existing-${attachment.id}`, // Prefix to distinguish from new uploads
-    name: attachment.name,
-    type: 'file' as const,
-    size: attachment.size ? BigInt(attachment.size) : null,
-    displaySize: Number(attachment.size || 0),
-    mimeType: attachment.mimeType || null,
-    ext: attachment.name.includes('.') ? `.${attachment.name.split('.').pop()}` : null,
-    createdAt: attachment.createdAt ? new Date(attachment.createdAt) : new Date(),
-    updatedAt: attachment.createdAt ? new Date(attachment.createdAt) : new Date(),
-    path: '/',
-    parentId: null,
-    source: (attachment.type === 'file' ? 'filesystem' : 'upload') as 'filesystem' | 'upload',
-    serverFileId: attachment.mediaAssetId || attachment.id,
-    // Mark as existing attachment for transformation back
-    isExistingAttachment: true,
-    originalAttachmentId: attachment.mediaAssetId || attachment.id,
-    attachmentType: attachment.type,
-  }))
-}
 function ReplyComposeEditorComponent({
   thread,
   sourceMessage,
@@ -156,12 +100,6 @@ function ReplyComposeEditorComponent({
       defaultIntegrationId: integrations?.integrations?.[0]?.id,
       presetValues,
     })
-    console.log('[EmailEditor] useState init:', {
-      draftId: initialDraft?.id,
-      draftTextHtmlLength: initialDraft?.textHtml?.length,
-      derivedContentHtmlLength: derived.contentHtml?.length,
-      derivedDraftId: derived.draftId,
-    })
     return derived
   })
   // Unified recipients state
@@ -178,12 +116,16 @@ function ReplyComposeEditorComponent({
   const [isSending, setIsSending] = useState(false)
   const [isDraftSaved, setIsDraftSaved] = useState(false)
 
+  // Attachments state - persisted attachments from draft
+  const [attachments, setAttachments] = useState<FileAttachment[]>(
+    () => initialDraft?.attachments ?? []
+  )
+
   // Sync state when draft prop changes (e.g., navigating back to thread with existing draft)
   const initializedDraftIdRef = useRef<string | null>(initialDraft?.id ?? null)
   useEffect(() => {
     // Only sync if draft ID changed and we have a new draft
     if (initialDraft && initialDraft.id !== initializedDraftIdRef.current) {
-      console.log('[EmailEditor] syncing draft content:', initialDraft.id)
       initializedDraftIdRef.current = initialDraft.id
 
       const newState = deriveInitialState({
@@ -204,6 +146,8 @@ function ReplyComposeEditorComponent({
       })
       setShowCc(newState.cc.length > 0)
       setShowBcc(newState.bcc.length > 0)
+      // Sync attachments from draft
+      setAttachments(initialDraft.attachments ?? [])
       setIsDraftSaved(true) // Draft was loaded from server
     }
   }, [initialDraft, mode, thread, sourceMessage, integrations, presetValues])
@@ -212,85 +156,35 @@ function ReplyComposeEditorComponent({
     () => state.draftId || `temp-message-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     [state.draftId]
   )
-  // File selection hook
+  // File selection hook - used ONLY for new uploads
   const fileSelect = useFileSelect({
     entityType: 'MESSAGE',
     entityId: tempEntityId,
     allowMultiple: true,
     maxFiles: 10,
     maxFileSize: 25 * 1024 * 1024, // 25MB
-    autoStart: true, // Automatically start uploading files when added
-    // autoCreateSession removed - sessions are created lazily when files are selected
+    autoStart: true,
     onChange: () => {
-      // Mark draft as unsaved when files change
       setIsDraftSaved(false)
     },
     onUploadComplete: () => {
-      // Update draft saved state after uploads
+      // Mark draft as unsaved so autosave picks up the completed uploads
       setIsDraftSaved(false)
     },
   })
-  // Track if we've already initialized attachments to prevent infinite loop
-  const attachmentsInitializedRef = useRef(false)
-  // Populate fileSelect with initial attachments from draft
+
+  // Handle preset attachments on initial mount (when no draft exists)
   useEffect(() => {
-    console.log('[EmailEditor] Attachment init effect:', {
-      draftId: initialDraft?.id,
-      attachmentCount: initialDraft?.attachments?.length,
-      alreadyInitialized: attachmentsInitializedRef.current,
-      currentSelectedItems: fileSelect.selectedItems.length,
-    })
-    if (
-      initialDraft?.attachments &&
-      initialDraft.attachments.length > 0 &&
-      !attachmentsInitializedRef.current
-    ) {
-      const fileSelectItems = transformDraftAttachmentsToFileSelectItems(initialDraft.attachments)
-      console.log('[EmailEditor] Adding draft attachments:', fileSelectItems)
-      fileSelect.addItems(fileSelectItems)
-      attachmentsInitializedRef.current = true
+    if (!initialDraft && presetValues?.attachments && presetValues.attachments.length > 0) {
+      setAttachments(presetValues.attachments)
     }
-  }, [initialDraft?.attachments, initialDraft?.id]) // Re-run when draft changes
-  // Reset initialization when draft changes
-  useEffect(() => {
-    console.log('[EmailEditor] Reset effect - clearing items:', {
-      draftId: initialDraft?.id,
-      currentSelectedItems: fileSelect.selectedItems.length,
-    })
-    attachmentsInitializedRef.current = false
-    // Clear existing items when switching drafts
-    fileSelect.clearItems()
-  }, [initialDraft?.id])
-  // Populate fileSelect with preset attachments (only if no draft)
-  useEffect(() => {
-    if (
-      !initialDraft &&
-      presetValues?.attachments &&
-      presetValues.attachments.length > 0 &&
-      !attachmentsInitializedRef.current
-    ) {
-      const fileSelectItems = presetValues.attachments.map((att) => ({
-        id: `preset-${att.id}`,
-        name: att.name,
-        type: 'file' as const,
-        size: att.size ? BigInt(att.size) : null,
-        displaySize: Number(att.size || 0),
-        mimeType: att.mimeType || null,
-        ext: att.name.includes('.') ? `.${att.name.split('.').pop()}` : null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        path: '/',
-        parentId: null,
-        source: (att.type === 'file' ? 'filesystem' : 'upload') as 'filesystem' | 'upload',
-        serverFileId: att.id,
-        isExistingAttachment: true,
-        originalAttachmentId: att.id,
-        attachmentType: att.type,
-      }))
-      fileSelect.addItems(fileSelectItems)
-      attachmentsInitializedRef.current = true
-    }
-  }, [presetValues?.attachments, initialDraft])
+  }, []) // Only run on mount
+
+  // Remove attachment handler
+  const removeAttachment = useCallback((id: string) => {
+    setAttachments((prev) => prev.filter((a) => a.id !== id))
+    setIsDraftSaved(false)
+  }, [])
   // Dropzone configuration
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop: (acceptedFiles) => {
@@ -377,15 +271,28 @@ function ReplyComposeEditorComponent({
     300,
     { leading: true, trailing: false } // fire immediately; ignore rapid subsequent clicks
   )
-  // Prepare payload for autosave
+  // Prepare payload for autosave - combines persisted attachments + files from fileSelect
   const draftPayload = useMemo(() => {
-    const attachments = transformToFileAttachments(fileSelect.selectedItems)
-    console.log('[EmailEditor] draftPayload computed:', {
-      draftId: state.draftId,
-      selectedItemsCount: fileSelect.selectedItems.length,
-      attachmentsCount: attachments.length,
-      attachments,
-    })
+    // Get files from fileSelect that are ready to save:
+    // 1. Existing filesystem files (source === 'filesystem') - id is already the server file ID
+    // 2. Completed uploads (serverFileId exists) - use serverFileId
+    const filesFromSelect: FileAttachment[] = fileSelect.selectedItems
+      .filter((item) => item.source === 'filesystem' || item.serverFileId)
+      .map((item) => ({
+        id: item.source === 'filesystem' ? item.id : item.serverFileId!,
+        name: item.name,
+        size: Number(item.size ?? 0),
+        mimeType: item.mimeType || 'application/octet-stream',
+        type: 'file' as const,
+      }))
+
+    // Combine persisted attachments + files from select (avoiding duplicates)
+    const existingIds = new Set(attachments.map((a) => a.id))
+    const allAttachments = [
+      ...attachments,
+      ...filesFromSelect.filter((f) => !existingIds.has(f.id)),
+    ]
+
     return {
       threadId: state.threadId,
       integrationId: state.integrationId,
@@ -397,10 +304,10 @@ function ReplyComposeEditorComponent({
       to: toPayload(recipients.TO),
       cc: toPayload(recipients.CC),
       bcc: toPayload(recipients.BCC),
-      attachments,
+      attachments: allAttachments,
       draftId: state.draftId,
     }
-  }, [state, content, recipients, fileSelect.selectedItems])
+  }, [state, content, recipients, attachments, fileSelect.selectedItems])
   // Auto-save hook
   const draftAutosave = useDraftAutosave({
     enabled: !isSending && !!state.integrationId,
@@ -636,7 +543,7 @@ function ReplyComposeEditorComponent({
         to: toPayload(recipients.TO),
         cc: toPayload(recipients.CC),
         bcc: toPayload(recipients.BCC),
-        attachments: transformToFileAttachments(fileSelect.selectedItems),
+        attachments: draftPayload.attachments, // Use combined attachments from payload
         includePreviousMessage: state.includePrev,
       })
     } catch (error) {
@@ -651,11 +558,10 @@ function ReplyComposeEditorComponent({
     content,
     thread?.id,
     sendMessageMutation,
-    fileSelect.selectedItems,
+    draftPayload,
     draftAutosave,
     upsert,
     isUpserting,
-    draftPayload,
   ])
   const handleDiscardClick = useCallback(async () => {
     if (isSending || isDeleting) return
@@ -960,17 +866,40 @@ function ReplyComposeEditorComponent({
             disabled={isSending}
           />
 
-          {/* File Attachments Display */}
-          {fileSelect.selectedItems.length > 0 && (
+          {/* File Attachments Display - Persisted + In-Progress Uploads */}
+          {(attachments.length > 0 || fileSelect.selectedItems.length > 0) && (
             <div className="mx-4 mb-3 mt-2">
               <div className="text-xs text-muted-foreground mb-2">
-                Attachments ({fileSelect.selectedItems.length})
+                Attachments ({attachments.length + fileSelect.selectedItems.length})
               </div>
               <div className="flex flex-wrap gap-2">
+                {/* Persisted attachments */}
+                {attachments.map((attachment) => (
+                  <MessageFile
+                    key={attachment.id}
+                    file={{
+                      id: attachment.id,
+                      name: attachment.name,
+                      mimeType: attachment.mimeType,
+                      size: BigInt(attachment.size || 0),
+                      source: 'existing' as const,
+                    }}
+                    showRemoveButton={true}
+                    onRemove={() => removeAttachment(attachment.id)}
+                    className="group"
+                  />
+                ))}
+                {/* In-progress uploads */}
                 {fileSelect.selectedItems.map((file) => (
                   <MessageFile
                     key={file.id}
-                    file={file}
+                    file={{
+                      id: file.id,
+                      name: file.name,
+                      mimeType: file.mimeType ?? undefined,
+                      size: file.size ?? undefined,
+                      source: 'upload' as const,
+                    }}
                     showRemoveButton={true}
                     onRemove={() => fileSelect.removeItem(file.id)}
                     className="group"

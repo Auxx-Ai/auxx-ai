@@ -71,15 +71,16 @@ function mapParticipant(p: z.infer<typeof ParticipantInputSchema>): DraftPartici
 }
 
 /**
- * Maps frontend attachment input to DraftAttachment format
+ * Maps frontend attachment input to DraftAttachment format.
+ * Now a direct passthrough since types match.
  */
 function mapAttachment(a: z.infer<typeof FileAttachmentSchema>): DraftAttachment {
   return {
-    fileId: a.id,
-    filename: a.name,
-    contentType: a.mimeType || 'application/octet-stream',
+    id: a.id,
+    name: a.name,
     size: a.size || 0,
-    isInline: false,
+    mimeType: a.mimeType || 'application/octet-stream',
+    type: a.type,
   }
 }
 
@@ -304,14 +305,8 @@ function transformDraftForFrontend(draft: import('@auxx/types/draft').Draft) {
         },
       })),
     ],
-    // Map attachments to expected format
-    attachments: content.attachments.map((a) => ({
-      id: a.fileId,
-      name: a.filename,
-      size: a.size,
-      mimeType: a.contentType,
-      type: 'file' as const,
-    })),
+    // Attachments are now returned directly - types match
+    attachments: content.attachments,
     metadata: content.metadata || {},
     createdAt: draft.createdAt.toISOString(),
     updatedAt: draft.updatedAt.toISOString(),

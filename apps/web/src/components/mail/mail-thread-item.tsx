@@ -36,7 +36,6 @@ import {
 import { useThreadSelectionStore } from '~/components/threads/store'
 import { TagBadge } from '~/components/tags/ui/tag-badge'
 import { OverflowRow } from '@auxx/ui/components/overflow-row'
-import { Badge } from '@auxx/ui/components/badge'
 
 /**
  * Processing menu component for triggering manual message processing
@@ -201,7 +200,7 @@ export const MailThreadItem = memo(function MailThreadItem({
     return latestMessage?.snippet ?? ''
   }, [latestMessage?.snippet])
 
-  const hasTagsOrDraft = hasDraft || (thread?.tagIds?.length ?? 0) > 0
+  const hasTags = (thread?.tagIds?.length ?? 0) > 0
 
   // --- Loading state ---
   if (isThreadLoading || !thread) {
@@ -229,14 +228,15 @@ export const MailThreadItem = memo(function MailThreadItem({
         aria-selected={isMultiSelected}
         onClick={handleClick}
         onDragStart={(e) => e.preventDefault()}>
-        {/* Unread indicator dot */}
-        {isUnread && (
+        {/* Status indicator dot: red for draft, blue for unread */}
+        {(hasDraft || isUnread) && (
           <div
             className={cn(
-              'absolute left-2 top-9 h-2 w-2 -translate-y-1/2 rounded-full bg-blue-500',
+              'absolute left-2 top-9 h-2 w-2 -translate-y-1/2 rounded-full',
+              hasDraft ? 'bg-red-500' : 'bg-blue-500',
               isMultiSelected && 'bg-white'
             )}
-            aria-label="Unread message"
+            aria-label={hasDraft ? 'Has draft' : 'Unread message'}
           />
         )}
 
@@ -275,17 +275,12 @@ export const MailThreadItem = memo(function MailThreadItem({
             <div
               className={cn(
                 'min-w-0 truncate text-xs font-medium group-aria-selected:text-background/80',
-                hasTagsOrDraft && 'max-w-[60%] shrink-0'
+                hasTags && 'max-w-[60%] shrink-0'
               )}>
               {thread.subject || '(no subject)'}
             </div>
             <div className="min-w-0 flex-1">
               <OverflowRow collapseSlot="text" className="justify-end" gap={4}>
-                {hasDraft && (
-                  <Badge size="sm" variant="red" shape="tag" className={cn('ms-[2px]')}>
-                    Draft
-                  </Badge>
-                )}
                 {thread.tagIds?.map((tagId) => (
                   <TagBadge
                     key={tagId}

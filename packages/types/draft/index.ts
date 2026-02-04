@@ -23,17 +23,15 @@ export interface DraftParticipant {
  */
 export interface DraftAttachment {
   /** File or MediaAsset ID */
-  fileId: string
+  id: string
   /** Original filename */
-  filename: string
-  /** MIME type */
-  contentType: string
+  name: string
   /** Size in bytes */
   size: number
-  /** Whether this is an inline attachment (embedded in HTML) */
-  isInline: boolean
-  /** Content ID for inline attachments */
-  contentId?: string
+  /** MIME type */
+  mimeType: string
+  /** Source type: 'file' = FolderFile, 'asset' = MediaAsset */
+  type: 'file' | 'asset'
 }
 
 /**
