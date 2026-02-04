@@ -244,7 +244,7 @@ export function OverflowRow({
         <div ref={containerRef} className="absolute inset-0 pointer-events-none" aria-hidden />
 
         {/* Visible container */}
-        <div className="flex items-center overflow-hidden" style={{ gap }}>
+        <div className="flex items-center  justify-end" style={{ gap }}>
           {childArray.map((child, i) => {
             if (i >= hiddenStartIndex) return null
 

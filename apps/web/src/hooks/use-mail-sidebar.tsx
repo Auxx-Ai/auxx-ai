@@ -4,6 +4,7 @@ import { api } from '~/trpc/react'
 import { useSettings } from '~/hooks/use-settings'
 import { PersonalMenuItem } from '~/components/global/sidebar/personal-mail-group'
 import { Inbox } from '~/components/global/sidebar/shared-inbox-group'
+import { useInboxes } from '~/components/threads/hooks'
 
 export interface UseMailSidebarOptions {
   scope?: string
@@ -34,15 +35,12 @@ export function useMailSidebar({ scope = 'SIDEBAR' }: UseMailSidebarOptions = {}
   // Get settings from the useSettings hook
   const { getSetting, updateUserSetting, isLoading: settingsLoading } = useSettings({ scope })
 
-  // Fetch inboxes data
+  // Fetch inboxes data using useInboxes hook (reactive to Zustand store updates)
   const {
-    data: rawInboxes,
+    inboxes: rawInboxes,
     isLoading: inboxesLoading,
-    refetch: refetchInboxes,
-  } = api.inbox.getUserInboxes.useQuery(undefined, {
-    // Don't refetch on window focus to avoid disrupting edit mode
-    refetchOnWindowFocus: !isEditMode,
-  })
+    refresh: refetchInboxes,
+  } = useInboxes()
 
   const {
     data: mailViews,
@@ -55,7 +53,7 @@ export function useMailSidebar({ scope = 'SIDEBAR' }: UseMailSidebarOptions = {}
 
   // Process inboxes: apply saved order and visibility
   const processedInboxes = useMemo((): Inbox[] => {
-    if (!rawInboxes) return []
+    if (!rawInboxes || rawInboxes.length === 0) return []
 
     // 1. Get saved order and visibility settings
     const inboxOrder = (getSetting(INBOX_ORDER_SETTING_KEY) as string[]) || []
@@ -73,7 +71,9 @@ export function useMailSidebar({ scope = 'SIDEBAR' }: UseMailSidebarOptions = {}
       const inbox = inboxMap.get(id)
       if (inbox) {
         sortedInboxes.push({
-          ...inbox,
+          id: inbox.id,
+          name: inbox.name,
+          color: inbox.color ?? '#4F46E5', // Default indigo color
           isVisible: inboxVisibilitySettings[inbox.id] !== false, // Default true
         })
         processedIds.add(id)
@@ -84,7 +84,9 @@ export function useMailSidebar({ scope = 'SIDEBAR' }: UseMailSidebarOptions = {}
     rawInboxes.forEach((inbox) => {
       if (!processedIds.has(inbox.id)) {
         sortedInboxes.push({
-          ...inbox,
+          id: inbox.id,
+          name: inbox.name,
+          color: inbox.color ?? '#4F46E5', // Default indigo color
           isVisible: inboxVisibilitySettings[inbox.id] !== false, // Default true
         })
       }

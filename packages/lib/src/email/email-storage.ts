@@ -1383,6 +1383,15 @@ export class MessageStorageService {
 
       const messageRecord = messageRecords[0]
 
+      // --- 4b. Set latestMessageId for new threads ---
+      // Cannot be set during thread creation because the message doesn't exist yet
+      if (isNewThread && messageRecord?.id) {
+        await db
+          .update(schema.Thread)
+          .set({ latestMessageId: messageRecord.id })
+          .where(eq(schema.Thread.id, thread.id))
+      }
+
       // --- 5. Create MessageParticipant Links ---
       const messageParticipantData: any[] = []
       for (const { role, data } of participantInputsWithRoles) {

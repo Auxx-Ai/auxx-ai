@@ -7,15 +7,15 @@ import type { RecordMeta } from '~/components/resources/store/record-store'
 
 /**
  * Inbox record type from useAllRecords.
- * Field keys come from inbox-fields.ts `key` property.
+ * Field keys use inbox_ prefix (e.g., inbox_name, inbox_color).
  */
 export interface InboxRecord extends RecordMeta {
   fieldValues: {
-    name?: string
-    description?: string
-    color?: string
-    status?: 'ACTIVE' | 'ARCHIVED' | 'PAUSED'
-    visibility?: 'org_members' | 'private' | 'custom'
+    inbox_name?: string
+    inbox_description?: string
+    inbox_color?: string
+    inbox_status?: 'ACTIVE' | 'ARCHIVED' | 'PAUSED'
+    inbox_visibility?: 'org_members' | 'private' | 'custom'
   }
 }
 
@@ -69,10 +69,10 @@ export function useInboxes(): UseInboxesResult {
     const items: InboxItem[] = records.map((record) => ({
       id: record.id,
       recordId: record.recordId,
-      name: record.fieldValues?.name ?? record.displayName ?? 'Untitled',
-      description: record.fieldValues?.description ?? null,
-      color: record.fieldValues?.color ?? null,
-      status: record.fieldValues?.status,
+      name: record.fieldValues?.inbox_name ?? record.displayName ?? 'Untitled',
+      description: record.fieldValues?.inbox_description ?? null,
+      color: record.fieldValues?.inbox_color ?? null,
+      status: record.fieldValues?.inbox_status,
     }))
 
     // Key map by recordId for direct lookup (thread.inboxId is now RecordId)
