@@ -18,6 +18,7 @@ import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor
 import { FieldInputRow } from './field-input-row'
 import { DialogFieldConfigRow } from './dialog-field-config-row'
 import { toastError } from '@auxx/ui/components/toast'
+import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { api } from '~/trpc/react'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
 import { useDirtyCheck } from '~/hooks/use-dirty-state'
@@ -26,7 +27,11 @@ import { useResource } from '~/components/resources'
 import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
 import { toRecordId, parseRecordId, type RecordId } from '@auxx/lib/resources/client'
-import { createDefaultFieldViewConfig, type FieldViewConfig, type ViewContextType } from '@auxx/lib/conditions'
+import {
+  createDefaultFieldViewConfig,
+  type FieldViewConfig,
+  type ViewContextType,
+} from '@auxx/lib/conditions'
 import { useFieldView } from '~/components/fields/hooks/use-field-view'
 import { useOrgFieldView } from '~/components/dynamic-table/stores/store-selectors'
 import { useDynamicTableStore } from '~/components/dynamic-table/stores/dynamic-table-store'
@@ -40,7 +45,11 @@ import {
   useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core'
-import { SortableContext, verticalListSortingStrategy, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  sortableKeyboardCoordinates,
+} from '@dnd-kit/sortable'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 
 interface EntityInstanceDialogProps {
@@ -254,7 +263,14 @@ export function EntityInstanceDialog({
     } catch {
       // Errors handled by mutation onError
     }
-  }, [draftConfig, configOrgFieldView, configContextType, entityDefinitionId, updateViewMutation, createViewMutation])
+  }, [
+    draftConfig,
+    configOrgFieldView,
+    configContextType,
+    entityDefinitionId,
+    updateViewMutation,
+    createViewMutation,
+  ])
 
   // ─── Config Mode Derived State ────────────────────────────────────────────
 
@@ -663,22 +679,20 @@ export function EntityInstanceDialog({
           {isConfigMode ? (
             <DialogFooter className="sm:justify-between">
               {/* Left side: Context type toggle (Create / Edit) */}
-              <div className="flex items-center gap-1">
-                <Button
-                  size="sm"
-                  variant={configContextType === 'dialog_create' ? 'secondary' : 'ghost'}
-                  onClick={() => switchConfigContext('dialog_create')}
-                  disabled={isSavingView}>
+              <RadioTab
+                value={configContextType}
+                onValueChange={switchConfigContext}
+                size="sm"
+                radioGroupClassName="rounded-xl"
+                // className="rounded-xl after:rounded-xl!"
+              >
+                <RadioTabItem value="dialog_create" disabled={isSavingView}>
                   Create
-                </Button>
-                <Button
-                  size="sm"
-                  variant={configContextType === 'dialog_edit' ? 'secondary' : 'ghost'}
-                  onClick={() => switchConfigContext('dialog_edit')}
-                  disabled={isSavingView}>
+                </RadioTabItem>
+                <RadioTabItem value="dialog_edit" disabled={isSavingView}>
                   Edit
-                </Button>
-              </div>
+                </RadioTabItem>
+              </RadioTab>
 
               {/* Right side: Cancel + Save View */}
               <div className="flex items-center gap-2">

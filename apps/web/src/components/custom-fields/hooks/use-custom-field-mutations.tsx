@@ -1,16 +1,17 @@
 // apps/web/src/components/custom-fields/hooks/use-custom-field-mutations.tsx
 
-import { useCallback } from 'react'
-import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { useCallback, useRef } from 'react'
+import { toastError, toastSuccess, toastInfo } from '@auxx/ui/components/toast'
 import { arrayMove } from '@dnd-kit/sortable'
 import { api } from '~/trpc/react'
 import { getResourceStoreState } from '~/components/resources/store/resource-store'
 import { toResourceFieldId, toFieldId, parseResourceFieldId } from '@auxx/types/field'
 import type { ResourceFieldId } from '@auxx/types/field'
 import type { ResourceField, FieldCapabilities } from '@auxx/lib/resources/client'
-import type { FieldType as FieldTypeEnum } from '@auxx/database/types'
+import type { FieldType as FieldTypeEnum, FieldType } from '@auxx/database/types'
 import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
 import { mapFieldTypeToBaseType } from '@auxx/lib/workflow-engine/client'
+import { PRIMARY_DISPLAY_ELIGIBLE_TYPES } from '@auxx/lib/custom-fields/client'
 import { useField } from '~/components/resources/hooks/use-field'
 import {
   type SelectOption,
@@ -31,6 +32,18 @@ interface UseCustomFieldMutationsProps {
  */
 export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMutationsProps) {
   const utils = api.useUtils()
+
+  /** Ref to prevent double-firing auto-set of primary display field */
+  const autoSetInFlight = useRef(false)
+
+  /** Mutation for auto-setting primaryDisplayField on first eligible field creation */
+  const setPrimaryDisplayField = api.entityDefinition.update.useMutation({
+    onSuccess: () => {
+      utils.resource.getAllResourceTypes.invalidate()
+      utils.entityDefinition.getAll.invalidate()
+      utils.entityDefinition.getById.invalidate()
+    },
+  })
 
   /** Invalidate custom field queries to ensure components using direct queries get updated */
   const invalidateCustomFieldQueries = () => {
@@ -231,6 +244,25 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
         title: 'Custom field created',
         description: 'The custom field has been created successfully',
       })
+
+      // Auto-set primaryDisplayField if entity doesn't have one and field type is eligible
+      const resource = store.resourceMap.get(effectiveEntityDefId)
+      if (
+        resource &&
+        !resource.display.primaryDisplayField &&
+        !autoSetInFlight.current &&
+        PRIMARY_DISPLAY_ELIGIBLE_TYPES.includes(result.type as FieldType)
+      ) {
+        autoSetInFlight.current = true
+        setPrimaryDisplayField.mutate(
+          { id: effectiveEntityDefId, data: { primaryDisplayFieldId: result.id } },
+          { onSettled: () => { autoSetInFlight.current = false } }
+        )
+        toastInfo({
+          title: `"${result.name}" set as display field`,
+          description: 'You can change this in entity settings.',
+        })
+      }
     },
 
     onError: (error, _variables, context) => {

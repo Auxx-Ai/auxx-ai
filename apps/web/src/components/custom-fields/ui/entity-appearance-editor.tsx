@@ -13,6 +13,8 @@ import { useEntityDefinitionMutations } from '~/components/resources/hooks'
 import { Palette, Check } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@auxx/ui/components/avatar'
 import type { Resource } from '@auxx/lib/resources/client'
+import { PRIMARY_DISPLAY_ELIGIBLE_TYPES } from '@auxx/lib/custom-fields/client'
+import type { FieldType } from '@auxx/database/types'
 
 /** Props for EntityAppearanceEditor */
 interface EntityAppearanceEditorProps {
@@ -102,15 +104,7 @@ export function EntityAppearanceEditor({
                       .filter(
                         (f) =>
                           f.fieldType &&
-                          [
-                            'TEXT',
-                            'EMAIL',
-                            'NAME',
-                            'PHONE',
-                            'PHONE_INTL',
-                            'URL',
-                            'NUMBER',
-                          ].includes(f.fieldType)
+                          PRIMARY_DISPLAY_ELIGIBLE_TYPES.includes(f.fieldType as FieldType)
                       )
                       .map((field) => (
                         <SelectItem key={field.id} value={field.id}>

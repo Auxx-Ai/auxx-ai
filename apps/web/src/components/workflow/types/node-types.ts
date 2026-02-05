@@ -22,7 +22,6 @@ export enum NodeType {
 
   // Input nodes
   FORM_INPUT = 'form-input',
-  TEXT_INPUT = 'text-input',
   NUMBER_INPUT = 'number-input',
   FILE_UPLOAD = 'file-upload',
 
@@ -84,7 +83,6 @@ export function getNodeTypeDisplayName(type: NodeType): string {
     [NodeType.TICKET_UPDATED_TRIGGER]: 'Ticket Updated',
     [NodeType.TICKET_DELETED_TRIGGER]: 'Ticket Deleted',
     [NodeType.FORM_INPUT]: 'Form Input',
-    [NodeType.TEXT_INPUT]: 'Text Input',
     [NodeType.NUMBER_INPUT]: 'Number Input',
     [NodeType.FILE_UPLOAD]: 'File Upload',
     [NodeType.IF_ELSE]: 'IF/ELSE',

@@ -44,6 +44,8 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
+import { PRIMARY_DISPLAY_ELIGIBLE_TYPES } from '@auxx/lib/custom-fields/client'
+import type { FieldType } from '@auxx/database/types'
 import { CustomFieldDialog } from './custom-field-dialog'
 
 /** Props for EntityDefinitionDialog */
@@ -507,7 +509,7 @@ export function EntityDefinitionDialog({
                           <SelectItem value="none">None</SelectItem>
                           {fields
                             .filter((f) =>
-                              ['TEXT', 'EMAIL', 'NAME', 'PHONE', 'PHONE_INTL', 'URL', 'NUMBER'].includes(f.fieldType)
+                              PRIMARY_DISPLAY_ELIGIBLE_TYPES.includes(f.fieldType as FieldType)
                             )
                             .map((field) => (
                               <SelectItem key={field.id} value={field.id}>

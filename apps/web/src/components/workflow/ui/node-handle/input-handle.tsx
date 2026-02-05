@@ -1,10 +1,10 @@
 // apps/web/src/components/workflow/ui/node-handle/input-handle.tsx
 
-import React, { memo, useCallback, useState } from 'react'
+import React, { memo, useCallback } from 'react'
 import { Handle, Position } from '@xyflow/react'
 import { type NodeHandleProps } from './types'
 import { useReadOnly, useAvailableBlocks, useNodeStatus } from '~/components/workflow/hooks'
-import { AddNodeTrigger } from '~/components/workflow/ui/add-node-trigger'
+import { useNodeAddition } from '~/components/workflow/hooks/use-node-addition'
 import { cn } from '@auxx/ui/lib/utils'
 import { Plus } from 'lucide-react'
 
@@ -18,37 +18,23 @@ export const NodeInputHandle = memo(
     )
     const nodeStatus = useNodeStatus(id)
     const isConnectable = !!availableInputBlocks?.length
-    const [triggerOpen, setTriggerOpen] = useState(false)
+    const { addNode, selectNewNode } = useNodeAddition()
 
-    // Debug logging (uncomment for debugging)
-    // console.log('[NodeInputHandle] Debug:', {
-    //   id,
-    //   nodeType: data.type,
-    //   handleId,
-    //   availableInputBlocks,
-    //   isConnectable,
-    //   isReadOnly,
-    // })
-
-    const connected = data._connectedTargetHandleIds?.includes(handleId)
-
-    // Create anchor node object for AddNodeTrigger
-    const anchorNode = {
-      id,
-      type: data.type,
-      position: { x: 0, y: 0 }, // Position will be determined by the service
-      data,
-    }
-
+    /** Directly add a form-input node connected to this handle */
     const handleClick = useCallback(
-      (e: React.MouseEvent) => {
+      async (e: React.MouseEvent) => {
         e.stopPropagation()
         e.preventDefault()
-        if (isConnectable && !isReadOnly) {
-          setTriggerOpen(true)
-        }
+        if (!isConnectable || isReadOnly) return
+
+        const newNodeId = await addNode({
+          nodeType: 'form-input',
+          position: 'before',
+          anchorNode: { id, targetHandle: handleId },
+        })
+        selectNewNode(newNodeId)
       },
-      [isConnectable, isReadOnly]
+      [isConnectable, isReadOnly, addNode, selectNewNode, id, handleId]
     )
 
     if (isConnectable && !isReadOnly) {
@@ -72,33 +58,23 @@ export const NodeInputHandle = memo(
             )}
             onClick={handleClick}
             isConnectable={isConnectable}>
-            <AddNodeTrigger
-              anchorNode={anchorNode}
-              targetHandle={handleId}
-              position="before"
-              allowedNodeTypes={availableInputBlocks || []}
-              open={triggerOpen}
-              align="center"
-              onOpenChange={setTriggerOpen}
-              onNodeAdded={() => setTriggerOpen(false)}>
-              <button
-                className={cn(
-                  'z-2 opacity-0 group-hover/node:opacity-100 size-4 rounded-full bg-comparison-500 text-primary-foreground',
-                  'flex items-center justify-center shadow-md absolute pointer-events-none',
-                  'hover:scale-110 transition-transform'
-                )}>
-                <Plus className="w-4 h-4" />
-              </button>
-            </AddNodeTrigger>
+            <button
+              className={cn(
+                'z-2 opacity-0 group-hover/node:opacity-100 size-4 rounded-full bg-comparison-500 text-primary-foreground',
+                'flex items-center justify-center shadow-md absolute pointer-events-none',
+                'hover:scale-110 transition-transform'
+              )}>
+              <Plus className="w-4 h-4" />
+            </button>
             <div className="absolute -top-1 right-1/2 hidden translate-x-1/2 -translate-y-full z-[2] rounded-lg border-[0.5px] border-border bg-popover p-1.5 shadow-lg group-hover/handle:block pointer-events-none">
               <div className="text-xs text-muted-foreground">
                 <div className="whitespace-nowrap">
                   <span className="font-medium text-foreground">Click:</span>
-                  {' Add input node'}
+                  {' Add input'}
                 </div>
                 <div>
                   <span className="font-medium text-foreground">Drag:</span>
-                  {' Connect existing input node'}
+                  {' Connect existing input'}
                 </div>
               </div>
             </div>

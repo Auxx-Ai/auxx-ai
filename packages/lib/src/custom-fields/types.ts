@@ -16,6 +16,16 @@ import {
 // Re-export types needed by other lib modules
 export { ModelTypes, type ModelType }
 
+/** Field types eligible for use as the primary display field */
+export const PRIMARY_DISPLAY_ELIGIBLE_TYPES: FieldType[] = [
+  FieldTypeEnum.TEXT,
+  FieldTypeEnum.EMAIL,
+  FieldTypeEnum.NAME,
+  FieldTypeEnum.PHONE_INTL,
+  FieldTypeEnum.URL,
+  FieldTypeEnum.NUMBER,
+]
+
 /**
  * Grouped FieldType values for UI pickers
  * Used for custom field creation dialogs

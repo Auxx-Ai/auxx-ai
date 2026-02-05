@@ -30,6 +30,7 @@ export {
 } from '@auxx/types/custom-field'
 
 export { type CalcOptions, type NameFieldOptions } from './field-options'
+export { PRIMARY_DISPLAY_ELIGIBLE_TYPES } from './types'
 
 import type { SelectOptionColor } from '@auxx/types/custom-field'
 

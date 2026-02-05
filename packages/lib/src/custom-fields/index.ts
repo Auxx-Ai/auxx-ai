@@ -11,6 +11,7 @@ export {
   getFieldTypeMinWidth,
   getFieldTypeMaxWidth,
   fieldTypeOptions,
+  PRIMARY_DISPLAY_ELIGIBLE_TYPES,
 } from './types'
 
 // Export built-in field utilities

@@ -2,15 +2,15 @@
 
 'use client'
 
-import React from 'react'
+import React, { useCallback } from 'react'
 import { Plus } from 'lucide-react'
 import { Button } from '@auxx/ui/components/button'
 import type { ManualNodeData } from './types'
 import { BasePanel } from '../../shared/base/base-panel'
-import { useNodeCrud, useAvailableBlocks, useReadOnly } from '~/components/workflow/hooks'
+import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
+import { useNodeAddition } from '~/components/workflow/hooks/use-node-addition'
 import Section from '~/components/workflow/ui/section'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
-import { AddNodeTrigger } from '~/components/workflow/ui/add-node-trigger'
 import { manualDefinition } from './schema'
 import { ConnectedInputsEditor } from './connected-inputs-editor'
 
@@ -25,28 +25,24 @@ interface ManualPanelProps {
 const ManualPanelComponent: React.FC<ManualPanelProps> = ({ nodeId, data }) => {
   const { inputs: nodeData } = useNodeCrud<ManualNodeData>(nodeId, data)
   const { isReadOnly } = useReadOnly()
-  const { availableNextBlocks } = useAvailableBlocks(data.type, data.isInLoop, 'input')
+  const { addNode, selectNewNode } = useNodeAddition()
 
-  // Create anchor node for AddNodeTrigger
-  const anchorNode = {
-    id: nodeId,
-    type: data.type,
-    position: { x: 0, y: 0 },
-    data,
-  }
+  /** Directly add a form-input node connected to this manual trigger */
+  const handleAddInput = useCallback(async () => {
+    const newNodeId = await addNode({
+      nodeType: 'form-input',
+      position: 'before',
+      anchorNode: { id: nodeId, targetHandle: 'input' },
+    })
+    selectNewNode(newNodeId)
+  }, [addNode, selectNewNode, nodeId])
 
   // Add button for Section actions
   const AddInputButton = (
-    <AddNodeTrigger
-      anchorNode={anchorNode}
-      targetHandle="input"
-      position="before"
-      allowedNodeTypes={availableNextBlocks || ['form-input']}>
-      <Button variant="ghost" size="xs" disabled={isReadOnly}>
-        <Plus />
-        Add
-      </Button>
-    </AddNodeTrigger>
+    <Button variant="ghost" size="xs" disabled={isReadOnly} onClick={handleAddInput}>
+      <Plus />
+      Add
+    </Button>
   )
 
   return (
