@@ -51,7 +51,7 @@ const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
     entityType: 'contact',
     contextType: 'dialog_edit',
     name: 'Default Edit Dialog',
-    excludeFields: ['id', 'created_at', 'first_name', 'last_name', 'contact_tickets'],
+    excludeFields: ['id', 'created_at', 'first_name', 'last_name', 'contact_tickets', 'customer_groups'],
   },
 
   // ============================================================================
@@ -115,6 +115,18 @@ export async function createFieldViews(
 
     // Create field view config with visibility and order
     const fieldViewConfig = createDefaultFieldViewConfig(fieldIds)
+
+    // If includeFields provided, mark all other fields as hidden
+    if (includeFields?.length) {
+      const includedSet = new Set(fieldIds)
+      for (const [key, field] of fieldMap.entries()) {
+        if (!key.startsWith(`${entityType}:`)) continue
+        const resourceFieldId = toResourceFieldId(entityDef.id, toFieldId(field.id))
+        if (!includedSet.has(resourceFieldId)) {
+          fieldViewConfig.fieldVisibility[resourceFieldId] = false
+        }
+      }
+    }
 
     // If excludeFields provided without includeFields, mark excluded as hidden
     if (!includeFields && excludeFields?.length) {

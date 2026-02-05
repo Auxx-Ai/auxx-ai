@@ -151,7 +151,7 @@ export function FieldInputRow({
         onChange={handleChange}
         placeholder={placeholder ?? `Enter ${field.label.toLowerCase()}...`}
         disabled={disabled}
-        triggerProps={{ className: 'ps-0 pe-1' }}
+        triggerProps={{ className: 'ps-0 pe-1 w-full' }}
       />
     </VarEditorFieldRow>
   )

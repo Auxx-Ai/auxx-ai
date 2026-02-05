@@ -179,12 +179,12 @@ const CountrySelect = ({
           disabled={disabled}
           aria-label="Select country"
           className={cn(
-            'border-input bg-background text-muted-foreground hover:bg-accent hover:text-foreground relative inline-flex items-center self-stretch rounded-s-xl py-2 px-2 transition-[color,box-shadow] outline-hidden disabled:pointer-events-none disabled:opacity-50',
+            'border-input bg-background text-muted-foreground hover:bg-accent hover:text-foreground relative inline-flex items-center self-stretch rounded-s-xl py-2 ps-0.5 pe-2 transition-[color,box-shadow] outline-hidden disabled:pointer-events-none disabled:opacity-50',
             className
           )}>
           <div className="inline-flex items-center gap-1">
             <FlagComponent country={value} countryName={value} />
-            <ChevronDownIcon className="size-3 text-muted-foreground/80" aria-hidden="true" />
+            {/* <ChevronDownIcon className="size-3 text-muted-foreground/80" aria-hidden="true" /> */}
           </div>
         </button>
       </PopoverTrigger>
