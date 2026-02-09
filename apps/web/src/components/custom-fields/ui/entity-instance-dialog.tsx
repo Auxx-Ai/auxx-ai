@@ -684,7 +684,7 @@ export function EntityInstanceDialog({
                 onValueChange={switchConfigContext}
                 size="sm"
                 radioGroupClassName="rounded-xl"
-                // className="rounded-xl after:rounded-xl!"
+                className="h-7"
               >
                 <RadioTabItem value="dialog_create" disabled={isSavingView}>
                   Create
