@@ -54,6 +54,7 @@ export function encodeQuotedPrintable(text: string): string {
     
     for (let i = 0; i < line.length; i++) {
       const char = line[i]
+      if (!char) continue
       const charCode = char.charCodeAt(0)
       
       // Characters that need encoding
@@ -136,8 +137,9 @@ export function validateMimeStructure(message: string): {
   // Split into lines and check lengths
   const lines = message.split('\r\n')
   for (let i = 0; i < lines.length; i++) {
-    if (lines[i].length > 998) {
-      lineLengthViolations.push({ line: i + 1, length: lines[i].length })
+    const line = lines[i]
+    if (line && line.length > 998) {
+      lineLengthViolations.push({ line: i + 1, length: line.length })
     }
   }
   
@@ -164,7 +166,7 @@ export function validateMimeStructure(message: string): {
   
   // Check multipart boundaries
   const contentTypeMatch = headers.match(/^Content-Type:\s*multipart\/(.*?);\s*boundary="?([^";\r\n]+)"?/mi)
-  if (contentTypeMatch) {
+  if (contentTypeMatch?.[2]) {
     const boundary = contentTypeMatch[2]
     const boundaryRegex = new RegExp(`^--${boundary.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'gm')
     const boundaryMatches = message.match(boundaryRegex)
@@ -207,10 +209,10 @@ export function parseMultipartMixedResponse(
   contentType: string
 ): Array<{ headers: Record<string, string>; body: string }> {
   const boundaryMatch = contentType.match(/boundary=([^;]+)/)
-  if (!boundaryMatch) {
+  if (!boundaryMatch?.[1]) {
     throw new Error('No boundary found in Content-Type header')
   }
-  
+
   const boundary = boundaryMatch[1].replace(/^"|"$/g, '')
   const parts = text.split(new RegExp(`--${boundary.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`))
   
@@ -255,8 +257,9 @@ export function validateLineLengths(
   const lines = message.split('\r\n')
   
   for (let i = 0; i < lines.length; i++) {
-    if (lines[i].length > maxLength) {
-      violations.push({ line: i + 1, length: lines[i].length })
+    const line = lines[i]
+    if (line && line.length > maxLength) {
+      violations.push({ line: i + 1, length: line.length })
     }
   }
   

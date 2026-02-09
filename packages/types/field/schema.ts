@@ -9,7 +9,7 @@ import type { FieldId, ResourceFieldId } from './index'
  */
 export const fieldIdSchema = z
   .string()
-  .min(1, 'FieldId must not be empty') as z.ZodType<FieldId>
+  .min(1, 'FieldId must not be empty') as unknown as z.ZodType<FieldId>
 
 /**
  * Zod schema for ResourceFieldId validation.
@@ -19,4 +19,4 @@ export const resourceFieldIdSchema = z
   .string()
   .refine((val) => val.includes(':') && val.split(':').length >= 2, {
     message: 'ResourceFieldId must be in format entityDefinitionId:fieldId',
-  }) as z.ZodType<ResourceFieldId>
+  }) as unknown as z.ZodType<ResourceFieldId>

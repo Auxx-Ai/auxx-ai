@@ -281,7 +281,7 @@ export const dateFieldValueInputSchema = z.object({
 /** Schema for json value input */
 export const jsonFieldValueInputSchema = z.object({
   type: z.literal('json'),
-  value: z.record(z.unknown()),
+  value: z.record(z.string(), z.unknown()),
 })
 
 /** Schema for option value input */
@@ -477,6 +477,8 @@ export function createTypedValueInput(
         // Plain string - assume user type
         return { type: 'actor', actorType: 'user', id: rawValue }
       }
+      return null
+    default:
       return null
   }
 }

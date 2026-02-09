@@ -19,6 +19,7 @@ import {
   isDisplayOptions,
   mergeDisplayOptions,
   getInverseFieldId,
+  type RelationshipConfig,
 } from './types'
 import { checkExistingDuplicates } from './check-unique-value'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
@@ -210,7 +211,7 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
   delete updateData.systemAttribute
 
   // Check if we need to update inverse field name (RELATIONSHIP type only)
-  const relationshipConfig = currentField.options as { relationship?: { inverseResourceFieldId?: string } }
+  const relationshipConfig = currentField.options as { relationship?: RelationshipConfig }
   const inverseFieldId = relationshipConfig?.relationship
     ? getInverseFieldId(relationshipConfig.relationship)
     : null

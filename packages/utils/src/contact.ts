@@ -59,8 +59,8 @@ export const getInitials = (contact: ContactName | null, empty: string = 'U'): s
   return contact.email?.charAt(0)?.toUpperCase() || empty
 }
 export const getInitialsFromName = (name: string | null, empty: string = 'U'): string => {
-  if (!name) return empty
-  return name[0].charAt(0).toUpperCase()
+  if (!name || name.length === 0) return empty
+  return name[0]!.charAt(0).toUpperCase()
 }
 
 export const formatPhoneNumber = (phone: string | null): string | null => {

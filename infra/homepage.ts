@@ -8,7 +8,7 @@ export const homepage = new sst.aws.Nextjs('AuxxAiHomepage', {
   path: 'apps/homepage',
   environment: getSelectedEnvVars('homepage'),
   link: getHomepageSecretsForLinking(),
-  openNextVersion: '3.7.6',
+  openNextVersion: '3.9.15',
   dev: {
     autostart: false,
     command: 'pnpm --filter homepage dev',

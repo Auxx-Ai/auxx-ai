@@ -11,4 +11,4 @@ export const recordIdSchema = z
   .string()
   .refine((val) => val.includes(':') && val.split(':').length >= 2, {
     message: 'RecordId must be in format entityDefinitionId:entityInstanceId',
-  }) as z.ZodType<RecordId>
+  }) as unknown as z.ZodType<RecordId>

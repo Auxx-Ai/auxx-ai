@@ -1,6 +1,7 @@
 // packages/services/src/contacts/contact-mutations.ts
 
 import { database, schema, type Transaction } from '@auxx/database'
+import type { CustomerStatus } from '@auxx/database/types'
 import { eq, and } from 'drizzle-orm'
 import { ok, err } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
@@ -100,7 +101,7 @@ export async function updateContact(input: UpdateContactInput) {
  * Update contact status
  */
 export async function updateContactStatus(
-  input: { contactId: string; status: string } & ContactContext
+  input: { contactId: string; status: CustomerStatus } & ContactContext
 ) {
   const { contactId, organizationId, status } = input
 

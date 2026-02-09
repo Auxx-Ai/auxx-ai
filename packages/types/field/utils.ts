@@ -120,6 +120,8 @@ export function validateFieldPath(
     const currentResourceFieldId = path[i]
     const nextResourceFieldId = path[i + 1]
 
+    if (!currentResourceFieldId || !nextResourceFieldId) return false
+
     // Get related entity from current field
     const relatedEntityId = fieldMetadata[currentResourceFieldId]?.relatedEntityDefinitionId
     if (!relatedEntityId) {
@@ -157,7 +159,9 @@ export function getRootEntityId(path: FieldPath): string {
  * ["product:vendor", "vendor:name"] → "name"
  */
 export function getTargetFieldId(path: FieldPath): FieldId {
-  return getFieldId(path[path.length - 1])
+  const last = path[path.length - 1]
+  if (!last) throw new Error('Field path is empty')
+  return getFieldId(last)
 }
 
 /**

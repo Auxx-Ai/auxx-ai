@@ -30,6 +30,7 @@
     "./constants/*": "./src/constants/*",
     "./contacts": "./src/contacts/index.ts",
     "./custom-fields": "./src/custom-fields/index.ts",
+    "./custom-fields/field-options": "./src/custom-fields/field-options.ts",
     "./custom-fields/types": "./src/custom-fields/types.ts",
     "./custom-fields/client": "./src/custom-fields/client.ts",
     "./datasets": "./src/datasets/index.ts",

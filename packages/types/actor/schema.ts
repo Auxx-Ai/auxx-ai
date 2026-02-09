@@ -17,9 +17,9 @@ export const actorIdSchema = z
     {
       message: 'ActorId must be in format user:id or group:id',
     }
-  ) as z.ZodType<ActorId>
+  ) as unknown as z.ZodType<ActorId>
 
 /**
  * Zod schema for ActorType.
  */
-export const actorTypeSchema = z.enum(['user', 'group']) as z.ZodType<ActorType>
+export const actorTypeSchema = z.enum(['user', 'group']) as unknown as z.ZodType<ActorType>

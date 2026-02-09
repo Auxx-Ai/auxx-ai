@@ -1,6 +1,7 @@
 // packages/services/src/contacts/contact-bulk.ts
 
 import { database, schema, type Transaction } from '@auxx/database'
+import type { CustomerStatus } from '@auxx/database/types'
 import { eq, and, inArray } from 'drizzle-orm'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
@@ -20,7 +21,7 @@ import type { ContactContext } from './types'
 export async function bulkUpdate(
   input: { contactIds: string[] } & ContactContext,
   values: Partial<{
-    status: string
+    status: CustomerStatus
     notes: string
     firstName: string
     lastName: string

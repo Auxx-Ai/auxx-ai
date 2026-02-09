@@ -46,7 +46,7 @@ export type ValidatedAsset = z.infer<typeof assetSchema>
 export const renderInstanceSchema: z.ZodType<any> = z.lazy(() =>
   z.object({
     tag: z.string(),
-    attributes: z.record(z.any()),
+    attributes: z.record(z.string(), z.any()),
     children: z.array(z.union([renderInstanceSchema, z.string()])).optional(),
   })
 )

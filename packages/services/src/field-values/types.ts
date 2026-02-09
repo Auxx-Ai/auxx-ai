@@ -143,6 +143,6 @@ export interface FieldValueRow {
   relatedEntityDefinitionId: string | null
   actorId: string | null
   sortKey: string
-  createdAt: string
-  updatedAt: string
+  createdAt: Date
+  updatedAt: Date
 }

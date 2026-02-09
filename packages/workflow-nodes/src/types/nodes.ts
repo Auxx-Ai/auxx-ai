@@ -52,7 +52,7 @@ export interface ICredentialType {
     iconColor?: string // Tailwind color class
     backgroundColor?: string // Tailwind gradient classes
     borderColor?: string // Tailwind border color
-    category?: 'database' | 'data' | 'email' | 'auth' | 'social' | 'ecommerce' | 'storage' | 'other'
+    category?: 'ai' | 'database' | 'data' | 'email' | 'auth' | 'social' | 'ecommerce' | 'storage' | 'other'
     brandColor?: string // Hex color for custom styling
   }
 }

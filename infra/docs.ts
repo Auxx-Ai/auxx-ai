@@ -7,7 +7,7 @@ export const docs = new sst.aws.Nextjs('AuxxAiDocs', {
   vpc,
   path: 'apps/docs',
   environment: getSelectedEnvVars('docs'),
-  openNextVersion: '3.7.6',
+  openNextVersion: '3.9.15',
   dev: {
     autostart: false, // Optional: set to true if you want auto-start
     command: 'pnpm dev',

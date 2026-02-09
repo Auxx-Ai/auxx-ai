@@ -67,7 +67,7 @@ export const adminWorkflowTemplatesRouter = createTRPCRouter({
         version: z.number().optional(),
         status: z.enum(['public', 'private']).optional(),
         triggerType: z.string().optional(),
-        triggerConfig: z.record(z.any()).optional(),
+        triggerConfig: z.record(z.string(), z.any()).optional(),
         envVars: z
           .array(
             z.object({
@@ -105,7 +105,7 @@ export const adminWorkflowTemplatesRouter = createTRPCRouter({
         version: z.number().optional(),
         status: z.enum(['public', 'private']).optional(),
         triggerType: z.string().optional(),
-        triggerConfig: z.record(z.any()).optional(),
+        triggerConfig: z.record(z.string(), z.any()).optional(),
         envVars: z
           .array(
             z.object({

@@ -51,7 +51,6 @@ export type {
   TableViewError,
   ViewNotFoundError,
   ViewAlreadyExistsError,
-  CannotDeleteDefaultViewError,
 } from './table-view'
 
 // Field View

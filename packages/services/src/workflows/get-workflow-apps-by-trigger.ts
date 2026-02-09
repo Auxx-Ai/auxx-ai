@@ -30,18 +30,7 @@ export async function getWorkflowAppsByTrigger(params: {
     database.query.WorkflowApp.findMany({
       where: and(...whereConditions),
       with: {
-        publishedWorkflow: {
-          where: (publishedWorkflow, { eq, and }) => {
-            const conditions = [eq(publishedWorkflow.triggerType, triggerType)]
-
-            // Filter by entityDefinitionId if provided
-            if (entityDefinitionId) {
-              conditions.push(eq(publishedWorkflow.entityDefinitionId, entityDefinitionId))
-            }
-
-            return and(...conditions)
-          },
-        },
+        publishedWorkflow: true,
         organization: {
           columns: {
             name: true,
@@ -58,9 +47,15 @@ export async function getWorkflowAppsByTrigger(params: {
 
   const workflowApps = dbResult.value
 
-  // Filter out apps without published workflows
+  // Filter apps by published workflow trigger criteria
   const filteredApps = workflowApps
-    .filter((app) => app.publishedWorkflow !== null)
+    .filter((app) => {
+      if (!app.publishedWorkflow) return false
+      if (app.publishedWorkflow.triggerType !== triggerType) return false
+      if (entityDefinitionId && app.publishedWorkflow.entityDefinitionId !== entityDefinitionId)
+        return false
+      return true
+    })
     .map((app) => ({
       workflowApp: app,
       publishedWorkflow: app.publishedWorkflow!,

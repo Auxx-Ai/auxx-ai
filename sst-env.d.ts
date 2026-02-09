@@ -64,10 +64,6 @@ declare module "sst" {
       "type": "sst.aws.Nextjs"
       "url": string
     }
-    "AuxxAiWorker": {
-      "service": string
-      "type": "sst.aws.Service"
-    }
     "BEDROCK_ACCESS_KEY": {
       "type": "sst.sst.Secret"
       "value": string

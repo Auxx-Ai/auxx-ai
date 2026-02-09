@@ -7,7 +7,7 @@ import { fromDatabase } from '../shared/utils'
 import { type RelationshipConfig, getInverseFieldId } from './types'
 import type { CustomFieldNotFoundError, AccessDeniedError } from './errors'
 import { parseResourceFieldId, isResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
-import type { CalcOptions } from '@auxx/lib/custom-fields/field-options'
+import type { CalcOptions } from '@auxx/types/custom-field'
 
 /**
  * Input for deleting a custom field
@@ -122,7 +122,7 @@ export async function deleteCustomField(input: DeleteCustomFieldInput) {
             .update(schema.CustomField)
             .set({
               options: {
-                ...calcField.options,
+                ...(calcField.options as Record<string, unknown>),
                 calc: {
                   ...calcOptions,
                   disabled: true,

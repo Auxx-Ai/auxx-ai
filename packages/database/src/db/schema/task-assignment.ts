@@ -104,8 +104,5 @@ export const TaskAssignment = pgTable(
   ]
 )
 
-/** Type for selecting from TaskAssignment table */
-export type TaskAssignmentEntity = typeof TaskAssignment.$inferSelect
-
 /** Type for inserting into TaskAssignment table */
 export type TaskAssignmentInsert = typeof TaskAssignment.$inferInsert

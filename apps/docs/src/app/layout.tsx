@@ -1,6 +1,6 @@
 // apps/docs/src/app/layout.tsx
 import './global.css'
-import { RootProvider } from 'fumadocs-ui/provider/base'
+import { RootProvider } from 'fumadocs-ui/provider'
 import { Inter } from 'next/font/google'
 import { IS_MAC_SCRIPT } from '@auxx/utils'
 

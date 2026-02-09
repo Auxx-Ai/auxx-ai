@@ -80,8 +80,9 @@ export function extractEmailAddress(email: string): string {
 
   // Try last bracketed content first
   const match = email.match(/<([^<>]+)>$/)
-  if (match && emailPattern.test(match[1].trim())) {
-    return match[1].trim()
+  const matchContent = match?.[1]
+  if (matchContent && emailPattern.test(matchContent.trim())) {
+    return matchContent.trim()
   }
 
   // Fall back to finding any email in the string
@@ -107,9 +108,10 @@ export function normalizeEmail(email: string): string {
   // For Gmail addresses, dots don't matter and + aliases should match
   if (lower.includes('@gmail.com') || lower.includes('@googlemail.com')) {
     const [localPart, domain] = lower.split('@');
+    if (!localPart) return lower;
     // Remove plus addressing and dots from local part
-    const baseLocal = localPart.split('+')[0].replace(/\./g, '');
-    return `${baseLocal}@${domain}`;
+    const baseLocal = localPart.split('+')[0] ?? localPart;
+    return `${baseLocal.replace(/\./g, '')}@${domain}`;
   }
   
   // For other email providers, just lowercase and trim

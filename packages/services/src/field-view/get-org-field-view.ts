@@ -4,8 +4,19 @@ import { database, schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import type { ViewContextType, FieldViewConfig } from '@auxx/lib/conditions'
 import type { TableViewEntity } from '@auxx/database/models'
+
+/** View context type for table views */
+type ViewContextType = 'table' | 'kanban' | 'panel' | 'dialog_create' | 'dialog_edit'
+
+/** Field view configuration for panel and dialog views */
+type FieldViewConfig = {
+  fieldVisibility: Record<string, boolean>
+  fieldOrder: string[]
+  collapsedSections?: string[]
+  fieldLabels?: Record<string, string>
+  showLabels?: boolean
+}
 
 /**
  * Input for getting an organization's default field view

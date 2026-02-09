@@ -24,7 +24,7 @@ import {
 } from './types'
 import { FieldType as FieldTypeEnum, ModelTypeValues } from '@auxx/database/enums'
 import { validateCalcExpression } from '@auxx/utils/calc-expression'
-import type { CalcOptions } from '@auxx/lib/custom-fields/field-options'
+import type { CalcOptions } from '@auxx/types/custom-field'
 import type { ActorOptions } from '@auxx/types/custom-field'
 import type { FieldType } from '@auxx/database/types'
 import type { CustomFieldEntity } from '@auxx/database/models'
@@ -41,7 +41,7 @@ export interface CreateCustomFieldInput {
   required?: boolean
   defaultValue?: string
   /** Field options - select options, file config, currency config, or flat display options */
-  options?: SelectOption[] | { file: FileOptions } | { currency: CurrencyOptions } | DisplayOptions
+  options?: SelectOption[] | { file: FileOptions } | { currency: CurrencyOptions } | { actor: ActorOptions } | { calc: CalcOptions } | DisplayOptions
   addressComponents?: string[]
   icon?: string
   isCustom?: boolean
@@ -536,7 +536,7 @@ async function createRelationshipFieldWithInverse(
   const result = await fromDatabase(
     db === database
       ? database.transaction(performOperation) // Create new transaction
-      : performOperation(db), // Use existing transaction
+      : performOperation(db as Transaction), // Use existing transaction
     'create-relationship-field'
   )
 

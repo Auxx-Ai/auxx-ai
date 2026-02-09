@@ -255,7 +255,7 @@ export type SpecificNode<TType extends string, TData extends BaseNodeData> = {
 export const baseNodeDataSchema = z.object({
   // Core properties
   id: z.string(),
-  type: z.string() as z.ZodType<NodeType>,
+  type: z.string() as unknown as z.ZodType<NodeType>,
   title: z.string(),
   desc: z.string().optional(),
   description: z.string().optional(), // Alias for desc

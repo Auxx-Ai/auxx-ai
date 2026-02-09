@@ -6,7 +6,8 @@ import { ok, err } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import type { TableViewEntity } from '@auxx/database/models'
 import type { ViewAlreadyExistsError } from './errors'
-import type { ViewContextType } from '@auxx/lib/conditions'
+/** View context type for table views */
+type ViewContextType = 'table' | 'kanban' | 'panel' | 'dialog_create' | 'dialog_edit'
 
 /**
  * Input for creating a view

@@ -12,7 +12,7 @@ export const web = new sst.aws.Nextjs('AuxxAiWeb', {
   environment: getSelectedEnvVars('web'),
   // Link secrets and database resources for Resource access
   link: [...getAllSecretsForLinking(), rds, redis, publicBucket, privateBucket],
-  openNextVersion: '3.7.6',
+  openNextVersion: '3.9.15',
   dev: {
     autostart: true,
     command: 'pnpm dev',

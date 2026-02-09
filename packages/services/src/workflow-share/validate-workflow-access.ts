@@ -49,6 +49,8 @@ export async function validateWorkflowAccess(
     return err({
       code: 'ACCESS_DENIED' as const,
       message: 'Web access is not enabled for this workflow',
+      reason: 'Web access not enabled',
+      accessMode: 'web',
     })
   }
 

@@ -22,7 +22,7 @@ export const logEventSchema = z.object({
   message: z.string(),
   severity: severitySchema,
   timestamp: z.string(), // ISO 8601
-  metadata: z.record(z.unknown()),
+  metadata: z.record(z.string(), z.unknown()),
 })
 
 export type LogEvent = z.infer<typeof logEventSchema>

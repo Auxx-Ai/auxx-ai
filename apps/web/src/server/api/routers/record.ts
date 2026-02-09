@@ -235,7 +235,7 @@ export const recordRouter = createTRPCRouter({
         /** API slug like 'tags', 'contacts' */
         apiSlug: z.string().optional(),
         /** Specific field IDs to fetch (all if undefined) - branded FieldId type */
-        fieldIds: z.array(z.string() as z.ZodType<FieldId>).optional(),
+        fieldIds: z.array(z.string() as unknown as z.ZodType<FieldId>).optional(),
         /** Include archived records */
         includeArchived: z.boolean().optional(),
       })

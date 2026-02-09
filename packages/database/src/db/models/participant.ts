@@ -72,7 +72,7 @@ export class ParticipantModel extends BaseModel<
           },
         })
         .from(Participant)
-        .leftJoin(Contact, eq(Contact.id, Participant.contactId))
+        .leftJoin(Contact, eq(Contact.id, Participant.entityInstanceId))
         .limit(limit)
         .$dynamic()
       if (whereParts.length === 1) qy = qy.where(whereParts[0])

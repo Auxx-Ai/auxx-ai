@@ -224,7 +224,7 @@ export async function getCustomFieldsForContacts(organizationId: string) {
           eq(schema.CustomField.active, true)
         )
       )
-      .orderBy(asc(schema.CustomField.position)),
+      .orderBy(asc(schema.CustomField.sortOrder)),
     'get-custom-fields'
   )
 }

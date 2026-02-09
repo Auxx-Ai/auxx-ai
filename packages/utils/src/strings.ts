@@ -71,7 +71,7 @@ export function incrementTitle(baseTitle: string, existingTitles: Set<string>): 
   for (const title of existingTitles) {
     // Check if this title matches our base name pattern
     const titleMatch = title.match(new RegExp(`^${escapedBaseName}\\s+(\\d+)$`))
-    if (titleMatch) {
+    if (titleMatch?.[1]) {
       existingNumbers.push(parseInt(titleMatch[1], 10))
     }
     // Also check if the base name itself (without number) exists

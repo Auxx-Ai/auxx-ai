@@ -401,7 +401,7 @@ export const adminRouter = createTRPCRouter({
       .input(
         z.object({
           organizationId: z.string(),
-          limits: z.record(z.number()),
+          limits: z.record(z.string(), z.number()),
           reason: z.string().optional(),
         })
       )

@@ -5,7 +5,8 @@ import { and, eq, or, desc, asc, inArray } from 'drizzle-orm'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import type { TableViewEntity } from '@auxx/database/models'
-import type { ViewContextType } from '@auxx/lib/conditions'
+/** View context type for table views */
+type ViewContextType = 'table' | 'kanban' | 'panel' | 'dialog_create' | 'dialog_edit'
 
 /** Context types shown in table view selectors (excludes panel/dialog) */
 const TABLE_CONTEXT_TYPES: ViewContextType[] = ['table', 'kanban']
