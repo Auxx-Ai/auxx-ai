@@ -3,6 +3,9 @@
 # Sets up GitHub environments, secrets, and variables for CI/CD.
 # Reads values from your local .env file.
 #
+# - Strips surrounding quotes from values
+# - Skips vars that SST handles at deploy/runtime (NEXT_PUBLIC_BASE_URL, REDIS_HOST, etc.)
+#
 # Usage:
 #   gh auth login          # if not already authenticated
 #   bash scripts/setup-github-ci.sh
@@ -17,9 +20,33 @@ if [ ! -f "$ENV_FILE" ]; then
   exit 1
 fi
 
-# Helper: read a value from .env by key
+# Helper: read a value from .env by key, strip surrounding quotes
 env_val() {
-  grep -E "^$1=" "$ENV_FILE" | head -1 | cut -d'=' -f2-
+  local raw
+  raw=$(grep -E "^$1=" "$ENV_FILE" | head -1 | cut -d'=' -f2-)
+  # Strip surrounding single or double quotes
+  raw="${raw%\"}"
+  raw="${raw#\"}"
+  raw="${raw%\'}"
+  raw="${raw#\'}"
+  echo "$raw"
+}
+
+# Vars that SST computes from infrastructure — don't push from .env
+# SST sets NEXT_PUBLIC_BASE_URL from getAppDomain()
+# SST sets REDIS_HOST/PORT/PASSWORD and DATABASE_URL from infra outputs
+SST_MANAGED=(
+  NEXT_PUBLIC_BASE_URL
+  NEXT_PUBLIC_APP_URL
+  REDIS_HOST
+  REDIS_PORT
+)
+
+is_sst_managed() {
+  for v in "${SST_MANAGED[@]}"; do
+    [ "$1" = "$v" ] && return 0
+  done
+  return 1
 }
 
 echo "=== Step 1: Create GitHub Environments ==="
@@ -63,6 +90,7 @@ echo ""
 
 echo "=== Step 3: Set Repository Variables ==="
 # These are non-sensitive — visible to anyone with repo access
+# Vars managed by SST are skipped (they compute the real values at deploy time)
 
 VARIABLES=(
   NEXT_PUBLIC_BASE_URL
@@ -89,6 +117,10 @@ VARIABLES=(
 )
 
 for key in "${VARIABLES[@]}"; do
+  if is_sst_managed "$key"; then
+    echo "  SKIPPED (SST-managed): $key"
+    continue
+  fi
   val=$(env_val "$key")
   if [ -n "$val" ]; then
     echo "  Setting variable: $key = $val"
@@ -103,9 +135,11 @@ echo ""
 
 echo "=== Setup Complete ==="
 echo ""
+echo "SST-managed vars were skipped (SST computes them at deploy time):"
+for v in "${SST_MANAGED[@]}"; do
+  echo "  - $v"
+done
+echo ""
 echo "Next steps:"
 echo "  1. Push to main to trigger a dev deploy"
 echo "  2. Watch it at: https://github.com/$REPO/actions"
-echo ""
-echo "If dev and prod need DIFFERENT values (e.g. NEXT_PUBLIC_BASE_URL),"
-echo "set them per-environment in GitHub Settings > Environments instead."

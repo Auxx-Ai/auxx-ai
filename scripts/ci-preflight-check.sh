@@ -16,9 +16,25 @@ pass() { echo "  ✓ $1"; }
 fail() { echo "  ✗ $1"; ERRORS=$((ERRORS+1)); }
 warn() { echo "  ! $1"; WARNINGS=$((WARNINGS+1)); }
 
-# Helper: read a value from .env by key
+# Helper: read a value from .env by key, strip surrounding quotes
 env_val() {
-  grep -E "^$1=" "$ENV_FILE" | head -1 | cut -d'=' -f2-
+  local raw
+  raw=$(grep -E "^$1=" "$ENV_FILE" | head -1 | cut -d'=' -f2-)
+  raw="${raw%\"}"
+  raw="${raw#\"}"
+  raw="${raw%\'}"
+  raw="${raw#\'}"
+  echo "$raw"
+}
+
+# Vars that SST computes from infrastructure — setup script will skip these
+SST_MANAGED=(NEXT_PUBLIC_BASE_URL NEXT_PUBLIC_APP_URL REDIS_HOST REDIS_PORT)
+
+is_sst_managed() {
+  for v in "${SST_MANAGED[@]}"; do
+    [ "$1" = "$v" ] && return 0
+  done
+  return 1
 }
 
 echo "=== 1. GitHub CLI ==="
@@ -103,7 +119,7 @@ else
   pass ".env file found ($(wc -l < "$ENV_FILE" | tr -d ' ') lines)"
 
   echo ""
-  echo "  --- Secrets ---"
+  echo "  --- Secrets (will be pushed) ---"
   SECRETS=(
     REDIS_PASSWORD
     STRIPE_SECRET_KEY
@@ -122,7 +138,6 @@ else
   for key in "${SECRETS[@]}"; do
     val=$(env_val "$key")
     if [ -n "$val" ]; then
-      # Show first 4 chars only
       preview="${val:0:4}****"
       pass "$key ($preview)"
     else
@@ -131,10 +146,8 @@ else
   done
 
   echo ""
-  echo "  --- Variables ---"
+  echo "  --- Variables (will be pushed) ---"
   VARIABLES=(
-    NEXT_PUBLIC_BASE_URL
-    NEXT_PUBLIC_APP_URL
     NEXT_PUBLIC_S3_REGION
     NEXT_PUBLIC_S3_BUCKET
     NEXT_PUBLIC_PUSHER_KEY
@@ -143,8 +156,6 @@ else
     NEXT_PUBLIC_POSTHOG_HOST
     NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
     CLOUDFRONT_CERT_ARN
-    REDIS_HOST
-    REDIS_PORT
     MAILGUN_DOMAIN
     MAILGUN_REGION
     PUSHER_APP_ID
@@ -161,6 +172,17 @@ else
       pass "$key = $val"
     else
       warn "$key — missing from .env (will be skipped)"
+    fi
+  done
+
+  echo ""
+  echo "  --- SST-managed (will be skipped) ---"
+  for key in "${SST_MANAGED[@]}"; do
+    val=$(env_val "$key")
+    if [ -n "$val" ]; then
+      pass "$key = $val (SST sets this at deploy time, won't push)"
+    else
+      pass "$key (not in .env, SST handles it)"
     fi
   done
 fi
