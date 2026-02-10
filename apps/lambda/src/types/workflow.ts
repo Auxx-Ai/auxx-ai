@@ -63,6 +63,21 @@ export interface WorkflowSDK {
   /** Set workflow variable value */
   setVariable: (name: string, value: any) => void
 
+  /** Get environment variable */
+  getEnvironmentVariable: (name: string) => any
+
+  /** Get system variable */
+  getSystemVariable: (name: string) => any
+
+  /** Get trigger data */
+  getTriggerData: () => Record<string, any> | undefined
+
+  /** Get specific field from a previous node's output */
+  getNodeOutput: (nodeId: string, fieldName: string) => any
+
+  /** Get entire output object from a previous node */
+  getNodeOutputs: (nodeId: string) => Record<string, any> | undefined
+
   /** Log message with level */
   log: (level: 'info' | 'warn' | 'error', message: string, data?: any) => void
 
@@ -76,8 +91,8 @@ export interface WorkflowSDK {
   /** Get current user */
   getCurrentUser: () => {
     id: string
-    email: string
-    name: string
+    email?: string | null
+    name?: string | null
     avatar?: string
     role?: string
   }
@@ -143,6 +158,10 @@ export interface WorkflowExecutionContext extends RuntimeContext {
   executionId: string
   nodeId: string
   variables: Record<string, any>
+  environmentVariables?: Record<string, any>
+  systemVariables?: Record<string, any>
+  triggerData?: Record<string, any>
+  nodeOutputs?: Record<string, Record<string, any>>
   cache?: {
     get: (key: string) => Promise<any>
     set: (key: string, value: any, ttl?: number) => Promise<void>

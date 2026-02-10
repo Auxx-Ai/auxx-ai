@@ -1,19 +1,19 @@
 // import withBundleAnalyzer from '@next/bundle-analyzer'
 import path from 'path'
+import { fileURLToPath } from 'url'
+
+const fileName = fileURLToPath(import.meta.url)
+const dirName = path.dirname(fileName)
 /**
  * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially useful
  * for Docker builds.
  */
-// import { env } from '@auxx/config/server'
-
-// @ts-ignore
-import { WEBAPP_URL } from '@auxx/config/client'
-// import {path} from 'path'
-// const path = require('path')
-console.log('FROM NEXT CONFIG: WEBAPP_URL', WEBAPP_URL)
 
 /** @type {import("next").NextConfig} */
 const nextConfig = {
+  generateBuildId: async () => {
+    return process.env.NEXT_PUBLIC_GIT_SHA || 'development'
+  },
   output: 'standalone',
   transpilePackages: [
     '@auxx/config',
@@ -48,7 +48,7 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   turbopack: {
-    root: path.join(__dirname, '../..'),
+    root: path.join(dirName, '../..'),
   },
 }
 

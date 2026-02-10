@@ -14,17 +14,11 @@ export const serverFunctionExecutor = $dev
   // Use VPC for access to RDS/Redis if needed
   vpc,
 
-  // Handler (Docker container will override this)
-  handler: 'index.handler',
-
-  // Runtime: Custom container with Deno
-  runtime: 'container',
-
-  // Dockerfile location
-  image: {
-    context: '.',
-    dockerfile: 'apps/lambda/Dockerfile',
-  },
+  // Custom Deno runtime compiled as bootstrap binary
+  runtime: 'provided.al2023',
+  handler: 'bootstrap',
+  architecture: 'arm64',
+  bundle: 'apps/lambda/dist',
 
   // Resource limits
   timeout: '30 seconds',
@@ -33,7 +27,6 @@ export const serverFunctionExecutor = $dev
   // Environment variables
   environment: {
     NODE_ENV: $dev ? 'development' : 'production',
-    AWS_REGION: aws.getRegionOutput().name,
     BUNDLES_BUCKET_NAME: privateBucket.name, // Server bundles stored in private bucket
   },
 

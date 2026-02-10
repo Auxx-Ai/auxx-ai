@@ -13,6 +13,7 @@ export const rds = new sst.aws.Postgres('AuxxAiRds', {
     host: 'localhost',
     port: 5432,
   },
+  version: '16.11',
   instance: 't4g.micro',
   database: 'auxxai',
   username: 'postgres',

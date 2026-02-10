@@ -9,10 +9,10 @@
     "dev:down": "docker compose down",
     "dev:restart": "docker compose restart lambda-dev",
     "dev:bash": "docker compose exec lambda-dev bash",
-    "build": "pnpm --filter @auxx/sdk build && docker build -t auxx-lambda -f Dockerfile ../..",
+    "build": "pnpm --filter @auxx/sdk build && ./build.sh",
     "test": "deno test --allow-all",
     "typecheck": "deno check src/index.ts",
-    "clean": "docker compose down -v && rm -rf .deno"
+    "clean": "docker compose down -v && rm -rf .deno dist"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "catalog:",

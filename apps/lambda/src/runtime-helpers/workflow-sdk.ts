@@ -132,7 +132,7 @@ export function createWorkflowExecutionContext(
     nodeOutputs?: Record<string, Record<string, any>>
     user: {
       id: string
-      email: string
+      email?: string | null
       name: string
     }
     organization: {

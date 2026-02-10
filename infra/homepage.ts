@@ -6,6 +6,7 @@ import { getHomepageSecretsForLinking, getSelectedEnvVars } from './secrets'
 export const homepage = new sst.aws.Nextjs('AuxxAiHomepage', {
   vpc,
   path: 'apps/homepage',
+  buildCommand: 'pnpm run build:opennext',
   environment: getSelectedEnvVars('homepage'),
   link: getHomepageSecretsForLinking(),
   openNextVersion: '3.9.15',

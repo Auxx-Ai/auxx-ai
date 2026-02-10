@@ -2,34 +2,41 @@ ARG PROJECT="worker"
 ARG PROJECT_PATH="apps/worker"
 
 # Base stage with pnpm
-FROM node:22-alpine AS base
+FROM node:22-bookworm-slim AS base
 
 # Install build dependencies
-RUN apk add --no-cache libc6-compat python3 make g++ gcc
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    make \
+    g++ \
+    gcc \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # Enable corepack for pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@10.17.0 --activate
 
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 
 # Install turbo
-RUN pnpm add -g turbo
+RUN pnpm add -g turbo@2.5.2
 
-# Build stage - build the entire workspace
+# Build stage - build the worker target
 FROM base AS builder
 
 WORKDIR /app
+ENV NODE_OPTIONS=--max-old-space-size=1536
 
 # Copy entire monorepo
 COPY . .
 
 # Install ALL dependencies (dev + prod)
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-    pnpm install --no-frozen-lockfile
+    pnpm install --no-frozen-lockfile --filter @auxx/worker...
 
-# Build the worker and its dependencies
-RUN pnpm turbo build --filter="@auxx/worker..."
+# Build worker and its workspace dependencies (one at a time to limit memory)
+RUN pnpm --filter @auxx/worker... --workspace-concurrency=1 build
 
 # Deploy stage - create standalone package
 FROM base AS deploy
@@ -53,17 +60,14 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm --filter @auxx/worker --prod deploy --legacy /deployed
 
 # Runner stage - minimal production image
-FROM node:22-alpine AS runner
+FROM node:22-bookworm-slim AS runner
 
 ENV NODE_ENV=production
 ENV PORT=8080
 
-# Install runtime dependencies only
-RUN apk add --no-cache libc6-compat
-
 # Create non-root user
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 worker
+RUN groupadd --system --gid 1001 nodejs && \
+    useradd --system --uid 1001 --gid nodejs worker
 
 # Copy the deployed package
 COPY --from=deploy --chown=worker:nodejs /deployed /app

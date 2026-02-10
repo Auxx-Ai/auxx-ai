@@ -9,21 +9,15 @@ export default defineConfig({
   clean: true,
   dts: false,
   sourcemap: false,
-  treeshake: true,
-  splitting: true, // Enable code splitting to avoid one big file
+  treeshake: false,
+  splitting: false,
   platform: 'node',
 
-  // Bundle everything
-  skipNodeModulesBundle: false,
+  // Don't bundle node_modules — pnpm deploy handles runtime deps
+  skipNodeModulesBundle: true,
 
-  // Force workspace packages to be bundled
-  noExternal: [
-    /^@auxx\//,  // All @auxx/* packages
-  ],
-
-  // Keep these external
+  // Keep native/binary modules external as a safety net
   external: [
-    // Native binary modules (can't be bundled)
     'sharp',
     'canvas',
     'pg-native',
@@ -31,8 +25,6 @@ export default defineConfig({
     'esbuild',
     '@mapbox/node-pre-gyp',
     'bcrypt',
-
-    // Core runtime dependencies
     'bullmq',
     'ioredis',
     'pg',

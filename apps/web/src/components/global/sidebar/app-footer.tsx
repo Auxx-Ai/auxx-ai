@@ -43,7 +43,7 @@ import {
 } from '@auxx/ui/components/sidebar'
 import { BorderBeam } from '@auxx/ui/components/border-beam'
 import { NotificationCenter } from '../notifications/notification-center'
-import { HOMEPAGE_URL, WEBAPP_URL } from '@auxx/config/client'
+import { HOMEPAGE_URL, WEBAPP_URL, getAppVersion } from '@auxx/config/client'
 // import { PlanChangeSummary } from '~/app/(protected)/app/settings/plans/_components/plan-change-summary'
 import { useSubscription } from '~/hooks/use-subscription'
 import { PlanChangeSummary } from '~/components/subscriptions/plan-change-summary'
@@ -53,6 +53,7 @@ type Props = {}
 function AppFooter({}: Props) {
   const pathname = usePathname()
   const [isHelpOpen, setIsHelpOpen] = useState(false)
+  const version = getAppVersion()
 
   function isActive(url: string) {
     return pathname.startsWith(url) || pathname === url
@@ -236,6 +237,10 @@ function AppFooter({}: Props) {
                   </DropdownMenuSub>
                 </DropdownMenuItem>
               </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <div className="px-2 py-1.5 text-[11px] text-muted-foreground/60">
+                {version.version} ({version.sha})
+              </div>
             </DropdownMenuContent>
           </DropdownMenu>
         </SidebarMenuItem>

@@ -65,6 +65,23 @@ jobs:
       - name: Install deps
         run: pnpm i --frozen-lockfile=false
 
+      - name: Check next.config safety
+        run: pnpm run check:next-config-safety
+
+      - name: Check OpenNext build (web)
+        run: pnpm run check:opennext:web
+
+      - name: Check OpenNext build (docs)
+        run: pnpm run check:opennext:docs
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Build Lambda bootstrap binary
+        run: pnpm --filter @auxx/lambda build
+
       - name: Ensure ECR repository exists (sst-asset)
         env:
           AWS_REGION: us-west-1
@@ -100,6 +117,9 @@ jobs:
 
       - name: Export environment variables (dev)
         run: |
+          echo "NEXT_PUBLIC_GIT_SHA=${{ github.sha }}" >> $GITHUB_ENV
+          echo "NEXT_PUBLIC_BUILD_TIME=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_ENV
+          echo "NEXT_PUBLIC_APP_VERSION=${{ github.ref_name }}" >> $GITHUB_ENV
           echo "STAGE=dev" >> $GITHUB_ENV
           echo "AWS_REGION=us-west-1" >> $GITHUB_ENV
           echo "CLOUDFRONT_CERT_ARN=${{ vars.CLOUDFRONT_CERT_ARN }}" >> $GITHUB_ENV
@@ -282,6 +302,23 @@ jobs:
       - name: Install deps
         run: pnpm i --frozen-lockfile=false
 
+      - name: Check next.config safety
+        run: pnpm run check:next-config-safety
+
+      - name: Check OpenNext build (web)
+        run: pnpm run check:opennext:web
+
+      - name: Check OpenNext build (docs)
+        run: pnpm run check:opennext:docs
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Build Lambda bootstrap binary
+        run: pnpm --filter @auxx/lambda build
+
       - name: Ensure ECR repository exists (sst-asset)
         env:
           AWS_REGION: us-west-1
@@ -317,6 +354,9 @@ jobs:
 
       - name: Export environment variables (prod)
         run: |
+          echo "NEXT_PUBLIC_GIT_SHA=${{ github.sha }}" >> $GITHUB_ENV
+          echo "NEXT_PUBLIC_BUILD_TIME=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_ENV
+          echo "NEXT_PUBLIC_APP_VERSION=${{ github.ref_name }}" >> $GITHUB_ENV
           echo "STAGE=prod" >> $GITHUB_ENV
           echo "AWS_REGION=us-west-1" >> $GITHUB_ENV
           echo "CLOUDFRONT_CERT_ARN=${{ vars.CLOUDFRONT_CERT_ARN }}" >> $GITHUB_ENV

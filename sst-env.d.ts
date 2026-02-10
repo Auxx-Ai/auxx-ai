@@ -64,6 +64,10 @@ declare module "sst" {
       "type": "sst.aws.Nextjs"
       "url": string
     }
+    "AuxxAiWorker": {
+      "service": string
+      "type": "sst.aws.Service"
+    }
     "BEDROCK_ACCESS_KEY": {
       "type": "sst.sst.Secret"
       "value": string
@@ -216,6 +220,11 @@ declare module "sst" {
     "SUPER_ADMIN_EMAIL": {
       "type": "sst.sst.Secret"
       "value": string
+    }
+    "ServerFunctionExecutor": {
+      "name": string
+      "type": "sst.aws.Function"
+      "url": string
     }
   }
 }

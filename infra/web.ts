@@ -8,6 +8,7 @@ import { publicBucket, privateBucket } from './storage'
 export const web = new sst.aws.Nextjs('AuxxAiWeb', {
   vpc,
   path: 'apps/web',
+  buildCommand: 'pnpm run build:opennext',
   // Minimal env; secrets come via Resource links
   environment: getSelectedEnvVars('web'),
   // Link secrets and database resources for Resource access

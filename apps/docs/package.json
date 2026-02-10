@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "build": "next build --turbopack",
+    "build:opennext": "open-next build",
+    "check:opennext": "open-next build",
     "dev": "next dev --turbopack --port 3004",
     "start": "next start --port 3004",
     "postinstall": "fumadocs-mdx",
@@ -21,6 +23,7 @@
     "react-dom": "catalog:"
   },
   "devDependencies": {
+    "@opennextjs/aws": "3.9.15",
     "@tailwindcss/postcss": "catalog:",
     "@types/mdx": "^2.0.13",
     "@types/node": "catalog:",
