@@ -22,6 +22,7 @@ export default $config({
       router: infra.router.distributionID,
       routerDistribution: infra.router.distributionID,
       routerUrl: infra.router.url,
+      databaseDeployFunctionName: infra.databaseDeployFunction.name,
     }
   },
 })

@@ -1,3 +1,4 @@
+# .github/workflows/sst-deploy.yml
 name: SST Deploy
 
 on:
@@ -6,38 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  deploy-infra-dev:
-    name: Deploy infra (dev)
-    runs-on: ubuntu-latest
-    environment: dev
-    permissions:
-      id-token: write
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::486437023232:role/AuxxGithubDeployRole
-          aws-region: us-west-1
-      - name: Install deps
-        run: pnpm i --frozen-lockfile=false
-      - name: Deploy infra (dev)
-        working-directory: infra/infra-sst
-        env:
-          AWS_REGION: us-west-1
-          STAGE: dev
-        run: pnpm sst:deploy -- --stage=${STAGE}
-
   deploy-dev:
-    needs: [deploy-infra-dev]
     name: Deploy dev (us-west-1)
     runs-on: ubuntu-latest
     environment: dev
@@ -89,31 +59,6 @@ jobs:
           set -e
           aws ecr describe-repositories --repository-names sst-asset >/dev/null 2>&1 || \
             aws ecr create-repository --repository-name sst-asset --image-scanning-configuration scanOnPush=true --encryption-configuration encryptionType=AES256
-
-      - name: Export infra VPC outputs (dev; best-effort)
-        env:
-          AWS_REGION: us-west-1
-          STAGE: dev
-        run: |
-          set +e
-          STACK_NAME="auxx-ai-infra-${STAGE}-Vpc"
-          echo "Attempting to read VPC outputs from $STACK_NAME"
-          OUT=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" \
-            --query 'Stacks[0].Outputs[?OutputKey==`vpcId` || OutputKey==`privateSubnets` || OutputKey==`publicSubnets`].[OutputKey,OutputValue]' \
-            --output text 2>/dev/null)
-          if [ $? -eq 0 ] && [ -n "$OUT" ]; then
-            APP_VPC_ID=$(echo "$OUT" | awk '$1=="vpcId"{print $2}')
-            APP_PRIVATE_SUBNETS=$(echo "$OUT" | awk '$1=="privateSubnets"{print $2}')
-            APP_PUBLIC_SUBNETS=$(echo "$OUT" | awk '$1=="publicSubnets"{print $2}')
-            echo "APP_VPC_ID=$APP_VPC_ID" >> $GITHUB_ENV
-            echo "APP_PRIVATE_SUBNETS=$APP_PRIVATE_SUBNETS" >> $GITHUB_ENV
-            echo "APP_PUBLIC_SUBNETS=$APP_PUBLIC_SUBNETS" >> $GITHUB_ENV
-            echo "Using shared VPC: $APP_VPC_ID"
-          else
-            echo "CloudFormation stack $STACK_NAME not found. Proceeding without shared VPC; app will create its own."
-          fi
-
-      # moved to after deploy
 
       - name: Export environment variables (dev)
         run: |
@@ -172,364 +117,37 @@ jobs:
       - name: Deploy dev
         run: pnpm sst:deploy
 
-      - name: Export app stack outputs (dev)
+      - name: Run DB migrations (dev)
         env:
           AWS_REGION: us-west-1
           STAGE: dev
         run: |
-          APP_STACK="auxx-ai-${STAGE}"
-          OUT=$(aws cloudformation describe-stacks --stack-name "$APP_STACK" \
-            --query 'Stacks[0].Outputs[?OutputKey==`ecsClusterName` || OutputKey==`ecsClusterArn` || OutputKey==`dbMigrateServiceName` || OutputKey==`dbMigrateServiceArn` || OutputKey==`workerServiceArn` || OutputKey==`appPrivateSubnets` || OutputKey==`appPublicSubnets`].[OutputKey,OutputValue]' \
+          # Get the migration Lambda function name from SST outputs
+          FUNC_NAME=$(aws cloudformation describe-stacks \
+            --stack-name "auxxai-app-${STAGE}" \
+            --query 'Stacks[0].Outputs[?contains(OutputKey, `databaseDeployFunctionName`)].OutputValue' \
             --output text 2>/dev/null || true)
-          ECS_CLUSTER_NAME=$(echo "$OUT" | awk '$1=="ecsClusterName"{print $2}')
-          DB_MIGRATE_SERVICE=$(echo "$OUT" | awk '$1=="dbMigrateServiceName"{print $2}')
-          ECS_CLUSTER_ARN=$(echo "$OUT" | awk '$1=="ecsClusterArn"{print $2}')
-          DB_MIGRATE_SERVICE_ARN=$(echo "$OUT" | awk '$1=="dbMigrateServiceArn"{print $2}')
-          WORKER_SERVICE_ARN=$(echo "$OUT" | awk '$1=="workerServiceArn"{print $2}')
-          APP_PRIVATE_SUBNETS_FROM_APP=$(echo "$OUT" | awk '$1=="appPrivateSubnets"{print $2}')
-          APP_PUBLIC_SUBNETS_FROM_APP=$(echo "$OUT" | awk '$1=="appPublicSubnets"{print $2}')
-          echo "ECS_CLUSTER_NAME=$ECS_CLUSTER_NAME" >> $GITHUB_ENV
-          echo "DB_MIGRATE_SERVICE=$DB_MIGRATE_SERVICE" >> $GITHUB_ENV
-          echo "ECS_CLUSTER_ARN=$ECS_CLUSTER_ARN" >> $GITHUB_ENV
-          echo "DB_MIGRATE_SERVICE_ARN=$DB_MIGRATE_SERVICE_ARN" >> $GITHUB_ENV
-          echo "WORKER_SERVICE_ARN=$WORKER_SERVICE_ARN" >> $GITHUB_ENV
-          # If infra VPC outputs were not found, fall back to app VPC subnets
-          if [ -z "$APP_PRIVATE_SUBNETS" ] && [ -n "$APP_PRIVATE_SUBNETS_FROM_APP" ]; then
-            echo "APP_PRIVATE_SUBNETS=$APP_PRIVATE_SUBNETS_FROM_APP" >> $GITHUB_ENV
-          fi
-          if [ -z "$APP_PUBLIC_SUBNETS" ] && [ -n "$APP_PUBLIC_SUBNETS_FROM_APP" ]; then
-            echo "APP_PUBLIC_SUBNETS=$APP_PUBLIC_SUBNETS_FROM_APP" >> $GITHUB_ENV
+
+          if [ -z "$FUNC_NAME" ] || [ "$FUNC_NAME" = "None" ]; then
+            echo "WARNING: Could not find migration function in stack outputs. Skipping."
+            exit 0
           fi
 
-      - name: Validate app outputs (dev)
-        run: |
-          errs=0
-          for v in ECS_CLUSTER_ARN DB_MIGRATE_SERVICE_ARN WORKER_SERVICE_ARN; do
-            val=$(printenv $v)
-            if [ -z "$val" ] || [ "$val" = "None" ]; then
-              echo "Missing required output: $v"
-              errs=$((errs+1))
-            fi
-          done
-          if [ $errs -gt 0 ]; then
-            echo "One or more required ARNs are missing from app outputs."
-            echo "Tip: On first deploy, outputs may be empty until CloudFormation finishes."
-            echo "Tip: Re-run this workflow once the stack completes, or run 'pnpm sst:deploy' again."
+          echo "Invoking migration Lambda: $FUNC_NAME"
+          INVOKE_OUTPUT=$(aws lambda invoke \
+            --function-name "$FUNC_NAME" \
+            --payload '{"action":"migrate"}' \
+            --cli-binary-format raw-in-base64-out \
+            /tmp/migrate-response.json)
+
+          echo "Invoke metadata: $INVOKE_OUTPUT"
+          echo "Lambda response:"
+          cat /tmp/migrate-response.json
+
+          # Check for Lambda-level errors (FunctionError appears in invoke metadata)
+          if echo "$INVOKE_OUTPUT" | grep -q "FunctionError"; then
+            echo "Migration failed!"
             exit 1
           fi
 
-      - name: Run DB migrations (dev via ECS one-off)
-        env:
-          AWS_REGION: us-west-1
-        run: |
-          # Discover cluster and service names robustly
-          if [ -z "$ECS_CLUSTER_NAME" ] || [ "$ECS_CLUSTER_NAME" = "None" ]; then
-            # Try common naming pattern
-            ECS_CLUSTER_NAME="auxx-ai-${STAGE}-Cluster"
-          fi
-          if [ -z "$DB_MIGRATE_SERVICE" ] || [ "$DB_MIGRATE_SERVICE" = "None" ]; then
-            DB_MIGRATE_SERVICE="auxx-ai-${STAGE}-AppDbMigrate"
-          fi
-          echo "ClusterName=$ECS_CLUSTER_NAME ClusterArn=$ECS_CLUSTER_ARN Service=$DB_MIGRATE_SERVICE ServiceArn=$DB_MIGRATE_SERVICE_ARN"
-          # Resolve task definition from the DbMigrate service
-          CLUSTER_REF=${ECS_CLUSTER_ARN:-$ECS_CLUSTER_NAME}
-          SERVICE_REF=${DB_MIGRATE_SERVICE_ARN:-$DB_MIGRATE_SERVICE}
-          TASK_DEF=$(aws ecs describe-services --cluster "$CLUSTER_REF" --services "$SERVICE_REF" --query 'services[0].taskDefinition' --output text 2>/dev/null)
-          if [ -z "$TASK_DEF" ] || [ "$TASK_DEF" = "None" ]; then
-            echo "Could not resolve DbMigrate service ($DB_MIGRATE_SERVICE). Listing services to find a match..."
-            SERVICES=$(aws ecs list-services --cluster "$CLUSTER_REF" --query 'serviceArns[]' --output text | tr '\t' '\n')
-            for SVC_ARN in $SERVICES; do
-              NAME=$(basename "$SVC_ARN")
-              if echo "$NAME" | grep -qi 'DbMigrate'; then
-                DB_MIGRATE_SERVICE="$NAME"
-                TASK_DEF=$(aws ecs describe-services --cluster "$CLUSTER_REF" --services "$DB_MIGRATE_SERVICE" --query 'services[0].taskDefinition' --output text)
-                break
-              fi
-            done
-          fi
-          if [ -z "$TASK_DEF" ] || [ "$TASK_DEF" = "None" ]; then
-            echo "Migration service not found; skipping migrations."
-            exit 1
-          fi
-          echo "TASK_DEF=$TASK_DEF"
-          # Try to reuse security groups from the Worker service for DB access
-          WORKER_SERVICE=${WORKER_SERVICE_ARN:-"auxx-ai-${STAGE}-AppWorker"}
-          WORKER_SG=$(aws ecs describe-services --cluster "$CLUSTER_REF" --services "$WORKER_SERVICE" \
-            --query 'services[0].networkConfiguration.awsvpcConfiguration.securityGroups' --output text 2>/dev/null || true)
-          if [ -n "$WORKER_SG" ] && [ "$WORKER_SG" != "None" ]; then
-            NET_CONF="awsvpcConfiguration={subnets=[$APP_PRIVATE_SUBNETS],securityGroups=[$WORKER_SG],assignPublicIp=DISABLED}"
-          else
-            NET_CONF="awsvpcConfiguration={subnets=[$APP_PRIVATE_SUBNETS],assignPublicIp=DISABLED}"
-          fi
-          TASK_ARN=$(aws ecs run-task --cluster "$CLUSTER_REF" --launch-type FARGATE --task-definition "$TASK_DEF" --network-configuration "$NET_CONF" --query 'tasks[0].taskArn' --output text)
-          echo "TASK_ARN=$TASK_ARN"
-          # Wait for task to stop and check exit code
-          aws ecs wait tasks-stopped --cluster "$CLUSTER_REF" --tasks "$TASK_ARN"
-          EXIT_CODE=$(aws ecs describe-tasks --cluster "$CLUSTER_REF" --tasks "$TASK_ARN" --query 'tasks[0].containers[0].exitCode' --output text)
-          echo "EXIT_CODE=$EXIT_CODE"
-          if [ "$EXIT_CODE" != "0" ]; then
-            echo "Migration task failed"
-            exit 1
-          fi
-
-  deploy-prod:
-    needs: [deploy-infra-prod]
-    if: startsWith(github.ref, 'refs/tags/v')
-    name: Deploy prod (us-west-1)
-    runs-on: ubuntu-latest
-    environment: prod
-    permissions:
-      id-token: write
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::486437023232:role/AuxxGithubDeployRole
-          aws-region: us-west-1
-
-      - name: Install deps
-        run: pnpm i --frozen-lockfile=false
-
-      - name: Check next.config safety
-        run: pnpm run check:next-config-safety
-
-      - name: Check OpenNext build (web)
-        run: pnpm run check:opennext:web
-
-      - name: Check OpenNext build (docs)
-        run: pnpm run check:opennext:docs
-
-      - name: Setup Deno
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-
-      - name: Build Lambda bootstrap binary
-        run: pnpm --filter @auxx/lambda build
-
-      - name: Ensure ECR repository exists (sst-asset)
-        env:
-          AWS_REGION: us-west-1
-        run: |
-          set -e
-          aws ecr describe-repositories --repository-names sst-asset >/dev/null 2>&1 || \
-            aws ecr create-repository --repository-name sst-asset --image-scanning-configuration scanOnPush=true --encryption-configuration encryptionType=AES256
-
-      - name: Export infra VPC outputs (prod; best-effort)
-        env:
-          AWS_REGION: us-west-1
-          STAGE: prod
-        run: |
-          set +e
-          STACK_NAME="auxx-ai-infra-${STAGE}-Vpc"
-          echo "Attempting to read VPC outputs from $STACK_NAME"
-          OUT=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" \
-            --query 'Stacks[0].Outputs[?OutputKey==`vpcId` || OutputKey==`privateSubnets` || OutputKey==`publicSubnets`].[OutputKey,OutputValue]' \
-            --output text 2>/dev/null)
-          if [ $? -eq 0 ] && [ -n "$OUT" ]; then
-            APP_VPC_ID=$(echo "$OUT" | awk '$1=="vpcId"{print $2}')
-            APP_PRIVATE_SUBNETS=$(echo "$OUT" | awk '$1=="privateSubnets"{print $2}')
-            APP_PUBLIC_SUBNETS=$(echo "$OUT" | awk '$1=="publicSubnets"{print $2}')
-            echo "APP_VPC_ID=$APP_VPC_ID" >> $GITHUB_ENV
-            echo "APP_PRIVATE_SUBNETS=$APP_PRIVATE_SUBNETS" >> $GITHUB_ENV
-            echo "APP_PUBLIC_SUBNETS=$APP_PUBLIC_SUBNETS" >> $GITHUB_ENV
-            echo "Using shared VPC: $APP_VPC_ID"
-          else
-            echo "CloudFormation stack $STACK_NAME not found. Proceeding without shared VPC; app will create its own."
-          fi
-
-      # moved to after deploy
-
-      - name: Export environment variables (prod)
-        run: |
-          echo "NEXT_PUBLIC_GIT_SHA=${{ github.sha }}" >> $GITHUB_ENV
-          echo "NEXT_PUBLIC_BUILD_TIME=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_ENV
-          echo "NEXT_PUBLIC_APP_VERSION=${{ github.ref_name }}" >> $GITHUB_ENV
-          echo "STAGE=prod" >> $GITHUB_ENV
-          echo "AWS_REGION=us-west-1" >> $GITHUB_ENV
-          echo "CLOUDFRONT_CERT_ARN=${{ vars.CLOUDFRONT_CERT_ARN }}" >> $GITHUB_ENV
-          # Temporary DB URL for build-time env validation only; not used at runtime
-          echo "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder" >> $GITHUB_ENV
-          # Public envs
-          echo "NEXT_PUBLIC_BASE_URL=${{ vars.NEXT_PUBLIC_BASE_URL }}" >> $GITHUB_ENV
-          echo "NEXT_PUBLIC_APP_URL=${{ vars.NEXT_PUBLIC_APP_URL }}" >> $GITHUB_ENV
-          echo "NEXT_PUBLIC_S3_REGION=${{ vars.NEXT_PUBLIC_S3_REGION }}" >> $GITHUB_ENV
-          echo "NEXT_PUBLIC_S3_BUCKET=${{ vars.NEXT_PUBLIC_S3_BUCKET }}" >> $GITHUB_ENV
-          echo "NEXT_PUBLIC_PUSHER_KEY=${{ vars.NEXT_PUBLIC_PUSHER_KEY }}" >> $GITHUB_ENV
-          echo "NEXT_PUBLIC_PUSHER_CLUSTER=${{ vars.NEXT_PUBLIC_PUSHER_CLUSTER }}" >> $GITHUB_ENV
-          echo "NEXT_PUBLIC_POSTHOG_KEY=${{ vars.NEXT_PUBLIC_POSTHOG_KEY }}" >> $GITHUB_ENV
-          echo "NEXT_PUBLIC_POSTHOG_HOST=${{ vars.NEXT_PUBLIC_POSTHOG_HOST }}" >> $GITHUB_ENV
-          echo "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}" >> $GITHUB_ENV
-          # Storage & data
-          echo "REDIS_HOST=${{ vars.REDIS_HOST }}" >> $GITHUB_ENV
-          echo "REDIS_PORT=${{ vars.REDIS_PORT }}" >> $GITHUB_ENV
-          echo "REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}" >> $GITHUB_ENV
-          # Providers / secrets
-          echo "STRIPE_SECRET_KEY=${{ secrets.STRIPE_SECRET_KEY }}" >> $GITHUB_ENV
-          echo "STRIPE_WEBHOOK_SECRET=${{ secrets.STRIPE_WEBHOOK_SECRET }}" >> $GITHUB_ENV
-          echo "MAILGUN_API_KEY=${{ secrets.MAILGUN_API_KEY }}" >> $GITHUB_ENV
-          echo "MAILGUN_DOMAIN=${{ vars.MAILGUN_DOMAIN }}" >> $GITHUB_ENV
-          echo "MAILGUN_REGION=${{ vars.MAILGUN_REGION }}" >> $GITHUB_ENV
-          echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> $GITHUB_ENV
-          echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" >> $GITHUB_ENV
-          echo "GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}" >> $GITHUB_ENV
-          echo "PUSHER_APP_ID=${{ vars.PUSHER_APP_ID }}" >> $GITHUB_ENV
-          echo "PUSHER_KEY=${{ vars.PUSHER_KEY }}" >> $GITHUB_ENV
-          echo "PUSHER_SECRET=${{ secrets.PUSHER_SECRET }}" >> $GITHUB_ENV
-          echo "PUSHER_CLUSTER=${{ vars.PUSHER_CLUSTER }}" >> $GITHUB_ENV
-          echo "SYSTEM_FROM_EMAIL=${{ vars.SYSTEM_FROM_EMAIL }}" >> $GITHUB_ENV
-          echo "SUPPORT_EMAIL=${{ vars.SUPPORT_EMAIL }}" >> $GITHUB_ENV
-          echo "SUPPORT_NAME=${{ vars.SUPPORT_NAME }}" >> $GITHUB_ENV
-          # BetterAuth
-          echo "BETTER_AUTH_SECRET=${{ secrets.BETTER_AUTH_SECRET }}" >> $GITHUB_ENV
-          # Google Service Account (multiline key support)
-          echo "GOOGLE_CLIENT_EMAIL=${{ secrets.GOOGLE_CLIENT_EMAIL }}" >> $GITHUB_ENV
-          echo "GOOGLE_PROJECT_ID=${{ secrets.GOOGLE_PROJECT_ID }}" >> $GITHUB_ENV
-          echo "GOOGLE_PRIVATE_KEY<<EOF" >> $GITHUB_ENV
-          echo "${{ secrets.GOOGLE_PRIVATE_KEY }}" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
-          # OAuth (add others as needed)
-          echo "AUTH_GOOGLE_ID=${{ vars.AUTH_GOOGLE_ID }}" >> $GITHUB_ENV
-          echo "AUTH_GOOGLE_SECRET=${{ secrets.AUTH_GOOGLE_SECRET }}" >> $GITHUB_ENV
-          # Auth URL
-          echo "AUTH_URL=${{ vars.NEXT_PUBLIC_BASE_URL }}" >> $GITHUB_ENV
-
-      - name: Deploy prod
-        run: pnpm sst:deploy
-
-      - name: Export app stack outputs (prod)
-        env:
-          AWS_REGION: us-west-1
-          STAGE: prod
-        run: |
-          APP_STACK="auxx-ai-${STAGE}"
-          OUT=$(aws cloudformation describe-stacks --stack-name "$APP_STACK" \
-            --query 'Stacks[0].Outputs[?OutputKey==`ecsClusterName` || OutputKey==`ecsClusterArn` || OutputKey==`dbMigrateServiceName` || OutputKey==`dbMigrateServiceArn` || OutputKey==`workerServiceArn` || OutputKey==`appPrivateSubnets` || OutputKey==`appPublicSubnets`].[OutputKey,OutputValue]' \
-            --output text 2>/dev/null || true)
-          ECS_CLUSTER_NAME=$(echo "$OUT" | awk '$1=="ecsClusterName"{print $2}')
-          DB_MIGRATE_SERVICE=$(echo "$OUT" | awk '$1=="dbMigrateServiceName"{print $2}')
-          ECS_CLUSTER_ARN=$(echo "$OUT" | awk '$1=="ecsClusterArn"{print $2}')
-          DB_MIGRATE_SERVICE_ARN=$(echo "$OUT" | awk '$1=="dbMigrateServiceArn"{print $2}')
-          WORKER_SERVICE_ARN=$(echo "$OUT" | awk '$1=="workerServiceArn"{print $2}')
-          APP_PRIVATE_SUBNETS_FROM_APP=$(echo "$OUT" | awk '$1=="appPrivateSubnets"{print $2}')
-          APP_PUBLIC_SUBNETS_FROM_APP=$(echo "$OUT" | awk '$1=="appPublicSubnets"{print $2}')
-          echo "ECS_CLUSTER_NAME=$ECS_CLUSTER_NAME" >> $GITHUB_ENV
-          echo "DB_MIGRATE_SERVICE=$DB_MIGRATE_SERVICE" >> $GITHUB_ENV
-          echo "ECS_CLUSTER_ARN=$ECS_CLUSTER_ARN" >> $GITHUB_ENV
-          echo "DB_MIGRATE_SERVICE_ARN=$DB_MIGRATE_SERVICE_ARN" >> $GITHUB_ENV
-          echo "WORKER_SERVICE_ARN=$WORKER_SERVICE_ARN" >> $GITHUB_ENV
-          if [ -z "$APP_PRIVATE_SUBNETS" ] && [ -n "$APP_PRIVATE_SUBNETS_FROM_APP" ]; then
-            echo "APP_PRIVATE_SUBNETS=$APP_PRIVATE_SUBNETS_FROM_APP" >> $GITHUB_ENV
-          fi
-          if [ -z "$APP_PUBLIC_SUBNETS" ] && [ -n "$APP_PUBLIC_SUBNETS_FROM_APP" ]; then
-            echo "APP_PUBLIC_SUBNETS=$APP_PUBLIC_SUBNETS_FROM_APP" >> $GITHUB_ENV
-          fi
-
-      - name: Validate app outputs (prod)
-        run: |
-          errs=0
-          for v in ECS_CLUSTER_ARN DB_MIGRATE_SERVICE_ARN WORKER_SERVICE_ARN; do
-            val=$(printenv $v)
-            if [ -z "$val" ] || [ "$val" = "None" ]; then
-              echo "Missing required output: $v"
-              errs=$((errs+1))
-            fi
-          done
-          if [ $errs -gt 0 ]; then
-            echo "One or more required ARNs are missing from app outputs."
-            echo "Tip: On first deploy, outputs may be empty until CloudFormation finishes."
-            echo "Tip: Re-run this workflow once the stack completes, or run 'pnpm sst:deploy' again."
-            exit 1
-          fi
-
-      - name: Run DB migrations (prod via ECS one-off)
-        env:
-          AWS_REGION: us-west-1
-        run: |
-          if [ -z "$ECS_CLUSTER_NAME" ] || [ "$ECS_CLUSTER_NAME" = "None" ]; then
-            ECS_CLUSTER_NAME="auxx-ai-${STAGE}-Cluster"
-          fi
-          if [ -z "$DB_MIGRATE_SERVICE" ] || [ "$DB_MIGRATE_SERVICE" = "None" ]; then
-            DB_MIGRATE_SERVICE="auxx-ai-${STAGE}-AppDbMigrate"
-          fi
-          echo "ClusterName=$ECS_CLUSTER_NAME ClusterArn=$ECS_CLUSTER_ARN Service=$DB_MIGRATE_SERVICE ServiceArn=$DB_MIGRATE_SERVICE_ARN"
-          CLUSTER_REF=${ECS_CLUSTER_ARN:-$ECS_CLUSTER_NAME}
-          SERVICE_REF=${DB_MIGRATE_SERVICE_ARN:-$DB_MIGRATE_SERVICE}
-          TASK_DEF=$(aws ecs describe-services --cluster "$CLUSTER_REF" --services "$SERVICE_REF" --query 'services[0].taskDefinition' --output text 2>/dev/null)
-          if [ -z "$TASK_DEF" ] || [ "$TASK_DEF" = "None" ]; then
-            echo "Could not resolve DbMigrate service ($DB_MIGRATE_SERVICE). Listing services to find a match..."
-            SERVICES=$(aws ecs list-services --cluster "$CLUSTER_REF" --query 'serviceArns[]' --output text | tr '\t' '\n')
-            for SVC_ARN in $SERVICES; do
-              NAME=$(basename "$SVC_ARN")
-              if echo "$NAME" | grep -qi 'DbMigrate'; then
-                DB_MIGRATE_SERVICE="$NAME"
-                TASK_DEF=$(aws ecs describe-services --cluster "$CLUSTER_REF" --services "$DB_MIGRATE_SERVICE" --query 'services[0].taskDefinition' --output text)
-                break
-              fi
-            done
-          fi
-          if [ -z "$TASK_DEF" ] || [ "$TASK_DEF" = "None" ]; then
-            echo "Migration service not found; skipping migrations."
-            exit 1
-          fi
-          echo "TASK_DEF=$TASK_DEF"
-          WORKER_SERVICE=${WORKER_SERVICE_ARN:-"auxx-ai-${STAGE}-AppWorker"}
-          WORKER_SG=$(aws ecs describe-services --cluster "$CLUSTER_REF" --services "$WORKER_SERVICE" \
-            --query 'services[0].networkConfiguration.awsvpcConfiguration.securityGroups' --output text 2>/dev/null || true)
-          if [ -n "$WORKER_SG" ] && [ "$WORKER_SG" != "None" ]; then
-            NET_CONF="awsvpcConfiguration={subnets=[$APP_PRIVATE_SUBNETS],securityGroups=[$WORKER_SG],assignPublicIp=DISABLED}"
-          else
-            NET_CONF="awsvpcConfiguration={subnets=[$APP_PRIVATE_SUBNETS],assignPublicIp=DISABLED}"
-          fi
-          TASK_ARN=$(aws ecs run-task --cluster "$CLUSTER_REF" --launch-type FARGATE --task-definition "$TASK_DEF" --network-configuration "$NET_CONF" --query 'tasks[0].taskArn' --output text)
-          echo "TASK_ARN=$TASK_ARN"
-          aws ecs wait tasks-stopped --cluster "$CLUSTER_REF" --tasks "$TASK_ARN"
-          EXIT_CODE=$(aws ecs describe-tasks --cluster "$CLUSTER_REF" --tasks "$TASK_ARN" --query 'tasks[0].containers[0].exitCode' --output text)
-          echo "EXIT_CODE=$EXIT_CODE"
-          if [ "$EXIT_CODE" != "0" ]; then
-            echo "Migration task failed"
-            exit 1
-          fi
-      # (removed duplicate prod migration step; above step handles ARNs + fallbacks)
-  deploy-infra-prod:
-    if: startsWith(github.ref, 'refs/tags/v')
-    name: Deploy infra (prod)
-    runs-on: ubuntu-latest
-    environment: prod
-    permissions:
-      id-token: write
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::486437023232:role/AuxxGithubDeployRole
-          aws-region: us-west-1
-      - name: Install deps
-        run: pnpm i --frozen-lockfile=false
-      - name: Deploy infra (prod)
-        working-directory: infra/infra-sst
-        env:
-          AWS_REGION: us-west-1
-          STAGE: prod
-        run: pnpm sst:deploy -- --stage=${STAGE}
+          echo "Migrations completed successfully."
