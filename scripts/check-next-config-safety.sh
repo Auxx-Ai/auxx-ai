@@ -3,19 +3,17 @@
 # scripts/check-next-config-safety.sh
 set -euo pipefail
 
-if ! command -v rg >/dev/null 2>&1; then
-  echo "Error: ripgrep (rg) is required for this check."
-  exit 1
-fi
+# Find next.config.* files
+NEXT_CONFIGS=$(find . -name 'next.config.*' -not -path '*/node_modules/*' -not -path '*/.next/*' -not -path '*/.sst/*')
 
-if ! rg --files -g '**/next.config.*' . >/dev/null; then
+if [ -z "${NEXT_CONFIGS}" ]; then
   echo "No next.config.* files found; check passed."
   exit 0
 fi
 
-readonly BANNED_IMPORTS_REGEX="^\\s*import(?:\\s+type)?(?:[\\s\\w{},*]+from\\s+)?['\\\"](?:@auxx/config/client|@auxx/config/server|@auxx/config|dotenv(?:/config)?)['\\\"]|require\\(\\s*['\\\"](?:@auxx/config/client|@auxx/config/server|@auxx/config|dotenv(?:/config)?)['\\\"]\\s*\\)"
+readonly BANNED_IMPORTS_REGEX="^\s*import(\s+type)?([\s\w{},*]+from\s+)?['\"](@auxx/config(/client|/server)?|dotenv(/config)?)['\"]|require\(\s*['\"](@auxx/config(/client|/server)?|dotenv(/config)?)['\"]"
 
-matches="$(rg -n --no-heading --pcre2 -g '**/next.config.*' "${BANNED_IMPORTS_REGEX}" . || true)"
+matches="$(grep -rnP "${BANNED_IMPORTS_REGEX}" ${NEXT_CONFIGS} || true)"
 
 if [ -n "${matches}" ]; then
   echo "Unsafe imports found in next.config.* files:"
