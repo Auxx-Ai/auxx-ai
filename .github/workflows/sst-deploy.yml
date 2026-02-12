@@ -117,6 +117,9 @@ jobs:
           # Auth URL
           echo "AUTH_URL=${{ vars.NEXT_PUBLIC_BASE_URL }}" >> $GITHUB_ENV
 
+      - name: Remove system Pulumi (avoid version conflict with SST)
+        run: rm -f /usr/local/bin/pulumi*
+
       - name: Deploy dev
         run: pnpm sst:deploy
 
