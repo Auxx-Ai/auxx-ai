@@ -16,16 +16,21 @@
       "node": "./dist/app-settings/client.js",
       "default": "./src/app-settings/client.ts"
     },
+    "./shared/utils": {
+      "types": "./src/shared/utils.ts",
+      "node": "./dist/shared/utils.js",
+      "default": "./src/shared/utils.ts"
+    },
     "./*": {
       "types": "./src/*/index.ts",
       "node": "./dist/*.js",
-      "default": "./src/*.ts"
+      "default": "./src/*/index.ts"
     }
   },
   "scripts": {
     "clean": "rm -rf node_modules .turbo dist *.tsbuildinfo",
     "test": "vitest",
-    "build": "tsc || true && tsx scripts/generate-dist-entries.ts",
+    "build": "tsc && tsx scripts/generate-dist-entries.ts",
     "dev": "concurrently -k -n TSC,SHIMS -c blue,green \"tsc -w --preserveWatchOutput\" \"chokidar \\\"dist/**/index.js\\\" -c \\\"tsx scripts/generate-dist-entries.ts\\\"\""
   },
   "dependencies": {
