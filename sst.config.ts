@@ -9,7 +9,9 @@ export default $config({
       home: 'aws',
       providers: {
         aws: {
-          profile: input.stage === 'production' ? 'auxxai-prod' : 'auxxai-dev',
+          ...(!process.env.GITHUB_ACTIONS && {
+            profile: input.stage === 'production' ? 'auxxai-prod' : 'auxxai-dev',
+          }),
           region: (process.env.AWS_REGION || 'us-west-1') as Region,
         },
       },
