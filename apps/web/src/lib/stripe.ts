@@ -9,7 +9,8 @@ import { stripeClient } from '@auxx/billing'
 export function initializeStripe() {
   const secretKey = process.env.STRIPE_SECRET_KEY
   if (!secretKey) {
-    throw new Error('STRIPE_SECRET_KEY environment variable is not set')
+    console.warn('[stripe] STRIPE_SECRET_KEY not set — Stripe client not initialized')
+    return
   }
   return stripeClient.initialize(secretKey)
 }
