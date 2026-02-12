@@ -50,7 +50,7 @@ jobs:
       - name: Setup Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version: v2.x
+          deno-version: "2.1.4"
 
       - name: Build Lambda bootstrap binary
         run: pnpm --filter @auxx/lambda build
