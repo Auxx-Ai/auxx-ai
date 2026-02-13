@@ -5,7 +5,7 @@ export const vpc = new sst.aws.Vpc.v1('AuxxAiVpc', { bastion: true, nat: 'ec2' }
 // Import existing CloudFront distribution
 // export const router = sst.aws.Router.get('AuxxAiRouter', 'E1UUUL5E15V4KL')
 
-export const cluster = new sst.aws.Cluster.v1('AuxxAiCluster', { vpc })
+export const cluster = new sst.aws.Cluster('AuxxAiCluster', { vpc })
 // new router is this: E1UUUL5E15V4KL
 export const router = new sst.aws.Router('AuxxAiRouter', {
   domain: {
