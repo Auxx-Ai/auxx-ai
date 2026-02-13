@@ -1,6 +1,6 @@
 import { domain } from './dns'
 
-export const vpc = new sst.aws.Vpc.v1('AuxxAiVpc', { bastion: true, nat: 'ec2' })
+export const vpc = new sst.aws.Vpc('AuxxAiVpc', { bastion: true, nat: 'ec2' })
 
 // Import existing CloudFront distribution
 // export const router = sst.aws.Router.get('AuxxAiRouter', 'E1UUUL5E15V4KL')
