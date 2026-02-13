@@ -6,11 +6,21 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: sst-deploy-dev
+  cancel-in-progress: false
+
 jobs:
   deploy-dev:
     name: Deploy dev (us-west-1)
     runs-on: ubuntu-latest
     environment: dev
+    env:
+      STAGE: dev
+      AWS_REGION: us-west-1
+      SST_APP_NAME: auxxai-app
+      EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID || '716542960845' }}
+      AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN || 'arn:aws:iam::716542960845:role/AuxxGithubDeployRole' }}
     permissions:
       id-token: write
       contents: read
@@ -29,8 +39,38 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::486437023232:role/AuxxGithubDeployRole
-          aws-region: us-west-1
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify AWS identity
+        run: |
+          set -euo pipefail
+          ASSUMED_ARN=$(aws sts get-caller-identity --query 'Arn' --output text)
+          ACTUAL_ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text)
+          echo "Assumed identity: $ASSUMED_ARN"
+          echo "Expected account: ${EXPECTED_AWS_ACCOUNT_ID}"
+          if [ "$ACTUAL_ACCOUNT_ID" != "${EXPECTED_AWS_ACCOUNT_ID}" ]; then
+            echo "ERROR: Account mismatch. CI is running in account $ACTUAL_ACCOUNT_ID but expected ${EXPECTED_AWS_ACCOUNT_ID}."
+            echo "Check repository variables AWS_ACCOUNT_ID/AWS_DEPLOY_ROLE_ARN."
+            exit 1
+          fi
+
+      - name: Debug SST state access
+        run: |
+          set -euo pipefail
+          echo "=== SST state bucket ==="
+          aws s3 ls --region "$AWS_REGION" | grep sst-state || echo "NO STATE BUCKET FOUND"
+
+          echo "=== SST passphrase ==="
+          aws ssm get-parameter --name "/sst/passphrase/${SST_APP_NAME}/${STAGE}" --region "$AWS_REGION" \
+            --query 'Parameter.Name' --output text 2>&1 || echo "CANNOT ACCESS PASSPHRASE"
+
+          echo "=== SST bootstrap ==="
+          aws ssm get-parameter --name "/sst/bootstrap" --region "$AWS_REGION" \
+            --query 'Parameter.Value' --output text 2>&1 || echo "NO BOOTSTRAP PARAMETER"
+
+          echo "=== SST asset bucket ==="
+          aws s3 ls --region "$AWS_REGION" | grep sst-asset || echo "NO ASSET BUCKET FOUND"
 
       - name: Install deps
         run: pnpm i --frozen-lockfile=false
@@ -120,10 +160,9 @@ jobs:
       - name: Remove system Pulumi (avoid version conflict with SST)
         run: rm -f /usr/local/bin/pulumi*
 
-      - name: Refresh SST state
-        run: npx sst refresh --stage=dev
-
       - name: Deploy dev
+        env:
+          SST_PRINT_LOGS: '1'
         run: pnpm sst:deploy
 
       - name: Run DB migrations (dev)

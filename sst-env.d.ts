@@ -65,6 +65,7 @@ declare module "sst" {
       "url": string
     }
     "AuxxAiWorker": {
+      "service": string
       "type": "sst.aws.Service"
     }
     "BEDROCK_ACCESS_KEY": {
