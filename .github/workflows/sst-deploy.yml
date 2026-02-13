@@ -120,6 +120,9 @@ jobs:
       - name: Remove system Pulumi (avoid version conflict with SST)
         run: rm -f /usr/local/bin/pulumi*
 
+      - name: Refresh SST state
+        run: npx sst refresh --stage=dev
+
       - name: Deploy dev
         run: pnpm sst:deploy
 
