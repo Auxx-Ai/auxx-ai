@@ -1,6 +1,7 @@
 // apps/web/src/components/tags/ui/tag-display.tsx
 'use client'
 
+import { getOptionColor, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
@@ -17,23 +18,12 @@ interface TagDisplayProps {
 }
 
 /**
- * Calculate contrast color for text based on background brightness
- */
-function getContrastColor(hexColor: string): string {
-  const r = parseInt(hexColor.slice(1, 3), 16)
-  const g = parseInt(hexColor.slice(3, 5), 16)
-  const b = parseInt(hexColor.slice(5, 7), 16)
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-  return luminance > 0.5 ? '#000000' : '#FFFFFF'
-}
-
-/**
  * Single tag display with color background
  */
 export function TagDisplay({
   title,
   emoji,
-  color = '#e2e8f0',
+  color = 'gray',
   onRemove,
   size = 'md',
 }: TagDisplayProps) {
@@ -43,13 +33,15 @@ export function TagDisplay({
     lg: 'text-base py-1.5 px-3',
   }
 
+  const colorData = getOptionColor((color || 'gray') as SelectOptionColor)
+
   return (
     <div
-      className={`inline-flex items-center gap-1 rounded-full ${sizeClasses[size]}`}
-      style={{
-        backgroundColor: color || '#e2e8f0',
-        color: getContrastColor(color || '#e2e8f0'),
-      }}>
+      className={cn(
+        'inline-flex items-center gap-1 rounded-full',
+        sizeClasses[size],
+        colorData.badgeClasses
+      )}>
       {emoji && <span className='mr-1'>{emoji}</span>}
       <span>{title}</span>
       {onRemove && (
@@ -105,16 +97,13 @@ export function SelectedTagsDisplay({
       {displayTags.map((tagId) => {
         const tag = getTagById(tagId)
         const displayName = getTagDisplayName(tagId)
+        const colorData = getOptionColor((tag?.tag_color || 'gray') as SelectOptionColor)
 
         return (
           <Badge
             key={tagId}
             variant='secondary'
-            className='inline-flex items-center gap-1 text-xs'
-            style={{
-              backgroundColor: tag?.tag_color ? `${tag.tag_color}20` : undefined,
-              borderColor: tag?.tag_color || undefined,
-            }}>
+            className={cn('inline-flex items-center gap-1 text-xs', colorData.badgeClasses)}>
             <span>{displayName}</span>
             {showRemove && onRemove && (
               <Button

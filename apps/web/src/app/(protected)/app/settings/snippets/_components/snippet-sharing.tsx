@@ -126,7 +126,7 @@ export function SnippetSharing({
       setGroupSearchTerm('')
     }
   }, [open])
-  // Filter groups
+
   const filteredGroups = React.useMemo(() => {
     if (!groupsData) return []
     return groupsData.filter(

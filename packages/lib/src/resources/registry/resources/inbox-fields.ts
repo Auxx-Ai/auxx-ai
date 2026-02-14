@@ -85,7 +85,7 @@ export const INBOX_FIELDS: Record<string, ResourceField> = {
     systemAttribute: 'inbox_color',
     systemSortOrder: 'a3',
     nullable: true,
-    defaultValue: '#4F46E5',
+    defaultValue: 'indigo',
     capabilities: {
       filterable: false,
       sortable: false,

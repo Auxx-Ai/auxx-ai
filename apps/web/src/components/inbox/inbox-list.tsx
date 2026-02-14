@@ -1,6 +1,7 @@
 // apps/web/src/components/inbox/inbox-list.tsx
 'use client'
 
+import { getOptionColor, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
 import type { Inbox } from '@auxx/lib/inboxes'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -12,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from '@auxx/ui/components/table'
+import { cn } from '@auxx/ui/lib/utils'
 import { InboxIcon, PlusIcon, RefreshCw } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
@@ -119,10 +121,10 @@ export function InboxList() {
                     <div className='flex items-center space-x-3'>
                       {/* Colored dot based on inbox color */}
                       <div
-                        className='h-3 w-3 rounded-full'
-                        style={{
-                          backgroundColor: inbox.color || '#4F46E5',
-                        }}
+                        className={cn(
+                          'h-3 w-3 rounded-full',
+                          getOptionColor((inbox.color || 'indigo') as SelectOptionColor).swatch
+                        )}
                       />
                       <div>
                         <div className='font-medium'>{inbox.name}</div>

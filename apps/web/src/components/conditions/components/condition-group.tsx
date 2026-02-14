@@ -35,14 +35,14 @@ const ConditionGroup = ({
     readOnly,
     config,
     removeGroup,
-    toggleGroupLogicalOperator,
+    // toggleGroupLogicalOperator,
     updateGroupMetadata,
-    toggleGroupCollapse,
+    // toggleGroupCollapse,
   } = useConditionContext()
 
   const isCollapsed = group.metadata?.collapsed || false
   const hasConditions = group.conditions.length > 0
-  const hasMultipleConditions = group.conditions.length > 1
+  // const hasMultipleConditions = group.conditions.length > 1
 
   const handleRemove = () => {
     if (onRemove) {
@@ -52,17 +52,17 @@ const ConditionGroup = ({
     }
   }
 
-  const handleToggleLogicalOperator = () => {
-    if (toggleGroupLogicalOperator) {
-      toggleGroupLogicalOperator(group.id)
-    }
-  }
+  // const handleToggleLogicalOperator = () => {
+  //   if (toggleGroupLogicalOperator) {
+  //     toggleGroupLogicalOperator(group.id)
+  //   }
+  // }
 
-  const handleToggleCollapse = () => {
-    if (toggleGroupCollapse) {
-      toggleGroupCollapse(group.id)
-    }
-  }
+  // const handleToggleCollapse = () => {
+  //   if (toggleGroupCollapse) {
+  //     toggleGroupCollapse(group.id)
+  //   }
+  // }
 
   const handleNameChange = (name: string) => {
     if (updateGroupMetadata) {
@@ -103,47 +103,48 @@ const ConditionGroup = ({
           </button>
         )}
 
-        {showNameInput ? (
-          isEditingName ? (
-            <Input
-              value={localName}
-              onChange={(e) => setLocalName(e.target.value)}
-              onBlur={handleNameBlur}
-              onKeyDown={handleNameKeyDown}
-              placeholder={config.groupNamePlaceholder || 'Enter group name...'}
-              className='h-7 text-sm font-medium'
-              autoFocus
-              disabled={readOnly}
-            />
+        {config.showGroupName !== false &&
+          (showNameInput ? (
+            isEditingName ? (
+              <Input
+                value={localName}
+                onChange={(e) => setLocalName(e.target.value)}
+                onBlur={handleNameBlur}
+                onKeyDown={handleNameKeyDown}
+                placeholder={config.groupNamePlaceholder || 'Enter group name...'}
+                className='h-7 text-sm font-medium'
+                autoFocus
+                disabled={readOnly}
+              />
+            ) : (
+              <button
+                onClick={() => !readOnly && setIsEditingName(true)}
+                className={cn(
+                  'absolute z-10 left-4 top-1 flex items-center gap-1 text-[13px] font-semibold leading-4 text-muted-foreground',
+                  readOnly ? 'cursor-default' : ''
+                )}>
+                <span className='truncate'>
+                  {group.metadata?.name || config.defaultGroupName || 'Group'}
+                </span>
+                {!readOnly && (
+                  <Edit2 className='size-3 opacity-0 transition-opacity group-hover/condition-group:opacity-100' />
+                )}
+              </button>
+            )
           ) : (
-            <button
-              onClick={() => !readOnly && setIsEditingName(true)}
+            <div
               className={cn(
-                'absolute z-10 left-4 top-1 flex items-center gap-1 text-[13px] font-semibold leading-4 text-muted-foreground',
-                readOnly ? 'cursor-default' : ''
+                'absolute left-4 text-[13px] font-semibold leading-4 text-muted-foreground',
+                !showSubtext || group?.metadata?.subtext === '' ? 'top-2.5' : 'top-1'
               )}>
-              <span className='truncate'>
-                {group.metadata?.name || config.defaultGroupName || 'Group'}
-              </span>
-              {!readOnly && (
-                <Edit2 className='h-3 w-3 opacity-0 transition-opacity group-hover/condition-group:opacity-100' />
+              {group.metadata?.name || config.defaultGroupName || 'Group'}
+              {showSubtext && group.metadata?.subtext && (
+                <div className='text-[10px] font-medium text-muted-foreground'>
+                  {group.metadata.subtext}
+                </div>
               )}
-            </button>
-          )
-        ) : (
-          <div
-            className={cn(
-              'absolute left-4 text-[13px] font-semibold leading-4 text-muted-foreground',
-              !showSubtext || group?.metadata?.subtext === '' ? 'top-2.5' : 'top-1'
-            )}>
-            {group.metadata?.name || config.defaultGroupName || 'Group'}
-            {showSubtext && group.metadata?.subtext && (
-              <div className='text-[10px] font-medium text-muted-foreground'>
-                {group.metadata.subtext}
-              </div>
-            )}
-          </div>
-        )}
+            </div>
+          ))}
 
         {!isCollapsed && (
           <>
@@ -153,7 +154,11 @@ const ConditionGroup = ({
               </div>
             )}
 
-            <div className={cn('flex items-center justify-between pr-[1px]', 'pl-[70px]')}>
+            <div
+              className={cn(
+                'flex items-center justify-between pr-[1px]',
+                config.showGroupName !== false ? 'pl-[70px]' : 'pl-[40px]'
+              )}>
               <ConditionAdd groupId={group.id} disabled={readOnly} />
               {showRemoveButton && !readOnly && (
                 <Button

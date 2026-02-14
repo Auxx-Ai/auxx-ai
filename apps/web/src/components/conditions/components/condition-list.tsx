@@ -77,19 +77,28 @@ const ConditionList = ({
   }
 
   return (
-    <div className={cn('relative', isInGroup ? 'pl-[70px]' : 'pl-[30px]', className)}>
+    <div
+      className={cn(
+        'relative',
+        isInGroup ? (config.showGroupName !== false ? 'pl-[70px]' : 'pl-[40px]') : 'pl-[30px]',
+        className
+      )}>
       {conditions.length > 1 && config.showLogicalOperators && (
         <div
           className={cn(
             'absolute bottom-0 left-0 top-0 ',
-            isInGroup ? 'w-[70px]' : 'w-[30px]',
+            isInGroup ? (config.showGroupName !== false ? 'w-[70px]' : 'w-[40px]') : 'w-[30px]',
             isSubVariable && logicalOperator === 'AND' && 'left-[-10px]',
             isSubVariable && logicalOperator === 'OR' && 'left-[-18px]'
           )}>
           <div
             className={cn(
               'absolute bottom-4  top-4 w-2.5 rounded-l-[8px] border border-r-0 border-border',
-              isInGroup ? 'left-[56px]' : 'left-[16px]'
+              isInGroup
+                ? config.showGroupName !== false
+                  ? 'left-[56px]'
+                  : 'left-[30px]'
+                : 'left-[16px]'
             )}></div>
           {!readOnly && (
             <div

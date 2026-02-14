@@ -63,7 +63,7 @@ export class InboxService {
     const values: Record<string, unknown> = {
       inbox_name: input.name,
       inbox_description: input.description ?? null,
-      inbox_color: input.color ?? '#4F46E5',
+      inbox_color: input.color ?? 'indigo',
       inbox_status: input.status ?? 'ACTIVE',
       inbox_visibility: input.visibility ?? 'org_members',
       inbox_settings: input.settings ?? {},
@@ -368,7 +368,7 @@ export class InboxService {
       defaultInbox = await this.createInbox({
         name: 'Default Inbox',
         description: 'Default inbox for all incoming emails',
-        color: '#A7C1F2',
+        color: 'blue',
         status: 'ACTIVE',
       })
     }
@@ -406,7 +406,7 @@ export class InboxService {
       recordId,
       name: instance.displayName ?? '',
       description: (getValue('inbox_description') as string) ?? null,
-      color: (getValue('inbox_color') as string) ?? '#4F46E5',
+      color: (getValue('inbox_color') as string) ?? 'indigo',
       status: ((getValue('inbox_status') as string) ?? 'ACTIVE') as Inbox['status'],
       visibility: ((getValue('inbox_visibility') as string) ??
         'org_members') as Inbox['visibility'],

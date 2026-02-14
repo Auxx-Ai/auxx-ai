@@ -44,7 +44,8 @@ export function MailViewFilterBuilder() {
       allowGroupCollapse: true,
       allowGroupReordering: false,
       showGroupSubtext: false,
-      defaultGroupName: 'Filter Group',
+      showGroupName: false,
+      defaultGroupName: '',
 
       // No variable mode for mail views
       allowVarEditor: false,

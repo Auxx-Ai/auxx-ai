@@ -96,6 +96,8 @@ export interface ConditionSystemConfig {
   allowGroupReordering?: boolean
   showGroupDescription?: boolean
   showGroupSubtext?: boolean
+  /** Whether to show the group name label. Defaults to true */
+  showGroupName?: boolean
   defaultGroupName?: string
   groupNamePlaceholder?: string
   addGroupButtonText?: string

@@ -1,6 +1,7 @@
 // components/global/sidebar/sidebar-item.tsx
 'use client'
 
+import { getOptionColor, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
@@ -62,8 +63,10 @@ export function SidebarItem({
         <div className='flex items-center'>
           {color && !icon && (
             <div
-              className='mr-2 size-2 rounded-full group-data-[collapsible=icon]:hidden'
-              style={{ backgroundColor: color }}
+              className={cn(
+                'mr-2 size-2 rounded-full group-data-[collapsible=icon]:hidden',
+                getOptionColor(color as SelectOptionColor).swatch
+              )}
             />
           )}
           {icon && <span className='[&_svg]:size-4 mr-2'>{icon}</span>}

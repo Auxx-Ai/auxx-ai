@@ -1,6 +1,7 @@
 // apps/web/src/components/tags/ui/tag-picker.tsx
 'use client'
 
+import { getOptionColor, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import {
@@ -126,8 +127,10 @@ function TagList({
                   <span className='mr-2'>{tag.tag_emoji}</span>
                 ) : (
                   <div
-                    className='mr-2 size-3 rounded-full'
-                    style={{ backgroundColor: tag.tag_color || '#94a3b8' }}
+                    className={cn(
+                      'mr-2 size-3 rounded-full',
+                      getOptionColor((tag.tag_color || 'gray') as SelectOptionColor).swatch
+                    )}
                   />
                 )}
                 <span>{tag.title}</span>

@@ -65,7 +65,7 @@ export function InboxPicker({
     const baseOptions = inboxes.map((inbox) => ({
       value: inbox.recordId,
       label: inbox.name,
-      color: inbox.color || '#4F46E5',
+      color: inbox.color || 'indigo',
     }))
 
     // Prepend "Select All" option if enabled
@@ -113,7 +113,7 @@ export function InboxPicker({
 
   // Handle dialog success (optionally select the new inbox)
   const handleDialogSuccess = useCallback(
-    (inbox: InboxItem) => {
+    (inbox: { id: string; name: string; recordId: string }) => {
       if (allowMultiple) {
         onChange?.([...selected.filter((id) => id !== INBOX_SELECT_ALL_VALUE), inbox.recordId])
       } else {

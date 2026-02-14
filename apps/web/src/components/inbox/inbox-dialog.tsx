@@ -2,7 +2,7 @@
 'use client'
 
 import type { InboxVisibility } from '@auxx/lib/inboxes'
-import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
+import { parseRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -23,9 +23,9 @@ import { toastError } from '@auxx/ui/components/toast'
 import { Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useForm } from 'react-hook-form'
-import { FormColorTagPicker } from '~/components/pickers/color-tag-picker'
 import { MemberGroupFormField } from '~/components/pickers/member-group-form-picker'
 import { useSaveSystemValues, useSystemValues } from '~/components/resources/hooks'
+import { FormColorTagPicker } from '~/components/tags/ui/color-tag-picker'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useDirtyCheck } from '~/hooks/use-dirty-state'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
@@ -38,7 +38,7 @@ interface InboxDialogProps {
   /** RecordId for edit mode, null/undefined for create mode */
   recordId?: RecordId | null
   /** Called after successful save */
-  onSuccess?: (inbox: { id: string; name: string }) => void
+  onSuccess?: (inbox: { id: string; name: string; recordId: RecordId }) => void
 }
 
 /** Form data for inbox dialog */
@@ -85,7 +85,7 @@ export function InboxDialog({ open, onOpenChange, recordId, onSuccess }: InboxDi
     defaultValues: {
       name: '',
       description: '',
-      color: '#4F46E5',
+      color: 'indigo',
       accessType: 'anyone',
       memberGroupSelection: { memberIds: [], groupIds: [] },
     },
@@ -135,7 +135,7 @@ export function InboxDialog({ open, onOpenChange, recordId, onSuccess }: InboxDi
 
         const name = (fieldValues.inbox_name as string) ?? ''
         const description = (fieldValues.inbox_description as string) ?? ''
-        const color = (fieldValues.inbox_color as string) ?? '#4F46E5'
+        const color = (fieldValues.inbox_color as string) ?? 'indigo'
         const visibility = fieldValues.inbox_visibility ?? 'org_members'
         const accessType = visibility === 'org_members' ? 'anyone' : 'restricted'
 
@@ -154,14 +154,14 @@ export function InboxDialog({ open, onOpenChange, recordId, onSuccess }: InboxDi
         form.reset({
           name: '',
           description: '',
-          color: '#4F46E5',
+          color: 'indigo',
           accessType: 'anyone',
           memberGroupSelection: { memberIds: [], groupIds: [] },
         })
         setInitial({
           name: '',
           description: '',
-          color: '#4F46E5',
+          color: 'indigo',
           accessType: 'anyone',
         })
       }
@@ -177,12 +177,18 @@ export function InboxDialog({ open, onOpenChange, recordId, onSuccess }: InboxDi
   // Confirmation dialog for delete
   const [confirm, ConfirmDeleteDialog] = useConfirm()
 
+  /** Invalidate both inbox query caches (tRPC getAll + entity system listAll) */
+  const invalidateInboxes = () => {
+    utils.inbox.getAll.invalidate()
+    utils.record.listAll.invalidate({ entityDefinitionId: 'inbox' })
+  }
+
   // Create inbox mutation
   const createInbox = api.inbox.create.useMutation({
     onSuccess: (data) => {
-      utils.inbox.getAll.invalidate()
+      invalidateInboxes()
       onOpenChange(false)
-      onSuccess?.({ id: data.id, name: data.name })
+      onSuccess?.({ id: data.id, name: data.name, recordId: toRecordId('inbox', data.id) })
     },
     onError: (error) => {
       toastError({ title: 'Error creating inbox', description: error.message })
@@ -192,7 +198,7 @@ export function InboxDialog({ open, onOpenChange, recordId, onSuccess }: InboxDi
   // Delete inbox mutation
   const deleteInbox = api.inbox.delete.useMutation({
     onSuccess: () => {
-      utils.inbox.getAll.invalidate()
+      invalidateInboxes()
       onOpenChange(false)
     },
     onError: (error) => {

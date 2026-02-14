@@ -1,6 +1,7 @@
 // apps/web/src/components/groups/ui/group-picker.tsx
 'use client'
 
+import { getOptionColor, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -71,7 +72,7 @@ export function GroupPicker({
       id: group.id,
       name: group.displayName || '',
       emoji: metadata.icon || '👥',
-      color: metadata.color || '#4f46e5',
+      color: metadata.color || 'indigo',
     }
   })
 
@@ -101,8 +102,10 @@ export function GroupPicker({
               {selectedGroupsDetails.map((group) => (
                 <Badge
                   key={group.id}
-                  style={{ backgroundColor: group.color }}
-                  className='mr-1 flex items-center'>
+                  className={cn(
+                    'mr-1 flex items-center',
+                    getOptionColor((group.color || 'indigo') as SelectOptionColor).badgeClasses
+                  )}>
                   <span className='mr-1'>{group.emoji}</span>
                   {group.name}
                 </Badge>

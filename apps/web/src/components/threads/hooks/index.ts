@@ -1,7 +1,6 @@
 // apps/web/src/components/threads/hooks/index.ts
 
 export { type InboxItem, type InboxRecord, useInbox, useInboxes } from './use-inbox'
-export { useInboxMutations } from './use-inbox-mutations'
 export { useMessage } from './use-message'
 export { useMessageParticipants } from './use-message-participants'
 export { useMessages } from './use-messages'

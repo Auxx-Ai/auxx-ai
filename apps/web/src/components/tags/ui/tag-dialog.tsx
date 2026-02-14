@@ -91,7 +91,7 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
       title: '',
       tag_description: '',
       tag_emoji: '',
-      tag_color: '#94a3b8',
+      tag_color: 'gray',
       parentId: undefined,
     },
   })
@@ -110,7 +110,7 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
             title: tag.title,
             tag_description: tag.tag_description || '',
             tag_emoji: tag.tag_emoji || '',
-            tag_color: tag.tag_color || '#94a3b8',
+            tag_color: tag.tag_color || 'gray',
             parentId: tag.parentId || undefined,
           })
         }
@@ -120,7 +120,7 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
           title: '',
           tag_description: '',
           tag_emoji: '',
-          tag_color: '#94a3b8',
+          tag_color: 'gray',
           parentId: undefined,
         })
       }
@@ -147,7 +147,7 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
       title: '',
       tag_description: '',
       tag_emoji: '',
-      tag_color: '#94a3b8',
+      tag_color: 'gray',
       parentId: undefined,
     })
   }, [form])
@@ -181,7 +181,7 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
           { fieldId: getFieldId('tag_emoji'), value: values.tag_emoji || null, fieldType: 'TEXT' },
           {
             fieldId: getFieldId('tag_color'),
-            value: values.tag_color || '#94a3b8',
+            value: values.tag_color || 'gray',
             fieldType: 'TEXT',
           },
         ]
@@ -212,7 +212,7 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
           title: values.title,
           tag_description: values.tag_description || null,
           tag_emoji: values.tag_emoji || null,
-          tag_color: values.tag_color || '#94a3b8',
+          tag_color: values.tag_color || 'gray',
         }
 
         // Handle parent relationship for create (key is 'tag_parent')
@@ -357,10 +357,7 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
                   <FormItem>
                     <FormLabel>Color</FormLabel>
                     <FormControl>
-                      <FormColorTagPicker
-                        value={field.value || '#94a3b8'}
-                        onChange={field.onChange}
-                      />
+                      <FormColorTagPicker value={field.value || 'gray'} onChange={field.onChange} />
                     </FormControl>
                     <FormDescription>Choose a color for this tag</FormDescription>
                     <FormMessage />

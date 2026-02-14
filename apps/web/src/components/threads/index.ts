@@ -9,7 +9,6 @@ export {
   type InboxRecord,
   useInbox,
   useInboxes,
-  useInboxMutations,
   useIsThreadLoading,
   useIsThreadNotFound,
   useMessage,

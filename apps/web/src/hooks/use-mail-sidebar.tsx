@@ -69,7 +69,7 @@ export function useMailSidebar({ scope = 'SIDEBAR' }: UseMailSidebarOptions = {}
         sortedInboxes.push({
           id: inbox.id,
           name: inbox.name,
-          color: inbox.color ?? '#4F46E5', // Default indigo color
+          color: inbox.color ?? 'indigo', // Default indigo color
           isVisible: inboxVisibilitySettings[inbox.id] !== false, // Default true
         })
         processedIds.add(id)
@@ -82,7 +82,7 @@ export function useMailSidebar({ scope = 'SIDEBAR' }: UseMailSidebarOptions = {}
         sortedInboxes.push({
           id: inbox.id,
           name: inbox.name,
-          color: inbox.color ?? '#4F46E5', // Default indigo color
+          color: inbox.color ?? 'indigo', // Default indigo color
           isVisible: inboxVisibilitySettings[inbox.id] !== false, // Default true
         })
       }
