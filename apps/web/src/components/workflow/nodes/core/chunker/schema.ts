@@ -11,7 +11,6 @@ import { NodeType } from '~/components/workflow/types/node-types'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
 import { isNodeVariable, isVariableMode } from '~/components/workflow/utils/variable-utils'
 import { getChunkerOutputVariables } from './output-variables'
-import { ChunkerPanel } from './panel'
 import type { ChunkerNodeData } from './types'
 
 /**
@@ -182,7 +181,6 @@ export const chunkerDefinition: NodeDefinition<ChunkerNodeData> = {
   canRunSingle: true,
   defaultData: chunkerDefaultData,
   schema: chunkerNodeDataSchema,
-  panel: ChunkerPanel,
   validator: validateChunkerConfig,
   extractVariables: extractChunkerVariables,
   outputVariables: (data: ChunkerNodeData, nodeId: string) =>

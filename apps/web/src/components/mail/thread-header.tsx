@@ -208,12 +208,7 @@ export function ThreadHeader() {
               onChange={handleInboxChange}
               selected={thread?.inboxId ? [thread.inboxId] : undefined}
               allowMultiple={false}>
-              <RecordBadge recordId={thread?.inboxId} size='sm' className='me-2' />
-              {/* <Badge
-                variant="blue"
-                className="cursor-pointer data-[state=open]:brightness-90 shrink-0 text-nowrap rounded-full">
-                {inbox?.name || 'Loading...'}
-              </Badge> */}
+              <RecordBadge recordId={thread?.inboxId} className='me-2' />
             </InboxPicker>
           </div>
           <div className=' flex items-center '>

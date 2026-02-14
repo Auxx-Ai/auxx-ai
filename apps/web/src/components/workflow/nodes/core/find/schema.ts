@@ -5,7 +5,6 @@ import { NodeCategory, type NodeDefinition } from '~/components/workflow/types'
 import { NodeType } from '~/components/workflow/types/node-types'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
 import { getFindNodeOutputVariables } from './output-variables'
-import { FindPanel } from './panel'
 import { createFindNodeDefaultData, type FindNodeData, findNodeDataSchema } from './types'
 import { validateFindNodeConfig } from './validation'
 
@@ -69,7 +68,6 @@ export const findDefinition: NodeDefinition<FindNodeData> = {
   canRunSingle: true, // Can run as a single node
   defaultData: createFindNodeDefaultData(),
   schema: findNodeDataSchema,
-  panel: FindPanel,
   extractVariables: extractFindVariables,
   validator: validateFindNodeConfig,
   outputVariables: (data: FindNodeData, nodeId: string, resource, allResources) =>

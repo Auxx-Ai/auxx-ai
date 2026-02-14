@@ -10,7 +10,6 @@ import {
 import { baseNodeDataSchema } from '~/components/workflow/types/node-base'
 import { NodeType } from '~/components/workflow/types/node-types'
 import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
-import { HumanConfirmationNodePanel } from './panel'
 import type { HumanConfirmationNodeData } from './types'
 
 /**
@@ -209,7 +208,6 @@ export const humanConfirmationDefinition: NodeDefinition<HumanConfirmationNodeDa
   color: '#f59e0b', // CONDITION category color
   defaultData: humanConfirmationDefaultData,
   schema: humanConfirmationNodeDataSchema,
-  panel: HumanConfirmationNodePanel,
   validator: validateHumanConfirmationConfig,
   canRunSingle: false,
   extractVariables: () => [], // Human confirmation doesn't extract variables

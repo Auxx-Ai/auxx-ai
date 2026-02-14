@@ -9,7 +9,6 @@ import type { OutputVariable } from '~/components/workflow/types/variable-types'
 import { BaseType } from '~/components/workflow/types/variable-types'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
 import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
-import { HttpNodePanel } from './panel'
 import { AuthType, BodyType, ErrorStrategy, type HttpNodeData, Method } from './types'
 
 // Zod schema for validation (config - deprecated)
@@ -400,7 +399,6 @@ export const httpNodeDefinition: NodeDefinition<HttpNodeData> = {
   color: '#3B82F6', // UTILITY category color
   defaultData: createHttpDefaultData(),
   schema: httpNodeDataSchema,
-  panel: HttpNodePanel,
   validator: validateHttpNodeData,
   canRunSingle: true,
   extractVariables: extractHttpVariableIds,

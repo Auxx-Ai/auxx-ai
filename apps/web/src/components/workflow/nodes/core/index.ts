@@ -2,47 +2,75 @@
 
 import type { NodeProps } from '@xyflow/react'
 import type { ComponentType } from 'react'
-import { AiNode } from '~/components/workflow/nodes/core/ai'
-import { AnswerNode } from '~/components/workflow/nodes/core/answer'
-import { CodeNode } from '~/components/workflow/nodes/core/code'
-import { DateTimeNode } from '~/components/workflow/nodes/core/date-time'
-import { EndNode } from '~/components/workflow/nodes/core/end'
-import { HttpNode } from '~/components/workflow/nodes/core/http'
-import { HumanConfirmationNode } from '~/components/workflow/nodes/core/human'
-// Import all node components directly
-import { IfElseNode } from '~/components/workflow/nodes/core/if-else'
-import { InformationExtractorNode } from '~/components/workflow/nodes/core/information-extractor'
-import { ListNode } from '~/components/workflow/nodes/core/list'
-import { LoopNode } from '~/components/workflow/nodes/core/loop'
-import { MessageReceivedNode } from '~/components/workflow/nodes/core/message-received'
-import { NoteNode } from '~/components/workflow/nodes/core/note'
-import { TextClassifierNode } from '~/components/workflow/nodes/core/text-classifier'
-import { VarAssignNode } from '~/components/workflow/nodes/core/var-assign'
-import { WaitNode } from '~/components/workflow/nodes/core/wait'
-import { WebhookNode } from '~/components/workflow/nodes/core/webhook'
+import { AiNode, AiPanel } from '~/components/workflow/nodes/core/ai'
+import { AnswerNode, AnswerPanel } from '~/components/workflow/nodes/core/answer'
+import { CodeNode, CodePanel } from '~/components/workflow/nodes/core/code'
+import { DateTimeNode, DateTimePanel } from '~/components/workflow/nodes/core/date-time'
+import { EndNode, EndPanel } from '~/components/workflow/nodes/core/end'
+import { HttpNode, HttpNodePanel } from '~/components/workflow/nodes/core/http'
+import {
+  HumanConfirmationNode,
+  HumanConfirmationNodePanel,
+} from '~/components/workflow/nodes/core/human'
+// Import all node components and panels directly
+import { IfElseNode, IfElsePanel } from '~/components/workflow/nodes/core/if-else'
+import {
+  InformationExtractorNode,
+  InformationExtractorPanel,
+} from '~/components/workflow/nodes/core/information-extractor'
+import { ListNode, ListPanel } from '~/components/workflow/nodes/core/list'
+import { LoopNode, LoopPanel } from '~/components/workflow/nodes/core/loop'
+import {
+  MessageReceivedNode,
+  MessageReceivedPanel,
+} from '~/components/workflow/nodes/core/message-received'
+import { NoteNode, NotePanel } from '~/components/workflow/nodes/core/note'
+import {
+  TextClassifierNode,
+  TextClassifierPanel,
+} from '~/components/workflow/nodes/core/text-classifier'
+import { VarAssignNode, VarAssignPanel } from '~/components/workflow/nodes/core/var-assign'
+import { WaitNode, WaitNodePanel } from '~/components/workflow/nodes/core/wait'
+import { WebhookNode, WebhookPanel } from '~/components/workflow/nodes/core/webhook'
 import { type NodeDefinition, NodeType } from '~/components/workflow/types'
 import { aiDefinition } from './ai'
 import { answerDefinition } from './answer'
-import { ChunkerNode, chunkerDefinition } from './chunker'
+import { ChunkerNode, ChunkerPanel, chunkerDefinition } from './chunker'
 import { codeDefinition } from './code'
-import { CrudNode, crudDefinition } from './crud'
-import { DatasetNode, datasetDefinition } from './dataset'
+import { CrudNode, CrudPanel, crudDefinition } from './crud'
+import { DatasetNode, DatasetPanel, datasetDefinition } from './dataset'
 import { dateTimeNodeDefinition } from './date-time'
-import { DocumentExtractorNode, documentExtractorDefinition } from './document-extractor'
+import {
+  DocumentExtractorNode,
+  DocumentExtractorPanel,
+  documentExtractorDefinition,
+} from './document-extractor'
 import { endDefinition } from './end'
-import { FindNode, findDefinition } from './find'
+import { FindNode, FindPanel, findDefinition } from './find'
 import { httpNodeDefinition } from './http'
 import { humanConfirmationDefinition } from './human'
 import { ifElseDefinition } from './if-else'
 import { informationExtractorDefinition } from './information-extractor'
-import { KnowledgeRetrievalNode, knowledgeRetrievalDefinition } from './knowledge-retrieval'
+import {
+  KnowledgeRetrievalNode,
+  KnowledgeRetrievalPanel,
+  knowledgeRetrievalDefinition,
+} from './knowledge-retrieval'
 import { listNodeDefinition } from './list'
 import { loopDefinition } from './loop'
-import { ManualNode, manualDefinition } from './manual'
+import { ManualNode, ManualPanel, manualDefinition } from './manual'
 import { messageReceivedDefinition } from './message-received'
 import { noteDefinition } from './note'
-import { ResourceTriggerNode, resourceTriggerDefinition } from './resource-trigger'
-import { ScheduledTriggerNode, scheduledTriggerDefinition } from './scheduled'
+import {
+  ResourceTriggerNode,
+  ResourceTriggerPanel,
+  resourceTriggerDefinition,
+} from './resource-trigger'
+import {
+  ScheduledTriggerNode,
+  ScheduledTriggerPanel,
+  scheduledTriggerDefinition,
+} from './scheduled'
 import { textClassifierDefinition } from './text-classifier'
 import { varAssignDefinition } from './var-assign'
 import { waitDefinition } from './wait'
@@ -68,32 +96,48 @@ import {
  */
 export const NODE_DEFINITIONS: NodeDefinition[] = [
   // Core workflow nodes
-  { ...answerDefinition, component: AnswerNode },
-  { ...codeDefinition, component: CodeNode },
-  { ...ifElseDefinition, component: IfElseNode },
-  { ...messageReceivedDefinition, component: MessageReceivedNode },
-  { ...webhookDefinition, component: WebhookNode },
-  { ...scheduledTriggerDefinition, component: ScheduledTriggerNode },
-  { ...manualDefinition, component: ManualNode },
-  { ...resourceTriggerDefinition, component: ResourceTriggerNode },
-  { ...aiDefinition, component: AiNode },
-  { ...endDefinition, component: EndNode },
-  { ...noteDefinition, component: NoteNode },
-  { ...textClassifierDefinition, component: TextClassifierNode },
-  { ...informationExtractorDefinition, component: InformationExtractorNode },
-  { ...varAssignDefinition, component: VarAssignNode },
-  { ...dateTimeNodeDefinition, component: DateTimeNode },
-  { ...httpNodeDefinition, component: HttpNode },
-  { ...waitDefinition, component: WaitNode },
-  { ...listNodeDefinition, component: ListNode },
-  { ...loopDefinition, component: LoopNode },
-  { ...humanConfirmationDefinition, component: HumanConfirmationNode },
-  { ...findDefinition, component: FindNode },
-  { ...crudDefinition, component: CrudNode },
-  { ...documentExtractorDefinition, component: DocumentExtractorNode },
-  { ...chunkerDefinition, component: ChunkerNode },
-  { ...datasetDefinition, component: DatasetNode },
-  { ...knowledgeRetrievalDefinition, component: KnowledgeRetrievalNode },
+  { ...answerDefinition, component: AnswerNode, panel: AnswerPanel },
+  { ...codeDefinition, component: CodeNode, panel: CodePanel },
+  { ...ifElseDefinition, component: IfElseNode, panel: IfElsePanel },
+  { ...messageReceivedDefinition, component: MessageReceivedNode, panel: MessageReceivedPanel },
+  { ...webhookDefinition, component: WebhookNode, panel: WebhookPanel },
+  { ...scheduledTriggerDefinition, component: ScheduledTriggerNode, panel: ScheduledTriggerPanel },
+  { ...manualDefinition, component: ManualNode, panel: ManualPanel },
+  { ...resourceTriggerDefinition, component: ResourceTriggerNode, panel: ResourceTriggerPanel },
+  { ...aiDefinition, component: AiNode, panel: AiPanel },
+  { ...endDefinition, component: EndNode, panel: EndPanel },
+  { ...noteDefinition, component: NoteNode, panel: NotePanel },
+  { ...textClassifierDefinition, component: TextClassifierNode, panel: TextClassifierPanel },
+  {
+    ...informationExtractorDefinition,
+    component: InformationExtractorNode,
+    panel: InformationExtractorPanel,
+  },
+  { ...varAssignDefinition, component: VarAssignNode, panel: VarAssignPanel },
+  { ...dateTimeNodeDefinition, component: DateTimeNode, panel: DateTimePanel },
+  { ...httpNodeDefinition, component: HttpNode, panel: HttpNodePanel },
+  { ...waitDefinition, component: WaitNode, panel: WaitNodePanel },
+  { ...listNodeDefinition, component: ListNode, panel: ListPanel as any },
+  { ...loopDefinition, component: LoopNode, panel: LoopPanel },
+  {
+    ...humanConfirmationDefinition,
+    component: HumanConfirmationNode,
+    panel: HumanConfirmationNodePanel,
+  },
+  { ...findDefinition, component: FindNode, panel: FindPanel },
+  { ...crudDefinition, component: CrudNode, panel: CrudPanel },
+  {
+    ...documentExtractorDefinition,
+    component: DocumentExtractorNode,
+    panel: DocumentExtractorPanel,
+  },
+  { ...chunkerDefinition, component: ChunkerNode, panel: ChunkerPanel },
+  { ...datasetDefinition, component: DatasetNode, panel: DatasetPanel },
+  {
+    ...knowledgeRetrievalDefinition,
+    component: KnowledgeRetrievalNode,
+    panel: KnowledgeRetrievalPanel,
+  },
   // AppPlaceholder removed - using StandardNode fallback for unregistered app nodes instead
   ...INPUT_NODE_DEFINITIONS,
   // App integration nodes

@@ -7,7 +7,6 @@ import { NodeType } from '~/components/workflow/types/node-types'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
 import { isNodeVariable, isVariableMode } from '~/components/workflow/utils/variable-utils'
 import { getKnowledgeRetrievalOutputVariables } from './output-variables'
-import { KnowledgeRetrievalPanel } from './panel'
 import type { KnowledgeRetrievalNodeData } from './types'
 
 /**
@@ -122,7 +121,6 @@ export const knowledgeRetrievalDefinition: NodeDefinition<KnowledgeRetrievalNode
   canRunSingle: true,
   defaultData: knowledgeRetrievalDefaultData,
   schema: knowledgeRetrievalNodeDataSchema,
-  panel: KnowledgeRetrievalPanel,
   extractVariables: extractKnowledgeRetrievalVariables,
   outputVariables: (data: KnowledgeRetrievalNodeData, nodeId: string) =>
     getKnowledgeRetrievalOutputVariables(data, nodeId),

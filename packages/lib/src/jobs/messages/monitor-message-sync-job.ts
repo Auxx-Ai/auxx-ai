@@ -2,11 +2,11 @@
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { and, eq } from 'drizzle-orm'
 import { publisher } from '../../events/publisher'
 import type { MessageSyncCompleteEvent, MessageSyncFailedEvent } from '../../events/types'
 import { getQueue, Queues } from '../queues'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('job:message-sync-monitor')
 
@@ -19,9 +19,10 @@ export type MonitorMessageSyncJobData = {
 
 export const MONITOR_RECHECK_DELAY_MS = 5000
 
-export const monitorMessageSyncJob = async (job: Job<MonitorMessageSyncJobData>) => {
-  const { syncRunId: syncJobId, organizationId, userId } = job.data
-  const jobAttempt = job.data.attempt || 1
+export const monitorMessageSyncJob = async (ctx: JobContext<MonitorMessageSyncJobData>) => {
+  const { job, data } = ctx
+  const { syncRunId: syncJobId, organizationId, userId } = data
+  const jobAttempt = data.attempt || 1
 
   logger.info(`Monitoring sync job ${syncJobId}, attempt ${jobAttempt}`, {
     bullmqJobId: job.id,
@@ -252,7 +253,7 @@ export const monitorMessageSyncJob = async (job: Job<MonitorMessageSyncJobData>)
       // Reschedule the monitor job using the same ID
       await messageSyncQueue.add(
         job.name,
-        { ...job.data, attempt: jobAttempt + 1 },
+        { ...data, attempt: jobAttempt + 1 },
         {
           delay: MONITOR_RECHECK_DELAY_MS,
           jobId: job.id,
@@ -265,6 +266,7 @@ export const monitorMessageSyncJob = async (job: Job<MonitorMessageSyncJobData>)
     logger.error(`Error in monitorMessageSyncJob for sync job ${syncJobId}`, {
       bullmqJobId: job.id,
       error,
+      cause: error instanceof Error && error.cause ? String(error.cause) : undefined,
     })
     throw error
   }

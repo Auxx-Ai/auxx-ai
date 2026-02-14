@@ -12,7 +12,6 @@ import { NodeType } from '~/components/workflow/types/node-types'
 import { BaseType, type UnifiedVariable } from '~/components/workflow/types/variable-types'
 import { schemaToUnifiedVariable } from '~/components/workflow/utils/schema-to-variable'
 import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
-import { WebhookPanel } from './panel'
 import type { WebhookNodeData } from './types'
 
 /**
@@ -138,7 +137,6 @@ export const webhookDefinition: NodeDefinition<WebhookNodeData> = {
   schema: webhookNodeDataSchema,
   defaultData: webhookDefaultData,
   canRunSingle: false, // Triggers cannot be run individually
-  panel: WebhookPanel,
   triggerType: WorkflowTriggerType.WEBHOOK,
   validator: validateWebhookData,
   outputVariables: getWebhookOutputVariables as any,

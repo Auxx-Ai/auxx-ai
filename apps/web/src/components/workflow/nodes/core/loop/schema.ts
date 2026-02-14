@@ -10,7 +10,6 @@ import { NodeType } from '~/components/workflow/types/node-types'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
 import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
 import { LOOP_CONSTANTS } from './constants'
-import { LoopPanel } from './panel'
 import type { LoopNodeData } from './types'
 
 /**
@@ -178,7 +177,6 @@ export const loopDefinition: NodeDefinition<LoopNodeData> = {
   schema: loopConfigSchema,
   defaultData: loopDefaultData,
   canRunSingle: false, // Loops need context, can't run in isolation
-  panel: LoopPanel,
   validator: validateLoop,
   extractVariables: extractLoopVariables,
   outputVariables: getLoopOutputVariables,

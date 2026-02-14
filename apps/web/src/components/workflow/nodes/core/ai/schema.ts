@@ -12,7 +12,6 @@ import {
 import { NodeType } from '~/components/workflow/types/node-types'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
 import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
-import { AiPanel } from './panel'
 import { AiModelMode, type AiNodeData, PromptRole } from './types'
 
 /**
@@ -332,7 +331,6 @@ export const aiDefinition: NodeDefinition<AiNodeData> = {
   schema: aiSchema,
   dataSchema: aiNodeDataSchema,
   // validate: validateAiConfig,
-  panel: AiPanel,
   validator: validateAiData,
   canRunSingle: true,
   extractVariables: (data: AiNodeData) => extractAIVariableIds(data),

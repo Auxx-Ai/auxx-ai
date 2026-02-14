@@ -252,51 +252,6 @@ export function VariableEditorDialog({ open, onOpenChange }: VariableEditorDialo
     }
   }, [open])
 
-  // Handle keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (!open || isEditing) return
-
-      // Check if user is typing in an input field
-      const target = event.target as HTMLElement
-      const isInputField =
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.contentEditable === 'true' ||
-        target.getAttribute('role') === 'textbox'
-
-      if (isInputField) return
-
-      if (event.key === 'Delete') {
-        event.preventDefault()
-        if (bulkSelectMode && selectedVariableIds.size > 0) {
-          handleBulkDelete()
-        } else if (selectedVariableId) {
-          handleDelete(selectedVariableId)
-        }
-      }
-
-      if (event.key === 'Escape' && bulkSelectMode) {
-        event.preventDefault()
-        setBulkSelectMode(false)
-        setSelectedVariableIds(new Set())
-      }
-    }
-
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [
-    open,
-    isEditing,
-    selectedVariableId,
-    bulkSelectMode,
-    selectedVariableIds,
-    // biome-ignore lint/correctness/useExhaustiveDependencies: handler functions are intentionally used as dependencies
-    handleBulkDelete,
-    // biome-ignore lint/correctness/useExhaustiveDependencies: handler function is intentionally used as dependency
-    handleDelete,
-  ])
-
   const handleEdit = (variable: EnvVar) => {
     setEditingVariable(variable)
 
@@ -474,6 +429,49 @@ export function VariableEditorDialog({ open, onOpenChange }: VariableEditorDialo
       }
     }
   }
+
+  // Handle keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!open || isEditing) return
+
+      // Check if user is typing in an input field
+      const target = event.target as HTMLElement
+      const isInputField =
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.contentEditable === 'true' ||
+        target.getAttribute('role') === 'textbox'
+
+      if (isInputField) return
+
+      if (event.key === 'Delete') {
+        event.preventDefault()
+        if (bulkSelectMode && selectedVariableIds.size > 0) {
+          handleBulkDelete()
+        } else if (selectedVariableId) {
+          handleDelete(selectedVariableId)
+        }
+      }
+
+      if (event.key === 'Escape' && bulkSelectMode) {
+        event.preventDefault()
+        setBulkSelectMode(false)
+        setSelectedVariableIds(new Set())
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [
+    open,
+    isEditing,
+    selectedVariableId,
+    bulkSelectMode,
+    selectedVariableIds,
+    handleBulkDelete,
+    handleDelete,
+  ])
 
   const handleSelectAll = () => {
     if (selectedVariableIds.size === envVariables.length) {

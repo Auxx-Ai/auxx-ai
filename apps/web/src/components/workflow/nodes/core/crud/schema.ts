@@ -5,7 +5,6 @@ import { NodeType } from '~/components/workflow/types/node-types'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
 import { isNodeVariable } from '~/components/workflow/utils/variable-utils'
 import { getCrudNodeOutputVariables } from './output-variables'
-import { CrudPanel } from './panel'
 import { type CrudNodeData, createCrudNodeDefaultData, crudNodeDataSchema } from './types'
 import { validateCrudNodeConfig } from './validation'
 /**
@@ -59,7 +58,6 @@ export const crudDefinition: NodeDefinition<CrudNodeData> = {
   canRunSingle: true,
   defaultData: createCrudNodeDefaultData(),
   schema: crudNodeDataSchema,
-  panel: CrudPanel,
   validator: validateCrudNodeConfig,
   extractVariables: extractCrudVariables,
   outputVariables: (data: CrudNodeData, nodeId: string, resource, allResources) =>

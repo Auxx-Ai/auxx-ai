@@ -5,7 +5,6 @@ import { baseNodeDataSchema } from '~/components/workflow/types/node-base'
 import { NodeCategory, type NodeDefinition, type ValidationResult } from '../../../types'
 import { NodeType } from '../../../types/node-types'
 import { DEFAULT_NOTE_HEIGHT, DEFAULT_NOTE_WIDTH } from './constants'
-import { NotePanel } from './panel'
 import type { NoteNodeData, NoteTheme } from './types'
 
 /**
@@ -56,7 +55,6 @@ export const noteDefinition: NodeDefinition<NoteNodeData> = {
   color: '#FBBF24',
   defaultData: noteDefaultData,
   schema: noteNodeDataSchema,
-  panel: NotePanel,
   validator: validateNoteConfig,
   canConnect: false, // Note nodes can be added to canvas but cannot connect to other blocks
   // Custom properties for note nodes

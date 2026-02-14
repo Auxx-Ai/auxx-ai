@@ -38,6 +38,7 @@ import { SidebarItem } from '~/components/global/sidebar/sidebar-item'
 import { useMailCountsStore } from '~/components/mail/store'
 import { MailViewDialog } from '~/components/mail-views/mail-view-dialog'
 import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
 import { useSidebarStateContext } from './sidebar-state-context'
 
 // import { useDndState } from '~/context/dnd-state-context'; // <-- IMPORT NEW HOOK

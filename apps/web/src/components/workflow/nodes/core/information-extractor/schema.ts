@@ -11,7 +11,6 @@ import { NodeType } from '~/components/workflow/types/node-types'
 import { BaseType, type UnifiedVariable } from '~/components/workflow/types/variable-types'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
 import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
-import { InformationExtractorPanel } from './panel'
 import type { InformationExtractorNodeData } from './types'
 
 /**
@@ -362,7 +361,6 @@ export const informationExtractorDefinition: NodeDefinition<InformationExtractor
   schema: informationExtractorSchema,
   defaultData: createInformationExtractorDefaultData(),
   canRunSingle: true,
-  panel: InformationExtractorPanel,
   validator: validateInformationExtractor,
   extractVariables: extractInformationExtractorVariables,
   outputVariables: getInformationExtractorOutputVariables as any,

@@ -7,7 +7,6 @@ import { NodeCategory } from '~/components/workflow/types/registry'
 import { BaseType } from '~/components/workflow/types/variable-types'
 import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
 import { DEFAULT_DURATION, DEFAULT_PARSE_FORMAT_TYPE } from './constants'
-import { DateTimePanel } from './panel'
 import {
   DateFormatType,
   type DateTimeNodeData,
@@ -252,7 +251,6 @@ export const dateTimeNodeDefinition: NodeDefinition<DateTimeNodeData> = {
   color: '#3B82F6', // UTILITY category color
   defaultData: createDateTimeNodeDefaultData(),
   schema: dateTimeNodeSchema,
-  panel: DateTimePanel,
   validator: validateDateTimeNodeData,
   canRunSingle: true,
   extractVariables: extractDateTimeNodeVariables,

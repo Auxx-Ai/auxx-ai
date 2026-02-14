@@ -7,7 +7,6 @@ import { NodeType } from '~/components/workflow/types/node-types'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
 import { isNodeVariable, isVariableMode } from '~/components/workflow/utils/variable-utils'
 import { getDatasetOutputVariables } from './output-variables'
-import { DatasetPanel } from './panel'
 import type { DatasetNodeData } from './types'
 
 /**
@@ -115,7 +114,6 @@ export const datasetDefinition: NodeDefinition<DatasetNodeData> = {
   canRunSingle: true,
   defaultData: datasetDefaultData,
   schema: datasetNodeDataSchema,
-  panel: DatasetPanel,
   extractVariables: extractDatasetVariables,
   outputVariables: (data: DatasetNodeData, nodeId: string) =>
     getDatasetOutputVariables(data, nodeId),

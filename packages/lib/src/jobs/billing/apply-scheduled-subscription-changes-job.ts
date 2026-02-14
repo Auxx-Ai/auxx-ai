@@ -2,10 +2,10 @@
 
 import { stripeClient } from '@auxx/billing'
 import { database as db, schema } from '@auxx/database'
-import type { Job } from 'bullmq'
 import { and, eq, inArray, isNotNull, lte } from 'drizzle-orm'
 import { z } from 'zod'
 import { createScopedLogger } from '../../logger'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('apply-scheduled-subscription-changes-job')
 
@@ -261,9 +261,10 @@ async function applyScheduledChange(
  * Runs every hour as backup to Stripe webhooks.
  */
 export async function applyScheduledSubscriptionChangesJob(
-  job: Job<ApplyScheduledChangesJobData>
+  ctx: JobContext<ApplyScheduledChangesJobData>
 ): Promise<ApplyScheduledChangesResult> {
-  const input = payloadSchema.parse(job.data)
+  const { job, data } = ctx
+  const input = payloadSchema.parse(data)
 
   logger.info('Starting scheduled subscription changes job', {
     jobId: job.id,
@@ -322,7 +323,7 @@ export async function applyScheduledSubscriptionChangesJob(
         const progress = Math.round(
           ((result.successful + result.skipped + result.failed) / result.totalFound) * 100
         )
-        await job.updateProgress(progress)
+        await ctx.updateProgress(progress)
       } catch (error) {
         logger.error('Unexpected error processing subscription', {
           subscriptionId: subscription.id,
@@ -337,7 +338,7 @@ export async function applyScheduledSubscriptionChangesJob(
       }
     }
 
-    await job.updateProgress(100)
+    await ctx.updateProgress(100)
 
     logger.info('Scheduled subscription changes job completed', {
       jobId: job.id,
@@ -348,6 +349,7 @@ export async function applyScheduledSubscriptionChangesJob(
   } catch (error) {
     logger.error('Scheduled subscription changes job failed', {
       error: error instanceof Error ? error.message : String(error),
+      cause: error instanceof Error && error.cause ? String(error.cause) : undefined,
       jobId: job.id,
     })
     throw error

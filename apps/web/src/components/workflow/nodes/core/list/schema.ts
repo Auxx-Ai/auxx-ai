@@ -5,7 +5,6 @@ import { NodeCategory, type NodeDefinition, NodeType } from '~/components/workfl
 import type { ValidationResult } from '../../../types'
 import { extractListVariables } from './extract-variables'
 import { computeListOutputVariables } from './output-variables'
-import { ListPanel } from './panel'
 import type { ListNodeData, ListOperation } from './types'
 
 /**
@@ -185,7 +184,6 @@ export const listNodeDefinition: NodeDefinition<ListNodeData> = {
   color: '#3B82F6', // UTILITY category color
   schema: listNodeSchema,
   defaultData: createListDefaultData(),
-  panel: ListPanel as any, // Type assertion needed due to NodePanelProps mismatch
   canRunSingle: true,
 
   /**
